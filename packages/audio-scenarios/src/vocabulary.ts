@@ -2,8 +2,9 @@
  * The vocabulary registries (issue #1514): the vars, conditions and cases a
  * script may name (`defineVar` / `defineCond` / `defineCase`, issue #1064),
  * the `vocabulary()` report the generated reference and `lint:pack` read
- * (#1066), and `pickCaseBranch`, the one resolution that lives here because
- * it is the case registry's own lookup.
+ * (#1066) — with the pools a var declared it draws (#1718) — and
+ * `pickCaseBranch`, the one resolution that lives here because it is the
+ * case registry's own lookup.
  *
  * Fixed once registered: it marks nothing dirty — the facade does, after
  * each `define…`, since a registration changes what the scripts compile
@@ -13,7 +14,7 @@ import type { ILogger } from "@iracedeck/logger";
 
 import type { ResolvedStep, ScenarioContext, VocabularyResolver } from "./dsl.js";
 import { codePointOrder } from "./engine-types.js";
-import type { VocabularyReport } from "./interpreter.js";
+import type { DefineVarOptions, VarDraw, VocabularyReport } from "./interpreter.js";
 import type { OnceWarnings } from "./once-warnings.js";
 
 export type CondEntry = { predicate: VocabularyResolver<boolean>; description: string };
@@ -23,10 +24,21 @@ export type CaseEntry = {
   description: string;
 };
 
+/**
+ * A declared draw copied, so a caller mutating what it passed or got back
+ * changes nothing here. `contracts` is copied when present and left out when
+ * absent, like `draws` on the report: an unscoped draw reads as one.
+ */
+function copyDraw({ group, base, contracts }: VarDraw): VarDraw {
+  return contracts === undefined ? { group, base } : { group, base, contracts: [...contracts] };
+}
+
 export class Vocabulary {
   private readonly varMap = new Map<string, VocabularyResolver<string | null>>();
   /** Parallel to `vars`: the description each var was registered with (`""` when none). */
   private readonly varDescriptions = new Map<string, string>();
+  /** The pools a var declared it draws (#1718), copied at registration; absent for a var that declared none. */
+  private readonly varDraws = new Map<string, readonly VarDraw[]>();
   private readonly condMap = new Map<string, CondEntry>();
   private readonly caseMap = new Map<string, CaseEntry>();
 
@@ -47,9 +59,19 @@ export class Vocabulary {
     return this.caseMap;
   }
 
-  defineVar(name: string, resolver: VocabularyResolver<string | null>, description = ""): void {
+  defineVar(
+    name: string,
+    resolver: VocabularyResolver<string | null>,
+    description = "",
+    options: DefineVarOptions = {},
+  ): void {
     this.varMap.set(name, resolver);
     this.varDescriptions.set(name, description);
+
+    // A re-registration replaces the declaration whole, so one without
+    // `draws` drops what an earlier one declared.
+    if (options.draws) this.varDraws.set(name, options.draws.map(copyDraw));
+    else this.varDraws.delete(name);
   }
 
   defineCond(name: string, predicate: VocabularyResolver<boolean>, description: string): void {
@@ -71,7 +93,15 @@ export class Vocabulary {
 
     return {
       vars: byName(
-        [...this.varMap.keys()].map((name) => ({ name, description: this.varDescriptions.get(name) ?? "" })),
+        [...this.varMap.keys()].map((name) => {
+          const description = this.varDescriptions.get(name) ?? "";
+          const draws = this.varDraws.get(name);
+
+          // The key is left out, not set to `undefined`, for a var that
+          // declared no draws: the report is serialised into the generated
+          // reference, which must not change for it.
+          return draws ? { name, description, draws: draws.map(copyDraw) } : { name, description };
+        }),
       ),
       conds: byName([...this.condMap].map(([name, { description }]) => ({ name, description }))),
       cases: byName(

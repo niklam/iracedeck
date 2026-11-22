@@ -726,6 +726,277 @@ describe("lintPack", () => {
   });
 });
 
+// ─── Vars that declare what they draw (#1718) ────────────────────────────────
+//
+// The spotter's shape in miniature: two contracts whose whole line is one
+// var, the var declaring the closed set of `spotter/<base>` pools it can
+// return — the call lines only ever for the call contract, the info lines
+// only ever for the info contract, as the engine fires them. Its description
+// names the spotter group on purpose — the heuristic would exempt the whole
+// group, and a declared var must not be read that way.
+
+const CALL_ENTRY = "pit-crew.spotter-call";
+const INFO_ENTRY = "pit-crew.spotter-info";
+const CALL_BASES = ["car-left", "car-right"] as const;
+const INFO_BASES = ["clear", "still-there"] as const;
+const SPOTTER_BASES = [...CALL_BASES, ...INFO_BASES];
+
+const DRAWS_CONTRACTS: readonly ContractReport[] = [
+  ...CONTRACTS,
+  contract(CALL_ENTRY, { frame: "none" }),
+  contract(INFO_ENTRY, { frame: "none" }),
+];
+
+const DRAWS_VOCABULARY: VocabularyReport = {
+  ...VOCABULARY,
+  vars: [
+    ...VOCABULARY.vars,
+    {
+      name: "spotterClip",
+      description: "The spotter call, drawn from the spotter group (spotter/car-left is “Car left”).",
+      draws: [
+        ...CALL_BASES.map((base) => ({ group: "spotter", base, contracts: [CALL_ENTRY] })),
+        ...INFO_BASES.map((base) => ({ group: "spotter", base, contracts: [INFO_ENTRY] })),
+      ],
+    },
+    {
+      // A declaration with no `contracts`: the resolver may return the pool
+      // for any callout, so any live mention of the var counts.
+      name: "radioCheck",
+      description: "The radio check line.",
+      draws: [{ group: "radio", base: "check" }],
+    },
+  ],
+};
+
+const DRAWS_DEPS: CompileDeps = {
+  ...DEPS,
+  contracts: new Map(DRAWS_CONTRACTS.map((c) => [c.id, { frame: c.frame }])),
+  vars: new Set(DRAWS_VOCABULARY.vars.map((v) => v.name)),
+};
+
+const CALL = { comment: "The spotter call.", test: "Radar → Car left.", sequence: ["{{spotterClip}}"] };
+const INFO = { comment: "The spotter info.", test: "Radar → Clear.", sequence: ["{{spotterClip}}"] };
+
+const DRAWS_SCRIPT = {
+  ...SCRIPT,
+  scenarios: { ...SCRIPT.scenarios, [CALL_ENTRY]: CALL, [INFO_ENTRY]: INFO },
+};
+
+/** The script with only the spotter entries given (on top of the three base callouts). */
+function spotterScript(entries: Record<string, unknown>, rest: Record<string, unknown> = {}) {
+  return { ...SCRIPT, scenarios: { ...SCRIPT.scenarios, ...entries }, ...rest };
+}
+
+/** Takes only — the shape the engine resolved as a pool only since #1718. */
+const takesOf = (bases: readonly string[]) =>
+  bases.flatMap((base) => [`voice/${VOICE}/spotter/${base}-01.mp3`, `voice/${VOICE}/spotter/${base}-02.mp3`]);
+
+/** Every declared base as takes only. */
+const SPOTTER_TAKES = takesOf(SPOTTER_BASES);
+
+function lintDraws(script: unknown, clips: readonly string[]) {
+  return lint(packFiles({ script, clips: [...CLIPS, ...clips] }), {
+    contracts: DRAWS_CONTRACTS,
+    vocabulary: DRAWS_VOCABULARY,
+    compile: (parsed) => compileVoiceScript(parsed, DRAWS_DEPS),
+  });
+}
+
+const spotterOrphan = (base: string) =>
+  `${VOICE} orphan: "spotter/${base}" is shipped as voice/${VOICE}/spotter/${base}*.mp3 but nothing in the script references it — it never plays`;
+
+const varDangling = (key: string, vars = "{{spotterClip}}") =>
+  `${VOICE} dangling: "${key}" is drawn by ${vars}, which the script names, but the pack ships no voice/${VOICE}/${key}*.mp3 — when the var picks it, the callout resolves to nothing and is aborted at fire time`;
+
+describe("lintPack — a var that declares its draws (issue #1718)", () => {
+  it("passes a pack that records every declared pool as takes only, and one that mixes bare files and takes", () => {
+    const report = lintDraws(DRAWS_SCRIPT, SPOTTER_TAKES);
+
+    expect(report.problems).toEqual([]);
+    expect(report.voices[0]).toMatchObject({ status: "linted", scripted: 5, skipped: ["pit-crew.position-gained"] });
+
+    const mixed = [`voice/${VOICE}/spotter/car-left.mp3`, ...SPOTTER_TAKES];
+    expect(lintDraws(DRAWS_SCRIPT, mixed).problems).toEqual([]);
+  });
+
+  it("names a declared pool the pack does not ship as dangling, in the var's words", () => {
+    const report = lintDraws(
+      DRAWS_SCRIPT,
+      SPOTTER_TAKES.filter((clip) => !clip.includes("/spotter/car-left-")),
+    );
+
+    expect(messages(report.problems)).toEqual([varDangling("spotter/car-left")]);
+    expect(report.ok).toBe(false);
+  });
+
+  it("names a missing info line dangling when the script speaks both spotter callouts", () => {
+    const report = lintDraws(
+      DRAWS_SCRIPT,
+      SPOTTER_TAKES.filter((clip) => !clip.includes("/spotter/clear-")),
+    );
+
+    expect(messages(report.problems)).toEqual([varDangling("spotter/clear")]);
+  });
+
+  it("keeps the step's words for a missing pool a step names directly, even when a declaring var also draws it", () => {
+    const stepAndVar = spotterScript({
+      [CALL_ENTRY]: { ...CALL, sequence: ["pool:spotter/car-left", "{{spotterClip}}"] },
+      [INFO_ENTRY]: INFO,
+    });
+    const report = lintDraws(
+      stepAndVar,
+      SPOTTER_TAKES.filter((clip) => !clip.includes("/spotter/car-left-")),
+    );
+
+    expect(messages(report.problems)).toEqual([
+      `${VOICE} dangling: "spotter/car-left" is referenced but the pack ships no voice/${VOICE}/spotter/car-left*.mp3 — a required step that resolves to nothing aborts the whole callout at fire time`,
+    ]);
+  });
+
+  it("names a file in the group that answers no declared pool as an orphan — a one-digit take the engine never plays", () => {
+    const report = lintDraws(DRAWS_SCRIPT, [...SPOTTER_TAKES, `voice/${VOICE}/spotter/car-left-1.mp3`]);
+
+    // The var's description names the spotter group; it is not read, so the
+    // group is no longer exempt as a whole.
+    expect(messages(report.problems)).toEqual([spotterOrphan("car-left-1")]);
+  });
+
+  it("gives a voice whose script does not name the var no references from it — every file the var would draw is an orphan", () => {
+    const withoutEntry = spotterScript({});
+    const skipped = spotterScript({
+      [CALL_ENTRY]: { skip: true, comment: "No spotter in this voice." },
+      [INFO_ENTRY]: { skip: true, comment: "No spotter in this voice." },
+    });
+    const expected = [...SPOTTER_BASES].sort().map(spotterOrphan);
+
+    // No entry at all, and `skip: true` entries: both deliberate, so the only
+    // problems are the files nothing plays.
+    expect(messages(lintDraws(withoutEntry, SPOTTER_TAKES).problems)).toEqual(expected);
+    expect(messages(lintDraws(skipped, SPOTTER_TAKES).problems)).toEqual(expected);
+  });
+
+  it("passes a pack that scripts only the spotter call and ships only the call lines — the info lines are not its to record", () => {
+    const callOnly = spotterScript({ [CALL_ENTRY]: CALL });
+    const infoSkipped = spotterScript({
+      [CALL_ENTRY]: CALL,
+      [INFO_ENTRY]: { skip: true, comment: "Calls only." },
+    });
+
+    expect(messages(lintDraws(callOnly, takesOf(CALL_BASES)).problems)).toEqual([]);
+    expect(messages(lintDraws(infoSkipped, takesOf(CALL_BASES)).problems)).toEqual([]);
+  });
+
+  it("names an info line a call-only pack ships as an orphan — nothing it scripts plays it", () => {
+    const callOnly = spotterScript({ [CALL_ENTRY]: CALL });
+
+    expect(
+      messages(lintDraws(callOnly, [...takesOf(CALL_BASES), `voice/${VOICE}/spotter/clear.mp3`]).problems),
+    ).toEqual([spotterOrphan("clear")]);
+  });
+
+  it("passes a pack that scripts only the spotter info and ships only the info lines", () => {
+    const infoOnly = spotterScript({ [INFO_ENTRY]: INFO });
+
+    expect(messages(lintDraws(infoOnly, takesOf(INFO_BASES)).problems)).toEqual([]);
+    expect(messages(lintDraws(infoOnly, SPOTTER_TAKES).problems)).toEqual([...CALL_BASES].sort().map(spotterOrphan));
+  });
+
+  it("counts the var named through a fragment a live entry includes, and not through one nothing includes", () => {
+    const included = spotterScript(
+      { [CALL_ENTRY]: { sequence: ["@spotter-line"] }, [INFO_ENTRY]: { sequence: ["@spotter-line"] } },
+      { fragments: { "spotter-line": { sequence: ["{{spotterClip}}"] } } },
+    );
+
+    expect(lintDraws(included, SPOTTER_TAKES).problems).toEqual([]);
+
+    const unincluded = spotterScript({}, { fragments: { "spotter-line": { sequence: ["{{spotterClip}}"] } } });
+
+    expect(messages(lintDraws(unincluded, SPOTTER_TAKES).problems)).toEqual([
+      `${VOICE} fragment: "spotter-line" is defined but nothing includes it — a fragment nothing includes is checked by nobody`,
+      ...[...SPOTTER_BASES].sort().map(spotterOrphan),
+    ]);
+  });
+
+  it("counts a scoped draw through a fragment only for the callout that includes it, transitively", () => {
+    // The call includes `outer`, which includes `inner`, which names the var;
+    // the info entry is absent. The call lines count; the info lines do not,
+    // though the var is named in the live script.
+    const nested = spotterScript(
+      { [CALL_ENTRY]: { sequence: ["@outer"] } },
+      { fragments: { outer: { sequence: ["@inner"] }, inner: { sequence: ["{{spotterClip}}"] } } },
+    );
+
+    expect(messages(lintDraws(nested, SPOTTER_TAKES).problems)).toEqual([...INFO_BASES].sort().map(spotterOrphan));
+  });
+
+  it("counts a scoped draw through the entry's own frame, and not through a frame only another callout uses", () => {
+    const framed = spotterScript(
+      // A body that plays, so the engine frames it.
+      { [CALL_ENTRY]: { frame: "spotter", sequence: [{ clip: "sfx/IRD-tick-open.mp3" }] } },
+      {
+        frames: {
+          radio: { open: [{ clip: "sfx/IRD-tick-open.mp3" }], close: [] },
+          spotter: { open: ["{{spotterClip}}"], close: [] },
+        },
+      },
+    );
+
+    expect(messages(lintDraws(framed, SPOTTER_TAKES).problems)).toEqual([...INFO_BASES].sort().map(spotterOrphan));
+
+    // The var in the radio frame, which only the base callouts use: the
+    // spotter call is unframed, so no spotter line is drawn.
+    const otherFrame = spotterScript(
+      { [CALL_ENTRY]: { sequence: [] } },
+      { frames: { radio: { open: [{ clip: "sfx/IRD-tick-open.mp3" }, "{{spotterClip}}"], close: [] } } },
+    );
+
+    expect(messages(lintDraws(otherFrame, SPOTTER_TAKES).problems)).toEqual(
+      [...SPOTTER_BASES].sort().map(spotterOrphan),
+    );
+  });
+
+  it("counts a draw declared with no contracts on any live mention of the var", () => {
+    const named = {
+      ...DRAWS_SCRIPT,
+      scenarios: {
+        ...DRAWS_SCRIPT.scenarios,
+        "pit-crew.flag-green": {
+          comment: "Green.",
+          test: "Flags → Green.",
+          sequence: ["pool:flags/green", "{{radioCheck}}"],
+        },
+      },
+    };
+
+    expect(messages(lintDraws(named, SPOTTER_TAKES).problems)).toEqual([varDangling("radio/check", "{{radioCheck}}")]);
+    expect(lintDraws(named, [...SPOTTER_TAKES, `voice/${VOICE}/radio/check.mp3`]).problems).toEqual([]);
+
+    // Named only in a frame: still a live mention.
+    const inFrame = {
+      ...DRAWS_SCRIPT,
+      frames: { radio: { open: [{ clip: "sfx/IRD-tick-open.mp3" }, "{{radioCheck}}"], close: [] } },
+    };
+
+    expect(messages(lintDraws(inFrame, SPOTTER_TAKES).problems)).toEqual([
+      varDangling("radio/check", "{{radioCheck}}"),
+    ]);
+  });
+
+  it("still exempts every base of a group a var with no declared draws names in its description — named by the script or not", () => {
+    // `position.number` declares no draws: its group is exempt as before, a
+    // misspelled base included, while the declared var's group is held per base.
+    const report = lintDraws(DRAWS_SCRIPT, [
+      ...SPOTTER_TAKES,
+      `voice/${VOICE}/position-number/4.mp3`,
+      `voice/${VOICE}/position-number/fuor.mp3`,
+      `voice/${VOICE}/spotter/car-lfet-01.mp3`,
+    ]);
+
+    expect(messages(report.problems)).toEqual([spotterOrphan("car-lfet")]);
+  });
+});
+
 describe("formatLintReport", () => {
   it("groups the problems by voice, pack-level first, then one summary line per voice", () => {
     const script = structuredClone(SCRIPT);

@@ -24,6 +24,7 @@ export {
 export type {
   AudioAssetsManifest,
   ContractReport,
+  DefineVarOptions,
   FrameOptions,
   FramePreviewResult,
   IScenarioEngine,
@@ -31,6 +32,7 @@ export type {
   PlayClipsResult,
   PlayClipsWhenBusy,
   ScenarioEngineState,
+  VarDraw,
   VocabularyReport,
 } from "./interpreter.js";
 export {

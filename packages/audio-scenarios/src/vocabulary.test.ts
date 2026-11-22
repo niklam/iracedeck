@@ -52,6 +52,75 @@ describe("Vocabulary", () => {
     });
   });
 
+  describe("declared draws (#1718)", () => {
+    it("reports `draws` on a var that declared it and omits the key on one that did not", () => {
+      vocab.defineVar("closed", () => null, "a closed set", { draws: [{ group: "spotter", base: "clear" }] });
+      vocab.defineVar("open", () => null, "open-ended");
+      vocab.defineVar("bare", () => null);
+
+      const vars = vocab.vocabulary().vars;
+
+      expect(vars).toEqual([
+        { name: "bare", description: "" },
+        { name: "closed", description: "a closed set", draws: [{ group: "spotter", base: "clear" }] },
+        { name: "open", description: "open-ended" },
+      ]);
+      // `toEqual` treats an `undefined` property as absent; the generated
+      // reference serialises the report, so the key itself must be missing.
+      expect(Object.hasOwn(vars[0], "draws")).toBe(false);
+      expect(Object.hasOwn(vars[2], "draws")).toBe(false);
+    });
+
+    it("reports an empty declaration as declared — a var that can return no pool still has a closed set", () => {
+      vocab.defineVar("never", () => null, "", { draws: [] });
+
+      expect(vocab.vocabulary().vars).toEqual([{ name: "never", description: "", draws: [] }]);
+    });
+
+    it("copies the declaration at registration and on every report", () => {
+      const draws = [{ group: "spotter", base: "clear" }];
+      vocab.defineVar("closed", () => null, "", { draws });
+      draws.push({ group: "spotter", base: "added-later" });
+      draws[0].base = "mutated";
+
+      const first = vocab.vocabulary().vars[0].draws as { group: string; base: string }[];
+      first.push({ group: "spotter", base: "pushed-into-report" });
+
+      expect(vocab.vocabulary().vars[0].draws).toEqual([{ group: "spotter", base: "clear" }]);
+    });
+
+    it("reports a draw's `contracts` when declared, copied, and leaves the key off a draw declared without it", () => {
+      const contracts = ["pit-crew.spotter-call"];
+      vocab.defineVar("scoped", () => null, "", {
+        draws: [
+          { group: "spotter", base: "car-left", contracts },
+          { group: "spotter", base: "clear" },
+        ],
+      });
+      contracts.push("added-later");
+
+      const draws = vocab.vocabulary().vars[0].draws ?? [];
+
+      expect(draws).toEqual([
+        { group: "spotter", base: "car-left", contracts: ["pit-crew.spotter-call"] },
+        { group: "spotter", base: "clear" },
+      ]);
+      expect(Object.hasOwn(draws[1], "contracts")).toBe(false);
+
+      (draws[0].contracts as string[]).push("pushed-into-report");
+
+      expect(vocab.vocabulary().vars[0].draws?.[0].contracts).toEqual(["pit-crew.spotter-call"]);
+    });
+
+    it("a re-registration replaces the declaration whole — one without draws drops the earlier set", () => {
+      vocab.defineVar("closed", () => null, "", { draws: [{ group: "spotter", base: "clear" }] });
+      vocab.defineVar("closed", () => null, "now open");
+
+      expect(vocab.vocabulary().vars).toEqual([{ name: "closed", description: "now open" }]);
+      expect(Object.hasOwn(vocab.vocabulary().vars[0], "draws")).toBe(false);
+    });
+  });
+
   it("exposes the registries read-only, with the case keys copied at registration", () => {
     const keys: Record<string, string> = { race: "a race" };
     vocab.defineCase("s.type", () => "race", keys, "d");

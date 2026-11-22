@@ -70,18 +70,44 @@
  * name no built-in the plugin ships (`sharedClips`, the bundled manifest's
  * non-voice clips), `pools` aliases nothing names, and bases the pack ships
  * that nothing references. A base is referenced when an entry, frame or
- * fragment addresses it directly, or when a var whose description names its
- * group exists ({@link descriptionNamesGroup}) — the same heuristic the
- * reference's recording script uses, so the two never disagree about which
- * lines a var accounts for; and a base plugin code plays by path with the
- * active voice is never an orphan (`pluginPlayedBases`, handed in by the
- * runner: `group/base` keys, `group/*` for a group the plugin plays every
- * base of). There is no per-pack allowlist.
+ * fragment addresses it directly, or when a var accounts for it — read the
+ * way the reference's recording script reads it (`pack-reference.ts`), so
+ * the two never disagree about which lines a var accounts for — and a base
+ * plugin code plays by path with the active voice is never an orphan
+ * (`pluginPlayedBases`, handed in by the runner: `group/base` keys, `group/*`
+ * for a group the plugin plays every base of). There is no per-pack
+ * allowlist.
  *
- * One limitation of the var reading, stated for whoever meets it: the
- * exemption is per GROUP, so a misspelled clip in a group a var also draws
- * from is never reported as an orphan — the linter cannot tell which bases
- * a resolver produces. Declared sources on `defineVar` would close it.
+ * A var accounts for a base in one of two ways (#1718):
+ *
+ * - **Declared draws.** A var registered with `defineVar`'s `draws` names the
+ *   closed set of `group/base` pools its resolver can return (the spotter's
+ *   `spotterClip`, every spotter line), each optionally scoped to the
+ *   contracts it is returned for (the call lines to `pit-crew.spotter-call`,
+ *   the info lines to `pit-crew.spotter-info`). A pool the voice's script
+ *   reaches — read by `declaredDrawReferences` (`declared-draws.ts`): an
+ *   unscoped one when the LIVE script names the var anywhere, a scoped one
+ *   only when the live entry of one of its contracts names it, in its steps,
+ *   a fragment it includes or its frame — is handed to `checkCoverage` as a
+ *   var reference, so the usual two rules answer per base: a reached pool
+ *   the voice does not ship is dangling (the spotter line the pack never
+ *   recorded, which the engine would abort at fire time), and a shipped
+ *   file in the group that answers no reached pool is an orphan
+ *   (`car-left-1.mp3`, a one-digit take the engine never plays). A voice
+ *   whose script does not name the var gets no references from it, so its
+ *   files in that group are orphans: nothing plays them — and so are the
+ *   info lines of a voice that scripts only the spotter call, which is not
+ *   asked for them. Its description is never read.
+ * - **The description**, for a var that declared none
+ *   (`varDrawsWholeGroup`): a var whose description names a group
+ *   (`descriptionNamesGroup`) exempts every base of the group from the
+ *   orphan rule, whether or not the script names the var. That reading has
+ *   the limitation it always had, stated for whoever meets it: the exemption
+ *   is per GROUP, so a misspelled clip in a group such a var draws from is
+ *   never reported, and a base the resolver asks for that the pack lacks is
+ *   never dangling — the linter cannot tell which bases a closure produces.
+ *   Declaring `draws` on the var closes it; an open-ended var (a number, a
+ *   name) cannot.
  *
  * Two coverage findings are left to the compiler on purpose: a named pool
  * nothing defines and an include of a fragment nothing defines are both
@@ -106,7 +132,8 @@ import {
 
 import type { ContractReport, VocabularyReport } from "../interpreter.js";
 import type { CompiledVoiceScript } from "../script-compiler.js";
-import { descriptionNamesGroup, pluginPlayedEntry } from "./pack-reference.js";
+import { type ContractFrame, declaredDrawReferences, type DeclaringVar } from "./declared-draws.js";
+import { pluginPlayedEntry, varDrawsWholeGroup } from "./pack-reference.js";
 
 // ─── The port ────────────────────────────────────────────────────────────────
 
@@ -291,8 +318,14 @@ export function lintPack({
     compile,
     sharedClips,
     contractIds: contracts.map((c) => c.id).sort(),
-    // A group is nobody's typo to report when a var's description names it — a resolver draws from it.
-    varDriven: (group) => vocabulary.vars.some((v) => descriptionNamesGroup(v.description, group)),
+    // A group is nobody's typo to report when a var that declared no draws
+    // names it in its description — a resolver draws from it, which base
+    // unknown. A var that declared its draws exempts no group (#1718).
+    varDriven: (group) => vocabulary.vars.some((v) => varDrawsWholeGroup(v, group)),
+    // What the declared draws are read against (#1718): the vars, and each
+    // contract's default frame for an entry that names none.
+    declaringVars: vocabulary.vars,
+    contractFrames: contracts,
     // A clip plugin code plays by path is heard without any script naming it.
     pluginPlayed: (base) => {
       const slash = base.indexOf("/");
@@ -408,7 +441,12 @@ type VoiceContext = {
   sharedClips: readonly string[];
   /** Every contract id, sorted — what a scriptless voice skips. */
   contractIds: readonly string[];
+  /** Groups a var that declared no draws names in its description — every base exempt from the orphan rule. */
   varDriven: VarDrivenGroup;
+  /** Every var, for the pools those that declared them draw (#1718, `declaredDrawReferences`). */
+  declaringVars: readonly DeclaringVar[];
+  /** Every contract's default frame — the frame a scoped draw's entry plays in when it names none. */
+  contractFrames: readonly ContractFrame[];
   /** Whether plugin code plays a `group/base` by path — never an orphan. */
   pluginPlayed: (base: string) => boolean;
   problems: LintProblem[];
@@ -520,10 +558,14 @@ function reportCoverage(
   script: CalloutScript,
   authored: readonly string[],
   prefix: string,
-  ctx: Pick<VoiceContext, "sharedClips" | "varDriven" | "pluginPlayed">,
+  ctx: Pick<VoiceContext, "sharedClips" | "varDriven" | "declaringVars" | "contractFrames" | "pluginPlayed">,
   problem: (kind: LintProblemKind, message: string) => void,
 ): void {
-  const coverage = checkCoverage({ script, authored, sharedClips: ctx.sharedClips }, ctx.varDriven);
+  const drawnBy = declaredDrawReferences(script, ctx.declaringVars, ctx.contractFrames);
+  const coverage = checkCoverage(
+    { script, authored, sharedClips: ctx.sharedClips, varReferences: [...drawnBy.keys()] },
+    ctx.varDriven,
+  );
 
   for (const name of coverage.unincludedFragments) {
     problem(
@@ -532,10 +574,25 @@ function reportCoverage(
     );
   }
 
+  // The bases a step names directly, without the vars' draws: one of these
+  // keeps the step wording even when a var also draws it, since the step is
+  // the line the author can find and fix.
+  const stepDangling =
+    drawnBy.size === 0
+      ? new Set(coverage.dangling)
+      : new Set(checkCoverage({ script, authored, sharedClips: ctx.sharedClips }, ctx.varDriven).dangling);
+
   for (const base of coverage.dangling) {
+    const vars = stepDangling.has(base) ? undefined : drawnBy.get(base);
+
+    // A pool only a var's declaration names is said as the var's: no step in
+    // the script spells it, so "is referenced" alone would send the author
+    // looking for a line that is not there.
     problem(
       "dangling",
-      `"${base}" is referenced but the pack ships no ${prefix}${base}*${MP3} — a required step that resolves to nothing aborts the whole callout at fire time`,
+      vars === undefined
+        ? `"${base}" is referenced but the pack ships no ${prefix}${base}*${MP3} — a required step that resolves to nothing aborts the whole callout at fire time`
+        : `"${base}" is drawn by ${vars.map((name) => `{{${name}}}`).join(", ")}, which the script names, but the pack ships no ${prefix}${base}*${MP3} — when the var picks it, the callout resolves to nothing and is aborted at fire time`,
     );
   }
 

@@ -13,7 +13,9 @@
  * the published reference (#1066) is built from, everything the script
  * references by name — pool, frame, var, condition, case key, fragment — is
  * something the code registries or the script itself defines, and every pool
- * it draws from, in either spelling, has a clip for the bundled voice.
+ * it draws from, in either spelling, has a clip for the bundled voice — the
+ * pools a var it names declares it draws (#1718) included, since those are
+ * reached only through the var and no script walk can see them.
  *
  * The contract set is read off `engine.contracts()` after the real
  * registration runs — the enumeration the reference generator and `lint:pack`
@@ -63,20 +65,28 @@ import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } fr
 
 import type { Scenario } from "../../dsl.js";
 import { DEFAULT_FRAME } from "../../dsl.js";
-import type { AudioAssetsManifest, ContractReport } from "../../interpreter.js";
+import type { AudioAssetsManifest, ContractReport, VocabularyReport } from "../../interpreter.js";
 import {
   _resetAudioScenarios,
   initializeAudioScenarios,
   type IScenarioEngine,
   poolMemberPattern,
 } from "../../interpreter.js";
+import { declaredDrawReferences } from "../../reference/declared-draws.js";
 import { FLAG_CLIP_SOURCES, FLAG_SCENARIO_IDS } from "./flag-alerts.js";
 import { registerPitCrew } from "./index.js";
 import { _resetLimiterCueEngine } from "./limiter-cue-engine.js";
 import { _resetPitExitCueEngine } from "./pit-exit-cue-engine.js";
 import { _resetPitSpeedingEngine } from "./pit-speeding-engine.js";
 import { _resetRadarEngine } from "./radar-engine.js";
-import { _resetSpotterEngine } from "./spotter-engine.js";
+import {
+  _resetSpotterEngine,
+  SPOTTER_CALL_BASES,
+  SPOTTER_CALL_SCENARIO_ID,
+  SPOTTER_CLIP_BASES,
+  SPOTTER_INFO_BASES,
+  SPOTTER_INFO_SCENARIO_ID,
+} from "./spotter-engine.js";
 
 // The sim reads the registration is handed (#1378). Nothing fires here, so
 // they are only what a race with no tick yet would answer.
@@ -379,6 +389,123 @@ function poolSource(script: CalloutScript, name: string): { group: string; base:
   return null;
 }
 
+/**
+ * The pools a var declares it draws (#1718) that the script reaches and
+ * `voice` ships no clip for, as `<var> → <group>/<base>`. A declared pool is
+ * reached only through its var — the script says `{{spotterClip}}`, never
+ * `pool:spotter/car-left` — so the script-walk checks above cannot see one
+ * go missing, and a first-party voice would go silent for that line at debug
+ * level (#835). Which pools the script reaches is `lint:pack`'s own reading
+ * (`declaredDrawReferences`), so the test holding the bundled voices and the
+ * linter holding a pack ask for the same lines: a draw scoped to contracts
+ * counts only through a live entry of one of them. Membership is the
+ * interpreter's own rule (`poolMemberPattern`): the bare `<base>.mp3` or a
+ * `-NN` take. `checked` counts the declared pools looked at, for the
+ * vacuity floor.
+ */
+function missingDeclaredDraws(
+  script: CalloutScript,
+  vocabulary: VocabularyReport,
+  contracts: readonly ContractReport[],
+  clips: readonly string[],
+  voice: string,
+): { missing: string[]; checked: number } {
+  const reached = declaredDrawReferences(script, vocabulary.vars, contracts);
+  const missing: string[] = [];
+  let checked = 0;
+
+  for (const { name, draws } of vocabulary.vars) {
+    for (const { group, base } of draws ?? []) {
+      if (!reached.get(`${group}/${base}`)?.includes(name)) continue;
+
+      checked++;
+
+      const pattern = poolMemberPattern(group, base);
+
+      if (!clips.some((clip) => pattern.exec(clip)?.[1] === voice)) missing.push(`${name} → ${group}/${base}`);
+    }
+  }
+
+  return { missing, checked };
+}
+
+describe("declared var draws are held against a voice's clips (issue #1718)", () => {
+  beforeEach(() => {
+    registerCatalog(REFERENCE_VOICE);
+  });
+
+  it("names a declared base the voice does not ship — the check is not vacuous", () => {
+    const [dropped] = SPOTTER_CLIP_BASES;
+    const without = MANIFEST.clips.filter(
+      (clip) => poolMemberPattern("spotter", dropped).exec(clip)?.[1] !== REFERENCE_VOICE,
+    );
+
+    // The fixture really lost the base, and only that base.
+    expect(without.length).toBeLessThan(MANIFEST.clips.length);
+
+    const result = missingDeclaredDraws(
+      FIRST_PARTY_SCRIPTS.find((entry) => entry.voice === REFERENCE_VOICE)?.script as CalloutScript,
+      engine.vocabulary(),
+      engine.contracts(),
+      without,
+      REFERENCE_VOICE,
+    );
+
+    expect(result.missing).toEqual([`spotterClip → spotter/${dropped}`]);
+  });
+
+  it("accepts a declared base the voice ships only as takes", () => {
+    const [base] = SPOTTER_CLIP_BASES;
+    const prefix = `voice/${REFERENCE_VOICE}/spotter/`;
+    const takesOnly = MANIFEST.clips
+      .filter((clip) => clip !== `${prefix}${base}.mp3`)
+      .concat(`${prefix}${base}-01.mp3`, `${prefix}${base}-02.mp3`);
+
+    const result = missingDeclaredDraws(
+      FIRST_PARTY_SCRIPTS.find((entry) => entry.voice === REFERENCE_VOICE)?.script as CalloutScript,
+      engine.vocabulary(),
+      engine.contracts(),
+      takesOnly,
+      REFERENCE_VOICE,
+    );
+
+    expect(result.missing).toEqual([]);
+  });
+
+  it("ignores a var the script does not name — its pools are nothing the voice plays", () => {
+    const script = FIRST_PARTY_SCRIPTS.find((entry) => entry.voice === REFERENCE_VOICE)?.script as CalloutScript;
+    const withoutSpotter: CalloutScript = {
+      ...script,
+      scenarios: Object.fromEntries(
+        Object.entries(script.scenarios).filter(([, entry]) => !(entry.sequence ?? []).includes("{{spotterClip}}")),
+      ),
+    };
+
+    expect(missingDeclaredDraws(withoutSpotter, engine.vocabulary(), engine.contracts(), [], REFERENCE_VOICE)).toEqual({
+      missing: [],
+      checked: 0,
+    });
+  });
+
+  it("asks a voice only for the lines of the spotter callouts it scripts — each draw is scoped to the contract that fires it", () => {
+    const script = FIRST_PARTY_SCRIPTS.find((entry) => entry.voice === REFERENCE_VOICE)?.script as CalloutScript;
+    const skipping = (id: string): CalloutScript => ({
+      ...script,
+      scenarios: { ...script.scenarios, [id]: { skip: true, comment: "Not in this voice." } },
+    });
+    const missingOf = (only: CalloutScript) =>
+      missingDeclaredDraws(only, engine.vocabulary(), engine.contracts(), [], REFERENCE_VOICE);
+
+    // With no clips at all, what is missing is exactly what is asked for.
+    expect(missingOf(skipping(SPOTTER_INFO_SCENARIO_ID)).missing).toEqual(
+      SPOTTER_CALL_BASES.map((base) => `spotterClip → spotter/${base}`),
+    );
+    expect(missingOf(skipping(SPOTTER_CALL_SCENARIO_ID)).missing).toEqual(
+      SPOTTER_INFO_BASES.map((base) => `spotterClip → spotter/${base}`),
+    );
+  });
+});
+
 describe.each(FIRST_PARTY_SCRIPTS)("voice $voice", ({ voice, script }) => {
   beforeEach(() => {
     registerCatalog(voice);
@@ -591,6 +718,22 @@ describe.each(FIRST_PARTY_SCRIPTS)("voice $voice", ({ voice, script }) => {
       );
 
       expect(undeclaredKeys, "case keys a script maps that the resolver never declared").toEqual([]);
+    });
+
+    it("every pool a var the script names declares it draws has a clip of the voice (issue #1718)", () => {
+      const { missing, checked } = missingDeclaredDraws(
+        script,
+        engine.vocabulary(),
+        engine.contracts(),
+        MANIFEST.clips,
+        voice,
+      );
+
+      // The vacuity floor: every first-party voice scripts the spotter, whose
+      // var declares every spotter line, so a walk that checked fewer went
+      // blind rather than finding the voice complete.
+      expect(checked).toBeGreaterThanOrEqual(SPOTTER_CLIP_BASES.length);
+      expect(missing, `declared var draws with no voice/${voice}/<group>/<base>(-NN).mp3 in manifest.json`).toEqual([]);
     });
 
     it("every include names a fragment the script defines — an include resolves only within the same script", () => {
