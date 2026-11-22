@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { carInWorld, findNearestCarOnTrack, forwardGapMeters, nearestCarGapMeters } from "./track-utils.js";
+import {
+  carInWorld,
+  findNearestCarOnTrack,
+  forwardGapMeters,
+  LAP_FRACTION_LINE_TOLERANCE,
+  nearestCarGapMeters,
+  readLapFraction,
+} from "./track-utils.js";
 import type { TelemetryData } from "./types.js";
 import { TrkLoc } from "./types.js";
 
@@ -87,6 +94,38 @@ describe("carInWorld", () => {
     const noSurface = { CarIdxLapDistPct: [0.1, 0.2, 0.3] } as unknown as TelemetryData;
 
     expect(carInWorld(noSurface)(1)).toBe(true);
+  });
+});
+
+describe("readLapFraction (#1682)", () => {
+  it("returns a fraction on the lap as it stands", () => {
+    expect(readLapFraction(0)).toBe(0);
+    expect(readLapFraction(0.5)).toBe(0.5);
+    expect(readLapFraction(0.9999)).toBe(0.9999);
+    expect(readLapFraction(1.0)).toBe(1.0);
+  });
+
+  it("returns a fraction a hair below zero unclamped: the car is at the line", () => {
+    expect(readLapFraction(-0.00004)).toBe(-0.00004);
+    expect(7 + readLapFraction(-0.00004)!).toBeCloseTo(6.99996, 10);
+  });
+
+  it("reads the tolerance's own boundary as nowhere", () => {
+    expect(LAP_FRACTION_LINE_TOLERANCE).toBe(0.001);
+    expect(readLapFraction(-LAP_FRACTION_LINE_TOLERANCE)).toBeNull();
+    expect(readLapFraction(-0.0009)).toBe(-0.0009);
+  });
+
+  it("reads iRacing's not-in-world sentinel as nowhere", () => {
+    expect(readLapFraction(-1)).toBeNull();
+  });
+
+  it("reads a non-finite or non-numeric value as nowhere", () => {
+    expect(readLapFraction(Number.NaN)).toBeNull();
+    expect(readLapFraction(Number.POSITIVE_INFINITY)).toBeNull();
+    expect(readLapFraction(undefined)).toBeNull();
+    expect(readLapFraction(null)).toBeNull();
+    expect(readLapFraction("0.5")).toBeNull();
   });
 });
 

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { calculateRacePositions, classPositionFromOrder, classPositionOrOfficial } from "./position-utils.js";
+import {
+  calculateRacePositions,
+  classPositionFromOrder,
+  classPositionOrOfficial,
+  rankRaceScores,
+} from "./position-utils.js";
 import type { TelemetryData } from "./types.js";
 
 function makeTelemetry(overrides: Partial<TelemetryData> = {}): TelemetryData {
@@ -10,6 +15,47 @@ function makeTelemetry(overrides: Partial<TelemetryData> = {}): TelemetryData {
     ...overrides,
   } as TelemetryData;
 }
+
+describe("rankRaceScores (#1682)", () => {
+  it("ranks by score descending, 1-based, indexed by carIdx", () => {
+    expect(rankRaceScores([4.5, 5.7, 3.3])).toEqual([2, 1, 3]);
+  });
+
+  it("breaks a tie by the lower carIdx", () => {
+    expect(rankRaceScores([5.5, 6, 5.5, 5.5])).toEqual([2, 1, 3, 4]);
+  });
+
+  it("gives null, undefined and NaN rank 0 and ranks the rest without a hole", () => {
+    expect(rankRaceScores([null, 3, undefined, 7, Number.NaN, 5])).toEqual([0, 3, 0, 1, 0, 2]);
+  });
+
+  it("keeps the input's length, trailing omitted cars included", () => {
+    expect(rankRaceScores([1, null, null])).toEqual([1, 0, 0]);
+    expect(rankRaceScores([])).toEqual([]);
+  });
+
+  it("ranks a negative score like any other", () => {
+    expect(rankRaceScores([-0.00004, 0.5])).toEqual([2, 1]);
+  });
+
+  it("does not modify the scores", () => {
+    const scores = [1, 3, 2];
+
+    rankRaceScores(scores);
+
+    expect(scores).toEqual([1, 3, 2]);
+  });
+
+  it("is the ranking calculateRacePositions applies to its lap-progress scores", () => {
+    const lc = [7, 7, -1, 6, 7, 7];
+    const pct = [0.2, 0.9, 0.5, 0.95, -1, 0.2];
+    const scores = lc.map((l, i) => (l >= 0 && pct[i]! >= 0 ? l + pct[i]! : null));
+
+    expect(calculateRacePositions(makeTelemetry({ CarIdxLapCompleted: lc, CarIdxLapDistPct: pct }))).toEqual(
+      rankRaceScores(scores),
+    );
+  });
+});
 
 describe("calculateRacePositions", () => {
   it("should rank cars by lapsCompleted + lapDistPct descending", () => {

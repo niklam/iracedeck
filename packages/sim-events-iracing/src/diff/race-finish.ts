@@ -46,7 +46,7 @@
  * that was ahead of the player last tick is now in {@link TranslatorState.positionFrozen}.
  * Celebrations are reserved for genuine on-track passes of active cars.
  */
-import { calculateRacePositions, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
+import { calculateRacePositions, rankRaceScores, type TelemetryData, TrkLoc } from "@iracedeck/iracing-sdk";
 
 import type { TranslatorState } from "../state.js";
 
@@ -189,8 +189,8 @@ export function updatePositionTracking(state: TranslatorState, telemetry: Teleme
  *   - never seen (no anchor and currently `NotInWorld`) → omitted.
  *
  * Returns the same shape as `calculateRacePositions` (1-based rank indexed by
- * carIdx; `0` for omitted cars), sorted with the same comparator so the only
- * difference is the per-car effective score.
+ * carIdx; `0` for omitted cars), ranked by the same `rankRaceScores` so the
+ * only difference is the per-car effective score.
  */
 export function calculateFrozenRacePositions(state: TranslatorState, telemetry: TelemetryData): number[] {
   // Fast path: nothing frozen and no anchors out of sync — the raw and managed
@@ -208,7 +208,7 @@ export function calculateFrozenRacePositions(state: TranslatorState, telemetry: 
 
   const ts = telemetry.CarIdxTrackSurface as number[] | undefined;
   const length = Math.min(lc.length, dp.length);
-  const ranked: { idx: number; score: number }[] = [];
+  const scores = new Array<number | null>(length).fill(null);
 
   for (let i = 0; i < length; i++) {
     if (state.positionFrozen.has(i)) {
@@ -216,7 +216,7 @@ export function calculateFrozenRacePositions(state: TranslatorState, telemetry: 
 
       // Anchor must exist (the updater only adds to the set when it does), but
       // guard defensively.
-      if (anchor !== undefined) ranked.push({ idx: i, score: anchor });
+      if (anchor !== undefined) scores[i] = anchor;
 
       continue;
     }
@@ -225,17 +225,10 @@ export function calculateFrozenRacePositions(state: TranslatorState, telemetry: 
     // car not in the world that's also not frozen (i.e. we've never seen it)
     // is omitted.
     if (lc[i] >= 0 && dp[i] >= 0 && ts?.[i] !== TrkLoc.NotInWorld) {
-      ranked.push({ idx: i, score: lc[i] + dp[i] });
+      scores[i] = lc[i] + dp[i];
     }
   }
 
-  ranked.sort((a, b) => b.score - a.score || a.idx - b.idx);
-
-  const result = new Array<number>(length).fill(0);
-
-  for (let rank = 0; rank < ranked.length; rank++) {
-    result[ranked[rank].idx] = rank + 1;
-  }
-
-  return result;
+  // The one sort every race order shares (issue #1682).
+  return rankRaceScores(scores);
 }

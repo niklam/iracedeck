@@ -19,15 +19,27 @@
  *     reading taken on a disagreeing tick is replaced by the next true one and
  *     never carried on (the player's own first crossing at the race start)
  */
-import { GAP_TRACE_MAX_STEP, GAP_TRACE_MIN_STEP, SessionState, type TelemetryData } from "@iracedeck/iracing-sdk";
+import {
+  GAP_TRACE_MAX_STEP,
+  GAP_TRACE_MIN_STEP,
+  readLapFraction,
+  SessionState,
+  type TelemetryData,
+} from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
 import { type CarProgressState, createCarProgressState } from "../state.js";
 import {
+  CAR_PROGRESS_CONFIRM_RUN,
   CAR_PROGRESS_LINE_GUARD_PCT,
   CAR_PROGRESS_LINE_MAX_SPAN_S,
   CAR_PROGRESS_LINE_MAX_TICK_STEP,
+  type CarProgressMemory,
+  type CarProgressPolicy,
   confirmedLastProgress,
+  confirmsCarProgress,
+  LIVE_CAR_PROGRESS_POLICY,
+  readCarLineProgress,
   readCarProgress,
   stepCarProgress,
   withinCorrectionSpan,
@@ -1112,5 +1124,155 @@ describe("stepCarProgress — a last progress is corrected against only once it 
     // The trace starts at the true reading and runs unbroken from it.
     expect(slice.traces[PLAYER]![0]).toEqual({ progress: 0.0001, time: 100.1 });
     expect(slice.traces[PLAYER]).toHaveLength(21);
+  });
+});
+
+/**
+ * The line-progress core (issue #1682): the span check, the confirmation
+ * predicate and the per-car reading every progress step applies, under the
+ * live policy and under a replay-shaped one (both directions, confirmed by a
+ * run, a fraction a hair below zero read as the line).
+ */
+const BOTH_WAYS_POLICY: CarProgressPolicy = { span: "both", confirmByRun: true, readLapFraction };
+
+const NONE: CarProgressMemory = { progress: undefined, confirmed: false, run: 0 };
+const IN_SPAN = { inSpan: true, distinctSessionTime: true };
+
+describe("withinCorrectionSpan — the span policy (#1682)", () => {
+  it("defaults to the live forward span", () => {
+    expect(withinCorrectionSpan(100, 100.2)).toBe(withinCorrectionSpan(100, 100.2, "forward"));
+    expect(withinCorrectionSpan(100, 99.8, "forward")).toBe(false);
+  });
+
+  it("both ways: a read up to the span ago or ahead, not further, not none", () => {
+    expect(withinCorrectionSpan(100, 100, "both")).toBe(true);
+    expect(withinCorrectionSpan(100, 100 + CAR_PROGRESS_LINE_MAX_SPAN_S, "both")).toBe(true);
+    expect(withinCorrectionSpan(100, 100 - CAR_PROGRESS_LINE_MAX_SPAN_S, "both")).toBe(true);
+    expect(withinCorrectionSpan(100, 99.8, "both")).toBe(true);
+    expect(withinCorrectionSpan(100, 100 + CAR_PROGRESS_LINE_MAX_SPAN_S + 0.01, "both")).toBe(false);
+    expect(withinCorrectionSpan(100, 100 - CAR_PROGRESS_LINE_MAX_SPAN_S - 0.01, "both")).toBe(false);
+    expect(withinCorrectionSpan(null, 100, "both")).toBe(false);
+  });
+});
+
+describe("confirmsCarProgress — the one confirmation rule (#1682)", () => {
+  const INSIDE_BAND = 0.99;
+  const CLEAR_OF_BAND = 0.5;
+
+  it("never confirms a reading that continues nothing", () => {
+    for (const policy of [LIVE_CAR_PROGRESS_POLICY, BOTH_WAYS_POLICY]) {
+      expect(confirmsCarProgress(false, true, CLEAR_OF_BAND, 99, policy)).toBe(false);
+    }
+  });
+
+  it("confirms a continuing reading after a confirmed one, or one read clear of the band, under either policy", () => {
+    for (const policy of [LIVE_CAR_PROGRESS_POLICY, BOTH_WAYS_POLICY]) {
+      expect(confirmsCarProgress(true, true, INSIDE_BAND, 0, policy)).toBe(true);
+      expect(confirmsCarProgress(true, false, CLEAR_OF_BAND, 0, policy)).toBe(true);
+      expect(confirmsCarProgress(true, false, INSIDE_BAND, 0, policy)).toBe(false);
+    }
+  });
+
+  it("confirms inside the band by a run only under a policy that counts it, from the third continuing reading", () => {
+    expect(CAR_PROGRESS_CONFIRM_RUN).toBe(3);
+    expect(confirmsCarProgress(true, false, INSIDE_BAND, CAR_PROGRESS_CONFIRM_RUN - 1, BOTH_WAYS_POLICY)).toBe(false);
+    expect(confirmsCarProgress(true, false, INSIDE_BAND, CAR_PROGRESS_CONFIRM_RUN, BOTH_WAYS_POLICY)).toBe(true);
+    expect(confirmsCarProgress(true, false, INSIDE_BAND, 100, LIVE_CAR_PROGRESS_POLICY)).toBe(false);
+  });
+
+  it("takes a fraction a hair below zero as inside the band", () => {
+    expect(confirmsCarProgress(true, false, -0.00004, 0, BOTH_WAYS_POLICY)).toBe(false);
+  });
+});
+
+describe("readCarLineProgress — the one per-car reading (#1682)", () => {
+  it("reads no car for an unusable lap count or fraction", () => {
+    for (const [lc, pct] of [
+      [Number.NaN, 0.5],
+      [-1, 0.5],
+      [7, Number.NaN],
+      [7, -1],
+      [undefined, 0.5],
+      [7, undefined],
+    ] as const) {
+      expect(readCarLineProgress(lc, pct, NONE, IN_SPAN, LIVE_CAR_PROGRESS_POLICY)).toBeNull();
+      expect(readCarLineProgress(lc, pct, NONE, IN_SPAN, BOTH_WAYS_POLICY)).toBeNull();
+    }
+  });
+
+  it("reads a fraction a hair below zero by the policy: no reading live, the line on a replay", () => {
+    expect(readCarLineProgress(7, -0.00004, NONE, IN_SPAN, LIVE_CAR_PROGRESS_POLICY)).toBeNull();
+    expect(readCarLineProgress(7, -0.00004, NONE, IN_SPAN, BOTH_WAYS_POLICY)!.progress).toBeCloseTo(6.99996, 10);
+  });
+
+  it("takes a first reading as it stands: uncorrected, unconfirmed, no run", () => {
+    expect(readCarLineProgress(7, 1.0, NONE, IN_SPAN, BOTH_WAYS_POLICY)).toEqual({
+      progress: 8,
+      confirmed: false,
+      run: 0,
+    });
+  });
+
+  it("corrects a disagreeing reading against a confirmed last one inside the span", () => {
+    const last: CarProgressMemory = { progress: 6.9999, confirmed: true, run: 5 };
+    const reading = readCarLineProgress(7, 1.0, last, IN_SPAN, BOTH_WAYS_POLICY)!;
+
+    expect(reading.progress).toBeCloseTo(7, 10);
+    expect(reading.confirmed).toBe(true);
+    expect(reading.run).toBe(6);
+  });
+
+  it("does not correct against an unconfirmed last one, nor outside the span", () => {
+    const unconfirmed: CarProgressMemory = { progress: 6.9999, confirmed: false, run: 2 };
+    const confirmed: CarProgressMemory = { progress: 6.9999, confirmed: true, run: 5 };
+
+    expect(readCarLineProgress(7, 1.0, unconfirmed, IN_SPAN, BOTH_WAYS_POLICY)).toEqual({
+      progress: 8,
+      confirmed: false,
+      run: 0,
+    });
+    expect(
+      readCarLineProgress(7, 1.0, confirmed, { inSpan: false, distinctSessionTime: true }, BOTH_WAYS_POLICY),
+    ).toEqual({ progress: 8, confirmed: false, run: 0 });
+  });
+
+  it("grows the run only at a distinct SessionTime, and confirms at the third continuing reading", () => {
+    let last: CarProgressMemory = NONE;
+    const reads: CarProgressMemory[] = [];
+
+    for (const [dist, distinct] of [
+      [0.97, true],
+      [0.971, true],
+      [0.971, false],
+      [0.972, true],
+      [0.972, false],
+      [0.973, true],
+    ] as const) {
+      last = readCarLineProgress(6, dist, last, { inSpan: true, distinctSessionTime: distinct }, BOTH_WAYS_POLICY)!;
+      reads.push(last);
+    }
+
+    expect(reads.map((r) => r.run)).toEqual([0, 1, 1, 2, 2, 3]);
+    expect(reads.map((r) => r.confirmed)).toEqual([false, false, false, false, false, true]);
+  });
+
+  it("under the live policy keeps the band-exit rule: a run inside the band never confirms", () => {
+    let last: CarProgressMemory = NONE;
+
+    for (let k = 0; k < 10; k++) {
+      last = readCarLineProgress(6, 0.97 + k * 0.001, last, IN_SPAN, LIVE_CAR_PROGRESS_POLICY)!;
+    }
+
+    expect(last.confirmed).toBe(false);
+    expect(
+      readCarLineProgress(6, 0.5, { progress: 6.49, confirmed: false, run: 0 }, IN_SPAN, LIVE_CAR_PROGRESS_POLICY)!
+        .confirmed,
+    ).toBe(true);
+  });
+
+  it("starts the run again at a reading that does not continue the last", () => {
+    const reading = readCarLineProgress(7, 0.5, { progress: 6.0, confirmed: true, run: 9 }, IN_SPAN, BOTH_WAYS_POLICY)!;
+
+    expect(reading).toEqual({ progress: 7.5, confirmed: false, run: 0 });
   });
 });

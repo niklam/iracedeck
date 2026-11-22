@@ -73,6 +73,38 @@ export function carInWorld(telemetry: TelemetryData | null): (carIdx: number) =>
 }
 
 /**
+ * How far below zero (lap fraction) a `CarIdxLapDistPct` may read and still be
+ * a car at the start/finish line rather than a car out of the world (issue
+ * #1682). iRacing's not-in-world sentinel is `-1`; a car that has just crossed
+ * the line can read a float-noise fraction a hair below zero for a tick (car 4
+ * read -0.00004 the tick after its pit-lane crossing in the 2026-11-10 replay
+ * capture). A thousandth of a lap is far above that noise and far below the
+ * sentinel.
+ */
+export const LAP_FRACTION_LINE_TOLERANCE = 0.001;
+
+/**
+ * A car's lap fraction (`CarIdxLapDistPct`) as a reading of where it is on the
+ * lap, or `null` when it says the car is nowhere (issue #1682): the value when
+ * it is a finite number above `-`{@link LAP_FRACTION_LINE_TOLERANCE}, else
+ * `null`. A fraction in `(-0.001, 0)` is the line, returned as it stands (not
+ * clamped), so `CarIdxLapCompleted + fraction` stays continuous across it:
+ * 7 - 0.00004 = 6.99996, just short of 7.
+ *
+ * Its reader today is the translator's replay order (`sim-events-iracing`'s
+ * `replay-progress.ts`), where the raw `>= 0` test dropped such a car from the
+ * order for a tick and moved every car behind it up. The live readers
+ * deliberately keep their own `>= 0` test for now — {@link carInWorld} above,
+ * `calculateRacePositions` (`position-utils.ts`), and in `sim-events-iracing`
+ * the live car-progress step (`stepCarProgress`), the pair-gap reading and
+ * the frozen order (`race-finish.ts`); whether they adopt this reader is
+ * #1742's call, which decides the readers of race progress together.
+ */
+export function readLapFraction(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value > -LAP_FRACTION_LINE_TOLERANCE ? value : null;
+}
+
+/**
  * Find the physically closest car on track ahead or behind a reference car.
  * Uses circular track distance based on CarIdxLapDistPct (0.0–1.0), regardless of lap count.
  *

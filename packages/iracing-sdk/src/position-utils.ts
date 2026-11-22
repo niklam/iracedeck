@@ -1,10 +1,42 @@
 import type { TelemetryData } from "./types.js";
 
 /**
+ * Ranks cars by a per-car score: the ONE sort behind every race order
+ * (issue #1682). `calculateRacePositions` below, the translator's frozen order
+ * and its replay order all build a score per car and hand it here, so the
+ * comparator — score descending, ties to the lower carIdx — exists once and
+ * the orders cannot drift apart on a tie.
+ *
+ * @param scores Per carIdx: the car's score, or `null` / `undefined` (or a
+ *   `NaN`, which no comparison can place) for a car the order omits.
+ * @returns Array indexed by carIdx, the same length as `scores` — value is the
+ *   1-based rank, 0 for an omitted car. Ranks are unique and contiguous.
+ */
+export function rankRaceScores(scores: readonly (number | null | undefined)[]): number[] {
+  const ranked: { idx: number; score: number }[] = [];
+
+  for (let i = 0; i < scores.length; i++) {
+    const score = scores[i];
+
+    if (typeof score === "number" && !Number.isNaN(score)) ranked.push({ idx: i, score });
+  }
+
+  ranked.sort((a, b) => b.score - a.score || a.idx - b.idx);
+
+  const result = new Array<number>(scores.length).fill(0);
+
+  for (let rank = 0; rank < ranked.length; rank++) {
+    result[ranked[rank].idx] = rank + 1;
+  }
+
+  return result;
+}
+
+/**
  * Calculates race positions from lap completion data.
  *
- * Scores each active car as `CarIdxLapCompleted + CarIdxLapDistPct` and sorts
- * descending to derive 1-based race positions. A car is active when both
+ * Scores each active car as `CarIdxLapCompleted + CarIdxLapDistPct` and ranks
+ * the scores through {@link rankRaceScores}. A car is active when both
  * `lapCompleted >= 0` AND `lapDistPct >= 0`.
  *
  * @returns Array indexed by carIdx — value is 1-based position, 0 for inactive cars.
@@ -15,24 +47,13 @@ export function calculateRacePositions(telemetry: TelemetryData | null): number[
   const lapCompleted = telemetry.CarIdxLapCompleted as number[];
   const lapDistPct = telemetry.CarIdxLapDistPct as number[];
   const length = Math.min(lapCompleted.length, lapDistPct.length);
-
-  const active: { idx: number; score: number }[] = [];
+  const scores = new Array<number | null>(length).fill(null);
 
   for (let i = 0; i < length; i++) {
-    if (lapCompleted[i] >= 0 && lapDistPct[i] >= 0) {
-      active.push({ idx: i, score: lapCompleted[i] + lapDistPct[i] });
-    }
+    if (lapCompleted[i] >= 0 && lapDistPct[i] >= 0) scores[i] = lapCompleted[i] + lapDistPct[i];
   }
 
-  active.sort((a, b) => b.score - a.score || a.idx - b.idx);
-
-  const result = new Array<number>(length).fill(0);
-
-  for (let rank = 0; rank < active.length; rank++) {
-    result[active[rank].idx] = rank + 1;
-  }
-
-  return result;
+  return rankRaceScores(scores);
 }
 
 /**

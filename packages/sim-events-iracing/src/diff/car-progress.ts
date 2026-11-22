@@ -49,14 +49,32 @@ export const CAR_PROGRESS_LINE_GUARD_PCT = 0.05;
 export const CAR_PROGRESS_LINE_MAX_SPAN_S = 0.5;
 
 /**
- * Whether a reading at `sessionTime` may be corrected against progress last
- * read at `lastReadSessionTime`: the one span rule both readers apply (the
- * progress step and the translator's pair-gap reading). `null` is no read.
+ * Which way a tick may lie from the last read and still be corrected against
+ * it (issue #1682). `"forward"` — `0 <= since <= CAR_PROGRESS_LINE_MAX_SPAN_S`
+ * — is the live rule: live telemetry only moves forward, so a tick dated
+ * before the last read is a break. `"both"` — `|since| <= …` — is the replay
+ * rule: a replay rewinds as often as it plays (the 2026-11-10 capture steps
+ * `SessionTime` back 0.2 s a tick), and `readCarProgress` is symmetric, so a
+ * rewind across the line is corrected like a forward crossing.
  */
-export function withinCorrectionSpan(lastReadSessionTime: number | null, sessionTime: number): boolean {
+export type CarProgressSpan = "forward" | "both";
+
+/**
+ * Whether a reading at `sessionTime` may be corrected against progress last
+ * read at `lastReadSessionTime`: the one span rule every reader applies (the
+ * live progress step and the translator's pair-gap reading forwards, the
+ * replay step both ways; {@link CarProgressSpan}). `null` is no read.
+ */
+export function withinCorrectionSpan(
+  lastReadSessionTime: number | null,
+  sessionTime: number,
+  span: CarProgressSpan = "forward",
+): boolean {
   if (lastReadSessionTime === null) return false;
 
   const since = sessionTime - lastReadSessionTime;
+
+  if (span === "both") return Math.abs(since) <= CAR_PROGRESS_LINE_MAX_SPAN_S;
 
   return since >= 0 && since <= CAR_PROGRESS_LINE_MAX_SPAN_S;
 }
@@ -85,8 +103,11 @@ export const CAR_PROGRESS_LINE_MAX_TICK_STEP = 0.01;
 const CAR_PROGRESS_CONTINUOUS_LAPS = 0.5;
 
 /**
- * A car's race progress this tick, from its `CarIdxLapCompleted` and
- * `CarIdxLapDistPct` (both finite and non-negative) and the CONFIRMED
+ * A car's race progress this tick, from its `CarIdxLapCompleted` (finite and
+ * non-negative) and `CarIdxLapDistPct` (finite, and a fraction by the
+ * reader's policy: non-negative live, above `-LAP_FRACTION_LINE_TOLERANCE` on
+ * a replay frame through `readLapFraction`, where a hair below zero is the
+ * line and the sum stays continuous across it) and the CONFIRMED
  * progress last read for it ({@link confirmedLastProgress}; `undefined` =
  * none, and the reading is the plain sum).
  *
@@ -137,7 +158,8 @@ export function readCarProgress(previous: number | undefined, lapCompleted: numb
 /**
  * Whether a lap fraction is within {@link CAR_PROGRESS_LINE_GUARD_PCT} of the
  * start/finish line, on either side: the only stretch where a car's lap
- * counter and lap fraction can disagree.
+ * counter and lap fraction can disagree. A fraction a hair below zero (a
+ * replay reading through `readLapFraction`) is near the line too.
  */
 function isNearLine(lapDistPct: number): boolean {
   return lapDistPct <= CAR_PROGRESS_LINE_GUARD_PCT || lapDistPct >= 1 - CAR_PROGRESS_LINE_GUARD_PCT;
@@ -158,12 +180,185 @@ function isNearLine(lapDistPct: number): boolean {
  *
  * `undefined` for a car with no reading on the last tick, for a first reading
  * after none, for one that did not continue the last, and for a run of
- * readings that began inside the band and has not left it. The one rule for every reader that puts a raw reading on
- * the traces' scale through {@link readCarProgress}: the step itself, and the
- * translator's pair reading (`getLiveGapBetween`).
+ * readings that began inside the band and has not left it. The one rule for
+ * every LIVE reader that puts a raw reading on the traces' scale through
+ * {@link readCarProgress}: the step itself, and the translator's pair reading
+ * (`getLiveGapBetween`).
+ *
+ * The replay step (`replay-progress.ts`, issue #1682) is the one exception, by
+ * policy rather than by a rule of its own ({@link confirmsCarProgress} with
+ * `confirmByRun`): there a run of three continuing readings at distinct
+ * `SessionTime`s confirms too, because on pit road at pit speed a car sits
+ * inside the band for hundreds of ticks before its crossing, and the
+ * band-exit rule alone would leave that crossing uncorrected. The live step
+ * keeps the band-exit rule; whether it adopts the run is #1742's call.
  */
 export function confirmedLastProgress(slice: CarProgressState, carIdx: number): number | undefined {
   return slice.lastProgressConfirmed[carIdx] === true ? slice.lastProgress[carIdx] : undefined;
+}
+
+/**
+ * How many consecutive continuing readings, each at a distinct `SessionTime`
+ * and each a different progress from the one before in the same direction,
+ * confirm a car's progress under a policy with `confirmByRun` (issue #1682).
+ * The counter and the
+ * fraction disagree for one tick in every capture, so three readings in a row
+ * that each continue the one before cannot all be a lap off. A repeated
+ * reading adds nothing, whatever the clock does: a paused saved replay
+ * repeats its `SessionTime`, but arrays that stand still while `SessionTime`
+ * runs on (an in-session replay paused at its live edge, where the arrays are
+ * the replay's and the clock is live) repeat the reading, and either way one
+ * frame, the disagreeing one included, must not confirm itself. Nor does a
+ * reversal: stepping back and forth between two frames (a frame-by-frame
+ * step one way, then the other) restarts the run, so three readings are
+ * always three distinct frames in a row.
+ */
+export const CAR_PROGRESS_CONFIRM_RUN = 3;
+
+/**
+ * How a reader applies the one line-progress reading (issue #1682): the span
+ * it corrects across, whether a run confirms, and which lap fractions are
+ * readings at all. The rules are this module's; a policy only picks between
+ * them. {@link LIVE_CAR_PROGRESS_POLICY} is the live step's; the replay step's
+ * is `REPLAY_CAR_PROGRESS_POLICY` (`replay-progress.ts`).
+ */
+export type CarProgressPolicy = {
+  /** Which way a tick may lie from the last read ({@link CarProgressSpan}). */
+  readonly span: CarProgressSpan;
+  /**
+   * Whether {@link CAR_PROGRESS_CONFIRM_RUN} continuing readings at distinct
+   * `SessionTime`s confirm a reading inside the line guard band.
+   */
+  readonly confirmByRun: boolean;
+  /** A `CarIdxLapDistPct` as a reading, or `null` when it is none. */
+  readonly readLapFraction: (value: unknown) => number | null;
+};
+
+/**
+ * The live lap-fraction test: finite and non-negative. Kept deliberately
+ * stricter than `readLapFraction` (`@iracedeck/iracing-sdk`), which takes a
+ * hair below zero as the line, until #1742 decides the live readers together.
+ */
+function readNonNegativeLapFraction(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+/**
+ * The live car-progress step's policy (issue #1572): forward span, confirmed
+ * only by continuing a confirmed reading or by a reading clear of the band,
+ * and a non-negative lap fraction.
+ */
+export const LIVE_CAR_PROGRESS_POLICY: CarProgressPolicy = {
+  span: "forward",
+  confirmByRun: false,
+  readLapFraction: readNonNegativeLapFraction,
+};
+
+/**
+ * Whether a reading confirms its car's progress, so the next reading may be
+ * corrected against it ({@link confirmedLastProgress}): it continues the last
+ * reading (`continues`: inside the span and within half a lap) AND the last
+ * was confirmed, or it was read clear of the line guard band, or — only under
+ * a policy with `confirmByRun` — `run` (the consecutive continuing readings
+ * at distinct `SessionTime`s that each moved the same way, this one included,
+ * signed by that direction) has reached in size
+ * {@link CAR_PROGRESS_CONFIRM_RUN}. The one confirmation rule; a reader picks
+ * only whether the run counts.
+ */
+export function confirmsCarProgress(
+  continues: boolean,
+  previousConfirmed: boolean,
+  lapDistPct: number,
+  run: number,
+  policy: CarProgressPolicy,
+): boolean {
+  return (
+    continues &&
+    (previousConfirmed || !isNearLine(lapDistPct) || (policy.confirmByRun && Math.abs(run) >= CAR_PROGRESS_CONFIRM_RUN))
+  );
+}
+
+/** What the last read left for one car, as {@link readCarLineProgress} takes it. */
+export type CarProgressMemory = {
+  /** The progress last read, `undefined` = none. */
+  readonly progress: number | undefined;
+  /** Whether it was confirmed ({@link confirmsCarProgress}). */
+  readonly confirmed: boolean;
+  /**
+   * The continuing run it ended, signed by its direction: +n for n readings
+   * that each moved forward, -n for n that each moved back; 0 for a reading
+   * that continued nothing, and for a reader that keeps no run.
+   */
+  readonly run: number;
+};
+
+/** What a tick says about every car's reading at once. */
+export type CarProgressTickContext = {
+  /** The tick lies within the policy's span of the last read ({@link withinCorrectionSpan}). */
+  readonly inSpan: boolean;
+  /** The tick's `SessionTime` differs from the last read's: a paused replay's repeat does not. */
+  readonly distinctSessionTime: boolean;
+};
+
+/** One car's reading: its progress and the memory it leaves for the next tick. */
+export type CarProgressReading = {
+  /** `CarIdxLapCompleted + CarIdxLapDistPct`, corrected at the line ({@link readCarProgress}). */
+  readonly progress: number;
+  /** Whether it may be corrected against next tick ({@link confirmsCarProgress}). */
+  readonly confirmed: boolean;
+  /** The continuing run it ends ({@link CarProgressMemory.run}). */
+  readonly run: number;
+};
+
+/**
+ * One car's line progress this tick (issue #1682): the ONE per-car reading
+ * every progress step applies, the live step and the replay step alike. A
+ * reading is valid when `CarIdxLapCompleted` is finite and non-negative and
+ * the policy reads `CarIdxLapDistPct` as a fraction; otherwise `null`, and
+ * the caller drops the car's memory. A valid one is {@link readCarProgress}
+ * against the last progress when that is confirmed and the tick is inside the
+ * span, then judged by {@link confirmsCarProgress}. It continues the last
+ * reading when the tick is inside the span and it lies within half a lap of
+ * it; the run grows by one only at a distinct `SessionTime` AND a progress
+ * other than the last (a repeated reading is the same frame again) AND in the
+ * direction the run was already going (a reversal starts it again at that one
+ * move), and a reading that continues nothing starts it again at 0.
+ */
+export function readCarLineProgress(
+  lapCompleted: unknown,
+  lapDistPct: unknown,
+  last: CarProgressMemory,
+  tick: CarProgressTickContext,
+  policy: CarProgressPolicy,
+): CarProgressReading | null {
+  const fraction = policy.readLapFraction(lapDistPct);
+
+  // Finite check first: `NaN < 0` is false, so a bare range guard lets a NaN
+  // sample through — and a NaN in a trace is permanent, since every
+  // comparison in `appendProgressSample` (backwards reset, dedupe, prune) is
+  // false against it.
+  if (typeof lapCompleted !== "number" || !Number.isFinite(lapCompleted) || lapCompleted < 0 || fraction === null) {
+    return null;
+  }
+
+  const progress = readCarProgress(tick.inSpan && last.confirmed ? last.progress : undefined, lapCompleted, fraction);
+  // After a gap past the span the reading is a first reading again: it
+  // continues nothing, and confirms only on a later one.
+  const continues =
+    tick.inSpan && last.progress !== undefined && Math.abs(progress - last.progress) <= CAR_PROGRESS_CONTINUOUS_LAPS;
+  // The run, signed by its direction (`CarProgressMemory.run`): a repeated
+  // reading leaves it as it is, a move the same way lengthens it, and a move
+  // the other way starts it again at that one move, so stepping back and
+  // forth between two frames never builds a run (CodeRabbit CLI, #1682).
+  const direction = continues ? Math.sign(progress - last.progress!) : 0;
+  let run: number;
+
+  if (!continues) run = 0;
+  else if (!tick.distinctSessionTime || direction === 0) run = last.run;
+  else if (Math.sign(last.run) === -direction) run = direction;
+  else run = last.run + direction;
+
+  return { progress, confirmed: confirmsCarProgress(continues, last.confirmed, fraction, run, policy), run };
 }
 
 /**
@@ -290,28 +485,34 @@ export function stepCarProgress(
   const carCount = Math.min(lc.length, pct.length);
   // The correction reads only across a short gap since the last read
   // (CAR_PROGRESS_LINE_MAX_SPAN_S); otherwise every reading stands as it is.
-  const correctionBaseline = withinCorrectionSpan(previousSessionTime, sessionTime);
+  const tick: CarProgressTickContext = {
+    inSpan: withinCorrectionSpan(previousSessionTime, sessionTime, LIVE_CAR_PROGRESS_POLICY.span),
+    distinctSessionTime: sessionTime !== previousSessionTime,
+  };
   const progress = new Array<number | null>(carCount).fill(null);
   const traceReset = new Array<boolean>(carCount).fill(false);
 
   for (let i = 0; i < carCount; i++) {
-    const laps = lc[i]!;
-    const dist = pct[i]!;
+    // An invalid reading never reaches a trace: a NaN there would be
+    // permanent, the trace would grow unbounded and every crossing-time lookup
+    // on it would return garbage. The live policy keeps no run: inside the
+    // guard band two readings can agree with each other and both be a lap off
+    // (a disagreement lasting two ticks), so only a confirmed predecessor or a
+    // reading clear of the line confirms.
+    const reading = readCarLineProgress(
+      lc[i],
+      pct[i],
+      { progress: slice.lastProgress[i], confirmed: slice.lastProgressConfirmed[i] === true, run: 0 },
+      tick,
+      LIVE_CAR_PROGRESS_POLICY,
+    );
 
-    // Finite check first: `NaN < 0` is false, so a bare range guard lets a
-    // NaN sample through — and a NaN in a trace is permanent, since every
-    // comparison in `appendProgressSample` (backwards reset, dedupe, prune)
-    // is false against it. The trace would then grow unbounded and every
-    // crossing-time lookup on it would return garbage.
-    if (!Number.isFinite(laps) || !Number.isFinite(dist) || laps < 0 || dist < 0) {
+    if (reading === null) {
       slice.lastProgress[i] = undefined;
       slice.lastProgressConfirmed[i] = false;
       continue;
     }
 
-    const previous = slice.lastProgress[i];
-    const previousConfirmed = slice.lastProgressConfirmed[i] === true;
-    const carProgress = readCarProgress(correctionBaseline ? confirmedLastProgress(slice, i) : undefined, laps, dist);
     let trace = slice.traces[i];
 
     if (!trace) {
@@ -319,20 +520,10 @@ export function stepCarProgress(
       slice.traces[i] = trace;
     }
 
-    progress[i] = carProgress;
-    traceReset[i] = appendProgressSample(trace, carProgress, sessionTime) === "reset";
-    // Confirmed when it continues the reading before it AND that one was
-    // confirmed or this one is clear of the line: inside the guard band two
-    // readings can agree with each other and both be a lap off (a
-    // disagreement lasting two ticks), so agreement there confirms nothing.
-    // After a gap past the span the reading is a first reading again: it
-    // continues nothing, and confirms only on the next one.
-    slice.lastProgressConfirmed[i] =
-      correctionBaseline &&
-      previous !== undefined &&
-      Math.abs(carProgress - previous) <= CAR_PROGRESS_CONTINUOUS_LAPS &&
-      (previousConfirmed || !isNearLine(dist));
-    slice.lastProgress[i] = carProgress;
+    progress[i] = reading.progress;
+    traceReset[i] = appendProgressSample(trace, reading.progress, sessionTime) === "reset";
+    slice.lastProgressConfirmed[i] = reading.confirmed;
+    slice.lastProgress[i] = reading.progress;
   }
 
   // A car the arrays no longer reach has no reading either.

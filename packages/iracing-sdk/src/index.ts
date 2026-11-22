@@ -115,11 +115,18 @@ export {
   findNearestCarOnTrack,
   type FindNearestCarOptions,
   forwardGapMeters,
+  LAP_FRACTION_LINE_TOLERANCE,
   nearestCarGapMeters,
+  readLapFraction,
 } from "./track-utils.js";
 
 // Position utilities
-export { calculateRacePositions, classPositionFromOrder, classPositionOrOfficial } from "./position-utils.js";
+export {
+  calculateRacePositions,
+  classPositionFromOrder,
+  classPositionOrOfficial,
+  rankRaceScores,
+} from "./position-utils.js";
 
 // Replay speed encoding (#1202)
 export { replaySpeedFromTelemetry, replaySpeedToSdk } from "./replay-speed.js";

@@ -10,6 +10,7 @@ The TypeScript layer over the native iRacing SDK (`@iracedeck/iracing-native`). 
 - `createSDK` / `createCommands` (`factory.ts`) — the `Commands` broadcast surface behind `@iracedeck/deck-iracing`'s `getCommands()`.
 - The template resolver (`template-resolver.ts`, `template-context.ts`) for key titles.
 - Flag, position, grid and track utilities (`flag-utils.ts`, `penalty-flag-utils.ts`, `position-utils.ts`, `grid-utils.ts`, `track-utils.ts`, `sector-utils.ts` — `extractSectorStarts`, the track's sector starts from `SplitTimeInfo`, `null` unless the first starts at the line (#1573) — and the gap, wind and iRating helpers beside them).
+- The race-order primitives (`race-positions.md`): `rankRaceScores` (`position-utils.ts`, #1682) is the one sort every race order ranks through — score descending, ties to the lower carIdx — and `calculateRacePositions` ranks the raw lap progress through it; `readLapFraction` (`track-utils.ts`, beside `carInWorld`) is the one reader that takes a `CarIdxLapDistPct` a hair below zero (above `-LAP_FRACTION_LINE_TOLERANCE`) as the line rather than "not in world", read by the translator's replay order only, while the live readers keep `>= 0` until #1742.
 
 ## Delivery to subscribers (#1558)
 

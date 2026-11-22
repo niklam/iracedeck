@@ -199,3 +199,48 @@ describe("isQualifyingGridPhase", () => {
     expect(calculateCanonicalRacePositions(createInitialState(), telemetry, PARADE_GRID, false)[5]).toBe(1);
   });
 });
+
+describe("calculateCanonicalRacePositions — a replay frame's progress (#1682)", () => {
+  /** A racing tick: car 0 a lap ahead by the raw sum, as on the tick its counter steps before its fraction wraps. */
+  function racing(): TelemetryData {
+    return {
+      SessionState: SessionState.Racing,
+      CarIdxLapCompleted: [7, 7, 7],
+      CarIdxLapDistPct: [1.0, 0.5, 0.2],
+      CarIdxTrackSurface: [TrkLoc.OnTrack, TrkLoc.OnTrack, TrkLoc.OnTrack],
+    } as unknown as TelemetryData;
+  }
+
+  it("ranks by the replay readings when it is handed them", () => {
+    expect(calculateCanonicalRacePositions(createInitialState(), racing(), null, true, [7.0, 7.5, 7.2])).toEqual([
+      3,
+      1,
+      2,
+    ]);
+  });
+
+  it("ranks raw, through the frozen order, without them", () => {
+    expect(calculateCanonicalRacePositions(createInitialState(), racing(), null, true, null)).toEqual([1, 2, 3]);
+    expect(calculateCanonicalRacePositions(createInitialState(), racing(), null, true)).toEqual([1, 2, 3]);
+  });
+
+  it("leaves a car with no reading out of the order", () => {
+    expect(calculateCanonicalRacePositions(createInitialState(), racing(), null, true, [null, 7.5, 7.2])).toEqual([
+      0,
+      1,
+      2,
+    ]);
+  });
+
+  it("serves the qualifying grid before the green all the same", () => {
+    const order = calculateCanonicalRacePositions(
+      createInitialState(),
+      paradeLapTelemetry(),
+      PARADE_GRID,
+      true,
+      new Array<number>(21).fill(1),
+    );
+
+    expect(order[6]).toBe(1);
+  });
+});
