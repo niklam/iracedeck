@@ -2546,10 +2546,11 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
       after: Record<string, unknown> | undefined,
     ): Promise<{ action: CameraControls; land: () => Promise<void> }> {
       const action = await appear({ cycleIconMode: "current" }, { CamGroupNumber: 11 });
-      let finish: () => void = () => {};
+      let finish: (() => void) | undefined;
       vi.mocked(action["updateKeyImage"]).mockImplementationOnce(
         () => new Promise((resolve) => (finish = () => resolve(true))),
       );
+      const pushedBefore = shownIcons(action).length;
       const context = keyContext();
       context.setTitle.mockImplementation(async () => {
         sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamGroupNumber: 12 }); // TV1
@@ -2562,10 +2563,14 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
         payload: { settings: { target: "cycle-camera", direction: "next", cycleIconMode: "current" } },
       } as never);
 
+      // The injected tick did start the held TV1 write the tests are about.
+      expect(shownIcons(action)[pushedBefore]).toContain("tv1-artwork");
+      expect(finish).toBeTypeOf("function");
+
       return {
         action,
         land: async () => {
-          finish();
+          finish?.();
           await new Promise((resolve) => setTimeout(resolve, 0));
         },
       };
@@ -2597,17 +2602,23 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
     /** Shows Spotter, then holds the write putting the grid back after telemetry goes away. */
     async function holdRestore(): Promise<{ action: CameraControls; land: () => Promise<void> }> {
       const action = await appear({ cycleIconMode: "current" }, { CamGroupNumber: 11 });
-      let finish: () => void = () => {};
+      let finish: (() => void) | undefined;
       vi.mocked(action["updateKeyImage"]).mockImplementationOnce(
         () => new Promise((resolve) => (finish = () => resolve(true))),
       );
+      const pushedBefore = shownIcons(action).length;
       sdkOf(action).getCurrentTelemetry.mockReturnValue(undefined);
       subscriber?.();
+
+      // The tick did start the held write putting the grid back.
+      expect(shownIcons(action)).toHaveLength(pushedBefore + 1);
+      expect(shownIcons(action)[pushedBefore]).toContain("CYCLE CAM");
+      expect(finish).toBeTypeOf("function");
 
       return {
         action,
         land: async () => {
-          finish();
+          finish?.();
           await new Promise((resolve) => setTimeout(resolve, 0));
         },
       };
