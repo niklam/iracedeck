@@ -194,6 +194,15 @@ function renderSettings() {
       label: "Traffic when rejoining (experimental)",
       type: "checkbox",
     },
+    // The fuel countdown's Speak in row (#1702), on by default as for users:
+    // the session kinds the laps-of-fuel-left lines are heard in. Unchecking
+    // one silences every Fuel button in a session of that kind.
+    ...[
+      ["calloutEnabledFuelCountdownRace", "Race"],
+      ["calloutEnabledFuelCountdownPractice", "Practice"],
+      ["calloutEnabledFuelCountdownQualifying", "Qualifying"],
+      ["calloutEnabledFuelCountdownTest", "Test"],
+    ].map(([key, kind]) => ({ key, label: `Fuel countdown: speak in ${kind}`, type: "checkbox" })),
     {
       key: "radarVolume",
       label: "Radar Volume",
