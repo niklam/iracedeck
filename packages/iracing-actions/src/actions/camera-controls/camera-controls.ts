@@ -1122,7 +1122,12 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     // Cleared only now: a telemetry tick during the awaits above can render the
     // new settings' group and record it, and updateDisplay then paints the grid
     // over it — clearing earlier would leave the dedupe believing the group is
-    // still on the key, and the key stuck on its grid.
+    // still on the key, and the key stuck on its grid. A group write such a
+    // tick started may still be in flight: it is overtaken first, so it cannot
+    // register its icon over the grid once the record that would restore the
+    // grid is gone (#1653 review). The tick below draws afresh when it has a
+    // group to show.
+    this.claimCycleGeneration(ev.action.id);
     this.lastDisplayedGroup.delete(ev.action.id);
     this.onKeyTick(ev.action.id);
   }

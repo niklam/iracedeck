@@ -2534,6 +2534,63 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
     expect(shownIcons(action)).toHaveLength(3);
   });
 
+  describe("a group write a tick starts while new settings are applied (#1653 review)", () => {
+    /**
+     * Shows Spotter, then applies new settings with a tick during their
+     * setTitle that starts a held TV1 write; `after` is what the final tick
+     * sees. Returns the action and a function that lands the held write.
+     */
+    async function applyWithHeldTick(
+      after: Record<string, unknown> | undefined,
+    ): Promise<{ action: CameraControls; land: () => Promise<void> }> {
+      const action = await appear({ cycleIconMode: "current" }, { CamGroupNumber: 11 });
+      let finish: () => void = () => {};
+      vi.mocked(action["updateKeyImage"]).mockImplementationOnce(
+        () => new Promise((resolve) => (finish = () => resolve(true))),
+      );
+      const context = keyContext();
+      context.setTitle.mockImplementation(async () => {
+        sdkOf(action).getCurrentTelemetry.mockReturnValue({ CamGroupNumber: 12 }); // TV1
+        subscriber?.();
+        sdkOf(action).getCurrentTelemetry.mockReturnValue(after);
+      });
+
+      await action.onDidReceiveSettings({
+        action: context,
+        payload: { settings: { target: "cycle-camera", direction: "next", cycleIconMode: "current" } },
+      } as never);
+
+      return {
+        action,
+        land: async () => {
+          finish();
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        },
+      };
+    }
+
+    it("registers nothing when it lands after the grid, with no telemetry left to redraw", async () => {
+      const { action, land } = await applyWithHeldTick(undefined);
+      const registered = vi.mocked(action["setRegenerateCallback"]).mock.calls.length;
+
+      await land();
+
+      const registrations = vi.mocked(action["setRegenerateCallback"]).mock.calls;
+      expect(registrations).toHaveLength(registered);
+      expect(decodeURIComponent((registrations.at(-1)?.[1] as () => string)())).toContain("CYCLE CAM");
+    });
+
+    it("gives way to the fresh render of the tick after the settings", async () => {
+      const { action, land } = await applyWithHeldTick({ CamGroupNumber: 17 }); // TV Mixed
+
+      await land();
+
+      expect(shownIcons(action).at(-1)).toContain("tv-mixed-artwork");
+      const registrations = vi.mocked(action["setRegenerateCallback"]).mock.calls;
+      expect(decodeURIComponent((registrations.at(-1)?.[1] as () => string)())).toContain("tv-mixed-artwork");
+    });
+  });
+
   describe("new settings overtake a grid restore in flight (#1653 review)", () => {
     /** Shows Spotter, then holds the write putting the grid back after telemetry goes away. */
     async function holdRestore(): Promise<{ action: CameraControls; land: () => Promise<void> }> {
