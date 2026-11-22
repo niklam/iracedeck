@@ -333,7 +333,7 @@ flowchart TB
   p7["7 · initRaceEngineer<br/>scenario engine + race-engineer-wiring"]:::audio
   p8["8 · initSettings<br/>settings store · settings window · store-ready block"]:::core
   p9["9 · initReplay<br/>replay engine · replay store"]:::core
-  p10["10 · registerActions<br/>shared list + the extension's extras<br/>each wrapped for press sounds"]:::core
+  p10["10 · registerActions<br/>shared list + the extension's extras<br/>each wrapped for window focus and press sounds"]:::core
   p11["11 · startServices<br/>global settings · launch step · extension · SimHub · app monitor"]:::core
   p12(["12 · adapter.connect()<br/>IDeckPlatformAdapter — SEAM 2"]):::seam
   bus(["event-bus<br/>SEAM 1"]):::seam
