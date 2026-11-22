@@ -2384,24 +2384,27 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
     expect(shownIcons(action).at(-1)).toContain("spotter-artwork");
   });
 
-  it("keeps the newest group registered when an older icon push finishes last", async () => {
+  it("writes one icon at a time, and ends on the newest group (#1653 review)", async () => {
     const action = await appear({ cycleIconMode: "current" }, { CamGroupNumber: 11 });
-    let finishFirst: () => void = () => {};
-    let finishSecond: () => void = () => {};
-    vi.mocked(action["updateKeyImage"])
-      .mockImplementationOnce(() => new Promise((resolve) => (finishFirst = () => resolve(true))))
-      .mockImplementationOnce(() => new Promise((resolve) => (finishSecond = () => resolve(true))));
+    let finishFirst: (() => void) | undefined;
+    vi.mocked(action["updateKeyImage"]).mockImplementationOnce(
+      () => new Promise((resolve) => (finishFirst = () => resolve(true))),
+    );
 
     vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ CamGroupNumber: 12 }); // TV1
     subscriber?.();
     vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ CamGroupNumber: 17 }); // TV Mixed
     subscriber?.();
-
-    finishSecond();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    finishFirst();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
+    // TV Mixed waits for the TV1 write still out.
+    expect(shownIcons(action)).toHaveLength(2);
+    expect(finishFirst).toBeTypeOf("function");
+    finishFirst?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(shownIcons(action)).toHaveLength(3);
+    expect(shownIcons(action)[2]).toContain("tv-mixed-artwork");
     const registrations = vi.mocked(action["setRegenerateCallback"]).mock.calls;
     const latest = registrations[registrations.length - 1][1] as () => string;
     expect(decodeURIComponent(latest())).toContain("tv-mixed-artwork");
@@ -2531,172 +2534,278 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
     expect(shownIcons(action)).toHaveLength(3);
   });
 
-  describe("a group write a tick starts while new settings are applied (#1653 review)", () => {
-    /**
-     * Shows Spotter, then applies new settings with a tick during their
-     * setTitle that starts a held TV1 write; `after` is what the final tick
-     * sees. Returns the action and a function that lands the held write.
-     */
-    async function applyWithHeldTick(
-      after: TelemetryData | null,
-    ): Promise<{ action: CameraControls; land: () => Promise<void> }> {
-      const action = await appear({ cycleIconMode: "current" }, { CamGroupNumber: 11 });
-      let finish: (() => void) | undefined;
-      vi.mocked(action["updateKeyImage"]).mockImplementationOnce(
-        () => new Promise((resolve) => (finish = () => resolve(true))),
-      );
-      const pushedBefore = shownIcons(action).length;
-      const context = keyContext();
-      context.setTitle.mockImplementation(async () => {
-        vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ CamGroupNumber: 12 }); // TV1
-        subscriber?.();
-        vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(after);
+  describe("one write at a time per key (#1653 review)", () => {
+    const flush = (): Promise<unknown> => new Promise((resolve) => setTimeout(resolve, 0));
+    const lastSetImage = (action: CameraControls): string =>
+      decodeURIComponent(String(vi.mocked(action["setKeyImage"]).mock.calls.at(-1)?.[1]));
+    const lastRegistration = (action: CameraControls): string =>
+      decodeURIComponent((vi.mocked(action["setRegenerateCallback"]).mock.calls.at(-1)?.[1] as () => string)());
+
+    describe("a tick during a settings write", () => {
+      /** Shows Spotter, then applies new settings with a tick during their setTitle; `after` is what the tick sees. */
+      async function applyWithTick(after: TelemetryData | null): Promise<{ action: CameraControls; during: number }> {
+        const action = await appear({ cycleIconMode: "current" }, { CamGroupNumber: 11 });
+        const context = keyContext();
+        let during = -1;
+        context.setTitle.mockImplementation(async () => {
+          vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(after);
+          subscriber?.();
+          during = shownIcons(action).length;
+        });
+
+        await action.onDidReceiveSettings({
+          action: context,
+          payload: { settings: { target: "cycle-camera", direction: "next", cycleIconMode: "current" } },
+        } as never);
+        await flush();
+
+        return { action, during };
+      }
+
+      it("starts no write of its own, and leaves the grid when there is no telemetry", async () => {
+        const { action, during } = await applyWithTick(null);
+
+        expect(during).toBe(1);
+        expect(shownIcons(action)).toHaveLength(1);
+        expect(lastRegistration(action)).toContain("CYCLE CAM");
       });
 
-      await action.onDidReceiveSettings({
-        action: context,
-        payload: { settings: { target: "cycle-camera", direction: "next", cycleIconMode: "current" } },
-      } as never);
+      it("has its group drawn once the settings are on the key", async () => {
+        const { action, during } = await applyWithTick({ CamGroupNumber: 17 }); // TV Mixed
 
-      // The injected tick did start the held TV1 write the tests are about.
-      expect(shownIcons(action)[pushedBefore]).toContain("tv1-artwork");
-      expect(finish).toBeTypeOf("function");
+        expect(during).toBe(1);
+        expect(shownIcons(action)).toHaveLength(2);
+        expect(shownIcons(action)[1]).toContain("tv-mixed-artwork");
+        expect(lastRegistration(action)).toContain("tv-mixed-artwork");
+      });
+    });
 
-      return {
-        action,
-        land: async () => {
-          finish?.();
-          await new Promise((resolve) => setTimeout(resolve, 0));
-        },
+    describe("a settings redraw the host refuses", () => {
+      const retitled = {
+        target: "cycle-camera",
+        direction: "next",
+        cycleIconMode: "current",
+        titleOverrides: { titleText: "MY CAM" },
       };
-    }
 
-    it("registers nothing when it lands after the grid, with no telemetry left to redraw", async () => {
-      const { action, land } = await applyWithHeldTick(null);
-      const registered = vi.mocked(action["setRegenerateCallback"]).mock.calls.length;
+      /** TV1 on the key; new settings that change only the title, whose setTitle rejects. */
+      async function refuseRetitle(): Promise<CameraControls> {
+        const action = await appear({ cycleIconMode: "current" }, { CamGroupNumber: 12 });
+        expect(shownIcons(action)).toHaveLength(1);
+        const context = keyContext();
+        context.setTitle.mockRejectedValueOnce(new Error("socket closed"));
 
-      await land();
+        await expect(
+          action.onDidReceiveSettings({ action: context, payload: { settings: retitled } } as never),
+        ).rejects.toThrow("socket closed");
 
-      const registrations = vi.mocked(action["setRegenerateCallback"]).mock.calls;
-      expect(registrations).toHaveLength(registered);
-      expect(decodeURIComponent((registrations.at(-1)?.[1] as () => string)())).toContain("CYCLE CAM");
+        return action;
+      }
+
+      it("is written again on the next tick, then the group with the new settings", async () => {
+        const action = await refuseRetitle();
+        const settingsWrites = vi.mocked(action["setKeyImage"]).mock.calls.length;
+
+        subscriber?.();
+        await flush();
+
+        expect(vi.mocked(action["setKeyImage"]).mock.calls).toHaveLength(settingsWrites + 1);
+        expect(lastSetImage(action)).toContain("MY CAM");
+        expect(shownIcons(action)).toHaveLength(2);
+        expect(shownIcons(action)[1]).toContain("tv1-artwork");
+        expect(shownIcons(action)[1]).toContain("MY CAM");
+
+        // Once it went out, ticks leave it alone again.
+        subscriber?.();
+        await flush();
+        expect(shownIcons(action)).toHaveLength(2);
+        expect(vi.mocked(action["setKeyImage"]).mock.calls).toHaveLength(settingsWrites + 1);
+      });
+
+      it("is written again on the next tick, leaving the grid when there is no group to show", async () => {
+        const action = await refuseRetitle();
+
+        vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(null);
+        subscriber?.();
+        await flush();
+
+        // The grid, with the new title: several thumbnails, not TV1 alone.
+        expect(lastSetImage(action)).toContain("MY CAM");
+        expect(lastSetImage(action)).toContain("nose-artwork");
+        expect(shownIcons(action)).toHaveLength(1);
+      });
     });
 
-    it("gives way to the fresh render of the tick after the settings", async () => {
-      const { action, land } = await applyWithHeldTick({ CamGroupNumber: 17 }); // TV Mixed
-
-      await land();
-
-      expect(shownIcons(action).at(-1)).toContain("tv-mixed-artwork");
-      const registrations = vi.mocked(action["setRegenerateCallback"]).mock.calls;
-      expect(decodeURIComponent((registrations.at(-1)?.[1] as () => string)())).toContain("tv-mixed-artwork");
-    });
-  });
-
-  describe("a settings redraw the host refuses (#1653 review)", () => {
-    const retitled = {
-      target: "cycle-camera",
-      direction: "next",
-      cycleIconMode: "current",
-      titleOverrides: { titleText: "MY CAM" },
-    };
-
-    /** TV1 on the key; new settings that change only the title, whose setTitle rejects. */
-    async function refuseRetitle(): Promise<CameraControls> {
-      const action = await appear({ cycleIconMode: "current" }, { CamGroupNumber: 12 });
-      expect(shownIcons(action)).toHaveLength(1);
+    it("subscribes a key before its first write, so a refused first write is retried", async () => {
+      const action = new CameraControls();
+      vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ CamGroupNumber: 12 }); // TV1
+      vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue({});
+      captureTick(action, (tick) => (subscriber = tick));
+      vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue(LAKELAND_GROUPS);
       const context = keyContext();
       context.setTitle.mockRejectedValueOnce(new Error("socket closed"));
 
       await expect(
-        action.onDidReceiveSettings({ action: context, payload: { settings: retitled } } as never),
+        action.onWillAppear({
+          action: context,
+          payload: { settings: { target: "cycle-camera", direction: "next", cycleIconMode: "current" } },
+        } as never),
       ).rejects.toThrow("socket closed");
-
-      return action;
-    }
-
-    it("draws the group with the new settings on the next tick", async () => {
-      const action = await refuseRetitle();
+      expect(action["setKeyImage"]).not.toHaveBeenCalled();
+      expect(subscriber).toBeTypeOf("function");
 
       subscriber?.();
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await flush();
 
-      expect(shownIcons(action)).toHaveLength(2);
-      expect(shownIcons(action)[1]).toContain("tv1-artwork");
-      expect(shownIcons(action)[1]).toContain("MY CAM");
-
-      // Once it went out, ticks leave it alone again.
-      subscriber?.();
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      expect(shownIcons(action)).toHaveLength(2);
+      expect(context.setTitle).toHaveBeenCalledTimes(2);
+      expect(action["setKeyImage"]).toHaveBeenCalledTimes(1);
+      expect(shownIcons(action)).toHaveLength(1);
+      expect(shownIcons(action)[0]).toContain("tv1-artwork");
     });
 
-    it("puts the grid back on the next tick when there is no group to show", async () => {
-      const action = await refuseRetitle();
+    describe("an older settings update still writing when a newer one arrives", () => {
+      async function overlap(
+        outcome: "lands" | "is refused",
+      ): Promise<{ action: CameraControls; first: Promise<void>; second: Promise<void> }> {
+        const action = await appear({ cycleIconMode: "current" }, null);
+        const older = keyContext();
+        let settle: () => void = () => {};
+        older.setTitle.mockImplementationOnce(
+          () =>
+            new Promise<void>((resolve, reject) => {
+              settle = outcome === "lands" ? resolve : () => reject(new Error("socket closed"));
+            }),
+        );
+        const first = action.onDidReceiveSettings({
+          action: older,
+          payload: { settings: { target: "cycle-camera", direction: "next", titleOverrides: { titleText: "OLD" } } },
+        } as never);
+        first.catch(() => {});
+        await flush();
 
-      vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(null);
-      subscriber?.();
-      await new Promise((resolve) => setTimeout(resolve, 0));
+        const newer = keyContext();
+        const second = action.onDidReceiveSettings({
+          action: newer,
+          payload: { settings: { target: "change-camera", cameraGroupName: "Nose" } },
+        } as never);
+        await flush();
 
-      expect(shownIcons(action)).toHaveLength(2);
-      // The grid, with the new title: several thumbnails, not TV1 alone.
-      expect(shownIcons(action)[1]).toContain("MY CAM");
-      expect(shownIcons(action)[1]).toContain("nose-artwork");
+        // The newer one waits for the write still out.
+        expect(newer.setTitle).not.toHaveBeenCalled();
+
+        settle();
+
+        return { action, first, second };
+      }
+
+      it("is written after it, so the key ends on the newer settings", async () => {
+        const { action, first, second } = await overlap("lands");
+        await first;
+        await second;
+
+        expect(lastSetImage(action)).not.toContain("CYCLE CAM");
+        expect(lastSetImage(action)).not.toContain("OLD");
+        expect(lastRegistration(action)).not.toContain("CYCLE CAM");
+      });
+
+      it("is still written when the older one is refused, and ticks leave it alone", async () => {
+        const { action, first, second } = await overlap("is refused");
+        await expect(first).rejects.toThrow("socket closed");
+        await second;
+
+        expect(lastSetImage(action)).not.toContain("CYCLE CAM");
+        const settingsWrites = vi.mocked(action["setKeyImage"]).mock.calls.length;
+
+        vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ CamGroupNumber: 12 });
+        subscriber?.();
+        await flush();
+
+        expect(shownIcons(action)).toHaveLength(0);
+        expect(vi.mocked(action["setKeyImage"]).mock.calls).toHaveLength(settingsWrites);
+      });
     });
-  });
 
-  describe("new settings overtake a grid restore in flight (#1653 review)", () => {
-    /** Shows Spotter, then holds the write putting the grid back after telemetry goes away. */
-    async function holdRestore(): Promise<{ action: CameraControls; land: () => Promise<void> }> {
-      const action = await appear({ cycleIconMode: "current" }, { CamGroupNumber: 11 });
-      let finish: (() => void) | undefined;
-      vi.mocked(action["updateKeyImage"]).mockImplementationOnce(
-        () => new Promise((resolve) => (finish = () => resolve(true))),
-      );
-      const pushedBefore = shownIcons(action).length;
-      vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(null);
-      subscriber?.();
+    describe("a grid restore still writing", () => {
+      /** Shows Spotter, then holds the write putting the grid back after telemetry goes away. */
+      async function holdRestore(
+        outcome: "lands" | "is refused" = "lands",
+      ): Promise<{ action: CameraControls; settle: () => Promise<void> }> {
+        const action = await appear({ cycleIconMode: "current" }, { CamGroupNumber: 11 });
+        let finish: (() => void) | undefined;
+        vi.mocked(action["updateKeyImage"]).mockImplementationOnce(
+          () =>
+            new Promise<boolean>((resolve, reject) => {
+              finish = outcome === "lands" ? () => resolve(true) : () => reject(new Error("socket closed"));
+            }),
+        );
+        const pushedBefore = shownIcons(action).length;
+        vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(null);
+        subscriber?.();
 
-      // The tick did start the held write putting the grid back.
-      expect(shownIcons(action)).toHaveLength(pushedBefore + 1);
-      expect(shownIcons(action)[pushedBefore]).toContain("CYCLE CAM");
-      expect(finish).toBeTypeOf("function");
+        // The tick did start the held write putting the grid back.
+        expect(shownIcons(action)).toHaveLength(pushedBefore + 1);
+        expect(shownIcons(action)[pushedBefore]).toContain("CYCLE CAM");
+        expect(finish).toBeTypeOf("function");
 
-      return {
-        action,
-        land: async () => {
-          finish?.();
-          await new Promise((resolve) => setTimeout(resolve, 0));
+        return {
+          action,
+          settle: async () => {
+            finish?.();
+            await flush();
+          },
+        };
+      }
+
+      it.each(["lands", "is refused"] as const)(
+        "keeps a tick's group waiting until the restore %s, then draws it once",
+        async (outcome) => {
+          const { action, settle } = await holdRestore(outcome);
+
+          vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ CamGroupNumber: 17 }); // TV Mixed
+          subscriber?.();
+          await flush();
+          expect(shownIcons(action)).toHaveLength(2);
+
+          await settle();
+
+          expect(shownIcons(action)).toHaveLength(3);
+          expect(shownIcons(action)[2]).toContain("tv-mixed-artwork");
+          expect(lastRegistration(action)).toContain("tv-mixed-artwork");
+
+          // What went out is what the key records: later ticks send nothing.
+          subscriber?.();
+          await flush();
+          expect(shownIcons(action)).toHaveLength(3);
         },
-      };
-    }
+      );
 
-    it("registers nothing for the restore once the key runs Change Camera", async () => {
-      const { action, land } = await holdRestore();
+      it("holds new settings until it lands, then writes them over it", async () => {
+        const { action, settle } = await holdRestore();
+        const context = keyContext();
 
-      await action.onDidReceiveSettings({
-        action: keyContext(),
-        payload: { settings: { target: "change-camera", cameraGroupName: "TV1" } },
-      } as never);
-      const registered = vi.mocked(action["setRegenerateCallback"]).mock.calls.length;
-      await land();
+        const settingsApplied = action.onDidReceiveSettings({
+          action: context,
+          payload: { settings: { target: "change-camera", cameraGroupName: "TV1" } },
+        } as never);
+        await flush();
+        expect(context.setTitle).not.toHaveBeenCalled();
 
-      const registrations = vi.mocked(action["setRegenerateCallback"]).mock.calls;
-      expect(registrations).toHaveLength(registered);
-      expect(decodeURIComponent((registrations.at(-1)?.[1] as () => string)())).not.toContain("CYCLE CAM");
-      expect(action["lastDisplayedGroup"].has("key-1")).toBe(false);
-    });
+        await settle();
+        await settingsApplied;
 
-    it("registers the grid when no settings change overtook it", async () => {
-      const { action, land } = await holdRestore();
-      const registered = vi.mocked(action["setRegenerateCallback"]).mock.calls.length;
+        expect(context.setTitle).toHaveBeenCalledTimes(1);
+        expect(lastRegistration(action)).not.toContain("CYCLE CAM");
+      });
 
-      await land();
+      it("registers the grid once it lands", async () => {
+        const { action, settle } = await holdRestore();
+        const registered = vi.mocked(action["setRegenerateCallback"]).mock.calls.length;
 
-      const registrations = vi.mocked(action["setRegenerateCallback"]).mock.calls;
-      expect(registrations).toHaveLength(registered + 1);
-      expect(decodeURIComponent((registrations.at(-1)?.[1] as () => string)())).toContain("CYCLE CAM");
-      expect(action["lastDisplayedGroup"].has("key-1")).toBe(false);
+        await settle();
+
+        expect(vi.mocked(action["setRegenerateCallback"]).mock.calls).toHaveLength(registered + 1);
+        expect(lastRegistration(action)).toContain("CYCLE CAM");
+      });
     });
   });
 
@@ -3792,21 +3901,27 @@ describe("Camera Controls keys on a group the session lacks (#1653)", () => {
     it("redraws only when its availability flips, never per tick", async () => {
       const action = await appear({ target: "change-camera", cameraGroupName: "DynamicTV" }, CUSTOM_FILE_GROUPS);
 
+      const flush = (): Promise<unknown> => new Promise((resolve) => setTimeout(resolve, 0));
+
       subscriber?.();
       subscriber?.();
+      await flush();
       expect(pushedImages(action)).toBe(0);
 
       // Another track's camera file: the group is gone.
       sessionUpdate(action, LAKELAND_GROUPS);
+      await flush();
       expect(pushedImages(action)).toBe(1);
       expect(lastIconOptions().dimmed).toBe(true);
 
       subscriber?.();
       // A new session update whose list still lacks it changes nothing on the key.
       sessionUpdate(action, ROAD_GROUPS);
+      await flush();
       expect(pushedImages(action)).toBe(1);
 
       sessionUpdate(action, CUSTOM_FILE_GROUPS);
+      await flush();
       expect(pushedImages(action)).toBe(2);
       expect(lastIconOptions().dimmed).toBeUndefined();
     });
@@ -3840,7 +3955,7 @@ describe("Camera Controls keys on a group the session lacks (#1653)", () => {
       expect(pushedImages(action)).toBe(2);
     });
 
-    it("registers nothing for an availability redraw that lands after the key became Cycle Camera (#1653 review)", async () => {
+    it("holds Cycle Camera settings until an availability redraw lands, then ends on the grid (#1653 review)", async () => {
       const action = await appear({ target: "change-camera", cameraGroupName: "DynamicTV" }, CUSTOM_FILE_GROUPS);
       let finish: ((written: boolean) => void) | undefined;
       vi.mocked(action["updateKeyImage"]).mockImplementationOnce(
@@ -3852,17 +3967,18 @@ describe("Camera Controls keys on a group the session lacks (#1653)", () => {
       expect(finish).toBeTypeOf("function");
 
       vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(null);
-      await action.onDidReceiveSettings({
-        action: keyContext(),
+      const context = keyContext();
+      const settingsApplied = action.onDidReceiveSettings({
+        action: context,
         payload: { settings: { target: "cycle-camera", direction: "next" } },
       } as never);
-      const registered = vi.mocked(action["setRegenerateCallback"]).mock.calls.length;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(context.setTitle).not.toHaveBeenCalled();
 
       finish?.(true);
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await settingsApplied;
 
       const registrations = vi.mocked(action["setRegenerateCallback"]).mock.calls;
-      expect(registrations).toHaveLength(registered);
       expect(decodeURIComponent((registrations.at(-1)?.[1] as () => string)())).toContain("CYCLE CAM");
     });
 
@@ -3883,31 +3999,35 @@ describe("Camera Controls keys on a group the session lacks (#1653)", () => {
         return action;
       }
 
-      const pushed = (action: CameraControls, index: number): string =>
-        decodeURIComponent(String(vi.mocked(action["updateKeyImage"]).mock.calls[index][1]));
+      const settingsWrites = (action: CameraControls): string[] =>
+        vi.mocked(action["setKeyImage"]).mock.calls.map((call) => decodeURIComponent(String(call[1])));
 
-      it("draws the new look on the next tick, and registers its regeneration", async () => {
+      it("writes the new settings again on the next tick, and registers their regeneration", async () => {
         const action = await refuseRedraw();
-        expect(pushedImages(action)).toBe(0);
+        const before = settingsWrites(action).length;
 
         subscriber?.();
         await new Promise((resolve) => setTimeout(resolve, 0));
 
-        expect(pushedImages(action)).toBe(1);
-        expect(pushed(action, 0)).toContain("custom-artwork");
+        expect(settingsWrites(action)).toHaveLength(before + 1);
+        expect(settingsWrites(action).at(-1)).toContain("custom-artwork");
+        expect(pushedImages(action)).toBe(0);
         const regenerate = vi.mocked(action["setRegenerateCallback"]).mock.calls.at(-1)?.[1] as () => string;
         expect(decodeURIComponent(regenerate())).toContain("custom-artwork");
       });
 
-      it("dedupes again once that redraw went out", async () => {
+      it("dedupes again once that write went out", async () => {
         const action = await refuseRedraw();
 
         subscriber?.();
         await new Promise((resolve) => setTimeout(resolve, 0));
+        const before = settingsWrites(action).length;
         subscriber?.();
         subscriber?.();
+        await new Promise((resolve) => setTimeout(resolve, 0));
 
-        expect(pushedImages(action)).toBe(1);
+        expect(settingsWrites(action)).toHaveLength(before);
+        expect(pushedImages(action)).toBe(0);
       });
     });
 
@@ -3931,15 +4051,42 @@ describe("Camera Controls keys on a group the session lacks (#1653)", () => {
       expect(lastIconOptions().dimmed).toBeUndefined();
     });
 
-    it("re-reads availability when its icon is regenerated", async () => {
-      const action = await appear({ target: "change-camera", cameraGroupName: "DynamicTV" }, CUSTOM_FILE_GROUPS);
-      const regenerate = vi.mocked(action["setRegenerateCallback"]).mock.calls.at(-1)?.[1] as () => string;
+    describe("regeneration redraws the look on the key (#1653 review)", () => {
+      const flush = (): Promise<unknown> => new Promise((resolve) => setTimeout(resolve, 0));
+      const regenerate = (action: CameraControls): string =>
+        (vi.mocked(action["setRegenerateCallback"]).mock.calls.at(-1)?.[1] as () => string)();
 
-      vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue({});
-      vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue(LAKELAND_GROUPS);
-      regenerate();
+      it("never another look the key was not given", async () => {
+        const action = await appear({ target: "change-camera", cameraGroupName: "DynamicTV" }, CUSTOM_FILE_GROUPS);
 
-      expect(lastIconOptions().dimmed).toBe(true);
+        // The group leaves the session; no tick has redrawn the key yet.
+        vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue({});
+        vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue(LAKELAND_GROUPS);
+        regenerate(action);
+
+        expect(lastIconOptions().dimmed).toBeUndefined();
+      });
+
+      it("follows the look a tick wrote, so a flip back is redrawn", async () => {
+        const action = await appear({ target: "change-camera", cameraGroupName: "DynamicTV" }, CUSTOM_FILE_GROUPS);
+
+        sessionUpdate(action, LAKELAND_GROUPS);
+        await flush();
+        expect(pushedImages(action)).toBe(1);
+        regenerate(action);
+        expect(lastIconOptions().dimmed).toBe(true);
+
+        // The group comes back: regeneration still draws what the key shows, and the tick redraws it.
+        vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue({});
+        vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue(CUSTOM_FILE_GROUPS);
+        regenerate(action);
+        expect(lastIconOptions().dimmed).toBe(true);
+
+        subscriber?.();
+        await flush();
+        expect(pushedImages(action)).toBe(2);
+        expect(lastIconOptions().dimmed).toBeUndefined();
+      });
     });
 
     it("does nothing on a press, and says so", async () => {

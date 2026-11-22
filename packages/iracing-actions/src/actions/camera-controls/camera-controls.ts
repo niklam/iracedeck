@@ -960,59 +960,73 @@ export const CAMERA_FOCUS_UUID = "com.iracedeck.sd.core.camera-focus" as const;
 
 export const CAMERA_CONTROLS_UUID = CAMERA_FOCUS_UUID;
 
-/** How a Cycle Camera key's displayed-group record starts: the look it was drawn in (#1653). */
-const UNAVAILABLE_MARK = "unavailable:";
-const AVAILABLE_MARK = "available:";
 /**
- * How a Cycle Camera key's record starts while the write putting its grid back
- * is in flight (#1653 review); the render's generation follows, so a restore
- * can tell its own record from a newer one's.
+ * A look a key can show (#1653 review): what identifies it, so the writer
+ * knows whether the key shows it already, and the renderer that draws it. The
+ * renderer is registered as the key's regeneration callback once the look is
+ * on the key, so regeneration redraws that same look with fresh colours and
+ * bindings and never another one the writer has not recorded.
  */
-const RESTORING_MARK = "restoring:";
-/** A Cycle Camera key's record once that write failed: the next tick tries it again. */
-const RESTORE_PENDING_MARK = "restore-pending";
-/**
- * A Cycle Camera key's record once a group icon's write failed (#1653 review):
- * the key may still show the icon before it, greyed perhaps, so the next tick
- * draws the group again when it can and puts the grid back when it cannot.
- */
-const DRAW_PENDING_MARK = "draw-pending";
-
-/** Whether a Cycle Camera key's record says a write putting its grid back is in flight. */
-function isRestoring(record: string | undefined): boolean {
-  return record?.startsWith(RESTORING_MARK) ?? false;
+interface KeyLook {
+  /** The settings version, the kind, the availability and — for a group icon — its name. */
+  id: string;
+  /** The settings version the look was drawn for. */
+  version: number;
+  /** The key's resting icon (its grid, or its group's icon), or a Cycle Camera key's group icon. */
+  kind: "rest" | "group";
+  /** Drawn unavailable, greyed (#1653). */
+  unavailable: boolean;
+  render: () => string;
 }
 
-/** How a Cycle Camera icon write ended: on the key, not on it, or overtaken by a newer render. */
-type CycleIconWrite = "written" | "failed" | "superseded";
+type KeyEvent = IDeckWillAppearEvent<CameraControlsSettings> | IDeckDidReceiveSettingsEvent<CameraControlsSettings>;
+
+/** Who awaits a settings write: the handler that asked for it. */
+interface SettingsWaiter {
+  resolve: () => void;
+  reject: (err: unknown) => void;
+}
+
+/** New settings waiting to reach the key, through the host event that writes the title and image. */
+interface SettingsWrite {
+  ev: KeyEvent;
+  waiters: SettingsWaiter[];
+  /** The write is under way: newer settings queue behind it rather than replace it. */
+  started: boolean;
+}
+
+/**
+ * One key's image writer (#1653 review). Every write to a key — new settings,
+ * a telemetry tick's icon, the grid put back — goes through it, and at most
+ * one runs at a time, so no two writes for one key ever interleave. A request
+ * made while a write is out only marks the key for another pass; each pass
+ * decides the key's look at the moment it runs, from the current settings,
+ * telemetry and session, and writes it unless the key already shows it.
+ */
+interface KeyRender {
+  /** Raised by every settings update, so a look drawn for older settings is never taken for current. */
+  settingsVersion: number;
+  /** Settings to write before anything else; kept after a refused write, so the next request retries it. */
+  settingsWrite: SettingsWrite | null;
+  /** The look the last successful write put on the key; null when a write failed and the key's look is unknown. */
+  written: KeyLook | null;
+  running: boolean;
+  /** Something asked for a pass while a write was out. */
+  requested: boolean;
+  /** Waiters of a settings write that went out, released once the pass that follows it is under way. */
+  settled: SettingsWaiter[];
+}
+
+function newKeyRender(): KeyRender {
+  return { settingsVersion: 0, settingsWrite: null, written: null, running: false, requested: false, settled: [] };
+}
 
 export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
   /** Settings per action context for telemetry-driven icon updates */
   private activeContexts = new Map<string, CameraControlsSettings>();
 
-  /** Last displayed group name and availability per context, to avoid redundant re-renders */
-  private lastDisplayedGroup = new Map<string, string>();
-
-  /**
-   * Per context, the newest render started on the key: a Cycle Camera icon
-   * (`showCycleIcon`), a Change Camera availability redraw, or new settings.
-   * A write that lands after a newer render started registers nothing.
-   */
-  private renderGeneration = new Map<string, number>();
-
-  /**
-   * Renders started on this instance, the source of every generation above. One count for all keys, never reset: a key that
-   * disappears and comes back under the same context id gets generations its
-   * earlier placement never had, so a write still in flight from before can
-   * never pass for the newest render (#1653 review).
-   */
-  private renders = 0;
-
-  /**
-   * Per Change Camera key, whether the icon on it was drawn unavailable
-   * (#1653) — so a telemetry tick redraws the key only when that flips.
-   */
-  private shownUnavailable = new Map<string, boolean>();
+  /** Per key, its image writer (#1653 review): every write to a key goes through it. */
+  private keyRenders = new Map<string, KeyRender>();
 
   /**
    * The session's normalised camera groups, read once per session-info update
@@ -1087,14 +1101,20 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
     await this.pushDeviceProfiles(ev, settings);
-    await this.updateDisplay(ev, settings);
 
+    // A fresh writer for this placement; one left from an earlier placement of
+    // the same context stops at its next step.
+    this.dropKeyRender(ev.action.id);
+    this.keyRenders.set(ev.action.id, newKeyRender());
+
+    // Subscribed before the first write (#1653 review): a first write the host
+    // refuses is retried by the next tick, so the key recovers. The writer draws
+    // the telemetry-driven look right after the settings' own.
     this.sdkController.subscribe(ev.action.id, () => {
-      this.onKeyTick(ev.action.id);
+      this.requestRender(ev.action.id);
     });
 
-    // Seed the telemetry-driven look immediately if telemetry is already available
-    this.onKeyTick(ev.action.id);
+    await this.requestSettingsWrite(ev);
   }
 
   override async onWillDisappear(ev: IDeckWillDisappearEvent<CameraControlsSettings>): Promise<void> {
@@ -1102,9 +1122,7 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     this.sdkController.unsubscribe(ev.action.id);
     this.dialSurface.willDisappear(ev.action.id);
     this.activeContexts.delete(ev.action.id);
-    this.lastDisplayedGroup.delete(ev.action.id);
-    this.renderGeneration.delete(ev.action.id);
-    this.shownUnavailable.delete(ev.action.id);
+    this.dropKeyRender(ev.action.id);
   }
 
   override async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<CameraControlsSettings>): Promise<void> {
@@ -1121,18 +1139,7 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
     await this.pushDeviceProfiles(ev, settings);
-    await this.updateDisplay(ev, settings);
-    // Cleared only now: a telemetry tick during the awaits above can render the
-    // new settings' group and record it, and updateDisplay then paints the grid
-    // over it — clearing earlier would leave the dedupe believing the group is
-    // still on the key, and the key stuck on its grid. A group write such a
-    // tick started may still be in flight: it is overtaken first, so it cannot
-    // register its icon over the grid once the record that would restore the
-    // grid is gone (#1653 review). The tick below draws afresh when it has a
-    // group to show.
-    this.claimRenderGeneration(ev.action.id);
-    this.lastDisplayedGroup.delete(ev.action.id);
-    this.onKeyTick(ev.action.id);
+    await this.requestSettingsWrite(ev);
   }
 
   override async onKeyDown(ev: IDeckKeyDownEvent<CameraControlsSettings>): Promise<void> {
@@ -1939,293 +1946,285 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     return unavailable;
   }
 
-  /** A key's telemetry tick: the Cycle Camera icon, or a Change Camera key's availability (#1653). */
-  private onKeyTick(contextId: string): void {
-    const settings = this.activeContexts.get(contextId);
+  /**
+   * Write new settings to the key (#1653 review): its title and resting icon,
+   * then — in the same pass — whatever telemetry-driven look the settings call
+   * for. Resolves once the settings reached the key and the pass after them is
+   * under way; rejects when the host refused the write, which the next tick
+   * then retries. Newer settings that arrive before this write starts replace
+   * it and take over its waiters.
+   */
+  private requestSettingsWrite(ev: KeyEvent): Promise<void> {
+    const contextId = ev.action.id;
+    let render = this.keyRenders.get(contextId);
 
-    if (settings?.target === "change-camera") {
-      this.refreshChangeCameraLook(contextId, settings);
+    if (!render) {
+      render = newKeyRender();
+      this.keyRenders.set(contextId, render);
+    }
+
+    const state = render;
+    state.settingsVersion++;
+
+    return new Promise<void>((resolve, reject) => {
+      const queued = state.settingsWrite;
+      const waiters = queued && !queued.started ? queued.waiters : [];
+      waiters.push({ resolve, reject });
+      state.settingsWrite = { ev, waiters, started: false };
+      this.requestRender(contextId);
+    });
+  }
+
+  /** Forget a key's writer, releasing anyone still awaiting its settings. */
+  private dropKeyRender(contextId: string): void {
+    const render = this.keyRenders.get(contextId);
+
+    if (!render) return;
+
+    this.keyRenders.delete(contextId);
+    const waiters = [...render.settled.splice(0), ...(render.settingsWrite?.waiters.splice(0) ?? [])];
+
+    for (const waiter of waiters) waiter.resolve();
+  }
+
+  /**
+   * Ask for a pass of the key's writer: a telemetry tick, or new settings. A
+   * pass already running takes the request as a reason for one more pass.
+   */
+  private requestRender(contextId: string): void {
+    const render = this.keyRenders.get(contextId);
+
+    if (!render) return;
+
+    if (render.running) {
+      render.requested = true;
 
       return;
     }
 
-    void this.updateCycleIcon(contextId);
+    void this.runRenders(contextId, render);
   }
 
   /**
-   * Per tick: redraw a Change Camera key when its group has come into or gone
-   * out of the session (#1653, spec decision 8) — only on that flip, never per
-   * tick. A disconnect reads as no session, which draws the normal look.
+   * The key's single writer. Each pass writes pending settings first, or else
+   * decides the key's look now and writes it unless the key shows it already.
+   * It stops when the key shows its look, when its writer was replaced (the key
+   * left), or after a refused write unless something asked again meanwhile — a
+   * host that keeps refusing gets one write per request, not a busy loop.
    */
-  private refreshChangeCameraLook(contextId: string, settings: CameraControlsSettings): void {
-    const unavailable = this.isChangeCameraUnavailableCached(changeCameraGroupName(settings));
+  private async runRenders(contextId: string, render: KeyRender): Promise<void> {
+    render.running = true;
 
-    if (this.shownUnavailable.get(contextId) === unavailable) return;
+    try {
+      for (;;) {
+        render.requested = false;
 
-    void this.writeChangeCameraLook(contextId, settings);
+        const settingsWrite = render.settingsWrite;
+        let write: Promise<boolean>;
+
+        if (settingsWrite) {
+          write = this.writeSettingsLook(contextId, render, settingsWrite);
+        } else {
+          const look = this.computeLook(contextId, render);
+
+          if (look === null || look.id === render.written?.id) return;
+
+          write = this.writeLook(contextId, render, look);
+        }
+
+        // The next write is out: a settings handler awaiting an earlier one may go on.
+        this.releaseSettled(render);
+        const written = await write;
+
+        if (this.keyRenders.get(contextId) !== render) return;
+
+        if (!written && !render.requested) return;
+      }
+    } finally {
+      render.running = false;
+      this.releaseSettled(render);
+    }
+  }
+
+  private releaseSettled(render: KeyRender): void {
+    for (const waiter of render.settled.splice(0)) waiter.resolve();
   }
 
   /**
-   * Push a Change Camera key's redrawn look. Its look is recorded before the
-   * write, so ticks meanwhile do not send it again; a write that rejects, or
-   * finds the key gone, never put it on the device, so the record is dropped
-   * and the next tick draws it again (#1653 review). A newer redraw's record,
-   * made while this write was in flight, belongs to that write and is left
-   * alone. A write that landed registers regeneration for these settings: one
-   * that follows a failed settings redraw is the first to put them on the key.
-   * A write a newer render overtook does neither.
+   * Write pending settings: the title cleared and the resting icon, through
+   * the host event — which also gives the key its context, so no other write
+   * can land before it. A refused write leaves the settings pending for the
+   * next request and the key's look unknown.
    */
-  private async writeChangeCameraLook(contextId: string, settings: CameraControlsSettings): Promise<void> {
-    const generation = this.claimRenderGeneration(contextId);
-    const icon = this.renderKeyIcon(settings);
-    this.recordShownLook(contextId, icon.unavailable);
+  private async writeSettingsLook(contextId: string, render: KeyRender, write: SettingsWrite): Promise<boolean> {
+    write.started = true;
 
-    const recorded = this.shownUnavailable.get(contextId);
+    const settings = this.activeContexts.get(contextId);
+
+    if (!settings) {
+      if (render.settingsWrite === write) render.settingsWrite = null;
+
+      render.settled.push(...write.waiters.splice(0));
+
+      return true;
+    }
+
+    const look = this.restingLook(settings, render.settingsVersion);
+
+    try {
+      await write.ev.action.setTitle("");
+      await this.setKeyImage(write.ev, look.render());
+    } catch (err) {
+      write.started = false;
+      render.written = null;
+
+      for (const waiter of write.waiters.splice(0)) waiter.reject(err);
+
+      return false;
+    }
+
+    if (render.settingsWrite === write) render.settingsWrite = null;
+
+    render.settled.push(...write.waiters.splice(0));
+
+    if (this.keyRenders.get(contextId) !== render) return true;
+
+    render.written = look;
+    this.setRegenerateCallback(contextId, look.render);
+
+    return true;
+  }
+
+  /**
+   * Write a look to the key. Only a write that went out records the look and
+   * registers it for regeneration; a refused one leaves the key's look unknown,
+   * so the next pass draws it again — or the grid, where there is no group to
+   * judge by.
+   */
+  private async writeLook(contextId: string, render: KeyRender, look: KeyLook): Promise<boolean> {
     let written: boolean;
 
     try {
-      written = await this.updateKeyImage(contextId, icon.svg);
+      written = await this.updateKeyImage(contextId, look.render());
     } catch (err) {
       // Debug, not warn: a host that keeps refusing would log this every tick.
-      this.logger.debug(`Failed to redraw a Change Camera key: ${err instanceof Error ? err.message : err}`);
+      const which = this.activeContexts.get(contextId)?.target === "change-camera" ? "Change Camera" : "Cycle Camera";
+      this.logger.debug(`Failed to redraw a ${which} key: ${err instanceof Error ? err.message : err}`);
       written = false;
     }
 
-    // Overtaken by new settings, the key leaving, or a newer redraw (#1653
-    // review): its callback would capture settings the key no longer has, and
-    // the record belongs to whatever overtook it.
-    if (this.renderGeneration.get(contextId) !== generation) return;
+    if (this.keyRenders.get(contextId) !== render) return false;
 
     if (written === false) {
-      if (this.shownUnavailable.get(contextId) === recorded) this.shownUnavailable.delete(contextId);
+      render.written = null;
 
-      return;
+      return false;
     }
 
-    this.setRegenerateCallback(contextId, () => this.renderKeyIcon(settings).svg);
+    render.written = look;
+    this.setRegenerateCallback(contextId, look.render);
+
+    return true;
   }
 
   /**
-   * A key's resting icon, computed fresh, and — for a Change Camera key — whether
-   * it is drawn unavailable, which it is while the session lacks its group
-   * (#1653). Records nothing: only a write that went out says what the key
-   * shows ({@link recordShownLook}).
+   * The look the key should show now, or null to leave it as it is.
+   *
+   * A Change Camera key shows its icon, drawn unavailable while the session
+   * lacks its group (#1653, spec decision 8); any other key but Cycle Camera
+   * its resting icon. A Cycle Camera key shows the group the next press
+   * selects, or — with Icon Shows = Current camera (#959) — the group the sim
+   * is on now, even outside the key's enabled subset, since that is still
+   * what is on screen; and its configured grid with no telemetry, or with no
+   * group to preview.
    */
-  private renderKeyIcon(settings: CameraControlsSettings): { svg: string; unavailable?: boolean } {
-    // Per-BUTTON missing-binding state (#612): computed from this button's own
-    // mode, so one unbound Cycle Sub-Camera key never marks the SDK-driven camera
-    // keys around it.
-    const bindingMissing = this.isBindingMissing(resolveBindingKey(settings.target, settings.direction));
-
-    if (settings.target !== "change-camera") return { svg: generateCameraControlsSvg(settings, bindingMissing) };
-
-    const unavailable = this.isChangeCameraUnavailableCached(changeCameraGroupName(settings));
-
-    return { svg: generateCameraControlsSvg(settings, bindingMissing, unavailable), unavailable };
-  }
-
-  /** Record the look on the key, so a tick redraws a Change Camera key only on a flip. */
-  private recordShownLook(contextId: string, unavailable: boolean | undefined): void {
-    if (unavailable === undefined) this.shownUnavailable.delete(contextId);
-    else this.shownUnavailable.set(contextId, unavailable);
-  }
-
-  /**
-   * Update the icon for cycle-camera contexts based on current telemetry: the
-   * group the next press selects, or — with Icon Shows = Current camera (#959)
-   * — the group the sim is on now, even outside the key's enabled subset,
-   * because that is still what is on screen.
-   */
-  private async updateCycleIcon(contextId: string): Promise<void> {
+  private computeLook(contextId: string, render: KeyRender): KeyLook | null {
     const settings = this.activeContexts.get(contextId);
 
-    if (!settings || settings.target !== "cycle-camera") return;
+    if (!settings) return null;
+
+    const version = render.settingsVersion;
+
+    if (settings.target !== "cycle-camera") return this.restingLook(settings, version);
 
     const telemetry = this.sdkController.getCurrentTelemetry();
 
-    if (!telemetry) {
-      // Connection lost — restore the grid if the key shows a telemetry-driven
-      // icon, or a restore of it has yet to land; one in flight is left to land.
-      await this.restoreCycleGridIfShowingIcon(contextId, settings);
-
-      return;
-    }
+    // Connection lost: the grid, in place of a telemetry-driven icon.
+    if (!telemetry) return this.restingLook(settings, version);
 
     const sessionGroups = this.readSessionGroupsFresh();
 
     if (sessionGroups.length === 0) {
       // No readable group list, so nothing to judge availability by (#1653
-      // review): a key the last list left greyed goes back to its configured
-      // placeholder, so the next readable list draws it afresh — and so does
-      // one whose restore failed, or whose last group write failed and may have
-      // left a greyed icon on it. Any other look stays until there is a list
-      // to judge it by.
-      const record = this.lastDisplayedGroup.get(contextId);
+      // review): a group icon drawn available stays until there is a list to
+      // judge it by; anything else — a greyed icon, or a look the key may not
+      // show after a refused write — goes back to the configured grid.
+      const shown = render.written;
 
-      if (record?.startsWith(UNAVAILABLE_MARK) || record === RESTORE_PENDING_MARK || record === DRAW_PENDING_MARK) {
-        await this.restoreCycleGrid(contextId, settings);
-      }
+      if (shown?.kind === "group" && !shown.unavailable && shown.version === version) return null;
 
-      return;
+      return this.restingLook(settings, version);
     }
-
-    let shownGroupName: string;
-    // Current camera mode only (#1653, spec decision 8): with no enabled group
-    // in this session the key shows what is on screen, greyed, since a press
-    // would cycle nowhere. The next-group look has no group to show then.
-    let unavailable = false;
 
     if (settings.cycleIconMode === "current") {
       // A group number the telemetry does not report, or the session does not
       // list, has no name to show; the empty name draws the key's placeholder
-      // rather than a guess.
+      // rather than a guess. With no enabled group in this session the key
+      // shows what is on screen greyed, since a press would cycle nowhere.
       const camGroup = telemetry.CamGroupNumber;
-      shownGroupName = camGroup === undefined ? "" : (findSessionGroupByNum(sessionGroups, camGroup)?.groupName ?? "");
-      unavailable = isCycleCameraUnavailable(getEnabledGroupNames(settings.cameraGroupSubset), sessionGroups);
-    } else {
-      const groupNum = telemetry.CamGroupNumber ?? 1;
-      const dir = settings.direction === "next" ? 1 : -1;
-      const enabledNames = getEnabledGroupNames(settings.cameraGroupSubset);
-      const nextEntry = getNextSelectedGroupEntry(groupNum, enabledNames, sessionGroups, dir);
+      const name = camGroup === undefined ? "" : (findSessionGroupByNum(sessionGroups, camGroup)?.groupName ?? "");
+      const unavailable = isCycleCameraUnavailable(getEnabledGroupNames(settings.cameraGroupSubset), sessionGroups);
 
-      if (!nextEntry) {
-        // No enabled group in this session, so no next group to preview (#1653
-        // review): a press does nothing, and a group the key still previews —
-        // one a new camera file removed — goes back to the configured grid.
-        await this.restoreCycleGridIfShowingIcon(contextId, settings);
-
-        return;
-      }
-
-      shownGroupName = nextEntry.groupName;
+      return this.groupLook(settings, version, name, unavailable);
     }
 
-    // Skip re-render if neither the shown group nor its availability changed
-    const shown = `${unavailable ? UNAVAILABLE_MARK : AVAILABLE_MARK}${shownGroupName}`;
+    const groupNum = telemetry.CamGroupNumber ?? 1;
+    const dir = settings.direction === "next" ? 1 : -1;
+    const enabledNames = getEnabledGroupNames(settings.cameraGroupSubset);
+    const nextEntry = getNextSelectedGroupEntry(groupNum, enabledNames, sessionGroups, dir);
 
-    if (this.lastDisplayedGroup.get(contextId) === shown) return;
+    // No enabled group in this session, so no next group to preview (#1653
+    // review): a press does nothing, and the key shows its configured grid.
+    if (!nextEntry) return this.restingLook(settings, version);
 
-    this.lastDisplayedGroup.set(contextId, shown);
-
-    const write = await this.showCycleIcon(contextId, this.claimRenderGeneration(contextId), () =>
-      generateCameraSelectSvg(shownGroupName, settings, unavailable),
-    );
-
-    // Never on the key, which may still show the icon before it: the next tick
-    // draws the group again, or puts the grid back when it has no group to draw.
-    if (write === "failed") this.lastDisplayedGroup.set(contextId, DRAW_PENDING_MARK);
+    return this.groupLook(settings, version, nextEntry.groupName, false);
   }
 
   /**
-   * Put a Cycle Camera key's grid back when the key shows a telemetry-driven
-   * icon, or a restore or redraw of it is still owed; a restore in flight is
-   * left to land.
+   * A key's resting icon. A Change Camera key's is drawn unavailable while the
+   * session lacks its group (#1653); the binding state is read when it is drawn.
    */
-  private async restoreCycleGridIfShowingIcon(contextId: string, settings: CameraControlsSettings): Promise<void> {
-    const record = this.lastDisplayedGroup.get(contextId);
+  private restingLook(settings: CameraControlsSettings, version: number): KeyLook {
+    const changeCamera = settings.target === "change-camera";
+    const unavailable = changeCamera && this.isChangeCameraUnavailableCached(changeCameraGroupName(settings));
 
-    if (record !== undefined && !isRestoring(record)) await this.restoreCycleGrid(contextId, settings);
+    return {
+      id: `rest:${version}:${unavailable ? 1 : 0}`,
+      version,
+      kind: "rest",
+      unavailable,
+      render: () => {
+        // Per-BUTTON missing-binding state (#612): computed from this button's
+        // own mode, so one unbound Cycle Sub-Camera key never marks the
+        // SDK-driven camera keys around it.
+        const bindingMissing = this.isBindingMissing(resolveBindingKey(settings.target, settings.direction));
+
+        return changeCamera
+          ? generateCameraControlsSvg(settings, bindingMissing, unavailable)
+          : generateCameraControlsSvg(settings, bindingMissing);
+      },
+    };
   }
 
-  /**
-   * Put a Cycle Camera key's configured grid back (#1653 review). The record
-   * says a restore is in flight while the write is, so ticks meanwhile send
-   * nothing; it is cleared once the grid is on the key, so later ticks do not
-   * resend it, and marked pending when the write failed, so the next tick tries
-   * again. A newer render owns the record and is left alone; a restore that
-   * new settings overtook, and that still owns the record, clears it, since
-   * the settings put the key's configured look on it.
-   */
-  private async restoreCycleGrid(contextId: string, settings: CameraControlsSettings): Promise<void> {
-    const generation = this.claimRenderGeneration(contextId);
-    const mark = `${RESTORING_MARK}${generation}`;
-    this.lastDisplayedGroup.set(contextId, mark);
-
-    const write = await this.showCycleIcon(contextId, generation, () => generateCameraControlsSvg(settings));
-
-    if (write === "written") this.lastDisplayedGroup.delete(contextId);
-    else if (write === "failed") this.lastDisplayedGroup.set(contextId, RESTORE_PENDING_MARK);
-    else if (this.lastDisplayedGroup.get(contextId) === mark) this.lastDisplayedGroup.delete(contextId);
-  }
-
-  /**
-   * Start a new render on a key, overtaking any icon write still in flight for
-   * it: the generation is drawn from the instance-wide count.
-   */
-  private claimRenderGeneration(contextId: string): number {
-    const generation = ++this.renders;
-    this.renderGeneration.set(contextId, generation);
-
-    return generation;
-  }
-
-  /**
-   * Push a Cycle Camera key's telemetry-driven icon and register it for
-   * regeneration — unless a newer render for the same key started while this
-   * one's image was in flight. `setRegenerateCallback` reconciles on
-   * registration, so a late, older registration would put its older image back
-   * on the key while the dedupe records the newer group, and the key would stay
-   * wrong until the group next changed.
-   *
-   * A write that rejects, or finds the key gone, never put the icon on the
-   * device: it registers nothing and reports `failed`, for the caller to update
-   * its displayed-group record so the next tick draws the key again (#1653
-   * review). One a newer render overtook reports `superseded`: the record is
-   * that render's.
-   */
-  private async showCycleIcon(contextId: string, generation: number, render: () => string): Promise<CycleIconWrite> {
-    const svg = render();
-    let written: boolean;
-
-    try {
-      written = await this.updateKeyImage(contextId, svg);
-    } catch (err) {
-      // Debug, not warn: a host that keeps refusing would log this every tick.
-      this.logger.debug(`Failed to redraw a Cycle Camera key: ${err instanceof Error ? err.message : err}`);
-      written = false;
-    }
-
-    if (this.renderGeneration.get(contextId) !== generation) return "superseded";
-
-    if (written === false) return "failed";
-
-    this.setRegenerateCallback(contextId, render);
-
-    return "written";
-  }
-
-  private async updateDisplay(
-    ev: IDeckWillAppearEvent<CameraControlsSettings> | IDeckDidReceiveSettingsEvent<CameraControlsSettings>,
-    settings: CameraControlsSettings,
-  ): Promise<void> {
-    const contextId = ev.action.id;
-    // New settings replace whatever is on the key (#1653 review): a Cycle Camera
-    // or Change Camera write still in flight from before them must register
-    // nothing when it lands, or its callback would put the old mode's icon
-    // back on the key.
-    this.claimRenderGeneration(contextId);
-    const icon = this.renderKeyIcon(settings);
-
-    try {
-      await ev.action.setTitle("");
-      await this.setKeyImage(ev, icon.svg);
-    } catch (err) {
-      // The new look may never have reached the key (#1653 review): with no
-      // record of what it shows, the next tick draws a Change Camera key's
-      // look again, and that write registers regeneration for these settings.
-      // A Cycle Camera key gets a retry marker, so the next tick draws its
-      // group with these settings (a title change keeps the same group, which
-      // the dedupe would skip) or puts the grid back when it has none.
-      this.shownUnavailable.delete(contextId);
-
-      if (settings.target === "cycle-camera") this.lastDisplayedGroup.set(contextId, DRAW_PENDING_MARK);
-      else this.lastDisplayedGroup.delete(contextId);
-
-      throw err;
-    }
-
-    this.recordShownLook(contextId, icon.unavailable);
-    this.setRegenerateCallback(contextId, () => this.renderKeyIcon(settings).svg);
+  /** A Cycle Camera key's group icon. */
+  private groupLook(settings: CameraControlsSettings, version: number, name: string, unavailable: boolean): KeyLook {
+    return {
+      id: `group:${version}:${unavailable ? 1 : 0}:${name}`,
+      version,
+      kind: "group",
+      unavailable,
+      render: () => generateCameraSelectSvg(name, settings, unavailable),
+    };
   }
 }
 
