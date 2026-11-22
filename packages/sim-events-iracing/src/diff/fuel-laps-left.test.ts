@@ -525,10 +525,10 @@ describe("diffFuelLapsLeft — an unreadable session (issue #1702)", () => {
     const before = { ...runner.slice };
 
     // The whole next lap, crossing included, with the session unreadable:
-    // nothing but the resume mark is written.
+    // nothing is written.
     lapSample(runner.run, 6, 6.1, unknown);
     expect(events).toHaveLength(1);
-    expect(runner.slice).toEqual({ ...before, resumeAfterSessionGap: true });
+    expect(runner.slice).toEqual(before);
 
     // Readable again: the next crossing speaks the count the gap would have
     // consumed.
@@ -593,6 +593,53 @@ describe("diffFuelLapsLeft — an unreadable session (issue #1702)", () => {
     run(tick({ Lap: 4, LapDistPct: 0.45, FuelLevel: 5.92 }));
     run(tick({ Lap: 4, LapDistPct: 0.55, FuelLevel: 5.9 }));
     expect(counts(events)).toEqual([3, 2]);
+  });
+
+  it("does not take a lap counter that went back across the gap, with a rising fraction, as a crossing", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    lapSample(run, 5, 8.1); // count 3, lap 5 sampled; the run ends on lap 6
+    run(tick({ Lap: 6, LapDistPct: 0.45, FuelLevel: 8.0 }));
+    run(tick({ Lap: 6, LapDistPct: 0.48, FuelLevel: 6.2 }), { session: "unknown" });
+    // Lap 4 at 0.70 against a saved lap 6 at 0.45: a rewind, not a crossing.
+    run(tick({ Lap: 4, LapDistPct: 0.7, FuelLevel: 6.0 }));
+    run(tick({ Lap: 4, LapDistPct: 0.8, FuelLevel: 5.9 }));
+    expect(counts(events)).toEqual([3]);
+  });
+
+  it("does not sample a lap the car was already past the mark of before the gap", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    run(tick({ Lap: 5, LapDistPct: 0.6, FuelLevel: 6.1 })); // the silent seed
+    run(tick({ Lap: 5, LapDistPct: 0.65, FuelLevel: 6.05 }), { session: "unknown" });
+    run(tick({ Lap: 5, LapDistPct: 0.7, FuelLevel: 6.0 }));
+    expect(events).toEqual([]);
+
+    // Lap 6's crossing samples as ever.
+    lapSample(run, 6, 5.9);
+    expect(counts(events)).toEqual([2]);
+  });
+
+  it("does not take a new lap read with the old lap's fraction at the line as a crossing", () => {
+    const events: PendingEvent[] = [];
+    const { run } = makeRunner(events);
+
+    lapSample(run, 5, 8.1); // count 3
+    lapSample(run, 6, 6.1); // count 2; the run ends on lap 7 at 0.05
+    run(tick({ Lap: 7, LapDistPct: 0.45, FuelLevel: 6.0 }));
+    run(tick({ Lap: 7, LapDistPct: 0.55, FuelLevel: 5.9 })); // count 2 again: silent
+    run(tick({ Lap: 7, LapDistPct: 0.98, FuelLevel: 4.2 }));
+    // `Lap` moves a tick before the fraction wraps: lap 8 read at 0.99.
+    run(tick({ Lap: 8, LapDistPct: 0.99, FuelLevel: 4.1 }));
+    run(tick({ Lap: 8, LapDistPct: 0.01, FuelLevel: 4.08 }));
+    expect(counts(events)).toEqual([3, 2]);
+
+    // Lap 8 samples at its own mark: floor(3.98 / 2 − 0.75) = 1.
+    run(tick({ Lap: 8, LapDistPct: 0.45, FuelLevel: 4.0 }));
+    run(tick({ Lap: 8, LapDistPct: 0.55, FuelLevel: 3.98 }));
+    expect(counts(events)).toEqual([3, 2, 1]);
   });
 
   it("keeps the silent seed when the gap came before any readable tick", () => {
@@ -669,7 +716,7 @@ describe("diffFuelLapsLeft — a sample attempt that throws (issue #1702)", () =
     expect(counts(events)).toEqual([2]);
   });
 
-  it("keeps the resume mark when the first readable tick after a gap throws", () => {
+  it("keeps the saved position when the first readable tick after a gap throws", () => {
     const events: PendingEvent[] = [];
     const runner = makeRunner(events);
 
@@ -678,7 +725,7 @@ describe("diffFuelLapsLeft — a sample attempt that throws (issue #1702)", () =
     runner.run(tick({ Lap: 6, LapDistPct: 0.6, FuelLevel: 6.2 }), { session: "unknown" });
 
     expect(() => runner.run(tick({ Lap: 6, LapDistPct: 0.7, FuelLevel: 6.0 }), { throwIn: "stats" })).toThrow();
-    expect(runner.slice).toMatchObject({ lastDistPct: 0.55, lastSampledLap: 5, resumeAfterSessionGap: true });
+    expect(runner.slice).toMatchObject({ lastDistPct: 0.55, lastDistLap: 5, lastSampledLap: 5 });
 
     // floor(5.98 / 2 − 0.3 − 0.25) = 2.
     runner.run(tick({ Lap: 6, LapDistPct: 0.75, FuelLevel: 5.98 }));
@@ -1864,8 +1911,8 @@ describe("the fuelCallout slice (issue #1405, under #1588's convention)", () => 
   function busySlice(): FuelCalloutState {
     return {
       lastDistPct: 0.62,
+      lastDistLap: 14,
       lastSampledLap: 14,
-      resumeAfterSessionGap: true,
       lastFuelLevel: 7.5,
       lastAnnouncedCount: 3,
       raceCoveredAnnounced: true,
@@ -1876,8 +1923,8 @@ describe("the fuelCallout slice (issue #1405, under #1588's convention)", () => 
   it("starts with nothing sampled, announced or counted", () => {
     expect(createFuelCalloutState()).toEqual({
       lastDistPct: null,
+      lastDistLap: null,
       lastSampledLap: -1,
-      resumeAfterSessionGap: false,
       lastFuelLevel: null,
       lastAnnouncedCount: null,
       raceCoveredAnnounced: false,
@@ -1893,8 +1940,8 @@ describe("the fuelCallout slice (issue #1405, under #1588's convention)", () => 
 
     expect(kept).toEqual({
       lastDistPct: null,
+      lastDistLap: null,
       lastSampledLap: -1,
-      resumeAfterSessionGap: false,
       lastFuelLevel: 7.5,
       lastAnnouncedCount: 3,
       raceCoveredAnnounced: true,

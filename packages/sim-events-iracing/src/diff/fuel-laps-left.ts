@@ -127,6 +127,7 @@ import {
   countClockExpiredTicks,
   fuelFinishToleranceLaps,
   isClockExpiredReading,
+  LAP_LINE_GUARD_PCT,
   lapCountCrossings,
   type LeaderFinish,
   staysWithinLapAtChequered,
@@ -560,15 +561,11 @@ export function diffFuelLapsLeft(
   // session it cannot classify, so the count would never be spoken. Nothing
   // is consumed, the baselines included, so the first readable tick carries
   // on from the last one: `lastSampledLap` still stops a lap sampled before
-  // the gap from being sampled twice, and `lastFuelLevel` lands a refuel made
-  // during the gap as one delta (the replay glance's rule). The one write is
-  // the resume mark, which lets that tick sample a lap whose crossing fell in
-  // the gap (below).
-  if (session === "unknown") {
-    slice.resumeAfterSessionGap = true;
-
-    return;
-  }
+  // the gap from being sampled twice, `lastFuelLevel` lands a refuel made
+  // during the gap as one delta (the replay glance's rule), and the saved
+  // position, with its lap, lets that tick sample a lap whose crossing fell
+  // in the gap (below).
+  if (session === "unknown") return;
 
   const fuelLevel = telemetry.FuelLevel;
   const distPct = telemetry.LapDistPct;
@@ -599,10 +596,10 @@ export function diffFuelLapsLeft(
   slice.lastFuelLevel = fuelLevel;
 
   const lastDistPct = slice.lastDistPct;
-  const resuming = slice.resumeAfterSessionGap;
+  const lastDistLap = slice.lastDistLap;
 
-  // The tick's position becomes the next edge's baseline, and the resume mark
-  // is cleared, on every path below but one: a sample attempt whose fallible
+  // The tick's position becomes the next crossing's baseline on every path
+  // below but one: a sample attempt whose fallible
   // work throws — `getStats`, `getMarginLaps` and `getLeaderFinish` are
   // closures over the plugin and the translator — commits nothing of the
   // attempt (issue #1702), so the next tick finds the same crossing and tries
@@ -611,7 +608,7 @@ export function diffFuelLapsLeft(
   // those calls has returned.
   const commitPosition = (): void => {
     slice.lastDistPct = distPct;
-    slice.resumeAfterSessionGap = false;
+    slice.lastDistLap = lap;
   };
   // The attempt itself: at most one per lap once committed.
   const commitAttempt = (): void => {
@@ -619,24 +616,32 @@ export function diffFuelLapsLeft(
     slice.lastSampledLap = lap;
   };
 
-  // Seed silently on the first valid tick — no edge to compare yet.
-  if (lastDistPct === null) {
+  // Seed silently on the first valid tick — no crossing to compare with yet —
+  // and re-seed on a lap counter behind the saved position (a rewind or a
+  // reset): no lap the countdown has missed, so it waits for a real edge.
+  if (lastDistPct === null || lastDistLap === null || lap < lastDistLap) {
     commitPosition();
 
     return;
   }
 
-  // Rising mid-lap crossing, at most one sample attempt per lap. On the first
-  // readable tick after an unreadable session (issue #1702) the crossing may
-  // have fallen in the gap, so being at or past the mark on a LATER lap than
-  // the last one sampled counts as it — a real position, where the count is as
-  // valid as at the mark. Later, not merely another: a lap counter that went
-  // backwards across the gap is no lap the countdown has missed, so it waits
-  // for a real edge.
-  const crossed = lastDistPct < FUEL_LAPS_LEFT_SAMPLE_PCT && distPct >= FUEL_LAPS_LEFT_SAMPLE_PCT;
-  const crossedInGap = resuming && distPct >= FUEL_LAPS_LEFT_SAMPLE_PCT && lap > slice.lastSampledLap;
+  // Whether this lap's mid-lap mark was crossed since the saved position: a
+  // rising edge on the same lap, or, from an earlier lap, being at or past
+  // the mark now — a real position, where the count is as valid as at the
+  // mark (issue #1702). An ordinary tick never takes the second in one step,
+  // since it starts a new lap at the line; a tick after a gap the diff did
+  // not see does, such as an unreadable session whose span held the
+  // crossing. The line guard keeps it from the moment `Lap` and `LapDistPct`
+  // can disagree around the line (`LAP_LINE_GUARD_PCT`): a new lap read with
+  // the old lap's fraction would look past the mark and be sampled with a
+  // count one lap high.
+  const crossed =
+    lap === lastDistLap
+      ? lastDistPct < FUEL_LAPS_LEFT_SAMPLE_PCT && distPct >= FUEL_LAPS_LEFT_SAMPLE_PCT
+      : distPct >= FUEL_LAPS_LEFT_SAMPLE_PCT && distPct < 1 - LAP_LINE_GUARD_PCT;
 
-  if ((!crossed && !crossedInGap) || lap === slice.lastSampledLap) {
+  // At most one sample attempt per lap.
+  if (!crossed || lap === slice.lastSampledLap) {
     commitPosition();
 
     return;

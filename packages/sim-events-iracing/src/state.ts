@@ -992,19 +992,16 @@ export type FuelCalloutState = {
    */
   lastDistPct: number | null;
   /**
+   * The `Lap` of {@link lastDistPct}, `null` with it (issue #1702). A later
+   * lap at or past the mark counts as a crossing, which only a gap the diff
+   * did not see can produce (an unreadable session); an earlier one re-seeds.
+   */
+  lastDistLap: number | null;
+  /**
    * `Lap` value of the last mid-lap sample, so a car rolling backwards and
    * forwards across the 0.5 mark can't sample the same lap twice. `-1` = none.
    */
   lastSampledLap: number;
-  /**
-   * Set while the session type cannot be read (issue #1702), when the diff
-   * samples nothing; cleared by the next valid readable tick. That tick
-   * takes being at or past the mid-lap mark on a lap AFTER `lastSampledLap`
-   * as the crossing, since the real one may have fallen in the gap, where
-   * the frozen `lastDistPct` cannot show it. Not kept across a replay glance,
-   * which re-seeds the baselines anyway.
-   */
-  resumeAfterSessionGap: boolean;
   /**
    * Previous-tick `FuelLevel` for refuel detection (a debounced per-tick
    * increase re-arms the announced counts). Kept across a replay glance
@@ -1054,8 +1051,8 @@ export type FuelCalloutState = {
 export function createFuelCalloutState(): FuelCalloutState {
   return {
     lastDistPct: null,
+    lastDistLap: null,
     lastSampledLap: -1,
-    resumeAfterSessionGap: false,
     lastFuelLevel: null,
     lastAnnouncedCount: null,
     raceCoveredAnnounced: false,
@@ -1072,9 +1069,9 @@ export function createFuelCalloutState(): FuelCalloutState {
  * the reassurance, and the previous-fuel-level tracker must survive the
  * garage visit so the refuel that happened there (replay-mode ticks) lands as
  * one positive delta on the first live tick back and re-arms the stint. The
- * sampling baselines (`lastDistPct`, `lastSampledLap`,
- * `resumeAfterSessionGap`) re-seed, because the position jump made their
- * edges meaningless, and the expired-clock count
+ * sampling baselines (`lastDistPct`, `lastDistLap`, `lastSampledLap`)
+ * re-seed, because the position jump made their edges meaningless, and the
+ * expired-clock count
  * starts again (issue #1405), because a stale count must not confirm an
  * expiry on the first live tick back.
  */
