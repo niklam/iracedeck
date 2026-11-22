@@ -15,6 +15,11 @@ export const CORNER_NAMES_TOGGLE_CALLOUTS = defineCalloutFamily({
      * Race Engineer master gate to be on. UI-side, no scenario engine. Read
      * live in `toggleTrackCallouts()`. Default `true`.
      */
-    ack: { key: "calloutEnabledToggleCornerNames", label: "Toggle on/off acknowledgment" },
+    ack: {
+      key: "calloutEnabledToggleCornerNames",
+      label: "Toggle on/off acknowledgment",
+      description:
+        "When you press the Corner Names key, confirms whether the corner or sector calls are now on or off.",
+    },
   },
 });

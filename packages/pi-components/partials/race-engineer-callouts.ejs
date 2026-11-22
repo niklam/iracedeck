@@ -2,23 +2,36 @@
   Race Engineer per-callout opt-ins (issue #992 split). Authored inline in
   pit-crew.ejs until the settings window needed them; since #1003 only the
   window includes it, wrapping these items in its "Callouts" card. The
-  headings, their rows, labels and defaults come from the
-  @iracedeck/callout-settings registry (#1350), which pi-template-plugin.mjs
-  reads per build (callout-pi-groups.mjs) and passes as `calloutPiGroups`; this partial only lays them out and places
-  the non-callout items (ranges, thresholds) between them. See
+  sections, their headings and descriptions, the rows, labels and defaults
+  come from the @iracedeck/callout-settings registry (#1350, #1700), which
+  pi-template-plugin.mjs reads per build (callout-pi-groups.mjs) and passes as
+  `calloutPiSections`. This partial only walks that data, sections → headings
+  → rows, in registry order, and appends each heading's non-callout items
+  (ranges, thresholds, supporting text) from HEADING_EXTRAS below. See
   .claude/rules/global-settings.md (per-callout opt-in convention).
+
+  Each section is a native <details>, closed on every open of the window and
+  never remembered (#1700). It must NOT carry `ird-collapsible` or
+  `data-accordion-id`: head-common.ejs would bind it to the `_accordionState`
+  global setting and write every open and close into the user's settings.
 %>
 		<%
-if (typeof calloutPiGroups === "undefined") {
-	throw new Error("race-engineer-callouts.ejs needs `calloutPiGroups` in the render data (pi-template-plugin.mjs provides it)");
+if (typeof calloutPiSections === "undefined") {
+	throw new Error("race-engineer-callouts.ejs needs `calloutPiSections` in the render data (pi-template-plugin.mjs provides it)");
 }
 
-// One PI heading of callout opt-ins, from @iracedeck/callout-settings (#1350):
-// the group's rows in a 2-column grid (rows = ceil(N / 2), grid-auto-flow:
-// column → fills column 1 top to bottom, then column 2), so it stays at
-// exactly two columns however the family grows.
-// An OFF default must OMIT the `default` attribute entirely — `default="false"`
-// renders CHECKED (the truthy-attribute sdpi-checkbox trap).
+// Every title, label and description is free text from the registry, so each
+// goes through this, in an attribute and in element text alike. Setting keys
+// are not escaped: the registry holds them to ^calloutEnabled[A-Z]\w*$.
+function escapeHtml(text) {
+	return String(text)
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&#39;');
+}
+
 // A row whose entry names a platform feature flag (`requiresFeature`, #1113)
 // renders only when this build's flags have it on: `=== true`, so a build or
 // a render that passes no `platform` leaves it out. A development flag fails
@@ -26,93 +39,130 @@ if (typeof calloutPiGroups === "undefined") {
 function rowShown(r) {
 	return !r.feature || (locals.platform && locals.platform.features && locals.platform.features[r.feature] === true);
 }
-function calloutGroupItem(id) {
-	var group = calloutPiGroups.find(function (g) { return g.id === id; });
-	if (!group) throw new Error("race-engineer-callouts.ejs: unknown callout group " + id);
+
+// The non-callout items of a heading, keyed by its group id, appended inside
+// that heading's block after its rows. The sliders keep their sdpi-item and
+// supporting text; `race-engineer-callouts-sliders.test.ts` holds each to the
+// settings schema. A key that names no heading throws below, so renaming a
+// group cannot silently drop its slider.
+var HEADING_EXTRAS = {
+	'opponent-flags':
+		'<sdpi-item label="Opponent flag range (s)">' +
+			'<ird-range-input setting="opponentFlagRangeSeconds" min="1" max="10" step="1" default="3" global showlabels></ird-range-input>' +
+		'</sdpi-item>' +
+		'<div class="ird-supporting-text">Only cars in your class this close ahead or behind in the race are announced.</div>',
+	'gaps':
+		'<sdpi-item label="Gap alert threshold (s)">' +
+			'<ird-range-input setting="gapAlertThresholdSeconds" min="0.5" max="3" step="0.1" default="1" global showlabels></ird-range-input>' +
+		'</sdpi-item>' +
+		'<div class="ird-supporting-text">The engineer calls out when the gap to the car ahead or behind first drops under this. Re-arms once the gap opens about half a second beyond it.</div>' +
+		'<sdpi-item label="Gap callout cooldown (s)">' +
+			'<ird-range-input setting="gapCalloutCooldownSeconds" min="1" max="360" step="1" default="30" global showlabels></ird-range-input>' +
+		'</sdpi-item>' +
+		'<div class="ird-supporting-text">Minimum quiet time between any two gap callouts.</div>' +
+		'<sdpi-item label="Gap change to re-announce (s)">' +
+			'<ird-range-input setting="gapCalloutMinChangeSeconds" min="0" max="10" step="0.1" default="1.5" global showlabels></ird-range-input>' +
+		'</sdpi-item>' +
+		'<div class="ird-supporting-text">A new call must agree with the story: closing-in needs the gap down this much from its high point since the last call, pulling-away up this much from its low point. Stops back-and-forth announcements while a gap hovers. 0 disables.</div>',
+	'spotter':
+		'<sdpi-item label="Reminder interval (s)">' +
+			'<ird-range-input setting="spotterStillThereSeconds" min="1" max="10" step="1" default="3" global showlabels></ird-range-input>' +
+		'</sdpi-item>' +
+		'<div class="ird-supporting-text">How often the still-there reminder repeats while a car is alongside.</div>',
+	'traffic':
+		'<sdpi-item label="Pit exit window before you (s)">' +
+			'<ird-range-input setting="trafficPitExitBeforeSeconds" min="0" max="10" step="1" default="2" global showlabels></ird-range-input>' +
+		'</sdpi-item>' +
+		'<div class="ird-supporting-text">A car reaching the point where the pit exit joins the track up to this long before you counts as traffic; 0 ignores cars that get there first.</div>' +
+		'<sdpi-item label="Pit exit window after you (s)">' +
+			'<ird-range-input setting="trafficPitExitAfterSeconds" min="0" max="15" step="1" default="4" global showlabels></ird-range-input>' +
+		'</sdpi-item>' +
+		'<div class="ird-supporting-text">A car reaching the point where the pit exit joins the track up to this long after you counts as traffic; 0 ignores cars that get there after you.</div>' +
+		'<sdpi-item label="Pit exit merge warning (s)">' +
+			'<ird-range-input setting="trafficPitExitMergeWarnSeconds" min="0" max="5" step="0.1" default="1.5" global showlabels></ird-range-input>' +
+		'</sdpi-item>' +
+		'<div class="ird-supporting-text">In the pit exit lane, the engineer says "Watch for cars." once when a car will reach the point where the pit exit joins the track within this long of you; 0 turns it off.</div>',
+	// The old first sentence of this text is the Fuel heading's description now (#1700).
+	'fuel':
+		'<div class="ird-supporting-text">"Box this lap" fires when the tank won\'t cover another full lap. Warnings stay silent when the fuel covers what\'s left of the race — lap-limited and timed races both — and "Enough fuel to finish" confirms it once, inside the last 10 laps.</div>' +
+		'<sdpi-item label="Fuel margin (laps)">' +
+			'<ird-range-input setting="fuelCalloutMarginLaps" min="0" max="3" step="0.1" default="0" global showlabels></ird-range-input>' +
+		'</sdpi-item>' +
+		'<div class="ird-supporting-text">Safety margin subtracted from the estimate before it is spoken — higher values make the engineer call you in earlier.</div>',
+	// The corner data attribution is a condition of the grant: never removed,
+	// kept word for word (track-data/CLAUDE.md). Its old first sentence is the
+	// Corner Names and Sectors heading's description now (#1700).
+	'corner-names':
+		'<div class="ird-supporting-text">Corner data &copy; 2025 <a href="https://github.com/Lovely-Sim-Racing/lovely-track-data" target="_blank" rel="noopener noreferrer">Lovely Sim Racing</a> (lovely-track-data, modified: pruned and normalized), corner names by Racing Circuits &mdash; <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>, used with permission.</div>' +
+		'<sdpi-item label="Corner call lead (seconds)">' +
+			'<ird-range-input setting="cornerCalloutLeadSeconds" min="0" max="5" step="0.5" default="1" global showlabels></ird-range-input>' +
+		'</sdpi-item>' +
+		'<div class="ird-supporting-text">How far before the corner or sector line the call is spoken, scaled by your speed. Keep it short &mdash; long leads blur together through consecutive corners.</div>'
+};
+
+var headingIds = {};
+calloutPiSections.forEach(function (section) {
+	section.groups.forEach(function (group) { headingIds[group.id] = true; });
+});
+Object.keys(HEADING_EXTRAS).forEach(function (id) {
+	if (!headingIds[id]) {
+		throw new Error('race-engineer-callouts.ejs: HEADING_EXTRAS names "' + id + '", which is no callout heading; move its items to the heading that took its place');
+	}
+});
+
+// One opt-in row: a two-column grid (`1fr auto`, styled in settings-window.ejs)
+// whose first cell holds the checkbox and, when the entry has one, its
+// description as a second line. The second cell is left free (#1701).
+// An OFF default must OMIT the `default` attribute entirely — `default="false"`
+// renders CHECKED (the truthy-attribute sdpi-checkbox trap).
+function calloutRow(r) {
+	return '<div class="ird-callout-row">' +
+		'<sdpi-checkbox setting="' + r.setting + '" label="' + escapeHtml(r.label) + '" global' + (r.on ? ' default="true"' : '') + '></sdpi-checkbox>' +
+		(r.description ? '<div class="ird-callout-row-description">' + escapeHtml(r.description) + '</div>' : '') +
+	'</div>';
+}
+
+// One heading: its title, its description directly under it, its shown rows
+// (CSS columns, so no row count is computed here), then its non-callout
+// items. A heading whose rows are all hidden by feature flags keeps its
+// title, description and non-callout items, since those settings apply
+// regardless, but renders no rows block; one with neither rows nor items to
+// show is left out, together with its title in the section summary.
+function calloutHeading(group) {
 	var rows = group.rows.filter(rowShown);
-	if (rows.length === 0) return '';
-	var rowCount = Math.ceil(rows.length / 2);
-	var boxes = rows.map(function (r) {
-		return '<sdpi-checkbox setting="' + r.setting + '" label="' + r.label + '" global' + (r.on ? ' default="true"' : '') + '></sdpi-checkbox>';
-	}).join('');
-	return '<sdpi-item label="' + group.title + '">' +
-		'<div style="display:grid;grid-template-rows:repeat(' + rowCount + ',auto);grid-auto-flow:column;gap:4px 12px;width:100%;">' +
-			boxes +
-		'</div>' +
-	'</sdpi-item>';
+	var extras = HEADING_EXTRAS[group.id] || '';
+	if (rows.length === 0 && extras === '') return null;
+	return {
+		title: group.title,
+		total: rows.length,
+		on: rows.filter(function (r) { return r.on; }).length,
+		html: '<div class="ird-callout-heading" data-callout-group="' + escapeHtml(group.id) + '">' +
+			'<div class="ird-callout-heading-title">' + escapeHtml(group.title) + '</div>' +
+			'<div class="ird-callout-heading-description">' + escapeHtml(group.description) + '</div>' +
+			(rows.length > 0 ? '<div class="ird-callout-rows">' + rows.map(calloutRow).join('') + '</div>' : '') +
+			extras +
+		'</div>'
+	};
+}
+
+// One section: a closed <details> whose summary carries the title, the
+// "N of M on" count over the rows actually rendered (ird-callout-count keeps
+// it true once the page loads) and the heading titles, which CSS shows only
+// while the section is closed. A section with no heading to show is left out.
+function calloutSection(section) {
+	var headings = section.groups.map(calloutHeading).filter(function (h) { return h !== null; });
+	if (headings.length === 0) return '';
+	var total = 0;
+	var on = 0;
+	headings.forEach(function (h) { total += h.total; on += h.on; });
+	return '<details class="ird-callout-section" data-callout-section="' + escapeHtml(section.id) + '">' +
+		'<summary class="ird-callout-section-summary">' +
+			'<span class="ird-callout-section-title">' + escapeHtml(section.title) + '</span>' +
+			'<ird-callout-count>' + on + ' of ' + total + ' on</ird-callout-count>' +
+			'<span class="ird-callout-section-headings">' + headings.map(function (h) { return escapeHtml(h.title); }).join(' &middot; ') + '</span>' +
+		'</summary>' +
+		headings.map(function (h) { return h.html; }).join('') +
+	'</details>';
 }
 		%>
-<%- (
-  calloutGroupItem('flags') +
-  calloutGroupItem('start-lights') +
-  calloutGroupItem('rolling-start') +
-  calloutGroupItem('pit-window') +
-  calloutGroupItem('pit-limiter') +
-  calloutGroupItem('no-pit-limiter') +
-  calloutGroupItem('opponent-pits') +
-  calloutGroupItem('opponent-flags') +
-  '<sdpi-item label="Opponent flag range (s)">' +
-  	'<ird-range-input setting="opponentFlagRangeSeconds" min="1" max="10" step="1" default="3" global showlabels></ird-range-input>' +
-  '</sdpi-item>' +
-  '<div class="ird-supporting-text">Only cars in your class this close ahead or behind in the race are announced.</div>' +
-  calloutGroupItem('pit-service') +
-  calloutGroupItem('pit-service-status') +
-  calloutGroupItem('damage') +
-  calloutGroupItem('track-conditions') +
-  calloutGroupItem('incidents') +
-  calloutGroupItem('session-start') +
-  calloutGroupItem('race-engineer-toggle') +
-  calloutGroupItem('telemetry-connect') +
-  calloutGroupItem('lap-time') +
-  calloutGroupItem('position') +
-  calloutGroupItem('qualifying') +
-  calloutGroupItem('race') +
-  calloutGroupItem('overtakes') +
-  calloutGroupItem('gaps') +
-  '<sdpi-item label="Gap alert threshold (s)">' +
-  	'<ird-range-input setting="gapAlertThresholdSeconds" min="0.5" max="3" step="0.1" default="1" global showlabels></ird-range-input>' +
-  '</sdpi-item>' +
-  '<div class="ird-supporting-text">The engineer calls out when the gap to the car ahead or behind first drops under this. Re-arms once the gap opens about half a second beyond it.</div>' +
-  '<sdpi-item label="Gap callout cooldown (s)">' +
-  	'<ird-range-input setting="gapCalloutCooldownSeconds" min="1" max="360" step="1" default="30" global showlabels></ird-range-input>' +
-  '</sdpi-item>' +
-  '<div class="ird-supporting-text">Minimum quiet time between any two gap callouts.</div>' +
-  '<sdpi-item label="Gap change to re-announce (s)">' +
-  	'<ird-range-input setting="gapCalloutMinChangeSeconds" min="0" max="10" step="0.1" default="1.5" global showlabels></ird-range-input>' +
-  '</sdpi-item>' +
-  '<div class="ird-supporting-text">A new call must agree with the story: closing-in needs the gap down this much from its high point since the last call, pulling-away up this much from its low point. Stops back-and-forth announcements while a gap hovers. 0 disables.</div>' +
-  calloutGroupItem('spotter') +
-  '<sdpi-item label="Reminder interval (s)">' +
-  	'<ird-range-input setting="spotterStillThereSeconds" min="1" max="10" step="1" default="3" global showlabels></ird-range-input>' +
-  '</sdpi-item>' +
-  '<div class="ird-supporting-text">How often the still-there reminder repeats while a car is alongside.</div>' +
-  calloutGroupItem('traffic') +
-  '<sdpi-item label="Pit exit window before you (s)">' +
-  	'<ird-range-input setting="trafficPitExitBeforeSeconds" min="0" max="10" step="1" default="2" global showlabels></ird-range-input>' +
-  '</sdpi-item>' +
-  '<div class="ird-supporting-text">A car reaching the point where the pit exit joins the track up to this long before you counts as traffic; 0 ignores cars that get there first.</div>' +
-  '<sdpi-item label="Pit exit window after you (s)">' +
-  	'<ird-range-input setting="trafficPitExitAfterSeconds" min="0" max="15" step="1" default="4" global showlabels></ird-range-input>' +
-  '</sdpi-item>' +
-  '<div class="ird-supporting-text">A car reaching the point where the pit exit joins the track up to this long after you counts as traffic; 0 ignores cars that get there after you.</div>' +
-  '<sdpi-item label="Pit exit merge warning (s)">' +
-  	'<ird-range-input setting="trafficPitExitMergeWarnSeconds" min="0" max="5" step="0.1" default="1.5" global showlabels></ird-range-input>' +
-  '</sdpi-item>' +
-  '<div class="ird-supporting-text">In the pit exit lane, the engineer says "Watch for cars." once when a car will reach the point where the pit exit joins the track within this long of you; 0 turns it off.</div>' +
-  calloutGroupItem('pit-box') +
-  calloutGroupItem('pit-speeding') +
-  calloutGroupItem('fuel') +
-  '<div class="ird-supporting-text">Estimated laps of fuel left, announced mid-lap once each count is reached. "Box this lap" fires when the tank won\'t cover another full lap. Warnings stay silent when the fuel covers what\'s left of the race — lap-limited and timed races both — and "Enough fuel to finish" confirms it once, inside the last 10 laps.</div>' +
-  '<sdpi-item label="Fuel margin (laps)">' +
-  	'<ird-range-input setting="fuelCalloutMarginLaps" min="0" max="3" step="0.1" default="0" global showlabels></ird-range-input>' +
-  '</sdpi-item>' +
-  '<div class="ird-supporting-text">Safety margin subtracted from the estimate before it is spoken — higher values make the engineer call you in earlier.</div>' +
-  calloutGroupItem('corner-names') +
-  '<div class="ird-supporting-text">Announces the upcoming corner\'s name, and each sector start after the first, in practice and test sessions. Corner data &copy; 2025 <a href="https://github.com/Lovely-Sim-Racing/lovely-track-data" target="_blank" rel="noopener noreferrer">Lovely Sim Racing</a> (lovely-track-data, modified: pruned and normalized), corner names by Racing Circuits &mdash; <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>, used with permission.</div>' +
-  '<sdpi-item label="Corner call lead (seconds)">' +
-  	'<ird-range-input setting="cornerCalloutLeadSeconds" min="0" max="5" step="0.5" default="1" global showlabels></ird-range-input>' +
-  '</sdpi-item>' +
-  '<div class="ird-supporting-text">How far before the corner or sector line the call is spoken, scaled by your speed. Keep it short &mdash; long leads blur together through consecutive corners.</div>' +
-  calloutGroupItem('setup-warning') +
-  calloutGroupItem('caution')
-) %>
+<%- calloutPiSections.map(calloutSection).join('') %>

@@ -1,6 +1,7 @@
 /**
- * The Race Engineer Callouts rows (#1350) for `race-engineer-callouts.ejs`,
- * read from the built `@iracedeck/callout-settings` registry.
+ * The Race Engineer Callouts sections, headings and rows (#1350, #1700) for
+ * `race-engineer-callouts.ejs`, read from the built
+ * `@iracedeck/callout-settings` registry.
  *
  * The registry is read in a fresh Node process on every call. An in-process
  * `import()` would be cached for the life of the Rollup process, so in watch
@@ -18,32 +19,42 @@ import url from "node:url";
 const THIS_FILE = url.fileURLToPath(import.meta.url);
 
 /**
- * @typedef {{ setting: string, label: string, on: boolean, feature: string | null }} CalloutPiRow
- * @typedef {{ id: string, title: string, rows: CalloutPiRow[] }} CalloutPiGroupData
+ * @typedef {{ setting: string, label: string, description: string | null, on: boolean, feature: string | null }} CalloutPiRow
+ * @typedef {{ id: string, title: string, description: string, rows: CalloutPiRow[] }} CalloutPiHeadingData
+ * @typedef {{ id: string, title: string, groups: CalloutPiHeadingData[] }} CalloutPiSectionData
  */
 
 /**
- * Flatten a registry module into the partial's render data: one entry per PI
- * heading, its rows its families' entries in registry order, `on` the
- * schema default, `feature` the platform flag the row needs (the entry's
+ * Flatten a registry module into the partial's render data (#1700): one entry
+ * per section of the settings window's Callouts card, in registry order, each
+ * holding its headings in order. A heading carries its title and its one-line
+ * description; its rows are its families' entries in registry order, with the
+ * entry's optional description (`null` when it has none), `on` the schema
+ * default, and `feature` the platform flag the row needs (the entry's
  * `requiresFeature`, #1113) or `null`. The partial drops a row whose flag is
  * not on in the build's `platform`.
  *
- * @param {Pick<typeof import("@iracedeck/callout-settings"), "CALLOUT_PI_GROUPS" | "calloutDefault">} registry
- * @returns {CalloutPiGroupData[]}
+ * @param {Pick<typeof import("@iracedeck/callout-settings"), "CALLOUT_PI_SECTIONS" | "calloutDefault">} registry
+ * @returns {CalloutPiSectionData[]}
  */
-export function buildCalloutPiGroups({ CALLOUT_PI_GROUPS, calloutDefault }) {
-  return CALLOUT_PI_GROUPS.map((group) => ({
-    id: group.id,
-    title: group.title,
-    rows: group.families.flatMap((family) =>
-      Object.values(family.callouts).map((entry) => ({
-        setting: entry.key,
-        label: entry.label,
-        on: calloutDefault(entry.key),
-        feature: entry.requiresFeature ?? null,
-      })),
-    ),
+export function buildCalloutPiSections({ CALLOUT_PI_SECTIONS, calloutDefault }) {
+  return CALLOUT_PI_SECTIONS.map((section) => ({
+    id: section.id,
+    title: section.title,
+    groups: section.groups.map((group) => ({
+      id: group.id,
+      title: group.title,
+      description: group.description,
+      rows: group.families.flatMap((family) =>
+        Object.values(family.callouts).map((entry) => ({
+          setting: entry.key,
+          label: entry.label,
+          description: entry.description ?? null,
+          on: calloutDefault(entry.key),
+          feature: entry.requiresFeature ?? null,
+        })),
+      ),
+    })),
   }));
 }
 
@@ -58,13 +69,13 @@ function listJsFiles(dir) {
 }
 
 /**
- * The rows as the registry's build has them now, plus what a watcher must
+ * The sections as the registry's build has them now, plus what a watcher must
  * watch for them to change: every compiled file of the registry. The one
  * function both the build and the tests that render the partial call.
  *
- * @returns {{ entryPath: string, watchFiles: string[], groups: CalloutPiGroupData[] }}
+ * @returns {{ entryPath: string, watchFiles: string[], sections: CalloutPiSectionData[] }}
  */
-export function loadCalloutPiGroups() {
+export function loadCalloutPiSections() {
   let out;
 
   try {
@@ -80,7 +91,7 @@ export function loadCalloutPiGroups() {
   return JSON.parse(out);
 }
 
-// Run as a script: the child side of loadCalloutPiGroups.
+// Run as a script: the child side of loadCalloutPiSections.
 if (process.argv[1] && path.resolve(process.argv[1]) === THIS_FILE) {
   const entryUrl = import.meta.resolve("@iracedeck/callout-settings");
   const entryPath = url.fileURLToPath(entryUrl);
@@ -90,7 +101,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === THIS_FILE) {
     JSON.stringify({
       entryPath,
       watchFiles: listJsFiles(path.dirname(entryPath)),
-      groups: buildCalloutPiGroups(registry),
+      sections: buildCalloutPiSections(registry),
     }),
   );
 }

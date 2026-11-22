@@ -10,6 +10,11 @@ export const START_LIGHT_CALLOUTS = defineCalloutFamily({
   id: "start-light",
   callouts: {
     lights: { key: "calloutEnabledStartLights", label: "Lights & go" },
-    countdown: { key: "calloutEnabledStartCountdown", label: "Countdown" },
+    countdown: {
+      key: "calloutEnabledStartCountdown",
+      label: "Countdown",
+      description:
+        "Before a standing start, calls 90, 60, 30 and 10 seconds to go, even while you are still in the garage.",
+    },
   },
 });

@@ -4,22 +4,106 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
-import { buildCalloutPiGroups, loadCalloutPiGroups } from "./callout-pi-groups.mjs";
+import { buildCalloutPiSections, loadCalloutPiSections } from "./callout-pi-groups.mjs";
 import { piTemplatePlugin } from "./pi-template-plugin.mjs";
 
-const loaded = loadCalloutPiGroups();
+const loaded = loadCalloutPiSections();
 
-describe("buildCalloutPiGroups (#1350)", () => {
+describe("buildCalloutPiSections (#1350, #1700)", () => {
+  const sections = buildCalloutPiSections(registry);
+  const headings = sections.flatMap((s) => s.groups);
+
+  it("gives the sections and their headings in registry order, each heading with its description", () => {
+    expect(sections.map((s) => [s.id, s.title])).toEqual(registry.CALLOUT_PI_SECTIONS.map((s) => [s.id, s.title]));
+
+    for (const [i, section] of registry.CALLOUT_PI_SECTIONS.entries()) {
+      expect(
+        sections[i]!.groups.map((g) => [g.id, g.title, g.description]),
+        section.id,
+      ).toEqual(section.groups.map((g) => [g.id, g.title, g.description]));
+    }
+
+    expect(headings.map((g) => g.id)).toEqual(registry.CALLOUT_PI_GROUPS.map((g) => g.id));
+  });
+
   it("gives every heading its families' entries in order, on where the schema default is", () => {
-    const groups = buildCalloutPiGroups(registry);
-    const fuel = groups.find((g) => g.id === "fuel");
+    const fuel = headings.find((g) => g.id === "fuel");
 
-    expect(groups.map((g) => g.id)).toEqual(registry.CALLOUT_PI_GROUPS.map((g) => g.id));
     expect(fuel?.rows.slice(0, 2)).toEqual([
-      { setting: "calloutEnabledFuelLapsLeft10", label: "10 laps of fuel left", on: false, feature: null },
-      { setting: "calloutEnabledFuelLapsLeft9", label: "9 laps of fuel left", on: false, feature: null },
+      {
+        setting: "calloutEnabledFuelLapsLeft10",
+        label: "10 laps of fuel left",
+        description: null,
+        on: false,
+        feature: null,
+      },
+      {
+        setting: "calloutEnabledFuelLapsLeft9",
+        label: "9 laps of fuel left",
+        description: null,
+        on: false,
+        feature: null,
+      },
     ]);
-    expect(groups.flatMap((g) => g.rows.map((r) => r.setting))).toEqual([...registry.CALLOUT_SETTING_KEYS]);
+  });
+
+  it("flattens to exactly the registry's keys, in order", () => {
+    expect(headings.flatMap((g) => g.rows.map((r) => r.setting))).toEqual([...registry.CALLOUT_SETTING_KEYS]);
+  });
+
+  it("carries each entry's description, and null where it has none", () => {
+    const entries = registry.CALLOUT_PI_GROUPS.flatMap((g) =>
+      g.families.flatMap((f) => Object.values(f.callouts) as { key: string; description?: string }[]),
+    );
+    const rows = new Map(headings.flatMap((g) => g.rows).map((r) => [r.setting, r]));
+
+    for (const entry of entries) expect(rows.get(entry.key)?.description, entry.key).toBe(entry.description ?? null);
+  });
+
+  it("passes a fixture registry through as it stands: description, feature and the default as given", () => {
+    const fixture = {
+      CALLOUT_PI_SECTIONS: [
+        {
+          id: "s",
+          title: "S",
+          groups: [
+            {
+              id: "g",
+              title: "G",
+              description: "Heading text.",
+              families: [
+                {
+                  id: "f",
+                  callouts: {
+                    a: { key: "calloutEnabledA", label: "A", description: "Entry text." },
+                    b: { key: "calloutEnabledB", label: "B", requiresFeature: "flag" },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      calloutDefault: (key: string) => key === "calloutEnabledA",
+    } as unknown as Parameters<typeof buildCalloutPiSections>[0];
+
+    expect(buildCalloutPiSections(fixture)).toEqual([
+      {
+        id: "s",
+        title: "S",
+        groups: [
+          {
+            id: "g",
+            title: "G",
+            description: "Heading text.",
+            rows: [
+              { setting: "calloutEnabledA", label: "A", description: "Entry text.", on: true, feature: null },
+              { setting: "calloutEnabledB", label: "B", description: null, on: false, feature: "flag" },
+            ],
+          },
+        ],
+      },
+    ]);
   });
 });
 
@@ -36,7 +120,7 @@ describe("the Traffic checkboxes as the settings window renders them (#1113)", (
   const render = (locals: Record<string, unknown>): string =>
     ejs.render(
       "<%- include('race-engineer-callouts') %>",
-      { calloutPiGroups: loaded.groups, ...locals },
+      { calloutPiSections: loaded.sections, ...locals },
       { views: [partialsDir], filename: path.join(partialsDir, "_test.ejs") },
     );
   const REJOIN = "calloutEnabledTrafficRejoin";
@@ -45,7 +129,7 @@ describe("the Traffic checkboxes as the settings window renders them (#1113)", (
   const RELEASE_FLAGS = { dialExtendedGestures: true, profiles: true, pngRasterization: true, trafficRejoin: false };
 
   it("marks the rejoin row with the trafficRejoin flag, and no other row with any", () => {
-    const flagged = loaded.groups.flatMap((g) => g.rows.filter((r) => r.feature !== null));
+    const flagged = loaded.sections.flatMap((s) => s.groups.flatMap((g) => g.rows.filter((r) => r.feature !== null)));
 
     expect(flagged.map((r) => [r.setting, r.feature])).toEqual([[REJOIN, "trafficRejoin"]]);
   });
@@ -72,7 +156,7 @@ describe("the Traffic checkboxes as the settings window renders them (#1113)", (
   });
 });
 
-describe("loadCalloutPiGroups (#1350)", () => {
+describe("loadCalloutPiSections (#1350, #1700)", () => {
   it("reads the built registry entry and lists every compiled file of it to watch", () => {
     expect(loaded.entryPath.split(path.sep).join("/")).toMatch(/\/callout-settings\/dist\/index\.js$/);
     expect(existsSync(loaded.entryPath)).toBe(true);
@@ -82,7 +166,7 @@ describe("loadCalloutPiGroups (#1350)", () => {
   });
 
   it("returns what the registry source says (a mismatch means the registry needs a rebuild)", () => {
-    expect(loaded.groups).toEqual(buildCalloutPiGroups(registry));
+    expect(loaded.sections).toEqual(buildCalloutPiSections(registry));
   });
 });
 

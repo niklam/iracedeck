@@ -1,5 +1,5 @@
 import type { CalloutEntry, CalloutKeyOf } from "./define.js";
-import { CALLOUT_PI_GROUPS } from "./pi-groups.js";
+import { CALLOUT_PI_GROUPS, type RegisteredCalloutPiGroup } from "./pi-groups.js";
 
 export * from "./define.js";
 export { AUTO_FUEL_CALLOUTS } from "./families/auto-fuel.js";
@@ -43,10 +43,16 @@ export { TELEMETRY_CONNECT_CALLOUTS } from "./families/telemetry-connect.js";
 export { TIRE_WEAR_CALLOUTS } from "./families/tire-wear.js";
 export { TRACK_CONDITIONS_CALLOUTS } from "./families/track-conditions.js";
 export { TRAFFIC_CALLOUTS } from "./families/traffic.js";
-export { CALLOUT_PI_GROUPS, type CalloutPiGroup } from "./pi-groups.js";
+export {
+  CALLOUT_PI_GROUPS,
+  CALLOUT_PI_SECTIONS,
+  type CalloutPiGroup,
+  type CalloutPiSection,
+  type RegisteredCalloutPiGroup,
+} from "./pi-groups.js";
 
-/** Any family in the registry: one placed in a `CALLOUT_PI_GROUPS` heading. A generic helper that must yield a `CalloutSettingKey` constrains on this, not on `CalloutFamily`. */
-export type RegisteredCalloutFamily = (typeof CALLOUT_PI_GROUPS)[number]["families"][number];
+/** Any family in the registry: one placed in a heading of a `CALLOUT_PI_SECTIONS` section. A generic helper that must yield a `CalloutSettingKey` constrains on this, not on `CalloutFamily`. */
+export type RegisteredCalloutFamily = RegisteredCalloutPiGroup["families"][number];
 
 /** Every family, in PI order — derived from `CALLOUT_PI_GROUPS`, so placing a family there is what registers it. */
 export const CALLOUT_FAMILIES: readonly RegisteredCalloutFamily[] = CALLOUT_PI_GROUPS.flatMap(

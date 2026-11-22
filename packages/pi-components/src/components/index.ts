@@ -104,6 +104,9 @@ export { LabelWidth } from "./label-width.js";
 // Auto Switch Note - orange note while automatic profile switching is off but a row names a profile (#1111)
 export { AutoSwitchNote } from "./auto-switch-note.js";
 
+// Callout Count - the "N of M on" count in each Race Engineer Callouts section summary (#1700)
+export { CalloutCount } from "./callout-count.js";
+
 // Shared Poller - one per-page polling interval with page-lifecycle cleanup
 export { createSharedPoller, installSharedPoller, POLL_INTERVAL_MS } from "./poller.js";
 
