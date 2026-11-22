@@ -45,9 +45,10 @@ import { GlobalSettingsSchema } from "./global-settings.js";
  * master before the registry merged; the `owner` column was added once at
  * that time — for the 95 keys that had an id map on master, from master's
  * `*_CALLOUT_SETTING_KEYS` maps; for the 5 that had none, from the registry's
- * five small families. Rows from 101 on were appended by #1376 for the three
+ * five small families. Rows 101 to 103 were appended by #1376 for the three
  * keys added in between (`calloutEnabledRollingStartLineupChanged`,
- * `calloutEnabledCautionCatchUp`, `calloutEnabledCautionCatchUpReminder`).
+ * `calloutEnabledCautionCatchUp`, `calloutEnabledCautionCatchUpReminder`);
+ * every row after them was appended by the change that added its key.
  *
  * `owner` is the one column a live row may change: when an entry moves to
  * another family, its key, default and coercion stay as they were, no stored
@@ -75,7 +76,8 @@ const COLUMNS: readonly string[] = ["owner", "default", "true", '"true"', "false
 
 /**
  * The pin: how many rows the record held when it was last pinned, live and
- * retired (100 captured before #1350, three appended by #1376), and the
+ * retired (100 captured before #1350, three appended by #1376, and one for
+ * each key added since), and the
  * SHA-256 of those rows in file order — each row's key and its
  * {@link PINNED_COLUMNS}. The checks further down compare the record with
  * today's registry and schema, so a key dropped together with its row would
