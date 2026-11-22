@@ -266,31 +266,53 @@ export class CameraGroupSelect extends HTMLElement {
     const numberKey = this.getAttribute("number-setting") ?? DEFAULT_NUMBER_SETTING;
     const catalogKey = this.getAttribute("catalog") ?? CAMERA_CATALOG_KEY;
 
-    const [, saveName] = window.SDPIComponents.useSettings(
-      nameKey,
-      skipUnchanged((value: unknown) => {
-        this.storedName = value ?? "";
-        this.render();
-      }),
-    );
-    this.saveName = saveName;
+    // Whether a push (or the user's own choice) has set each value, so the
+    // getter read below — the value sdpi held before this element subscribed —
+    // never overwrites a newer one.
+    let nameKnown = false;
+    let numberKnown = false;
 
-    const [, saveNumber] = window.SDPIComponents.useSettings(
-      numberKey,
-      skipUnchanged((value: unknown) => {
-        this.storedNumber = value;
+    const onName = skipUnchanged((value: unknown) => {
+      nameKnown = true;
+      this.storedName = value ?? "";
+      this.render();
+    });
+    const [readName, saveName] = window.SDPIComponents.useSettings(nameKey, onName);
 
-        // A push while Other… is open is the key's number now: the one a custom
-        // name typed next leaves in place, not a typed prefix's to undo.
-        if (this.otherMode) {
-          this.numberBeforeOther = value;
-          this.numberWrittenWhileTyping = false;
-        }
+    this.saveName = (value: string) => {
+      nameKnown = true;
+      saveName(value);
+    };
 
-        this.render();
-      }),
-    );
-    this.saveNumber = saveNumber;
+    const onNumber = skipUnchanged((value: unknown) => {
+      numberKnown = true;
+      this.storedNumber = value;
+
+      // A push while Other… is open is the key's number now: the one a custom
+      // name typed next leaves in place, not a typed prefix's to undo.
+      if (this.otherMode) {
+        this.numberBeforeOther = value;
+        this.numberWrittenWhileTyping = false;
+      }
+
+      this.render();
+    });
+    const [readNumber, saveNumber] = window.SDPIComponents.useSettings(numberKey, onNumber);
+
+    this.saveNumber = (value: string) => {
+      numberKnown = true;
+      saveNumber(value);
+    };
+
+    // Per-key settings that arrived before this element subscribed are not
+    // replayed either (#1653 review): read what sdpi holds, unless a push or a
+    // local choice has already set the value.
+    void readName().then((value) => {
+      if (!nameKnown) onName(value);
+    });
+    void readNumber().then((value) => {
+      if (!numberKnown) onNumber(value);
+    });
 
     const onCatalog = skipUnchanged((value: unknown) => {
       this.catalog = parseCameraCatalog(value);

@@ -171,6 +171,30 @@ describe("ird-camera-group-select", () => {
       expect(saveName()).not.toHaveBeenCalled();
       expect(saveNumber()).not.toHaveBeenCalled();
     });
+
+    it("shows the key's group sdpi already held when it connected, writing nothing (#1653 review)", async () => {
+      mock.stored.set("cameraGroupName", "");
+      mock.stored.set("cameraGroup", "17");
+      const late = document.createElement("ird-camera-group-select");
+      document.body.appendChild(late);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect((late.querySelector("select") as HTMLSelectElement).value).toBe("TV1");
+      expect(saveName()).not.toHaveBeenCalled();
+      expect(saveNumber()).not.toHaveBeenCalled();
+    });
+
+    it("never lets the held value overwrite a push that came first", async () => {
+      mock.stored.set("cameraGroupName", "Old");
+      const late = document.createElement("ird-camera-group-select");
+      document.body.appendChild(late);
+      mock.perKey.get("cameraGroupName")?.("Drone");
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect((late.querySelector("select") as HTMLSelectElement).value).toBe("Drone");
+    });
   });
 
   describe("the option groups", () => {
