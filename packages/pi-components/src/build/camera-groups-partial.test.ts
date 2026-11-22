@@ -9,7 +9,7 @@ import { renderPartial } from "./testing.js";
  * Remove sends a command the settings-window command handler routes, and from a
  * Property Inspector the same frame would go to that PI's action. That the page
  * passes the flag to this include is held beside the page, in iracing-actions'
- * `settings-window/settings-window-camera-groups.test.ts`.
+ * `pi-templates/settings-window-camera-groups.test.ts`.
  */
 describe("camera-groups partial (#1653)", () => {
   it("renders the catalog list bound to the published catalog in the settings window", () => {
