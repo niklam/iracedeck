@@ -2444,7 +2444,7 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
     expect(shownIcons(action)).toHaveLength(3);
   });
 
-  it("keeps a newer render's record when an older redraw fails after it", async () => {
+  it("draws the newest group once an older redraw fails late, then leaves it alone", async () => {
     const action = await appear({ cycleIconMode: "current" }, { CamGroupNumber: 11 });
     let failFirst: () => void = () => {};
     vi.mocked(action["updateKeyImage"]).mockImplementationOnce(
@@ -2458,6 +2458,8 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     failFirst();
     await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(shownIcons(action)[2]).toContain("tv-mixed-artwork");
 
     subscriber?.();
     expect(shownIcons(action)).toHaveLength(3);
