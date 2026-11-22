@@ -630,12 +630,20 @@ static int focusIRacingWindow()
         AttachThreadInput(currentThreadId, foregroundThreadId, TRUE);
     }
 
-    // Simulate an ALT key press/release to satisfy Windows' foreground lock.
-    // Windows blocks SetForegroundWindow from background processes unless
-    // the caller received the last input event. This workaround is a
-    // well-known technique to bypass the restriction.
-    keybd_event(VK_MENU, 0, 0, 0);
-    keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0);
+    // Send an input event to satisfy Windows' foreground lock: it may refuse
+    // SetForegroundWindow to a background process that did not send the last
+    // input event. A zero-distance relative mouse move (#1738), because it
+    // moves no pointer, matches no hotkey and opens no menu. The Alt tap that
+    // used to be sent here went, through the attached input, to the window
+    // that was in front, and a lone Alt is the Windows menu key: that window
+    // was left in menu mode. Spec:
+    // docs/superpowers/specs/2026-11-21-issue-1738-focus-without-alt-tap.md
+    INPUT unlock = {};
+    unlock.type = INPUT_MOUSE;
+    unlock.mi.dx = 0;
+    unlock.mi.dy = 0;
+    unlock.mi.dwFlags = MOUSEEVENTF_MOVE;
+    SendInput(1, &unlock, sizeof(INPUT));
 
     SetForegroundWindow(hwnd);
 

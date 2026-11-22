@@ -59,6 +59,8 @@ Used by deck-core's window service (`focusIfEnabled()`) when the `focusIRacingWi
 
 The 1000ms (100 × 10ms) focus-confirmation poll lives in the same C++ function.
 
+**The input it sends first (#1738).** Windows may refuse `SetForegroundWindow` to a background process that did not send the last input event, so before the call the focuser sends one: a zero-distance relative mouse move (`SendInput`, `MOUSEEVENTF_MOVE`, `dx = dy = 0`), which moves no pointer, matches no hotkey and opens no menu. Never a key. Until #1738 it was an Alt tap through `keybd_event`; through the attached input that went to the window in front, and a lone Alt is the Windows menu key, so that window was left in menu mode. An F24 tap was rejected because broadcasters bind F13–F24 to global OBS hotkeys. No input at all also worked on the maintainer's machine, but it leaves the focus to a Windows rule that can refuse it elsewhere; it is the next candidate if the mouse move ever does harm. Spec: `docs/superpowers/specs/2026-11-21-issue-1738-focus-without-alt-tap.md`.
+
 ### `moveMouseToIRacingWindow(xFraction: number, yFraction: number): number`
 
 Moves the OS mouse pointer to a point inside the iRacing window's client area (issue #926). Motivated by VR: from inside a headset the pointer is invisible, so a driver on a multi-monitor desktop cannot find it to click anything in the sim.

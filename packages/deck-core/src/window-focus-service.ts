@@ -224,12 +224,12 @@ export function focusIRacingBeforeInput(): void {
  * Whether the elevation probe has reported an integrity-level mismatch on the
  * current connection (#976), so the gated entry points should not ask the
  * native focuser at all. Across the mismatch `SetForegroundWindow` can never
- * succeed, so the ask would only spend the focuser's full ~1000 ms wait and
- * inject a stray ALT tap into the front window — and a focus that did transfer
- * would not help either, because UIPI drops input sent to the higher-integrity
- * window. Before the probe has answered, or when it threw, the gate stays
- * open. Logs the skip at info once per episode, so a support log at the
- * default threshold shows that focus is being withheld and why.
+ * succeed, so the ask would only spend the focuser's full ~1000 ms wait —
+ * and a focus that did transfer would not help either, because UIPI drops
+ * input sent to the higher-integrity window. Before the probe has answered,
+ * or when it threw, the gate stays open. Logs the skip at info once per
+ * episode, so a support log at the default threshold shows that focus is
+ * being withheld and why.
  *
  * Closing the gate also ends any timeout episode (#977 cooldown): no gated ask
  * runs while it is closed, so nothing else would clear one begun before the

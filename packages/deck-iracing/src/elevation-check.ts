@@ -8,7 +8,7 @@
  * disables an action. Its one other reader is the implicit window focus
  * (#976): `hasElevationMismatch()` lets the focus service skip a focus that
  * cannot succeed (`SetForegroundWindow` across the mismatch always times out,
- * costing the native focuser's full wait and a stray ALT tap) and would not
+ * costing the native focuser's full wait) and would not
  * help if it did, since UIPI drops input sent to the higher-integrity window.
  *
  * Both outcomes are captured at the default (info) log threshold so a support
