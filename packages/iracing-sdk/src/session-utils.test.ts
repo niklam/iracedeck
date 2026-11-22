@@ -657,6 +657,18 @@ describe("getCamerasInGroup", () => {
     expect(getCamerasInGroup(undefined, 1)).toEqual([]);
     expect(getCamerasInGroup({ CameraInfo: {} }, 1)).toEqual([]);
   });
+
+  it("skips entries that are not objects, in Groups and in Cameras (#1653 review)", () => {
+    const ragged = {
+      CameraInfo: {
+        Groups: [null, 7, "Nose", [1], { GroupNum: 9, Cameras: [null, { CameraNum: 1, CameraName: "Cockpit" }, 3] }],
+      },
+    };
+
+    expect(getCamerasInGroup(ragged, 9)).toEqual([{ cameraNum: 1, cameraName: "Cockpit" }]);
+    expect(getCamerasInGroup(ragged, 4)).toEqual([]);
+    expect(getCamerasInGroup({ CameraInfo: { Groups: { GroupNum: 9 } } }, 9)).toEqual([]);
+  });
 });
 
 describe("readTrackId (#1653)", () => {

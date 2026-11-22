@@ -447,16 +447,28 @@ export interface CameraInGroup {
  */
 export function getCamerasInGroup(sessionInfo: unknown, groupNum: number): CameraInGroup[] {
   const cameraInfo = (sessionInfo as Record<string, unknown>)?.CameraInfo as Record<string, unknown> | undefined;
-  const groups = cameraInfo?.Groups as
-    Array<{ GroupNum: number; Cameras?: Array<{ CameraNum: number; CameraName: string }> }> | undefined;
+  const groups: unknown = cameraInfo?.Groups;
 
-  if (!groups) return [];
+  if (!Array.isArray(groups)) return [];
 
-  const group = groups.find((g) => g.GroupNum === groupNum);
+  // An entry that is not an object is skipped, as getCameraGroupsFromSessionInfo
+  // skips it, rather than thrown on (#1653 review).
+  const group = (groups as unknown[]).find(
+    (entry): entry is { GroupNum: unknown; Cameras?: unknown } =>
+      isPlainObject(entry) && (entry as { GroupNum?: unknown }).GroupNum === groupNum,
+  );
 
-  if (!group?.Cameras) return [];
+  if (!group || !Array.isArray(group.Cameras)) return [];
 
-  return group.Cameras.map((c) => ({ cameraNum: c.CameraNum, cameraName: c.CameraName }));
+  return (group.Cameras as unknown[]).filter(isPlainObject).map((camera) => {
+    const c = camera as { CameraNum: number; CameraName: string };
+
+    return { cameraNum: c.CameraNum, cameraName: c.CameraName };
+  });
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 /**
