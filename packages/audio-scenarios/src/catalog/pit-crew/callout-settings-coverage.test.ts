@@ -170,6 +170,10 @@ const PIT_CREW_MODULES = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./*
  *   scenario `where:`.
  * - `PIT_SERVICE_REQUEST_CALLOUTS` (`requests`): one gate over all the toggle
  *   confirmations, applied by `wrapPitServiceRequestsScenario`.
+ * - `FUEL_COUNTDOWN_SESSION_CALLOUTS` (`race`, `practice`, `qualifying`,
+ *   `test`): one gate over all twelve fuel contracts, chosen by the session
+ *   kind (`fuelCountdownSessionKind`), applied by
+ *   `wrapFuelCountdownSessionScenario` outside each count's own opt-in.
  * - `SETUP_WARNING_CALLOUTS` (`warning`): a clause inside the session-start and
  *   race-start intros, read by the plugins' `getSetupWarningMismatch` resolver.
  * - `RACE_ENGINEER_TOGGLE_CALLOUTS`, `CORNER_NAMES_TOGGLE_CALLOUTS` (`ack`) and

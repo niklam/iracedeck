@@ -91,6 +91,7 @@ import {
   FASTEST_LAP_CALLOUTS,
   FLAG_CALLOUTS,
   FUEL_CALLOUTS,
+  FUEL_COUNTDOWN_SESSION_CALLOUTS,
   GAP_CALLOUTS,
   INCIDENT_CALLOUTS,
   LAP_TIME_CALLOUTS,
@@ -149,7 +150,7 @@ import {
 import { buildDamageContracts } from "./damage-alerts.js";
 import { buildFastestLap, SCENARIO_ID_TO_FASTEST_LAP_ID } from "./fastest-lap.js";
 import { buildFlagAlerts } from "./flag-alerts.js";
-import { FUEL_LAPS_LEFT_CONTRACTS } from "./fuel-laps-left.js";
+import { FUEL_LAPS_LEFT_CONTRACTS, FUEL_RACE_COVERED_SCENARIO_ID, fuelCountdownSessionKind } from "./fuel-laps-left.js";
 import {
   buildGapThresholdContract,
   buildGapTrendContract,
@@ -1258,6 +1259,19 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   const getRollingStartCalloutEnabled = enabledIn(ROLLING_START_CALLOUTS);
   const getStartLightCalloutEnabled = enabledIn(START_LIGHT_CALLOUTS);
   const getFuelCalloutEnabled = enabledIn(FUEL_CALLOUTS);
+  // The fuel countdown's session-kind opt-ins (issue #1702): which kinds of
+  // session the player hears the countdown in, read with the session as the
+  // Race Engineer's one classifier names it. An unclassified session speaks
+  // nothing, and the enough-fuel confirmation is heard in the race kind only.
+  const getFuelCountdownSessionEnabled = (scenarioId: string): boolean => {
+    const kind = fuelCountdownSessionKind(d.getSessionClass());
+
+    if (kind === null) return false;
+
+    if (scenarioId === FUEL_RACE_COVERED_SCENARIO_ID && kind !== "race") return false;
+
+    return d.isCalloutEnabled(calloutKey(FUEL_COUNTDOWN_SESSION_CALLOUTS, kind));
+  };
   const getCornerNameCalloutEnabled = enabledIn(CORNER_NAME_CALLOUTS);
   const getSectorStartCalloutEnabled = enabledIn(SECTOR_START_CALLOUTS);
   const getSectorComparisonCalloutEnabled = enabledIn(SECTOR_COMPARISON_CALLOUTS);
@@ -1780,9 +1794,21 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // `pool:fuel/<base>`). No registration-order concern —
   // `fuel.lapsLeft.crossed` and `fuel.lapsLeft.raceCovered` have no other
   // subscribers.
+  //
+  // Three gates, outermost first: the master, the family-wide session-kind
+  // opt-in (issue #1702; the translator emits the countdown in every live
+  // session, the player picks where it is heard), then the per-count opt-in.
+  // The session gate sits outside the count's own, so a count switched on
+  // stays silent in a session kind switched off, and the reverse.
   for (const c of FUEL_LAPS_LEFT_CONTRACTS) {
     engine.defineContract(
-      wrapWithMaster(wrapCalloutScenario(c, SCENARIO_ID_TO_FUEL_ID, getFuelCalloutEnabled, "fuel callout", logger)),
+      wrapWithMaster(
+        wrapFuelCountdownSessionScenario(
+          wrapCalloutScenario(c, SCENARIO_ID_TO_FUEL_ID, getFuelCalloutEnabled, "fuel callout", logger),
+          () => getFuelCountdownSessionEnabled(c.id),
+          logger,
+        ),
+      ),
     );
   }
 
@@ -2293,6 +2319,42 @@ function wrapPitServiceRequestsScenario<T extends Gated>(
       where: (ev) => {
         if (!getEnabled()) {
           logger?.debug(`pit service request suppressed: ${s.id}`);
+
+          return false;
+        }
+
+        return baseWhere ? baseWhere(ev) : true;
+      },
+    },
+  };
+}
+
+/**
+ * Wrap a laps-of-fuel-left scenario with the family-wide session-kind gate
+ * (`fuel-countdown-sessions`, issue #1702): whether the countdown is heard in
+ * the kind of session being driven. Read live on every event arrival, so a
+ * toggle flipped mid-session takes effect on the next count without cutting
+ * an in-flight clip — the same gate-at-event-arrival shape as
+ * {@link wrapPitServiceRequestsScenario}. Like the master gate, a closed gate
+ * also answers a declared `settle` as ready, so a silenced line never waits.
+ */
+function wrapFuelCountdownSessionScenario<T extends Gated>(
+  s: T,
+  getEnabled: () => boolean,
+  logger: ILogger | undefined,
+): T {
+  if (!s.when) return s;
+
+  const baseWhere = s.when.where;
+
+  return {
+    ...s,
+    ...gatedSettle(s, getEnabled),
+    when: {
+      event: s.when.event,
+      where: (ev) => {
+        if (!getEnabled()) {
+          logger?.debug(`fuel countdown suppressed in this session kind: ${s.id}`);
 
           return false;
         }

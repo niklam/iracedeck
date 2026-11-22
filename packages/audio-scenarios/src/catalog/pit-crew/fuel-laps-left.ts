@@ -26,9 +26,17 @@
  * is still accurate when it replays (the YELLOW_CLEARED precedent), and a
  * dropped fire would otherwise never re-announce because the diff has already
  * marked the count spoken.
+ *
+ * **Session kinds** (issue #1702). The translator emits the countdown in every
+ * live session; `registerPitCrew` gates the whole family on the session kind
+ * the player chose to hear it in (`fuel-countdown-sessions`), mapped from the
+ * classified session by {@link fuelCountdownSessionKind}. The enough-fuel
+ * confirmation is a race line and speaks only in the race kind
+ * ({@link FUEL_RACE_COVERED_SCENARIO_ID}).
  */
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
-import type { SimEventOf } from "@iracedeck/event-bus";
+import type { CalloutIdOf, FUEL_COUNTDOWN_SESSION_CALLOUTS } from "@iracedeck/callout-settings";
+import type { SessionClass, SimEventOf } from "@iracedeck/event-bus";
 
 import type { ScenarioContract } from "../../dsl.js";
 import { WEIGHT } from "../../dsl.js";
@@ -78,6 +86,36 @@ function fuelLapsLeftContract(
     interrupt,
   );
 }
+
+/**
+ * The session kinds the countdown can be heard in, one opt-in each (issue
+ * #1702): the ids of the `fuel-countdown-sessions` callout family.
+ */
+export type FuelCountdownSessionId = CalloutIdOf<typeof FUEL_COUNTDOWN_SESSION_CALLOUTS>;
+
+/**
+ * Which session-kind opt-in a classified session answers to (issue #1702).
+ * The `race` category is Race, heat races and warmups included, since the
+ * Race Engineer reads one classifier; `practice` is Test when `testing` is set
+ * and Practice otherwise; `qualifying` is Qualifying, solo or not. A session
+ * not yet classified (`null`) answers to none, so the countdown stays silent
+ * until it is known — it samples once per lap, so nothing is lost.
+ */
+export function fuelCountdownSessionKind(session: SessionClass | null): FuelCountdownSessionId | null {
+  if (session === null) return null;
+
+  switch (session.category) {
+    case "race":
+      return "race";
+    case "qualifying":
+      return "qualifying";
+    case "practice":
+      return session.testing ? "test" : "practice";
+  }
+}
+
+/** The enough-fuel confirmation's id: a race line, heard only in the race kind (issue #1702). */
+export const FUEL_RACE_COVERED_SCENARIO_ID = "pit-crew.fuel-laps-left-race-covered";
 
 /**
  * Enough-fuel confirmation (issue #880) — the diff emits
