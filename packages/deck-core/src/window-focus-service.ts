@@ -2,14 +2,30 @@
  * Window Focus Service
  *
  * Focuses the iRacing window before inputs are sent. Two call sites, one mode
- * (issue #977): plugins call `focusIRacingIfEnabled()` from their platform-level
- * key/dial handlers, which runs under the `always` mode only; the keystroke
- * paths — the keyboard service's press-emitting methods and the chat command's
- * text send — call `focusIRacingBeforeInput()`, which runs under `always` and
- * `required`. Under `always` a keybind press therefore asks twice; the second
- * ask returns `AlreadyFocused` and costs one foreground-window compare, and it
- * is what covers touch-strip gestures (#978) without an adapter-level touch
- * hook. `never` runs neither.
+ * (issue #977): every press asks at its start through `focusIRacingIfEnabled()`,
+ * which runs under the `always` mode only; the keystroke paths — the keyboard
+ * service's press-emitting methods and the chat command's text send — call
+ * `focusIRacingBeforeInput()`, which runs under `always` and `required`. Under
+ * `always` a keybind press therefore asks twice; the second ask returns
+ * `AlreadyFocused` and costs one foreground-window compare, and it is what
+ * covers touch-strip gestures (#978) without a press-time touch hook. `never`
+ * runs neither.
+ *
+ * **The per-key layer (#1654).** A key's own `windowFocus` setting
+ * (`CommonSettings`) can override the mode for that key: `focus` brings iRacing
+ * forward whatever the mode, `no-focus` never does, `global` (the default) is
+ * the mode as above. `withWindowFocus` (`window-focus-wrapper.ts`), which
+ * `plugin-runtime`'s `registerActions` puts around every action, makes the
+ * press-time ask through {@link focusIRacingForPress}, and runs each press's
+ * handler member inside {@link runInWindowFocusScope}. That scope is an
+ * `AsyncLocalStorage`, so it follows everything the handler starts — awaits,
+ * promise chains, timers — down to the keystroke site, which reads it in
+ * `focusIRacingBeforeInput()` before the mode: no signature between the action
+ * and the native send carries the key's choice. A keystroke outside any press
+ * has no scope and follows the mode. `focus` keeps the elevation-mismatch gate
+ * and the timeout cooldown (they keep an ask that cannot succeed from stalling
+ * the plugin) but skips the mode and the settings-store-ready gate, since the
+ * key's own setting is the decision.
  *
  * What actually needs the foreground: **keystrokes** (`SendInput` goes to the
  * focused window) and therefore every keybind- and chat-driven action. Pure SDK
@@ -35,6 +51,9 @@ import type { FocusIRacingMode } from "@iracedeck/app-constants";
 import type { ILogger } from "@iracedeck/logger";
 import { silentLogger } from "@iracedeck/logger";
 import { getGlobalSettings, isSettingsStoreReady } from "@iracedeck/settings";
+import { AsyncLocalStorage } from "node:async_hooks";
+
+import type { WindowFocusOverride } from "./common-settings.js";
 
 /**
  * Status codes a {@link WindowFocuser} may return.
@@ -81,10 +100,11 @@ export type SimRunningCheck = () => boolean;
 export type ElevationMismatchCheck = () => boolean;
 
 /**
- * How long after a `FocusTimedOut` the two gated entry points skip the native
+ * How long after a `FocusTimedOut` the gated entry points — the two mode
+ * sites and the per-key {@link focusIRacingForKey} (#1654) — skip the native
  * ask (#977). A timed-out ask blocks the JS thread for the focuser's full
- * ~1000 ms wait, and under `always` a keybind press asks twice — the adapter
- * hook and then the keystroke site — so without this a persistent cause would
+ * ~1000 ms wait, and under `always` (or a key set to `focus`) a keybind press
+ * asks twice — at press time and then at the keystroke site — so without this a persistent cause would
  * cost ~2 s per press, and a held setup key repeating every 150 ms ~1 s per
  * tick. The usual cause, an elevation mismatch, is skipped outright once the
  * probe has reported it (#976); the cooldown covers the rest — a mismatch
@@ -181,10 +201,10 @@ function currentMode(): FocusIRacingMode | null {
 }
 
 /**
- * The adapter-level call site: before every key press, dial press and dial
- * rotation. Runs under the `always` mode only. Best-effort: logs on failure but
- * never throws, so a focus problem can't stop the action the user actually
- * pressed.
+ * The press-time call site for a key left at `global`: before every key press,
+ * dial press and dial rotation, through {@link focusIRacingForPress}. Runs
+ * under the `always` mode only. Best-effort: logs on failure but never throws,
+ * so a focus problem can't stop the action the user actually pressed.
  */
 export function focusIRacingIfEnabled(): void {
   if (currentMode() !== "always") return;
@@ -197,10 +217,103 @@ export function focusIRacingIfEnabled(): void {
 }
 
 /**
+ * Focus the iRacing window because the pressed key's own setting says so
+ * (`windowFocus: "focus"`, #1654), whatever the global mode. It skips the mode
+ * and the `isSettingsStoreReady()` gate — the key's stored setting is the
+ * decision, and it is not a global default the startup window could mistake
+ * for the user's choice — but keeps the elevation-mismatch gate (#976) and the
+ * post-timeout cooldown, which keep an ask that cannot succeed from stalling
+ * the plugin on every press, a per-key ask as much as a global one.
+ */
+export function focusIRacingForKey(): void {
+  if (!focuser) return;
+
+  if (blockedByElevationMismatch()) return;
+
+  if (inTimeoutCooldown()) return;
+
+  runFocuser();
+}
+
+/**
+ * Which kind of press {@link focusIRacingForPress} is asked about: a key down,
+ * dial down or dial rotation (`press`), which asks for focus at press time, or
+ * a touch-strip tap (`touch`), which never does (#978) and is focused, if at
+ * all, at its keystrokes.
+ */
+export type FocusPressKind = "press" | "touch";
+
+/**
+ * The press-time decision for one press of a key whose own setting is
+ * `override` (#1654), made by `withWindowFocus` before the handler runs:
+ *
+ * - `global` asks as the global mode says: {@link focusIRacingIfEnabled} on a
+ *   press, nothing on a touch.
+ * - `focus` asks through {@link focusIRacingForKey} on a press, and nothing on
+ *   a touch, whose keystrokes are focused by the scope instead.
+ * - `no-focus` asks nothing.
+ *
+ * When the key's setting changes what happens it logs one debug line for the
+ * press, so a support log explains a press that did or did not bring iRacing
+ * forward: always for `no-focus`, and for `focus` when the global mode would
+ * not have focused (at press time for a press; at the keystrokes for a touch).
+ * Best-effort like the rest of the service, though a settings read that throws
+ * reaches the caller, which guards it.
+ */
+export function focusIRacingForPress(override: WindowFocusOverride, kind: FocusPressKind = "press"): void {
+  switch (override) {
+    case "global":
+      if (kind === "press") focusIRacingIfEnabled();
+
+      return;
+    case "no-focus":
+      logger.debug("Focus skipped for this key (per-key setting)");
+
+      return;
+    case "focus": {
+      const mode = currentMode();
+      const globalWouldFocus = kind === "press" ? mode === "always" : mode === "always" || mode === "required";
+
+      if (!globalWouldFocus) logger.debug("Focus requested by this key's setting");
+
+      if (kind === "press") focusIRacingForKey();
+
+      return;
+    }
+  }
+}
+
+/**
+ * The pressed key's own `windowFocus` value, carried through everything its
+ * handler starts (#1654). Unset outside a press.
+ */
+const focusScope = new AsyncLocalStorage<WindowFocusOverride>();
+
+/**
+ * Run `fn` as part of a press of a key whose own setting is `override`, so
+ * every keystroke it leads to — awaited, chained or set on a timer inside it —
+ * is focused as that setting says rather than as the global mode alone says.
+ * Returns what `fn` returns, and a synchronous throw from `fn` propagates.
+ */
+export function runInWindowFocusScope<R>(override: WindowFocusOverride, fn: () => R): R {
+  return focusScope.run(override, fn);
+}
+
+/**
+ * The `windowFocus` value of the press the caller runs inside, or `undefined`
+ * outside any press.
+ */
+export function getWindowFocusScope(): WindowFocusOverride | undefined {
+  return focusScope.getStore();
+}
+
+/**
  * The keystroke call site (issue #977): called by the keyboard service's
  * press-emitting methods immediately before each native send (never on a
- * release), and by the chat command before it types. Runs under `always` and
- * `required`.
+ * release), and by the chat command before it types. Inside a press of a key
+ * whose own setting is `no-focus` it asks nothing, and under `focus` it asks
+ * through {@link focusIRacingForKey} (#1654); otherwise — a `global` key, or
+ * no press at all — it runs under `always` and `required`.
  *
  * Deliberately NOT keyed on the comms catalog (#612): everything that reaches
  * the keyboard service's send path or the chat text send is a keystroke by
@@ -209,6 +322,16 @@ export function focusIRacingIfEnabled(): void {
  * here; SDK broadcasts arrive whatever has focus and never come here either.
  */
 export function focusIRacingBeforeInput(): void {
+  const override = focusScope.getStore();
+
+  if (override === "no-focus") return;
+
+  if (override === "focus") {
+    focusIRacingForKey();
+
+    return;
+  }
+
   const mode = currentMode();
 
   if (mode !== "always" && mode !== "required") return;
