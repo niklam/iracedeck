@@ -12,7 +12,7 @@ The Flags Overlay shows race flag colors directly on your Stream Deck buttons, f
 
 ## Enabling the Overlay
 
-The Flags Overlay is configured per action through **Common Settings**, which is available in the Property Inspector for every iRaceDeck action. Open the Common Settings section and enable the flags you want to see on that button.
+The Flags Overlay is configured per action through **Common Settings**, which is available in the Property Inspector for every iRaceDeck action. Open the Common Settings section and enable the flags you want to see on that button. The overlay draws on a key's icon, so it is offered on keys only: on a dial, Common Settings leaves it out.
 
 You can enable it on as many or as few buttons as you like — for example, only on a central button you always glance at, or across your entire Stream Deck layout for maximum visibility.
 
