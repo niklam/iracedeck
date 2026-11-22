@@ -1729,7 +1729,7 @@ export type SimEventMap = {
    * - In any other session, a heat race or a warmup included: the final lap
    *   is the white flag on the tick, which practice and qualifying show on
    *   the player's own last lap (how a heat race or a warmup shows it is
-   *   unmeasured; a field-wide white would silence the countdown up to a lap
+   *   unmeasured, #1767; a field-wide white would silence the countdown up to a lap
    *   early), and nothing is emitted while the tank covers a lap-limited
    *   session's remaining laps by its own lap counter; with no lap limit the
    *   tank alone decides.

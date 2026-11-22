@@ -97,8 +97,8 @@
  *   - In any other session: the final-lap signal is the White bit on this
  *     tick, which practice and qualifying show when the player starts their
  *     own last lap (`diff/flags.ts`, the two-stage white; a heat race's or a
- *     warmup's white is unmeasured, and a field-wide one would silence the
- *     countdown up to a lap early); the coverage distance is the
+ *     warmup's white is unmeasured, #1767, and a field-wide one would
+ *     silence the countdown up to a lap early); the coverage distance is the
  *     lap counter alone ({@link resolveFuelLapCounterCoverage}) — a
  *     Lone Qualify fuelled for its laps hears no warning, a session with no
  *     lap limit gets no coverage check — and `fuel.lapsLeft.raceCovered` is
@@ -537,7 +537,7 @@ export const FUEL_LAPS_LEFT_EVENTS = [
  *   and cleared by a later green. In any other session, whether the White
  *   bit is shown on this tick, which practice and qualifying show when the
  *   player starts their own last lap (unmeasured for a heat race or a
- *   warmup). The diff never reads flags for this itself.
+ *   warmup, #1767). The diff never reads flags for this itself.
  */
 export function diffFuelLapsLeft(
   slice: FuelCalloutState,
@@ -838,7 +838,7 @@ export function resolveFuelLapCounterCoverage(telemetry: TelemetryData): FuelCov
  * any other session the bit on the tick is the signal, because practice and
  * qualifying show the White when the player starts their own last lap
  * (`diff/flags.ts`, the two-stage white). For a heat race or a warmup that is
- * unmeasured: a white shown field-wide there would read as the player's last
+ * unmeasured (#1767): a white shown field-wide there would read as the player's last
  * lap and silence the countdown up to a lap early. A pure rule over values
  * its callers read: the diff itself is handed the answer and reads no flag
  * state of its own.
