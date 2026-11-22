@@ -36,12 +36,12 @@ import { isPostRace, type ReplayState, type TelemetryData } from "@iracedeck/ira
 
 import {
   estimateFuelLapsLeft,
+  type FuelCoverage,
   type FuelLapsLeftEstimate,
-  type FuelRaceCoverage,
-  isFuelRaceCovered,
+  isFuelCovered,
   resolveFuelFinalLapStarted,
+  resolveFuelLapCounterCoverage,
   resolveFuelRaceCoverage,
-  resolveFuelSessionCoverage,
 } from "./diff/fuel-laps-left.js";
 import type { FuelLap, FuelLapTracker, FuelStats } from "./diff/fuel-laps.js";
 import type { PaceLineup } from "./diff/pace-lineup.js";
@@ -82,10 +82,10 @@ export type SimFuelCoverageSkip = "race-over" | "final-lap" | "no-lap-limit";
 /**
  * What the laps-of-fuel-left callout's formula gives for one tick: every step
  * of the count, then the remaining distance it is compared with and the
- * verdict — `covered` is the diff's own `isFuelRaceCovered` (issue #1405),
+ * verdict — `covered` is the diff's own `isFuelCovered` (issue #1405),
  * which is true on the last lap (`remainingLaps` 0) whatever the tank holds.
  * In a race the distance is `resolveFuelRaceCoverage`'s; in any other session
- * it is the session's own lap counter (`resolveFuelSessionCoverage`, issue
+ * it is the session's own lap counter (`resolveFuelLapCounterCoverage`, issue
  * #1702), with `timedLapsAfterCurrent` always `null`.
  *
  * The count stands in any session. The comparison does not: where it has no
@@ -95,7 +95,7 @@ export type SimFuelCoverageSkip = "race-over" | "final-lap" | "no-lap-limit";
  */
 export type SimFuelLapsLeftNow = FuelLapsLeftEstimate &
   (
-    | (FuelRaceCoverage & { covered: boolean; coverageSkipped: null })
+    | (FuelCoverage & { covered: boolean; coverageSkipped: null })
     | {
         lapsNeededAfterCurrent: null;
         timedLapsAfterCurrent: null;
@@ -303,7 +303,7 @@ function resolveCoverage(
   fuel: SimStateParts["fuel"],
   state: TranslatorState,
   estimate: FuelLapsLeftEstimate,
-): FuelRaceCoverage | SimFuelCoverageSkip {
+): FuelCoverage | SimFuelCoverageSkip {
   if (isPostRace(telemetry)) return "race-over";
 
   if (resolveFuelFinalLapStarted(fuel.isRaceSession, state.playerFinalLapStarted, telemetry)) return "final-lap";
@@ -312,7 +312,7 @@ function resolveCoverage(
     return resolveFuelRaceCoverage(telemetry, fuel.stats, estimate.lapFractionRemaining, fuel.getLeaderFinish);
   }
 
-  return resolveFuelSessionCoverage(telemetry) ?? "no-lap-limit";
+  return resolveFuelLapCounterCoverage(telemetry) ?? "no-lap-limit";
 }
 
 /**
@@ -393,7 +393,7 @@ function resolveLapsLeftNow(
   return {
     ...estimate,
     ...coverage,
-    covered: isFuelRaceCovered(estimate, coverage.remainingLaps),
+    covered: isFuelCovered(estimate, coverage.remainingLaps),
     coverageSkipped: null,
   };
 }

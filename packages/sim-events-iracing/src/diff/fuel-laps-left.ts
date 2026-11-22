@@ -49,7 +49,7 @@
  *     player's pace otherwise; when the flag cannot be predicted, a running clock's bound
  *     `SessionTimeRemain + 2 × leaderLap`, and unknown for an expired one).
  *     The verdict is on the TANK, not the post-margin count
- *     ({@link isFuelRaceCovered}, #1405): the raw laps of fuel must
+ *     ({@link isFuelCovered}, #1405): the raw laps of fuel must
  *     cover the rest of this lap and every lap after it with
  *     `FUEL_COVERAGE_ERROR` to spare. The margin protects a pit decision
  *     against estimate error, but with a lap or two left there is no stop
@@ -96,7 +96,7 @@
  *   - In any other session: the final-lap signal is the White bit on this
  *     tick, which iRacing shows there when the player starts their own last
  *     lap (`diff/flags.ts`, the two-stage white); the coverage distance is the
- *     lap counter alone ({@link resolveFuelSessionCoverage}) — a
+ *     lap counter alone ({@link resolveFuelLapCounterCoverage}) — a
  *     Lone Qualify fuelled for its laps hears no warning, a session with no
  *     lap limit gets no coverage check — and `fuel.lapsLeft.raceCovered` is
  *     never emitted, its line being about finishing the race.
@@ -151,7 +151,7 @@ export const FUEL_CALLOUT_MARGIN_MIN_LAPS = 0;
 export const FUEL_CALLOUT_MARGIN_MAX_LAPS = 3;
 
 /**
- * The allowance {@link isFuelRaceCovered} keeps for the average being off
+ * The allowance {@link isFuelCovered} keeps for the average being off
  * (issue #1405): 5 % of the distance left, so it grows with the laps to
  * cover the way estimate error does — two laps left need a tenth of a lap in
  * hand, ten laps half a lap. A first value; how much per-lap use varies has
@@ -229,13 +229,14 @@ export function estimateFuelLapsLeft(
 }
 
 /**
- * The remaining race distance the laps-of-fuel-left count is compared with,
- * as {@link resolveFuelRaceCoverage} determines it (issue #1387) — or, outside
- * a race, {@link resolveFuelSessionCoverage}'s lap-counter distance, with no
- * timed side (issue #1702). Both sides are in the count's own unit: full laps
- * the player still runs AFTER the current one.
+ * The remaining distance the laps-of-fuel-left count is compared with: in a
+ * race the race distance {@link resolveFuelRaceCoverage} determines (issue
+ * #1387), in any other session {@link resolveFuelLapCounterCoverage}'s
+ * lap-counter distance, with no timed side (issue #1702). Both sides are in
+ * the count's own unit: full laps the player still runs AFTER the current
+ * one.
  */
-export type FuelRaceCoverage = {
+export type FuelCoverage = {
   /** By the lap counter, or `null` when it is unknown or unlimited. */
   lapsNeededAfterCurrent: number | null;
   /**
@@ -275,13 +276,14 @@ export function resolveFuelRaceCoverage(
   stats: FuelStats,
   lapFractionRemaining: number,
   getLeaderFinish: (playerLapS: number) => LeaderFinish,
-): FuelRaceCoverage {
+): FuelCoverage {
   const whiteUp = typeof telemetry.SessionFlags === "number" && (telemetry.SessionFlags & Flags.White) !== 0;
 
-  // Lap counter: `count` means full laps completable AFTER the current one,
-  // while the raw counter INCLUDES the current lap — so the −1 bridges them
-  // (clamped at 0: a raw 0 in the leader-finished tick window must not go
-  // vacuously negative). In races the counter reads LEADER-relative
+  // Lap counter, by the step both branches share
+  // (`resolveFuelLapCounterLapsAfterCurrent`: the −1 that bridges a counter
+  // INCLUDING the current lap to full laps AFTER it, clamped at 0 so a raw 0
+  // in the leader-finished tick window does not go vacuously negative). In
+  // races the counter reads LEADER-relative
   // (validated from lapped-race captures, 2026-08; qualifying is
   // player-relative, #776), which IS the player's remaining crossings under
   // equal pace — the race ends at the leader's final crossing, not after
@@ -292,8 +294,7 @@ export function resolveFuelRaceCoverage(
   // has returned before this is reached), the leader is on THEIR final lap
   // (raw 1 → 0 needed) but the player still runs the current lap plus their
   // OWN full white lap — clamp to ≥ 1.
-  const rawLapsRemain = resolveLapsRemaining(telemetry);
-  let lapsNeededAfterCurrent = rawLapsRemain !== null ? Math.max(0, rawLapsRemain - 1) : null;
+  let lapsNeededAfterCurrent = resolveFuelLapCounterLapsAfterCurrent(telemetry);
 
   if (lapsNeededAfterCurrent !== null && whiteUp) {
     lapsNeededAfterCurrent = Math.max(lapsNeededAfterCurrent, 1);
@@ -431,9 +432,10 @@ function isPositiveFinite(value: number | null): value is number {
 }
 
 /**
- * The race-coverage verdict (issue #1405), as one pure function shared by the
- * diff and the Telemetry Snapshot's state reader: the tank covers the race
- * when
+ * The coverage verdict (issue #1405), as one pure function shared by the diff
+ * and the Telemetry Snapshot's state reader, in both of the diff's branches
+ * (issue #1702): the tank covers the distance left — the race's, or outside a
+ * race the session's lap counter — when
  *
  *   rawLapsLeft ≥ (lapFractionRemaining + remainingLaps) × (1 + FUEL_COVERAGE_ERROR)
  *
@@ -448,18 +450,18 @@ function isPositiveFinite(value: number | null): value is number {
  * "covered"**, whatever the tank says: the player is on their last lap, and
  * at the estimator's precision a shortage call there is more often noise
  * than a real splash-and-dash opportunity — the #866 trade-off behind the
- * diff's unconditional final-lap silence. That silence keys on the player's
- * own `playerFinalLapStarted` latch, which a lapped or slower-class player
- * may not have set when the race distance already ends with this lap; this
- * rule covers them, and being part of the verdict, it holds for the
+ * diff's unconditional final-lap silence. In a race that silence keys on the
+ * player's own `playerFinalLapStarted` latch, which a lapped or slower-class
+ * player may not have set when the race distance already ends with this lap;
+ * this rule covers them, and being part of the verdict, it holds for the
  * Telemetry Snapshot's `covered` too. The enough-fuel confirmation keeps its
  * own guard (a full lap in hand by the unclamped count), so a short tank
  * still gets no confirmation here.
  *
  * @param estimate - the tick's {@link estimateFuelLapsLeft} result
- * @param remainingLaps - {@link FuelRaceCoverage}'s binding distance, full laps after the current one
+ * @param remainingLaps - {@link FuelCoverage}'s binding distance, full laps after the current one
  */
-export function isFuelRaceCovered(
+export function isFuelCovered(
   estimate: Pick<FuelLapsLeftEstimate, "rawLapsLeft" | "lapFractionRemaining">,
   remainingLaps: number,
 ): boolean {
@@ -593,9 +595,9 @@ export function diffFuelLapsLeft(
     // the floor likewise NOT advanced. No timed side, no leader and no
     // reassurance: there is no race to finish behind anyone, and an unknown
     // or unlimited counter leaves the tank alone to speak.
-    const coverage = resolveFuelSessionCoverage(telemetry);
+    const coverage = resolveFuelLapCounterCoverage(telemetry);
 
-    if (coverage !== null && isFuelRaceCovered(estimate, coverage.remainingLaps)) return;
+    if (coverage !== null && isFuelCovered(estimate, coverage.remainingLaps)) return;
   } else if (coverRace(slice, telemetry, stats, estimate, getLeaderFinish, emit)) {
     return;
   }
@@ -632,12 +634,12 @@ function coverRace(
   // #1405): when the tank covers the remaining race distance there is
   // nothing to refuel for. The distance is `resolveFuelRaceCoverage`'s — the
   // two limits and which of them binds are worked out there — and the
-  // verdict is `isFuelRaceCovered`'s, on the raw tank with no lap margin,
+  // verdict is `isFuelCovered`'s, on the raw tank with no lap margin,
   // and silent whatever the tank when no lap is left after this one (the
   // #866 trade-off, for a player whose own final-lap latch has not fired).
   const { remainingLaps } = resolveFuelRaceCoverage(telemetry, stats, estimate.lapFractionRemaining, getLeaderFinish);
 
-  if (isFuelRaceCovered(estimate, remainingLaps)) {
+  if (isFuelCovered(estimate, remainingLaps)) {
     // Enough-fuel reassurance (issue #880): a positive coverage
     // determination in the race ENDGAME becomes ONE "we have enough fuel to
     // finish the race" per stint — the driver hears the topic closed
@@ -679,39 +681,41 @@ function coverRace(
 }
 
 /**
- * The full laps a lap-limited session leaves after the current one, by its
- * lap counter alone — the distance {@link diffFuelLapsLeft} compares the tank
- * with outside a race (issue #1702). `SessionLapsRemainEx` counts the
- * player's own laps there (#776) and includes the current one, hence the −1,
- * clamped at 0. `null` when the counter is missing, invalid or reads the
- * `IRSDK_UNLIMITED_LAPS` sentinel: no lap limit, no coverage check.
+ * The full laps the lap counter leaves after the current one: the step both
+ * of the diff's branches start from (issue #1702). `SessionLapsRemainEx`
+ * includes the current lap, while the count means full laps AFTER it, hence
+ * the −1, clamped at 0. `null` when the counter is missing, invalid or reads
+ * the `IRSDK_UNLIMITED_LAPS` sentinel: no lap limit.
  *
- * Deliberately not {@link resolveFuelRaceCoverage}, which is race-only: its
- * timed side predicts a leader's chequered flag, and its white-flag clamp
- * assumes the leader's white precedes the player's last lap, while outside a
- * race the white flies when the player starts their own last lap, which the
- * diff's final-lap silence already covers.
+ * Whose laps it counts depends on the session: the leader's in a race (the
+ * 2026-08 capture validation), the player's own in qualifying (#776). The
+ * race's adjustments — its white-flag clamp, the timed side — are
+ * {@link resolveFuelRaceCoverage}'s, applied on top of this; outside a race
+ * {@link resolveFuelLapCounterCoverage} takes it as it is, since the white
+ * there flies when the player starts their own last lap, which the diff's
+ * final-lap silence already covers.
  *
  * @param telemetry - the tick's telemetry
  */
-export function resolveFuelSessionLapsAfterCurrent(telemetry: TelemetryData): number | null {
+export function resolveFuelLapCounterLapsAfterCurrent(telemetry: TelemetryData): number | null {
   const rawLapsRemain = resolveLapsRemaining(telemetry);
 
   return rawLapsRemain === null ? null : Math.max(0, rawLapsRemain - 1);
 }
 
 /**
- * The distance outside a race, in the {@link FuelRaceCoverage} shape (issue
- * #1702): {@link resolveFuelSessionLapsAfterCurrent} as both the lap-counter
- * side and the binding distance, with no timed side. `null` with no lap
- * limit, where nothing is compared. One definition for the diff and the
- * Telemetry Snapshot's state reader, so the snapshot explains a suppressed
- * warning by the same distance the diff suppressed it on.
+ * The distance by the lap counter alone, in the {@link FuelCoverage} shape
+ * (issue #1702): {@link resolveFuelLapCounterLapsAfterCurrent} as both the
+ * lap-counter side and the binding distance, with no timed side — what the
+ * diff compares the tank with outside a race. `null` with no lap limit, where
+ * nothing is compared. One definition for the diff and the Telemetry
+ * Snapshot's state reader, so the snapshot explains a suppressed warning by
+ * the same distance the diff suppressed it on.
  *
  * @param telemetry - the tick's telemetry
  */
-export function resolveFuelSessionCoverage(telemetry: TelemetryData): FuelRaceCoverage | null {
-  const lapsAfterCurrent = resolveFuelSessionLapsAfterCurrent(telemetry);
+export function resolveFuelLapCounterCoverage(telemetry: TelemetryData): FuelCoverage | null {
+  const lapsAfterCurrent = resolveFuelLapCounterLapsAfterCurrent(telemetry);
 
   if (lapsAfterCurrent === null) return null;
 

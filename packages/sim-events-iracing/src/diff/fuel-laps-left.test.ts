@@ -14,13 +14,13 @@
  *   - timed-race coverage (issue #880, #1405): the player's laps until the
  *     leader's predicted chequered flag, the fallback bound (expiry + two
  *     leader laps) when it cannot be predicted, and dual time+lap limits
- *   - the coverage verdict on the tank (issue #1405, `isFuelRaceCovered`)
+ *   - the coverage verdict on the tank (issue #1405, `isFuelCovered`)
  *     and the two driver reports it fixes, with a genuine shortage still loud
  *   - the enough-fuel confirmation (issue #880): fires once in the race
  *     endgame (≤ 10 laps to go, covered with a lap in hand), clears the
  *     warning floor, re-arms on refuel and after a real warning
  *   - every session kind (issue #1702): the countdown outside a race, its
- *     lap-counter coverage (`resolveFuelSessionLapsAfterCurrent`), and no
+ *     lap-counter coverage (`resolveFuelLapCounterLapsAfterCurrent`), and no
  *     reassurance there
  *   - margin sanitization (`sanitizeFuelCalloutMarginLaps`)
  *   - the two pure functions the diff and the Telemetry Snapshot's state
@@ -52,11 +52,11 @@ import {
   FUEL_CALLOUT_DEFAULT_MARGIN_LAPS,
   FUEL_COVERAGE_ERROR,
   FUEL_LAPS_LEFT_MAX_COUNT,
-  isFuelRaceCovered,
+  isFuelCovered,
   resolveFuelFinalLapStarted,
+  resolveFuelLapCounterCoverage,
+  resolveFuelLapCounterLapsAfterCurrent,
   resolveFuelRaceCoverage,
-  resolveFuelSessionCoverage,
-  resolveFuelSessionLapsAfterCurrent,
   sanitizeFuelCalloutMarginLaps,
 } from "./fuel-laps-left.js";
 import type { FuelStats } from "./fuel-laps.js";
@@ -473,31 +473,31 @@ describe("diffFuelLapsLeft — every session kind (issue #1702)", () => {
   });
 });
 
-describe("resolveFuelSessionLapsAfterCurrent (issue #1702)", () => {
+describe("resolveFuelLapCounterLapsAfterCurrent (issue #1702)", () => {
   it("counts the laps after the current one from the lap counter", () => {
-    expect(resolveFuelSessionLapsAfterCurrent(tick({ SessionLapsRemainEx: 6 }))).toBe(5);
-    expect(resolveFuelSessionLapsAfterCurrent(tick({ SessionLapsRemainEx: 1 }))).toBe(0);
+    expect(resolveFuelLapCounterLapsAfterCurrent(tick({ SessionLapsRemainEx: 6 }))).toBe(5);
+    expect(resolveFuelLapCounterLapsAfterCurrent(tick({ SessionLapsRemainEx: 1 }))).toBe(0);
   });
 
   it("clamps a raw 0 at 0 rather than going negative", () => {
-    expect(resolveFuelSessionLapsAfterCurrent(tick({ SessionLapsRemainEx: 0 }))).toBe(0);
+    expect(resolveFuelLapCounterLapsAfterCurrent(tick({ SessionLapsRemainEx: 0 }))).toBe(0);
   });
 
   it("is null with no lap limit: the sentinel, a missing field or an invalid reading", () => {
-    expect(resolveFuelSessionLapsAfterCurrent(tick({ SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS }))).toBeNull();
-    expect(resolveFuelSessionLapsAfterCurrent(tick({ SessionLapsRemainEx: undefined }))).toBeNull();
-    expect(resolveFuelSessionLapsAfterCurrent(tick({ SessionLapsRemainEx: -1 }))).toBeNull();
-    expect(resolveFuelSessionLapsAfterCurrent(tick({ SessionLapsRemainEx: Number.NaN }))).toBeNull();
+    expect(resolveFuelLapCounterLapsAfterCurrent(tick({ SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS }))).toBeNull();
+    expect(resolveFuelLapCounterLapsAfterCurrent(tick({ SessionLapsRemainEx: undefined }))).toBeNull();
+    expect(resolveFuelLapCounterLapsAfterCurrent(tick({ SessionLapsRemainEx: -1 }))).toBeNull();
+    expect(resolveFuelLapCounterLapsAfterCurrent(tick({ SessionLapsRemainEx: Number.NaN }))).toBeNull();
   });
 
   it("does not clamp under the white flag, unlike the race distance", () => {
-    expect(resolveFuelSessionLapsAfterCurrent(tick({ SessionLapsRemainEx: 1, SessionFlags: Flags.White }))).toBe(0);
+    expect(resolveFuelLapCounterLapsAfterCurrent(tick({ SessionLapsRemainEx: 1, SessionFlags: Flags.White }))).toBe(0);
   });
 });
 
-describe("resolveFuelSessionCoverage (issue #1702)", () => {
+describe("resolveFuelLapCounterCoverage (issue #1702)", () => {
   it("is the lap counter as both the counter side and the binding distance, with no timed side", () => {
-    expect(resolveFuelSessionCoverage(tick({ SessionLapsRemainEx: 4, SessionTimeRemain: 30 }))).toEqual({
+    expect(resolveFuelLapCounterCoverage(tick({ SessionLapsRemainEx: 4, SessionTimeRemain: 30 }))).toEqual({
       lapsNeededAfterCurrent: 3,
       timedLapsAfterCurrent: null,
       remainingLaps: 3,
@@ -505,7 +505,7 @@ describe("resolveFuelSessionCoverage (issue #1702)", () => {
   });
 
   it("is null with no lap limit", () => {
-    expect(resolveFuelSessionCoverage(tick({ SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS }))).toBeNull();
+    expect(resolveFuelLapCounterCoverage(tick({ SessionLapsRemainEx: IRSDK_UNLIMITED_LAPS }))).toBeNull();
   });
 });
 
@@ -1194,15 +1194,15 @@ describe("resolveFuelRaceCoverage (issue #1387)", () => {
   });
 });
 
-describe("isFuelRaceCovered (issue #1405)", () => {
+describe("isFuelCovered (issue #1405)", () => {
   // Half of this lap plus one more: 1.5 laps of fuel needed, 1.575 with the allowance.
   const halfLapLeft = (rawLapsLeft: number) => ({ rawLapsLeft, lapFractionRemaining: 0.5 });
 
   it("keeps a 5 % allowance on the distance left", () => {
     expect(FUEL_COVERAGE_ERROR).toBe(0.05);
-    expect(isFuelRaceCovered(halfLapLeft(1.5 * 1.04), 1)).toBe(false);
-    expect(isFuelRaceCovered(halfLapLeft(1.5 * 1.06), 1)).toBe(true);
-    expect(isFuelRaceCovered(halfLapLeft(1.5), 1)).toBe(false);
+    expect(isFuelCovered(halfLapLeft(1.5 * 1.04), 1)).toBe(false);
+    expect(isFuelCovered(halfLapLeft(1.5 * 1.06), 1)).toBe(true);
+    expect(isFuelCovered(halfLapLeft(1.5), 1)).toBe(false);
   });
 
   it("judges the raw tank, so a margin that empties the count does not matter", () => {
@@ -1211,26 +1211,26 @@ describe("isFuelRaceCovered (issue #1405)", () => {
     const estimate = estimateFuelLapsLeft(3.4, 0.5, 2, 1.5);
 
     expect(estimate.count).toBe(0);
-    expect(isFuelRaceCovered(estimate, 1)).toBe(true);
+    expect(isFuelCovered(estimate, 1)).toBe(true);
   });
 
   it("grows with the distance left", () => {
     // Ten laps after this one: 10.5 laps needed, 11.025 with the allowance.
-    expect(isFuelRaceCovered(halfLapLeft(11), 10)).toBe(false);
-    expect(isFuelRaceCovered(halfLapLeft(11.03), 10)).toBe(true);
+    expect(isFuelCovered(halfLapLeft(11), 10)).toBe(false);
+    expect(isFuelCovered(halfLapLeft(11.03), 10)).toBe(true);
   });
 
   it("calls the last lap covered whatever the tank holds — the #866 trade-off", () => {
     // Nothing after the current lap: half a lap to run on 0.1 laps of fuel
     // (or none) is not worth a shortage call at the estimator's precision.
-    expect(isFuelRaceCovered(halfLapLeft(0.1), 0)).toBe(true);
-    expect(isFuelRaceCovered(halfLapLeft(0), 0)).toBe(true);
+    expect(isFuelCovered(halfLapLeft(0.1), 0)).toBe(true);
+    expect(isFuelCovered(halfLapLeft(0), 0)).toBe(true);
     // One lap after it is judged on the tank again.
-    expect(isFuelRaceCovered(halfLapLeft(0.1), 1)).toBe(false);
+    expect(isFuelCovered(halfLapLeft(0.1), 1)).toBe(false);
   });
 
   it("never covers an unknown distance", () => {
-    expect(isFuelRaceCovered(halfLapLeft(1000), Number.POSITIVE_INFINITY)).toBe(false);
+    expect(isFuelCovered(halfLapLeft(1000), Number.POSITIVE_INFINITY)).toBe(false);
   });
 });
 

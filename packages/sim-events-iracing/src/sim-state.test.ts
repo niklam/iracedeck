@@ -24,7 +24,7 @@ import type { ILogger } from "@iracedeck/logger";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { FUEL_LAPS_LEFT_WINDOW_LAPS, isFuelRaceCovered } from "./diff/fuel-laps-left.js";
+import { FUEL_LAPS_LEFT_WINDOW_LAPS, isFuelCovered } from "./diff/fuel-laps-left.js";
 import { createFuelLapTracker, type FuelLap } from "./diff/fuel-laps.js";
 import {
   CLOCK_EXPIRY_CONFIRM_TICKS,
@@ -505,7 +505,7 @@ describe("readSimState — the laps-of-fuel-left figure", () => {
     expect(announced.lastSampledLap).toBe(4);
     expect(spoken).toEqual([]);
     expect(now).toMatchObject({ count: 0, remainingLaps: 1, covered: true, coverageSkipped: null });
-    expect(now!.covered).toBe(isFuelRaceCovered(now!, 1));
+    expect(now!.covered).toBe(isFuelCovered(now!, 1));
   });
 
   it("reads the leader's post-expiry crossing for the chequered prediction, as the diff does", () => {
