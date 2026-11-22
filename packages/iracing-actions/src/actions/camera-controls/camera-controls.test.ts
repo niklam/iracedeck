@@ -2636,6 +2636,53 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
       });
     });
 
+    it("writes a key's settings first even when its subscription ticks at once (#1653 review)", async () => {
+      const action = new CameraControls();
+      vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ CamGroupNumber: 12 }); // TV1
+      vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue({});
+      // The SDK calls a new subscriber at once, inside subscribe.
+      vi.mocked(action["sdkController"].subscribe).mockImplementation((_id, callback) => {
+        subscriber = () => callback(null, true);
+        callback(null, true);
+      });
+      vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue(LAKELAND_GROUPS);
+
+      await action.onWillAppear({
+        action: keyContext(),
+        payload: { settings: { target: "cycle-camera", direction: "next", cycleIconMode: "current" } },
+      } as never);
+      await flush();
+
+      const firstSettings = vi.mocked(action["setKeyImage"]).mock.invocationCallOrder[0];
+      const firstIcon = vi.mocked(action["updateKeyImage"]).mock.invocationCallOrder[0];
+      expect(firstSettings).toBeLessThan(firstIcon);
+      expect(shownIcons(action)).toHaveLength(1);
+      expect(shownIcons(action)[0]).toContain("tv1-artwork");
+    });
+
+    it("releases a settings handler whose write is still out when the key leaves (#1653 review)", async () => {
+      const action = await appear({ cycleIconMode: "current" }, null);
+      const older = keyContext();
+      older.setTitle.mockImplementationOnce(() => new Promise<void>(() => {})); // the host never answers
+      const first = action.onDidReceiveSettings({
+        action: older,
+        payload: { settings: { target: "cycle-camera", direction: "next", titleOverrides: { titleText: "OLD" } } },
+      } as never);
+      await flush();
+      const second = action.onDidReceiveSettings({
+        action: keyContext(),
+        payload: { settings: { target: "change-camera", cameraGroupName: "Nose" } },
+      } as never);
+      await flush();
+
+      await action.onWillDisappear({ action: keyContext(), payload: { settings: {} } } as never);
+
+      const settled = (p: Promise<void>): Promise<string> =>
+        Promise.race([p.then(() => "settled"), flush().then(() => "pending")]);
+      expect(await settled(first)).toBe("settled");
+      expect(await settled(second)).toBe("settled");
+    });
+
     it("subscribes a key before its first write, so a refused first write is retried", async () => {
       const action = new CameraControls();
       vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ CamGroupNumber: 12 }); // TV1
@@ -3827,7 +3874,7 @@ describe("Camera Controls keys on a group the session lacks (#1653)", () => {
     settings: Record<string, unknown>,
     groups: { groupNum: number; groupName: string }[],
     sessionInfo: SessionInfo | null = {},
-    telemetry: TelemetryData = { CamCarIdx: 4, CamGroupNumber: 5 },
+    telemetry: TelemetryData | null = { CamCarIdx: 4, CamGroupNumber: 5 },
   ): Promise<CameraControls> {
     const action = new CameraControls();
     vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(telemetry);
@@ -4266,6 +4313,43 @@ describe("Camera Controls keys on a group the session lacks (#1653)", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(pushedImages(action)).toBe(1);
+    });
+
+    describe("losing telemetry (#1653 review)", () => {
+      const flush = (): Promise<unknown> => new Promise((resolve) => setTimeout(resolve, 0));
+
+      it("keeps the placeholder greyed while the session still lacks every enabled group", async () => {
+        const action = await appear(current({ Drone: true }), CUSTOM_FILE_GROUPS);
+        expect(lastIconOptions().dimmed).toBe(true);
+
+        vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(null);
+        subscriber?.();
+        await flush();
+
+        expect(pushedImages(action)).toBe(2);
+        const shown = decodeURIComponent(String(vi.mocked(action["updateKeyImage"]).mock.calls[1][1]));
+        expect(shown).toContain("CYCLE CAM");
+        expect(shown).toContain('<g opacity="0.35">');
+      });
+
+      it("shows the normal grid when an enabled group is in the session", async () => {
+        const action = await appear(current({ dynamictv: true }), CUSTOM_FILE_GROUPS);
+
+        vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(null);
+        subscriber?.();
+        await flush();
+
+        expect(pushedImages(action)).toBe(2);
+        const shown = decodeURIComponent(String(vi.mocked(action["updateKeyImage"]).mock.calls[1][1]));
+        expect(shown).toContain("CYCLE CAM");
+        expect(shown).not.toContain("opacity=");
+      });
+
+      it("shows the normal grid in the next-group mode", async () => {
+        await appear({ ...current({ Drone: true }), cycleIconMode: "next" }, CUSTOM_FILE_GROUPS, {}, null);
+
+        expect(anyIconDimmed()).toBe(false);
+      });
     });
 
     it("is never greyed in the default next-group mode", async () => {

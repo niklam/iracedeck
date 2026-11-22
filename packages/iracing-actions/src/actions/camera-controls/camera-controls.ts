@@ -1008,6 +1008,12 @@ interface KeyRender {
   settingsVersion: number;
   /** Settings to write before anything else; kept after a refused write, so the next request retries it. */
   settingsWrite: SettingsWrite | null;
+  /**
+   * The settings write under way, which newer settings no longer point to: the
+   * key leaving releases its waiters too, rather than leave them on a host call
+   * that may never settle (#1653 review).
+   */
+  settingsInFlight: SettingsWrite | null;
   /** The look the last successful write put on the key; null when a write failed and the key's look is unknown. */
   written: KeyLook | null;
   running: boolean;
@@ -1018,7 +1024,15 @@ interface KeyRender {
 }
 
 function newKeyRender(): KeyRender {
-  return { settingsVersion: 0, settingsWrite: null, written: null, running: false, requested: false, settled: [] };
+  return {
+    settingsVersion: 0,
+    settingsWrite: null,
+    settingsInFlight: null,
+    written: null,
+    running: false,
+    requested: false,
+    settled: [],
+  };
 }
 
 export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
@@ -1107,14 +1121,20 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     this.dropKeyRender(ev.action.id);
     this.keyRenders.set(ev.action.id, newKeyRender());
 
-    // Subscribed before the first write (#1653 review): a first write the host
-    // refuses is retried by the next tick, so the key recovers. The writer draws
-    // the telemetry-driven look right after the settings' own.
+    // The settings are queued first, so the writer's first pass writes them —
+    // the subscription below may tick at once, inside subscribe, and a pass that
+    // tick started would otherwise draw a telemetry look before the key has its
+    // settings (#1653 review). It subscribes before that write is awaited, so a
+    // first write the host refuses is retried by the next tick and the key
+    // recovers. The writer draws the telemetry-driven look right after the
+    // settings' own.
+    const settingsWritten = this.requestSettingsWrite(ev);
+
     this.sdkController.subscribe(ev.action.id, () => {
       this.requestRender(ev.action.id);
     });
 
-    await this.requestSettingsWrite(ev);
+    await settingsWritten;
   }
 
   override async onWillDisappear(ev: IDeckWillDisappearEvent<CameraControlsSettings>): Promise<void> {
@@ -1982,7 +2002,11 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     if (!render) return;
 
     this.keyRenders.delete(contextId);
-    const waiters = [...render.settled.splice(0), ...(render.settingsWrite?.waiters.splice(0) ?? [])];
+    const waiters = [
+      ...render.settled.splice(0),
+      ...(render.settingsInFlight?.waiters.splice(0) ?? []),
+      ...(render.settingsWrite?.waiters.splice(0) ?? []),
+    ];
 
     for (const waiter of waiters) waiter.resolve();
   }
@@ -2070,6 +2094,7 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     }
 
     const look = this.restingLook(settings, render.settingsVersion);
+    render.settingsInFlight = write;
 
     try {
       await write.ev.action.setTitle("");
@@ -2081,6 +2106,8 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
       for (const waiter of write.waiters.splice(0)) waiter.reject(err);
 
       return false;
+    } finally {
+      if (render.settingsInFlight === write) render.settingsInFlight = null;
     }
 
     if (render.settingsWrite === write) render.settingsWrite = null;
@@ -2149,8 +2176,18 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
 
     const telemetry = this.sdkController.getCurrentTelemetry();
 
-    // Connection lost: the grid, in place of a telemetry-driven icon.
-    if (!telemetry) return this.restingLook(settings, version);
+    // Connection lost: the grid, in place of a telemetry-driven icon — greyed
+    // for a Current camera key whose enabled groups the session still lists
+    // none of, since a press stays unusable (#1653 review). An unreadable list
+    // and the next-group look keep the normal grid.
+    if (!telemetry) {
+      if (settings.cycleIconMode !== "current") return this.restingLook(settings, version);
+
+      const groups = this.readSessionGroupsFresh();
+      const unusable = isCycleCameraUnavailable(getEnabledGroupNames(settings.cameraGroupSubset), groups);
+
+      return unusable ? this.groupLook(settings, version, "", true) : this.restingLook(settings, version);
+    }
 
     const sessionGroups = this.readSessionGroupsFresh();
 
