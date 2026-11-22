@@ -144,7 +144,7 @@ describe("Callouts card sections (#1700)", () => {
           "opponent-pits",
         ],
       ],
-      ["car-and-conditions", ["fuel", "damage", "track-conditions"]],
+      ["car-and-conditions", ["fuel-countdown-sessions", "fuel", "damage", "track-conditions"]],
       ["track-guide", ["corner-names"]],
       ["key-acknowledgments", ["race-engineer-toggle"]],
     ]);
@@ -254,6 +254,7 @@ describe("Fuel countdown session kinds (#1702)", () => {
 
     expect(ids.indexOf("fuel-countdown-sessions")).toBe(ids.indexOf("fuel") - 1);
     expect(group?.title).toBe("Speak in");
+    expect(group?.description).toBe("The fuel countdown speaks only in the session types you tick here.");
     expect(group?.families).toEqual([FUEL_COUNTDOWN_SESSION_CALLOUTS]);
     expect(rows?.map((e) => [e.key, e.label])).toEqual(SESSION_ROWS.map(([, key, label]) => [key, label]));
   });
