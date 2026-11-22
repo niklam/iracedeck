@@ -15,6 +15,7 @@ import {
   cameraGroupWrite,
   clearRemembered,
   effectiveCameraGroupName,
+  foldCameraGroupName,
   formatTrackList,
   isAcceptableCameraGroupName,
   isCustomCameraFile,
@@ -295,6 +296,23 @@ describe("matchCameraGroupName", () => {
 
   it("refuses to choose between two names that differ only in case", () => {
     expect(matchCameraGroupName("DRONE", ["Drone", "drone"])).toBeUndefined();
+  });
+
+  describe("with the legacy spellings folded, as the press folds them (#1653 review)", () => {
+    it("matches a legacy spelling to its canonical one, in either direction and any case", () => {
+      expect(matchCameraGroupName("Pit Lane 2", ["Nose", "PIT LANE2"])).toBe("PIT LANE2");
+      expect(matchCameraGroupName("pit lane2", ["Pit Lane 2"])).toBe("Pit Lane 2");
+    });
+
+    it("still prefers the exact spelling, and refuses two folded candidates", () => {
+      expect(matchCameraGroupName("Pit Lane2", ["Pit Lane 2", "Pit Lane2"])).toBe("Pit Lane2");
+      expect(matchCameraGroupName("pit lane 2", ["Pit Lane 2", "PIT LANE2"])).toBeUndefined();
+    });
+
+    it("folds like the press", () => {
+      expect(foldCameraGroupName("PIT LANE2")).toBe("pit lane 2");
+      expect(foldCameraGroupName("DynamicTV")).toBe("dynamictv");
+    });
   });
 });
 

@@ -40,6 +40,22 @@ import {
  */
 export const LEGACY_CAMERA_GROUP_NAMES: ReadonlyMap<string, string> = new Map([["Pit Lane2", "Pit Lane 2"]]);
 
+/** The legacy spellings by lower case, folded to the lower-case canonical name. */
+const LEGACY_CAMERA_GROUP_NAMES_FOLDED: ReadonlyMap<string, string> = new Map(
+  [...LEGACY_CAMERA_GROUP_NAMES].map(([variant, canonical]) => [variant.toLowerCase(), canonical.toLowerCase()]),
+);
+
+/**
+ * A group name folded as the press folds it (`foldCameraGroupName` in
+ * iracing-sdk): lower case, with a legacy spelling taken to its canonical one,
+ * so `PIT LANE2` and `Pit Lane 2` fold alike (#1653 review).
+ */
+export function foldCameraGroupName(name: string): string {
+  const lower = name.toLowerCase();
+
+  return LEGACY_CAMERA_GROUP_NAMES_FOLDED.get(lower) ?? lower;
+}
+
 /** The canonical spelling of a group name, as `normalizeGroupName` reads it. */
 export function normalizeCameraGroupName(name: string): string {
   return LEGACY_CAMERA_GROUP_NAMES.get(name) ?? name;
@@ -283,17 +299,18 @@ export const PICKER_HEADINGS = {
 /**
  * The name `stored` resolves to among `names`, the way the press resolves a
  * name against the session (decision 6): exactly first, then the one name that
- * matches ignoring case. Undefined when neither finds exactly one.
+ * matches once case and the legacy spellings are folded. Undefined when neither
+ * finds exactly one.
  */
 export function matchCameraGroupName(stored: string, names: Iterable<string>): string | undefined {
-  const lower = stored.toLowerCase();
+  const target = foldCameraGroupName(stored);
   let folded: string | undefined;
   let foldedCount = 0;
 
   for (const name of names) {
     if (name === stored) return name;
 
-    if (name.toLowerCase() === lower) {
+    if (foldCameraGroupName(name) === target) {
       folded = name;
       foldedCount++;
     }
