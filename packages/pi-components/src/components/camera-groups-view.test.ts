@@ -318,6 +318,26 @@ describe("resolveTypedCameraGroupName", () => {
   it("stores an unknown name as typed, trimmed", () => {
     expect(resolveTypedCameraGroupName(" My Chicane ", view)).toBe("My Chicane");
   });
+
+  describe("a session group that differs from a standard one only in case (#1653 review)", () => {
+    const twins = catalog([], { trackId: 2, groups: ["TV1", "tv1"] });
+
+    it("stores the session's exact match, with no number", () => {
+      expect(resolveTypedCameraGroupName(" tv1 ", twins)).toBe("tv1");
+      expect(cameraGroupWrite("tv1")).toEqual({ name: "tv1" });
+    });
+
+    it("stores the standard group for its own spelling and for one the session does not list", () => {
+      expect(resolveTypedCameraGroupName("TV1", twins)).toBe("TV1");
+      expect(resolveTypedCameraGroupName("Tv1", twins)).toBe("TV1");
+    });
+
+    it("still stores the standard group, with its number, with no session loaded", () => {
+      expect(resolveTypedCameraGroupName("tv1", catalog([], null))).toBe("TV1");
+      expect(resolveTypedCameraGroupName("tv1", null)).toBe("TV1");
+      expect(cameraGroupWrite("TV1")).toEqual({ name: "TV1", number: "17" });
+    });
+  });
 });
 
 describe("cameraGroupWrite", () => {

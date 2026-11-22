@@ -406,16 +406,21 @@ function rememberedSuffix(catalog: CameraCatalogView, group: CameraCatalogViewGr
 /**
  * The name a typed Other… entry stores, or null when there is nothing to store.
  *
- * Trimmed and legacy-folded. A standard name typed in any case stores the
- * canonical standard spelling (so its number is written too). Any other name
- * resolves against the catalog and the session as the press resolves a name —
- * exactly, then the one name matching ignoring case — so `dynamictv` stores the
- * `DynamicTV` the file actually has; a name neither knows is stored as typed.
+ * Trimmed. A name the loaded session lists exactly is stored as typed, since
+ * that is the group a press finds first (#1653 review: with `TV1` and `tv1`
+ * both in the file, `tv1` means `tv1`). Otherwise legacy-folded: a standard
+ * name typed in any case stores the canonical standard spelling (so its number
+ * is written too), and any other name resolves against the catalog and the
+ * session as the press resolves a name — exactly, then the one name matching
+ * ignoring case — so `dynamictv` stores the `DynamicTV` the file actually has;
+ * a name neither knows is stored as typed.
  */
 export function resolveTypedCameraGroupName(typed: string, catalog: CameraCatalogView | null): string | null {
   const trimmed = typed.trim();
 
   if (!isAcceptableCameraGroupName(trimmed)) return null;
+
+  if (catalog?.current?.groups.includes(trimmed)) return trimmed;
 
   const folded =
     [...LEGACY_CAMERA_GROUP_NAMES].find(([variant]) => variant.toLowerCase() === trimmed.toLowerCase())?.[1] ?? trimmed;
