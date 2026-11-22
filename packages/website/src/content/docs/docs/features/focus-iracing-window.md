@@ -48,7 +48,7 @@ The choice covers everything the press does, including the repeats of a key you 
 For example, if you stream with OBS in front and keep the global mode on **Always**, set your camera keys to **Don't bring iRacing to the front**. Camera switches talk to iRacing over its API, so the shot changes while OBS keeps focus, and your other keys still bring iRacing forward as before.
 
 :::caution
-A key that works by pressing keys — anything driven by a key binding, a chat message or a pit macro — still sends its keystrokes when set to **Don't bring iRacing to the front**. They go to whatever window is in front, so they never reach iRacing and may type into, or trigger a shortcut in, the program you are using. Choose it only for keys that talk to iRacing over its API, or when you know iRacing will already be in front.
+A key that works by pressing keys — anything driven by a key binding, a chat message or a pit macro — still sends its keystrokes when set to **Don't bring iRacing to the front**. They go to whatever window is in front: iRacing if it already is, otherwise the program you are using, where they may type text or trigger a shortcut. Choose it only for keys that talk to iRacing over its API, or when you know iRacing will already be in front.
 :::
 
 On a dial, Common Settings shows only this choice: its other setting, **Flags Overlay**, draws on a key's icon and so has no effect on a dial. **Mouse to Sim** ignores this choice as it ignores the global one.
