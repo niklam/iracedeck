@@ -2689,23 +2689,21 @@ function playerFastestLapCompleted(lap: number): PublishedEvent {
  * which is `null` (no fuel line at all) until a session preset is applied
  * AND the translator has a tick to read the session number from, which a
  * disconnected mock SDK never delivers. The session is asked for first, as
- * the caution catch-up button does, and last that the translator's latest tick
- * is in that session: a session number changed by hand reaches it only on its
- * next tick, which a paused or slowed loop delays.
+ * the caution catch-up button does, then that the translator's latest tick
+ * is in that session (a session number changed by hand reaches it only on its
+ * next tick, which a paused or slowed loop delays), and last that the player
+ * is not on their final lap, where the fuel contracts' speak gate refuses
+ * every line. The countdown run declares that too: in a race the translator
+ * keeps the last lap marked until a green flag, which the run does not show
+ * (a seeded green would speak a green-flag line nobody pressed for), so it
+ * would play nothing there; the refusal says how to get back.
  */
 const FUEL_COUNTDOWN_REQUIRES: readonly ShortcutPrecondition[] = [
   "session-classified",
   "sdk-connected",
   "translator-session-current",
+  "before-final-lap",
 ];
-
-/**
- * What a button that PUBLISHES a fuel count needs on top (issue #1702): the
- * player not yet on their final lap, where the fuel contracts' speak gate
- * refuses every line. The countdown run does not declare it: it drives the
- * car onto a racing lap itself, and the translator decides its counts.
- */
-const FUEL_COUNT_REQUIRES: readonly ShortcutPrecondition[] = [...FUEL_COUNTDOWN_REQUIRES, "before-final-lap"];
 
 /** The same for "Enough fuel to finish", which is heard in a race only (issue #1702). */
 const FUEL_RACE_COVERED_REQUIRES: readonly ShortcutPrecondition[] = [
@@ -5124,7 +5122,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     description: `Estimated ${count} full lap${count === 1 ? "" : "s"} of fuel after completing the current lap. ${FUEL_SESSION_NOTE}`,
     event: "fuel.lapsLeft.crossed",
     data: { count, lapsLeft: count + 0.4 },
-    requires: FUEL_COUNT_REQUIRES,
+    requires: FUEL_COUNTDOWN_REQUIRES,
   })),
   {
     id: "fuel-laps-left-box",
@@ -5133,7 +5131,7 @@ export const SCENARIO_SHORTCUTS: readonly ScenarioShortcut[] = [
     description: `The tank won't cover another full lap — box this lap for fuel (count 0). ${FUEL_SESSION_NOTE}`,
     event: "fuel.lapsLeft.crossed",
     data: { count: 0, lapsLeft: 0.4 },
-    requires: FUEL_COUNT_REQUIRES,
+    requires: FUEL_COUNTDOWN_REQUIRES,
   },
   {
     id: "fuel-race-covered",

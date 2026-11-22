@@ -198,7 +198,7 @@ describe("the Fuel buttons' preconditions (issue #1702)", () => {
 
     expect(fuel.sort()).toEqual([...COUNT_IDS, RACE_COVERED_ID, RUN_ID].sort());
 
-    for (const id of COUNT_IDS) {
+    for (const id of [...COUNT_IDS, RUN_ID]) {
       expect(requiresOf(id), id).toEqual([
         "session-classified",
         "sdk-connected",
@@ -207,8 +207,6 @@ describe("the Fuel buttons' preconditions (issue #1702)", () => {
       ]);
     }
 
-    // The run drives the car onto a racing lap itself: no final-lap rule.
-    expect(requiresOf(RUN_ID)).toEqual(["session-classified", "sdk-connected", "translator-session-current"]);
     expect(requiresOf(RACE_COVERED_ID)).toEqual([
       "race-session",
       "sdk-connected",
@@ -217,17 +215,15 @@ describe("the Fuel buttons' preconditions (issue #1702)", () => {
     ]);
   });
 
-  it("refuses the buttons that publish a fuel line on the final lap, and not the run", () => {
+  it("refuses every Fuel button on the final lap, the countdown run included", () => {
     const onFinalLap = stateWith(readPreset("session", "race"), { playerFinalLapStarted: true });
 
-    for (const id of [...COUNT_IDS, RACE_COVERED_ID]) {
+    for (const id of [...COUNT_IDS, RACE_COVERED_ID, RUN_ID]) {
       const refusal = checkShortcutPreconditions(requiresOf(id), onFinalLap);
 
       expect(refusal, id).toEqual(expect.stringContaining("final lap"));
       expect(refusal).toContain("hot-lap");
     }
-
-    expect(checkShortcutPreconditions(requiresOf(RUN_ID), onFinalLap)).toBeNull();
 
     // The speak gate's own test: only a definite "on the final lap" refuses.
     for (const answer of [false, null]) {
@@ -481,10 +477,40 @@ describe("the final-lap precondition against the running translator (issue #1702
     expect(checkShortcutPreconditions(requiresOf(RACE_COVERED_ID), routeState(controller))).toBeNull();
   });
 
-  it("leaves the countdown run alone: accepted under a chequered flag, and it counts the same", () => {
+  it("refuses the countdown run under a chequered flag, and runs it after the hot-lap preset and a tick", () => {
     const { controller, events } = startTranslator("practice");
 
     tick(controller, { SessionState: SessionState.Checkered });
+
+    expect(checkShortcutPreconditions(requiresOf(RUN_ID), routeState(controller))).toContain("final lap");
+
+    tick(controller, readPreset("telemetry", "hot-lap") as TelemetryPatch);
+
+    expect(checkShortcutPreconditions(requiresOf(RUN_ID), routeState(controller))).toBeNull();
+
+    runSequence(controller, runSteps());
+
+    expect(countsOf(events)).toEqual(EXPECTED_COUNTS);
+  });
+
+  it("refuses the countdown run in a race whose last lap is marked, which it could not count, until a green", () => {
+    const { controller, events } = startTranslator("race", "hot-lap");
+
+    tick(controller, { LapCompleted: 4 });
+    tick(controller, { SessionFlags: Flags.White });
+    vi.advanceTimersByTime(10_000);
+    tick(controller, { LapCompleted: 5 });
+    tick(controller, readPreset("telemetry", "hot-lap") as TelemetryPatch);
+
+    expect(checkShortcutPreconditions(requiresOf(RUN_ID), routeState(controller))).toContain("final lap");
+
+    // Why: the run shows no green, so the marked last lap survives it and the
+    // translator counts nothing.
+    runSequence(controller, runSteps());
+
+    expect(countsOf(events)).toEqual([]);
+
+    tick(controller, { SessionFlags: Flags.Green });
 
     expect(checkShortcutPreconditions(requiresOf(RUN_ID), routeState(controller))).toBeNull();
 
@@ -773,20 +799,18 @@ describe("POST /api/shortcut/start for the Fuel buttons (issue #1702)", () => {
     for (const id of [...COUNT_IDS, RUN_ID]) expect((await start(id)).statusCode, id).toBe(204);
   });
 
-  it("refuses the buttons that publish a fuel line under a chequered flag, runs the countdown, and all once racing", async () => {
+  it("refuses every Fuel button under a chequered flag, and runs them all once racing", async () => {
     controller.setSessionInfo(readPreset("session", "race") as unknown as SessionInfo);
     controller.setConnected(true);
     controller.mutateTelemetry({ SessionState: SessionState.Checkered });
     controller.tickOnce();
 
-    for (const id of [...COUNT_IDS, RACE_COVERED_ID]) {
+    for (const id of [...COUNT_IDS, RACE_COVERED_ID, RUN_ID]) {
       const res = await start(id);
 
       expect(res.statusCode, id).toBe(409);
       expect(res.error).toContain("final lap");
     }
-
-    expect((await start(RUN_ID)).statusCode).toBe(204);
 
     controller.mutateTelemetry(readPreset("telemetry", "hot-lap") as TelemetryPatch);
     controller.tickOnce();

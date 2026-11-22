@@ -105,10 +105,10 @@ import { TRAFFIC_PLAYER_CAR_IDX } from "./traffic-telemetry.js";
  * `before-final-lap` — the player is not on their final lap and the
  * session's chequered flag is not out (#1702), as the translator's
  * `isPlayerFinalLapStarted()` answers it: the fuel contracts' speak gate
- * asks the same reader and refuses a line there, so a fuel event published
- * past the translator would be accepted and play nothing. Only the buttons
- * that publish a fuel event declare it; the countdown run puts the car on a
- * racing lap itself.
+ * asks the same reader and refuses a line there, so a fuel button would be
+ * accepted and play nothing. Every Fuel button declares it, the countdown run
+ * too: it puts the car on a racing lap but shows no green flag, and in a race
+ * the translator keeps the last lap marked until one.
  */
 export type ShortcutPrecondition =
   | "player-car-index"
