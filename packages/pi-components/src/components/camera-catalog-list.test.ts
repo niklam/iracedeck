@@ -195,4 +195,39 @@ describe("ird-camera-catalog-list", () => {
 
     expect(button("drone").textContent).toBe("Remove");
   });
+
+  describe("keyboard focus across a push (#1653 review)", () => {
+    it("moves to the same group's new Remove button, which still confirms", () => {
+      publish(CATALOG);
+      button("drone").focus();
+      button("drone").click();
+      publish({ ...CATALOG, current: null });
+
+      expect(document.activeElement).toBe(button("drone"));
+      expect(button("drone").textContent).toBe("Remove — are you sure?");
+
+      (document.activeElement as HTMLButtonElement).click();
+      expect(send).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps a resting button's focus too", () => {
+      publish(CATALOG);
+      button("TV1").focus();
+      publish({ ...CATALOG, current: null });
+
+      expect(document.activeElement).toBe(button("TV1"));
+    });
+
+    it("clears the arm, and takes no other button's focus, when the focused group leaves", () => {
+      publish(CATALOG);
+      button("drone").focus();
+      button("drone").click();
+      publish({ ...CATALOG, groups: CATALOG.groups.filter((g) => g.name !== "drone") });
+
+      expect(el.contains(document.activeElement)).toBe(false);
+
+      publish(CATALOG);
+      expect(button("drone").textContent).toBe("Remove");
+    });
+  });
 });

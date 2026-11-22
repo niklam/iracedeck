@@ -222,6 +222,12 @@ export class CameraCatalogList extends HTMLElement {
 
     if (this.armed !== null && !rows.some((row) => row.name === this.armed)) this.clearArmedState();
 
+    // A push rebuilds every row, focused Remove button included: the same
+    // group's new button takes the focus back, so a keyboard user mid-confirm
+    // can still press Enter (#1653 review). A group that left the list takes
+    // the focus with it.
+    const focusedName = this.focusedRowName();
+
     this.armedButton = null;
     this.list.textContent = "";
 
@@ -238,6 +244,8 @@ export class CameraCatalogList extends HTMLElement {
     count.className = "ird-cc-count";
     count.textContent = `${rows.length} remembered ${rows.length === 1 ? "group" : "groups"}`;
     this.list.appendChild(count);
+
+    let refocus: HTMLButtonElement | null = null;
 
     for (const row of rows) {
       const element = document.createElement("div");
@@ -262,9 +270,25 @@ export class CameraCatalogList extends HTMLElement {
       if (row.tracks.length > 3) meta.title = row.tracks.join(", ");
 
       text.append(name, meta);
-      element.append(text, this.removeButton(row.name));
+
+      const remove = this.removeButton(row.name);
+
+      if (row.name === focusedName) refocus = remove;
+
+      element.append(text, remove);
       this.list.appendChild(element);
     }
+
+    refocus?.focus();
+  }
+
+  /** The group whose Remove button has the focus, or null. */
+  private focusedRowName(): string | null {
+    const active = document.activeElement;
+
+    if (!(active instanceof HTMLButtonElement) || !this.list?.contains(active)) return null;
+
+    return active.closest<HTMLElement>(".ird-cc-row")?.dataset.name ?? null;
   }
 }
 
