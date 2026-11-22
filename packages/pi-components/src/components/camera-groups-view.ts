@@ -333,7 +333,8 @@ export function matchCameraGroupName(stored: string, names: Iterable<string>): s
  *    is exactly the picker before #1653.
  * 3. **Other remembered groups** — every catalog name not shown above,
  *    alphabetically, labelled with up to three tracks whose latest list holds
- *    it, or "(seen before)" when none does.
+ *    it, or "(seen before)" when none does; "(on this track)" for one the
+ *    press resolves to a session group in another spelling.
  * 4. **The stored name** when none of the above lists it, so a key never looks
  *    unset.
  *
@@ -386,7 +387,13 @@ export function buildCameraGroupPicker(catalog: CameraCatalogView | null, stored
       .map((group): CameraGroupPickerOption => {
         listed.add(group.name);
 
-        return { value: group.name, label: `${group.name} ${rememberedSuffix(catalog, group)}` };
+        // A name the press resolves to a session group (decision 6: the
+        // session's `DynamicTV` for a remembered `dynamictv`) keeps its own
+        // option, labelled on this track rather than absent (#1653 review).
+        const reachable = session !== null && matchCameraGroupName(group.name, session.groups) !== undefined;
+        const suffix = reachable ? "(on this track)" : rememberedSuffix(catalog, group);
+
+        return { value: group.name, label: `${group.name} ${suffix}` };
       });
 
     if (remembered.length > 0) sections.push({ heading: PICKER_HEADINGS.remembered, options: remembered });

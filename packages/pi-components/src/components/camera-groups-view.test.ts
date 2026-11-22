@@ -158,6 +158,28 @@ describe("buildCameraGroupPicker", () => {
   const section = (model: ReturnType<typeof buildCameraGroupPicker>, heading: string) =>
     model.sections.find((s) => s.heading === heading);
 
+  describe("a remembered name the session lists in another case (#1653 review)", () => {
+    const remembered = (model: ReturnType<typeof buildCameraGroupPicker>) =>
+      model.sections.find((s) => s.heading === PICKER_HEADINGS.remembered)?.options ?? [];
+
+    it("keeps its own option, labelled on this track", () => {
+      const view = catalog([group("dynamictv", [0]), group("Drone", [0])], { trackId: 2, groups: ["DynamicTV"] });
+
+      expect(remembered(buildCameraGroupPicker(view, ""))).toEqual([
+        { value: "Drone", label: "Drone (not on this track: Spa)" },
+        { value: "dynamictv", label: "dynamictv (on this track)" },
+      ]);
+    });
+
+    it("keeps today's label when the session has two names it could mean", () => {
+      const view = catalog([group("static", [0])], { trackId: 2, groups: ["Static", "STATIC"] });
+
+      expect(remembered(buildCameraGroupPicker(view, ""))).toEqual([
+        { value: "static", label: "static (not on this track: Spa)" },
+      ]);
+    });
+  });
+
   describe("a standard group the session lists in another case (#1653 review)", () => {
     const values = (model: ReturnType<typeof buildCameraGroupPicker>): string[] =>
       model.sections.flatMap((s) => s.options.map((o) => o.value));
