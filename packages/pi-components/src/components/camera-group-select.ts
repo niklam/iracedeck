@@ -124,6 +124,20 @@ export class CameraGroupSelect extends HTMLElement {
   private saveName: ((value: string) => void) | null = null;
   private saveNumber: ((value: string) => void) | null = null;
 
+  /**
+   * Clicking the enclosing sdpi-item's label focuses the first element under
+   * it whose `canFocus` is true (the vendored `sdpi-item`'s
+   * `handleLabelClick`). This element comes first, so the label reaches the
+   * picker's select rather than the Other… field inside it (#1653 review).
+   */
+  get canFocus(): boolean {
+    return true;
+  }
+
+  override focus(options?: FocusOptions): void {
+    this.select?.focus(options);
+  }
+
   connectedCallback(): void {
     if (this._initialized) return;
 

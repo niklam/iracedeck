@@ -107,6 +107,42 @@ describe("ird-camera-group-select", () => {
     expect([...mock.global.keys()]).toEqual([CAMERA_CATALOG_KEY]);
   });
 
+  describe("the enclosing item's label (#1653 review)", () => {
+    /** What the vendored sdpi-item does on a label click: focus the first element under it that can. */
+    function clickLabel(item: HTMLElement): void {
+      for (const element of item.querySelectorAll("*")) {
+        const candidate = element as HTMLElement & { canFocus?: boolean };
+
+        if (candidate.canFocus) {
+          candidate.focus();
+
+          return;
+        }
+      }
+    }
+
+    it.each([false, true])("focuses the select, with Other… open: %s", (otherOpen) => {
+      const item = document.createElement("div");
+      const picker = document.createElement("ird-camera-group-select");
+      item.appendChild(picker);
+      document.body.appendChild(item);
+      // The Other… field is an sdpi-textfield, which can focus too.
+      Object.defineProperty(picker.querySelector("sdpi-textfield"), "canFocus", { value: true });
+
+      if (otherOpen) {
+        mock.perKey.get("cameraGroupName")?.("");
+        const pickerSelect = picker.querySelector("select") as HTMLSelectElement;
+        const other = Array.from(pickerSelect.options).find((o) => o.dataset.other !== undefined) as HTMLOptionElement;
+        other.selected = true;
+        pickerSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+
+      clickLabel(item);
+
+      expect(document.activeElement).toBe(picker.querySelector("select"));
+    });
+  });
+
   describe("the select's accessible name (#1653 review)", () => {
     it("is the enclosing item's label", () => {
       const item = document.createElement("sdpi-item");
