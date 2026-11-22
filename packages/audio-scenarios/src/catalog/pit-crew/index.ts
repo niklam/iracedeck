@@ -1120,6 +1120,13 @@ export type PitCrewDeps = {
   // radio once the repair has settled as done. Default `() => null`, the
   // translator's own answer before its first damage read.
   getDamageRepairNeeded?: () => boolean | null;
+  // Whether the player has started their own last lap of the session (#1702):
+  // true from that lap's start (which the session's chequered flag being out
+  // also implies) until the session changes. The fuel contracts' speak-time
+  // gate drops a count still waiting for the radio once it holds. Default
+  // `() => null`, the translator's own answer before its first tick, with no
+  // translator, or while the session cannot be read; the gate admits on it.
+  getPlayerFinalLapStarted?: () => boolean | null;
   // The sector comparison (#1572): the track's sector count and, for the
   // player and the class leader, the car ahead and the car behind, each car's
   // recorded laps with their sector times, its number and its live gap.
@@ -1186,6 +1193,7 @@ const DEFAULT_DEPS: Readonly<ResolvedPitCrewDeps> = {
   getSessionClass: () => null,
   getStandingStart: () => false,
   getDamageRepairNeeded: () => null,
+  getPlayerFinalLapStarted: () => null,
   getSectorComparison: () => null,
   getTrafficRejoinAvailable: () => false,
 };
@@ -1811,10 +1819,11 @@ export function registerPitCrew(bus: IEventBus, deps: PitCrewDeps = {}): void {
   // session, the player picks where it is heard), then the per-count opt-in.
   // The session gate sits outside the count's own, so a count switched on
   // stays silent in a session kind switched off, and the reverse. Each
-  // contract also carries a speak-time gate on the latest telemetry: a fire
-  // queued before the session's checkered flag is dropped if the flag is out
-  // when it would replay, since a replay never asks `where:` again.
-  for (const c of buildFuelLapsLeftContracts({ getLatestTelemetry: d.getLatestTelemetry })) {
+  // contract also carries a speak-time gate on the player's final lap: a fire
+  // still queued when the player's own last lap starts (or the checkered flag
+  // comes out) is dropped, since a replay never asks `where:` again and the
+  // translator would not have emitted it then.
+  for (const c of buildFuelLapsLeftContracts({ getPlayerFinalLapStarted: d.getPlayerFinalLapStarted })) {
     engine.defineContract(
       wrapWithMaster(
         wrapFuelCountdownSessionScenario(

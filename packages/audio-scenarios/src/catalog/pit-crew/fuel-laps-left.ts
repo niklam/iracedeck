@@ -28,13 +28,17 @@
  * marked the count spoken.
  *
  * **Speak-time gate.** A queued fire replays without its `where:` being asked
- * again, so every contract carries a `speakGate` that refuses once the
- * session's checkered flag is out (`isPostRace` on the latest telemetry): a
- * count queued just before a practice clock runs out or a race leader takes
- * the flag would otherwise be heard after it, within the queue wait. With no
- * telemetry (no sim, the scenario harness) the gate admits. The contracts are
- * built by {@link buildFuelLapsLeftContracts}, which `registerPitCrew` hands
- * its latest-telemetry reader.
+ * again, and on a short track half a lap is shorter than the queue wait, so a
+ * count emitted at the mid-lap sample could otherwise be heard on the
+ * player's final lap or after the checkered flag — where the translator would
+ * not have emitted it. Every contract therefore carries a `speakGate` that
+ * refuses once the player's own last lap has started (the checkered flag
+ * being out implies it), read through `getPlayerFinalLapStarted`, which the
+ * wiring fills from the sim's one final-lap rule, the one the translator
+ * emits under, so speak time applies the emit-time rule. An unknown answer
+ * (`null`: no sim, before the first tick, the scenario harness) admits. The
+ * contracts are built by {@link buildFuelLapsLeftContracts}, which
+ * `registerPitCrew` hands that reader.
  *
  * **Session kinds** (issue #1702). The translator emits the countdown in every
  * live session; `registerPitCrew` gates the whole family on the session kind
@@ -46,8 +50,6 @@
 import { AudioBus, AudioChannel } from "@iracedeck/audio-service";
 import type { CalloutIdOf, FUEL_COUNTDOWN_SESSION_CALLOUTS } from "@iracedeck/callout-settings";
 import type { SessionClass, SimEventOf } from "@iracedeck/event-bus";
-import { isPostRace } from "@iracedeck/iracing-sdk";
-import type { TelemetryData } from "@iracedeck/sim-events-iracing";
 
 import type { ScenarioContract, SpeakGate } from "../../dsl.js";
 import { WEIGHT } from "../../dsl.js";
@@ -219,44 +221,45 @@ const FUEL_LAPS_LEFT_BASE: readonly ScenarioContract[] = [
   FUEL_RACE_COVERED_BASE,
 ];
 
-/** What the fuel contracts read beyond their event: the latest telemetry, for the speak-time gate. */
+/** What the fuel contracts read beyond their event: the player's final lap, for the speak-time gate. */
 export type FuelLapsLeftContractDeps = {
-  /** The latest telemetry tick as the sim reported it; `null` with none (no sim, or the scenario harness). */
-  getLatestTelemetry: () => TelemetryData | null;
+  /**
+   * Whether the player has started their own last lap of the session — true
+   * from that lap's start (which the session's checkered flag being out also
+   * implies) until the session changes; `null` while unknown (no sim, before
+   * the first tick, or the scenario harness).
+   */
+  getPlayerFinalLapStarted: () => boolean | null;
 };
 
 /**
  * The speak-time gate every fuel contract carries (module header): refuse
- * once the session's checkered flag is out, as read from the latest
- * telemetry when the line reaches the radio, and admit with no telemetry.
+ * once the player's own last lap has started, as the sim answers when the
+ * line reaches the radio, and admit while that is unknown.
  */
-function stillBeforeTheCheckered(deps: FuelLapsLeftContractDeps): SpeakGate {
+function stillBeforeTheFinalLap(deps: FuelLapsLeftContractDeps): SpeakGate {
   return {
     description:
-      "Dropped if the session's checkered flag came out while it waited for the radio, since the line no longer matters once the session is over.",
-    admit: () => {
-      const telemetry = deps.getLatestTelemetry();
-
-      return telemetry === null || !isPostRace(telemetry);
-    },
+      "Dropped if your own last lap started, or the session's checkered flag came out, while it waited for the radio.",
+    admit: () => deps.getPlayerFinalLapStarted() !== true,
   };
 }
 
 /**
  * The twelve laps-of-fuel-left contracts, each with the speak-time gate that
- * reads `deps.getLatestTelemetry` (module header). `registerPitCrew` builds
- * them with the sim's reader; {@link FUEL_LAPS_LEFT_CONTRACTS} is the same set
- * with no telemetry, so its gate always admits.
+ * reads `deps.getPlayerFinalLapStarted` (module header). `registerPitCrew`
+ * builds them with the sim's reader; {@link FUEL_LAPS_LEFT_CONTRACTS} is the
+ * same set with an unknown answer, so its gate always admits.
  */
 export function buildFuelLapsLeftContracts(deps: FuelLapsLeftContractDeps): readonly ScenarioContract[] {
-  const speakGate = stillBeforeTheCheckered(deps);
+  const speakGate = stillBeforeTheFinalLap(deps);
 
   return FUEL_LAPS_LEFT_BASE.map((c) => ({ ...c, speakGate }));
 }
 
-/** The contracts with no telemetry reader, for the ids, the tests and the reference. */
+/** The contracts with no final-lap reader, for the ids, the tests and the reference. */
 export const FUEL_LAPS_LEFT_CONTRACTS: readonly ScenarioContract[] = buildFuelLapsLeftContracts({
-  getLatestTelemetry: () => null,
+  getPlayerFinalLapStarted: () => null,
 });
 
 /** Contract ids exported for tests so a typo here surfaces as a test failure. */

@@ -29,8 +29,7 @@ import {
   FUEL_COUNTDOWN_SESSION_CALLOUTS,
 } from "@iracedeck/callout-settings";
 import type { IEventBus, SessionClass, SimEventMap, SimEventName, SimEventOf } from "@iracedeck/event-bus";
-import { SessionState } from "@iracedeck/iracing-sdk";
-import { classifySession, type TelemetryData } from "@iracedeck/sim-events-iracing";
+import { classifySession } from "@iracedeck/sim-events-iracing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WEIGHT } from "../../dsl.js";
@@ -654,43 +653,43 @@ describe("FUEL_LAPS_LEFT_CONTRACTS session-kind gating (issue #1702)", () => {
   );
 });
 
-// The speak-time gate (CodeRabbit on PR #1772): a queued fire replays without
-// its `where:` being asked again, so a count queued just before the session's
-// checkered flag must be dropped if the flag is out when it would replay.
-describe("FUEL_LAPS_LEFT_CONTRACTS checkered speak gate", () => {
-  const at = (state: SessionState): TelemetryData => ({ SessionState: state }) as TelemetryData;
-
+// The speak-time gate (CodeRabbit on PR #1772, spec Decision 5 as amended): a
+// queued fire replays without its `where:` being asked again, and on a short
+// track half a lap is shorter than the queue wait, so a count emitted at the
+// mid-lap sample must be dropped if the player's own last lap has started (or
+// the checkered flag is out) by the time it would replay.
+describe("FUEL_LAPS_LEFT_CONTRACTS final-lap speak gate", () => {
   describe("buildFuelLapsLeftContracts", () => {
-    it("gives every contract the gate, refusing in Checkered and CoolDown and admitting otherwise", () => {
-      let latest: TelemetryData | null = null;
-      const contracts = buildFuelLapsLeftContracts({ getLatestTelemetry: () => latest });
+    it("gives every contract the gate, refusing once the final lap has started and admitting otherwise", () => {
+      let finalLapStarted: boolean | null = null;
+      const contracts = buildFuelLapsLeftContracts({ getPlayerFinalLapStarted: () => finalLapStarted });
       const ctx = {} as never;
 
       expect(contracts.map((c) => c.id)).toEqual(FUEL_LAPS_LEFT_SCENARIO_IDS);
 
       for (const c of contracts) {
+        expect(c.speakGate?.description, c.id).toMatch(/last lap/);
         expect(c.speakGate?.description, c.id).toMatch(/checkered flag/);
 
-        latest = null;
-        expect(c.speakGate?.admit(ctx), `${c.id} with no telemetry`).toBe(true);
-        latest = at(SessionState.Racing);
-        expect(c.speakGate?.admit(ctx), `${c.id} while racing`).toBe(true);
-        latest = at(SessionState.Checkered);
-        expect(c.speakGate?.admit(ctx), `${c.id} under the checkered flag`).toBe(false);
-        latest = at(SessionState.CoolDown);
-        expect(c.speakGate?.admit(ctx), `${c.id} in cool-down`).toBe(false);
+        finalLapStarted = null;
+        expect(c.speakGate?.admit(ctx), `${c.id} while unknown`).toBe(true);
+        finalLapStarted = false;
+        expect(c.speakGate?.admit(ctx), `${c.id} before the final lap`).toBe(true);
+        finalLapStarted = true;
+        expect(c.speakGate?.admit(ctx), `${c.id} on the final lap`).toBe(false);
       }
     });
 
-    it("leaves FUEL_LAPS_LEFT_CONTRACTS' gate with no telemetry, so it always admits", () => {
+    it("leaves FUEL_LAPS_LEFT_CONTRACTS' gate with an unknown answer, so it always admits", () => {
       for (const c of FUEL_LAPS_LEFT_CONTRACTS) expect(c.speakGate?.admit({} as never), c.id).toBe(true);
     });
   });
 
   // Through `registerPitCrew`, so every wrapper (master, session kind, per
-  // count) is shown to keep the contract's gate.
+  // count) is shown to keep the contract's gate, and the dep is shown to be
+  // the one `registerPitCrew` hands the builder.
   describe("through registerPitCrew", () => {
-    let latest: TelemetryData | null;
+    let finalLapStarted: boolean | null;
 
     beforeEach(() => {
       _resetAudioScenarios();
@@ -698,11 +697,11 @@ describe("FUEL_LAPS_LEFT_CONTRACTS checkered speak gate", () => {
       audio = createFakeAudio();
       initializeAudioScenarios(bus, audio, manifest, mockLogger as never, () => VOICE);
 
-      latest = at(SessionState.Racing);
+      finalLapStarted = false;
 
       registerPitCrew(bus, {
         ...SIM_READS,
-        getLatestTelemetry: () => latest,
+        getPlayerFinalLapStarted: () => finalLapStarted,
         logger: mockLogger as never,
         isCalloutEnabled: () => true,
       });
@@ -725,21 +724,28 @@ describe("FUEL_LAPS_LEFT_CONTRACTS checkered speak gate", () => {
       _resetLimiterCueEngine();
     });
 
-    /** A count that meets a busy bus and waits in the queue. */
+    /** A count emitted at the mid-lap sample that meets a busy bus and waits in the queue. */
     function queueBehindBlocker(count: number): void {
       engine.fire("test.blocker");
       bus.publishEvent("fuel.lapsLeft.crossed", { count, lapsLeft: count + 0.4 });
     }
 
-    it("drops a count queued before the checkered flag when the flag is out as it would replay", () => {
+    it("queues the seven-lap count as ordinary commentary (the premise of the cases below)", () => {
+      const seven = FUEL_LAPS_LEFT_CONTRACTS.find((c) => c.id === "pit-crew.fuel-laps-left-7");
+
+      expect(seven?.weight).toBe(WEIGHT.NORMAL);
+      expect(seven?.queueable).toBe(true);
+    });
+
+    it("drops a count queued at the sample when the player's final lap starts before the bus idles", () => {
       queueBehindBlocker(7);
-      latest = at(SessionState.Checkered);
+      finalLapStarted = true;
       flush(audio);
 
       expect(voiceClipsPlayed()).toEqual([`voice/${VOICE}/fuel/race-covered-01.mp3`]);
     });
 
-    it("plays a count queued and replayed while the session is still running", () => {
+    it("plays a count queued and replayed while the player is still short of the final lap", () => {
       queueBehindBlocker(7);
       flush(audio);
 
@@ -749,9 +755,9 @@ describe("FUEL_LAPS_LEFT_CONTRACTS checkered speak gate", () => {
       ]);
     });
 
-    it("admits a queued count when no telemetry is available", () => {
+    it("admits a queued count when the final lap cannot be read", () => {
       queueBehindBlocker(7);
-      latest = null;
+      finalLapStarted = null;
       flush(audio);
 
       expect(voiceClipsPlayed()).toEqual([
@@ -760,8 +766,8 @@ describe("FUEL_LAPS_LEFT_CONTRACTS checkered speak gate", () => {
       ]);
     });
 
-    it("drops a count that arrives with the checkered flag already out", () => {
-      latest = at(SessionState.CoolDown);
+    it("drops a count that arrives with the final lap already started", () => {
+      finalLapStarted = true;
 
       crossed(3);
 
