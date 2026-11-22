@@ -227,8 +227,12 @@ export class CameraGroupSelect extends HTMLElement {
       // the user's deliberate choice is the key's number from now on — the
       // baseline a later custom name restores, which a held read arriving
       // after it must not replace (#1653 review). A typed prefix stays
-      // provisional.
-      if (this.commit(this.select.value)) {
+      // provisional. That holds even when the choice writes nothing because
+      // a typed name already wrote it: choosing it from the list is what
+      // makes it deliberate.
+      this.commit(this.select.value);
+
+      if (cameraGroupWrite(this.select.value).number !== undefined) {
         this.restorePending = false;
         this.numberHeard = true;
       }

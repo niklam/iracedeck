@@ -355,6 +355,21 @@ describe("ird-camera-group-select", () => {
 
         expect(saveNumber().mock.calls).toEqual([["17"], ["12"], ["17"]]);
       });
+
+      it("takes a listed standard choice as the baseline even when typing already wrote it", async () => {
+        type("Chase"); // writes Chase and 12
+        chooseName("Chase"); // the same group from the list: nothing new to write
+        chooseOther();
+        type("TV2"); // writes 18
+        type("TV2 Low");
+
+        expect(saveNumber().mock.calls).toEqual([["12"], ["18"], ["12"]]);
+
+        release(17);
+        await settle();
+
+        expect(saveNumber().mock.calls).toEqual([["12"], ["18"], ["12"]]);
+      });
     });
   });
 
