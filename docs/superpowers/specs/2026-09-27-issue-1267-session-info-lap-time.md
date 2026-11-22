@@ -4,19 +4,21 @@
 
 # Session Info: a Lap Time mode that speaks on press
 
+> **Amended 2026-11-22.** #466 has shipped, so its event, setting and contract file exist and the blocker is gone; #1264 is still open and still blocks. #1688 moved every spoken lap time to the thousandth in the compact form ("one thirty-two point four five six") and said this spec should follow, so the voice now reads the same figure the key shows, from #1163's compact helpers and clips, and the intros end their own sentence. Decisions 1 and 3 and the scheduling are unchanged.
+
 ## The problem
 
 #1264 puts other drivers' lap times into templates, for drivers who write one. #466 makes a Session Info key speak the figure it shows. Nothing shows a lap time on a key without a template, and nothing speaks one on request. Everything this needs already exists or is being built:
-- #466's `telemetryReadout.requested` event, its press-to-speak setting and its scheduling
-- #1264's lap-time reader
+- #466's `telemetryReadout.requested` event, its **Speak value on press** setting (`speakOnPress`) and its scheduling (shipped)
+- #1264's lap-time reader (open)
 - the canonical order and its class-neighbour resolver (#933)
-- the `lap-time-minute` / `lap-time-second` / `lap-time-decimal` clips the best-lap callout (#555) uses to speak any time up to 10:59.9
+- the compact lap-time clips every first-party voice ships, `lap-time-clock` (600) and `lap-time-thousandths` (1,000) plus `lap-time-second` under a minute, which the best-lap, fastest-lap and every-lap calls use to speak any time up to 10:59.999 (#1163, #1688)
 
 This spec builds on the #466 spec (`2026-09-26-issue-466-telemetry-readout.md`, as amended to Session Info) and changes none of its decisions.
 
 ## What ships
 
-A twelfth Session Info mode, **Lap Time**, with two settings:
+A fifteenth Session Info mode (there are fourteen today), **Lap Time**, with two settings:
 
 | Setting | Values |
 | --- | --- |
@@ -27,11 +29,11 @@ The key shows the time as `1:32.456` (`58.123` under a minute) under a title nam
 
 Pressing it speaks the figure, as #466's **Speak value on press** does for every Session Info mode:
 
-> "Your last lap, one minute thirty two, point four seconds."
+> "Your last lap. One thirty-two point four five six."
 >
-> "Car behind, best lap, one minute thirty one, point eight seconds."
+> "Car behind, best lap. One thirty-one point eight."
 >
-> "Leader, last lap, fifty eight, point one seconds."
+> "Leader, last lap. Fifty-eight point one two three."
 >
 > "No car ahead." (you lead your class) / "No car behind." (you are last in it)
 >
@@ -57,7 +59,7 @@ Session Info is above the translator, so it calls `getLiveRacePositions()` direc
 
 The time is `last` or `best` from #1264's lap-time reader for the resolved car. So the player's car reads its own authoritative fields, a non-positive time is `null`, and every lap time is `null` before the green of a race. The key, the template variables and the spoken readout therefore never disagree.
 
-The display keeps thousandths, like iRacing's timing screens and the template variables. It sizes through the mode's existing text sizing and font-size setting. Legibility at the default size is judged in the manual test; if it fails, the fallback is hundredths, not a new layout.
+The display keeps thousandths, like iRacing's timing screens and the template variables, and since #1688 the voice reads the same thousandths. It sizes through the mode's existing text sizing and font-size setting. Legibility at the default size is judged in the manual test; if it fails, the fallback for the key is hundredths, not a new layout; the voice stays at the thousandth.
 
 ### 3. The #466 event gains two kinds and a target
 
@@ -75,12 +77,14 @@ The display keeps thousandths, like iRacing's timing screens and the template va
 >;
 ```
 
+The shipped payload is the named `TelemetryReadoutRequest` in `packages/event-bus/src/event-catalog.ts`; this adds `last-lap` / `best-lap` to `TelemetryReadoutKind`, `seconds` to `TelemetryReadoutUnit`, and `target` / `targetFound` to the type.
+
 - For #466's four kinds, `target` is `null` and `targetFound` is `true`.
 - For a lap kind, `targetFound: false` is the "no car" case of decision 1, and `value` is then `null`.
 - A role, not a car index, crosses the bus. That keeps the payload sim-agnostic and lets the contracts pick the intro from `kind` × `target`.
 - The value is captured at press time, and with no telemetry nothing is published (#466 decisions 1 and 2).
 
-This is an additive change to #466's catalog entry. This work is blocked by #466, so the entry exists by then.
+This is an additive change to #466's catalog entry, which has shipped. The event-bus catalog is a published contract, so it is reviewed at that level.
 
 ### 4. Three contracts, and the lap-time pools reused
 
@@ -97,38 +101,36 @@ The vocabulary adds:
 | Var | Resolves to |
 | --- | --- |
 | `readout.lapIntro` | `telemetry-readout/<kind>-<target>` (e.g. `last-lap-car-ahead`) |
-| `readout.hasLapMinute` | the conditional the best-lap script uses (skip the minute under 60 s) |
-| `readout.lapMinute` / `readout.lapSecond` / `readout.lapDecimal` | `lap-time-minute` / `lap-time-second` / `lap-time-decimal`, split by the exported `splitLapTime` (one rounding to 0.1) |
+| `readout.lapClock` | `compactClockRef(t, "thousandths")` from `lap-time-readout.ts`: `lap-time-clock/<m>m<ss>`, or `lap-time-second/<s>` under a minute |
+| `readout.lapThousandths` | `compactThousandthsRef(t)`: `lap-time-thousandths/<ddd>` |
 | `readout.noCarLine` | `telemetry-readout/no-car-ahead` or `no-car-behind` |
 
-The voice rounds to tenths while the key shows thousandths. The spoken figure is what a race engineer says; the key is what a timing screen shows.
+A script reads `["{{readout.lapIntro}}", "{{readout.lapClock}}", "{{readout.lapThousandths}}"]`, the shape of #1688's best-lap entry. The two vars share one rounding with the other lap calls, so 1:23.4566 is "one twenty-three point four five seven" on a key press as after a lap. (Amended 2026-11-22; the first draft used #555's full sentence at the tenth — `readout.hasLapMinute`, `readout.lapMinute` / `lapSecond` / `lapDecimal` over `splitLapTime` — and rounded the voice to tenths while the key showed thousandths. #1688 retired that form from every first-party lap call and asked this spec to follow.)
 
-A time with no minute clip (11 minutes or more) aborts the callout, per #836. No range is checked in code.
+A time with no clock clip (11 minutes or more) aborts the callout, per #836. No range is checked in code.
 
 **Scheduling and gating are #466's, unchanged:**
-- weight `WEIGHT.NORMAL - 10` and `queueable: true`
+- weight `READOUT_WEIGHT` (`WEIGHT.NORMAL - 10`) and `queueable: true`
 - no family
 - gated by the Race Engineer master switch and the key's own **Speak value on press**
 
-### 5. Clips: eleven lines, no numbers
+### 5. Clips: eleven lines per voice, no numbers
 
-In `configs/default.voice.json`, group `telemetry-readout`:
+In every first-party voice — `configs/default.voice.json` (Shawn) and `configs/shawn.voice.json` (Shawn (Short callouts), #999) — group `telemetry-readout`, each voice in its own wording (Shawn's below; the texts are approved by Niklas before generating and the clips on a review page):
 
 | Clip | Text |
 | --- | --- |
-| `last-lap-self`, `best-lap-self` | "Your last lap,", "Your best lap," |
-| `last-lap-car-ahead`, `best-lap-car-ahead` | "Car ahead, last lap,", "Car ahead, best lap," |
-| `last-lap-car-behind`, `best-lap-car-behind` | "Car behind, last lap,", "Car behind, best lap," |
-| `last-lap-class-leader`, `best-lap-class-leader` | "Leader, last lap,", "Leader, best lap," |
+| `last-lap-self`, `best-lap-self` | "Your last lap.", "Your best lap." |
+| `last-lap-car-ahead`, `best-lap-car-ahead` | "Car ahead, last lap.", "Car ahead, best lap." |
+| `last-lap-car-behind`, `best-lap-car-behind` | "Car behind, last lap.", "Car behind, best lap." |
+| `last-lap-class-leader`, `best-lap-class-leader` | "Leader, last lap.", "Leader, best lap." |
 | `lap-no-time`, `no-car-ahead`, `no-car-behind` | "No lap time yet.", "No car ahead.", "No car behind." |
 
-Each intro carries `next_text: " one minute thirty two,"`, so it is recorded with the delivery of a line that carries on.
-
-The `lap-time-minute` clips were recorded after the best-lap intros, not these. Whether they join cleanly is judged by ear in the manual test. If they don't, regenerate the minute clips with these intros added to their `previous_request_ids`; never add a second minute pool.
+Each intro ends its own sentence and carries no `next_text`. The compact clock clips were cut to follow an intro that ends its sentence (#1163 revision 6; #1688 decision 2 re-cut "That lap was." for the same reason), so these join them the way "Last lap was." does in the every-lap call; the intros are conditioned like that one (`previous_request_ids` on a sibling intro, seed omitted). The seam is still judged by ear in the manual test, and a bad join is fixed by re-cutting the intro, never by adding a second clock pool. (Amended 2026-11-22: the first draft's comma-ended intros with `next_text`, and its plan to condition the `lap-time-minute` clips on them, belonged to the full sentence #1688 retired.)
 
 "Leader" rather than "Class leader" is deliberate: it is shorter, and in a single-class session the two are the same car.
 
-The pack catalog entry and `pack-reference.json` are regenerated. If #466's pack version is still unpublished, this rides the same bump (per the release rules). Otherwise it takes its own.
+`bundled-scripts.test.ts` fails unless both first-party voices script the three new contracts. Both packs take a version bump; their catalog entries and pack records, and `pack-reference.json`, are regenerated (per the voice-pack release rules).
 
 ## Artifacts beyond the code
 
@@ -139,10 +141,10 @@ The pack catalog entry and `pack-reference.json` are regenerated. If #466's pack
   - class leader when you lead
   - no car behind
   - no lap time yet
-  - the 10:59.9 edge, plus 11:00.0 aborting
+  - the 10:59.999 edge, plus 11:00.000 aborting
 - Website:
-  - the Session Info page: the mode, its settings, the class-neighbour meaning of "ahead", and the mode-count badge
-  - `changelog.mdx`: a Features line, folded into #466's line when both land in one release
+  - the Session Info page (`docs/actions/display-session/session-info.md`): the mode, its settings, the class-neighbour meaning of "ahead", its row in the Speak value on press section, and the mode-count badge (14 → 15)
+  - a `Features` changelog fragment in `changelog.d/`
 - `iracedeck-actions` skill (Session Info gains a mode).
 - `.claude/rules/race-positions.md`: Session Info → Lap Time joins the consumers list.
 - `race-engineer-callout-examples.md`: an entry for the role-named target.
@@ -171,10 +173,10 @@ The pack catalog entry and `pack-reference.json` are regenerated. If #466's pack
   - nothing published with Speak value on press off
   - the schema defaults
 - Contracts:
-  - each resolves to intro, then the minute (when there is one), second and decimal
-  - the sub-minute case skips the minute
+  - each resolves to intro, then the compact clock and the thousandths, in both first-party scripts
+  - the sub-minute case reads `lap-time-second` as its clock; 59.9996 carries to `1m00` / `000`
   - the no-time and no-car contracts fire on their own conditions and never on a fuel or temperature kind
-  - 11:00.0 aborts
+  - 11:00.000 aborts
 - The bundled script-coverage and pack-reference freshness tests pick up the new contracts, vars and clips.
 
 **Manual (the PR gate).** In iRacing:
@@ -185,4 +187,4 @@ The pack catalog entry and `pack-reference.json` are regenerated. If #466's pack
 - In a multiclass session, "ahead" is the class neighbour, not the overall one.
 - In practice, "car ahead, best lap" is the next faster car in class.
 - Thousandths are legible at the default font size.
-- Judge the intro → minute seam by ear across several intros.
+- Judge the intro → clock seam by ear across several intros, in both voices.
