@@ -29,7 +29,11 @@ describe("dial partials (#1013)", () => {
       irdApplyDialView?: () => void;
     };
 
-    type StubDocument = { getElementById: (id: string) => unknown; hidden: Map<string, boolean> };
+    type StubDocument = {
+      getElementById: (id: string) => unknown;
+      querySelectorAll: (selector: string) => { classList: { add: (c: string) => void } }[];
+      hidden: Map<string, boolean>;
+    };
 
     /** The three sections the view switch toggles, each with a `hidden` flag the stub classList writes. */
     function stubDocument(): StubDocument {
@@ -37,10 +41,15 @@ describe("dial partials (#1013)", () => {
         ["keypad-settings", false],
         ["keypad-appearance", false],
         ["dial-settings", true],
+        ["keypad-only-item", false],
       ]);
 
       return {
         hidden,
+        querySelectorAll: (selector: string) =>
+          selector === "[data-keypad-only]"
+            ? [{ classList: { add: (c: string) => c === "hidden" && hidden.set("keypad-only-item", true) } }]
+            : [],
         getElementById: (id: string) =>
           hidden.has(id)
             ? {
@@ -101,7 +110,7 @@ describe("dial partials (#1013)", () => {
       expect(await win.irdResolveController?.()).toBeNull();
     });
 
-    it("applies the dial view: hides both keypad sections and shows the dial's", () => {
+    it("applies the dial view: hides both keypad sections and every keypad-only item, and shows the dial's", () => {
       const doc = stubDocument();
 
       loadPartial({}, doc).irdApplyDialView?.();
@@ -110,6 +119,7 @@ describe("dial partials (#1013)", () => {
         "keypad-settings": true,
         "keypad-appearance": true,
         "dial-settings": false,
+        "keypad-only-item": true,
       });
     });
   });

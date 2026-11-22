@@ -6,7 +6,10 @@
   Include it ONCE per dial PI, before the template's own <script>, which calls:
 
     window.irdResolveController()  -> "Encoder" | "Keypad" | null
-    window.irdApplyDialView()      -> hides #keypad-settings and #keypad-appearance,
+    window.irdApplyDialView()      -> hides #keypad-settings, #keypad-appearance and
+                                      every [data-keypad-only] element (an item a
+                                      shared partial draws only on a key, such as
+                                      Common Settings' Flags Overlay, #1654),
                                       shows #dial-settings
 
   The view switch stays in the template, because the order is the template's:
@@ -41,6 +44,7 @@
 		window.irdApplyDialView = function () {
 			document.getElementById("keypad-settings")?.classList.add("hidden");
 			document.getElementById("keypad-appearance")?.classList.add("hidden");
+			document.querySelectorAll("[data-keypad-only]").forEach((el) => el.classList.add("hidden"));
 			document.getElementById("dial-settings")?.classList.remove("hidden");
 		};
 	})();
