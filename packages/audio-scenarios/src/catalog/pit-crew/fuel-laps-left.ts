@@ -38,7 +38,12 @@
  * emits under, so speak time applies the emit-time rule. An unknown answer
  * (`null`: no sim, before the first tick, the scenario harness) admits. The
  * contracts are built by {@link buildFuelLapsLeftContracts}, which
- * `registerPitCrew` hands that reader.
+ * `registerPitCrew` hands that reader. Two known gaps: a count already
+ * playing when an `interrupt` cuts it is stashed as admitted and replays
+ * within its wait without the gate (`scheduler.ts`, the `admitted` skip in
+ * `prepareOps`; a re-gate-on-replay option is proposed as a follow-up), and
+ * a race's final-lap marker can go unset on a crossing just after the white
+ * heads-up (#1773).
  *
  * **Session kinds** (issue #1702). The translator emits the countdown in every
  * live session; `registerPitCrew` gates the whole family on the session kind
