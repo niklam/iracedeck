@@ -158,6 +158,32 @@ describe("buildCameraGroupPicker", () => {
   const section = (model: ReturnType<typeof buildCameraGroupPicker>, heading: string) =>
     model.sections.find((s) => s.heading === heading);
 
+  describe("a standard group the session lists in another case (#1653 review)", () => {
+    const values = (model: ReturnType<typeof buildCameraGroupPicker>): string[] =>
+      model.sections.flatMap((s) => s.options.map((o) => o.value));
+
+    it("is offered once, in the session's spelling, and selected for a key on it", () => {
+      const model = buildCameraGroupPicker(catalog([], { trackId: 2, groups: ["tv1", "Nose"] }), "TV1");
+
+      expect(values(model)).toContain("tv1");
+      expect(values(model)).not.toContain("TV1");
+      expect(model.selected).toBe("tv1");
+    });
+
+    it("is offered in both spellings when the session lists both", () => {
+      const model = buildCameraGroupPicker(catalog([], { trackId: 2, groups: ["tv1", "TV1"] }), "TV1");
+
+      expect(values(model).filter((v) => v.toLowerCase() === "tv1")).toEqual(["tv1", "TV1"]);
+      expect(model.selected).toBe("TV1");
+    });
+
+    it("stays offered as not on this track when the session has two names it could mean", () => {
+      const model = buildCameraGroupPicker(catalog([], { trackId: 2, groups: ["tv1", "Tv1"] }), "");
+
+      expect(values(model)).toContain("TV1");
+    });
+  });
+
   describe("with no session", () => {
     it("is exactly today's picker: the four standard sections, no markings", () => {
       const model = buildCameraGroupPicker(null, "Cockpit");
@@ -392,6 +418,32 @@ describe("cameraGroupWrite", () => {
 });
 
 describe("buildRememberedGroups", () => {
+  describe("a name the press resolves to a session group in another case (#1653 review)", () => {
+    it("keeps its own row, on this track and not dimmed, whether ticked or remembered", () => {
+      const view = catalog([group("dynamictv", [0])], { trackId: 2, groups: ["DynamicTV"] });
+
+      expect(buildRememberedGroups(view, { grid_pole: true })).toEqual([
+        { name: "DynamicTV", dimmed: false, title: "On this track" },
+        { name: "dynamictv", dimmed: false, title: "On this track" },
+        { name: "grid_pole", dimmed: true, title: "Not on this track — no longer remembered" },
+      ]);
+
+      const ticked = buildRememberedGroups(catalog([], { trackId: 2, groups: ["DynamicTV"] }), { dynamictv: true });
+
+      expect(ticked).toContainEqual({ name: "dynamictv", dimmed: false, title: "On this track" });
+    });
+
+    it("stays dimmed when the session has two names it could mean", () => {
+      const view = catalog([], { trackId: 2, groups: ["Static", "STATIC"] });
+
+      expect(buildRememberedGroups(view, { static: true })).toContainEqual({
+        name: "static",
+        dimmed: true,
+        title: "Not on this track — no longer remembered",
+      });
+    });
+  });
+
   it("puts this track's custom groups first in the sim's order, the rest alphabetically and dimmed — 50 on the track", () => {
     // Fifty custom groups in a deliberately non-alphabetical sim order.
     const onTrack = Array.from({ length: 50 }, (_, i) => `Cam${String(50 - i).padStart(2, "0")}`);

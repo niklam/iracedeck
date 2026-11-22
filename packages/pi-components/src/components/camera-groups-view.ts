@@ -327,7 +327,10 @@ export function matchCameraGroupName(stored: string, names: Iterable<string>): s
  *    standard. Absent with no session.
  * 2. **The standard groups** not listed above, in the Car / Chase / Track /
  *    Aerial optgroups, each marked "(not on this track)" while a session is
- *    loaded. With no session this is exactly the picker before #1653.
+ *    loaded. One the press resolves to a session group (decision 6: the
+ *    session's `tv1` for `TV1`) is already listed in the session's spelling,
+ *    and is not offered again as absent (#1653 review). With no session this
+ *    is exactly the picker before #1653.
  * 3. **Other remembered groups** — every catalog name not shown above,
  *    alphabetically, labelled with up to three tracks whose latest list holds
  *    it, or "(seen before)" when none does.
@@ -365,6 +368,8 @@ export function buildCameraGroupPicker(catalog: CameraCatalogView | null, stored
     if (listed.has(option.name)) continue;
 
     listed.add(option.name);
+
+    if (session !== null && matchCameraGroupName(option.name, session.groups) !== undefined) continue;
 
     const bucket = standardSections.get(option.section) ?? [];
 
@@ -489,7 +494,10 @@ export interface RememberedGroupEntry {
  *
  * The current track's custom groups come first, in the sim's order; then the
  * rest alphabetically, dimmed while a session is loaded. With no session there
- * is no "this track" to contrast with, so nothing is dimmed.
+ * is no "this track" to contrast with, so nothing is dimmed. A remembered or
+ * ticked name the press resolves to a session group (decision 6: exactly, then
+ * the one folded match — a stored `dynamictv` for the session's `DynamicTV`)
+ * keeps its own row, but is on this track and not dimmed (#1653 review).
  */
 export function buildRememberedGroups(
   catalog: CameraCatalogView | null,
@@ -531,6 +539,12 @@ export function buildRememberedGroups(
 
   for (const name of [...rest.keys()].sort(compareNames)) {
     const where = rest.get(name) ?? "";
+
+    if (session !== null && matchCameraGroupName(name, session.groups) !== undefined) {
+      entries.push({ name, dimmed: false, title: "On this track" });
+
+      continue;
+    }
 
     entries.push({
       name,
