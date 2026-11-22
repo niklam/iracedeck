@@ -93,7 +93,7 @@ What the button's icon shows while iRacing is running. Defaults to **Next camera
 - **Next camera** (default) — the camera group the next press will switch to, following the **Direction** setting
 - **Current camera** — the camera group iRacing is on right now, the way a pit-service key shows its current value. It follows the camera however it was changed — this button, another key, a dial, or iRacing itself — and shows the group even when it isn't one of the groups this button cycles through
 
-A custom group is shown with the shared camera-group icon and its name, as on a [Change Camera](#change-camera) button. With **Current camera**, the button is drawn greyed while none of its enabled groups is in the session you are in, since a press would do nothing.
+A custom group is shown with the shared camera-group icon and its name, as on a [Change Camera](#change-camera) button. With **Current camera**, the button is drawn greyed while it has enabled groups but none of them is in the session you are in, since a press would do nothing.
 
 While iRacing isn't connected the button shows a grid of its enabled groups, whichever option you pick. Each button has its own setting, so one key can show where the next press goes while another shows the live camera. The setting is for keys only — on a dial the touch strip already shows the current group in the centre with its neighbours at the sides.
 
