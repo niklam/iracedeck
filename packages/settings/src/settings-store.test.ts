@@ -208,17 +208,21 @@ describe("createFileSettingsStore", () => {
       expect(existsSync(store.path)).toBe(false);
       expect(onRejected).toHaveBeenCalledTimes(1);
       expect(onRejected.mock.calls[0][0].location).toBeUndefined();
+      expect(readFileSync(onRejected.mock.calls[0][0].preservedAt, "utf-8")).toBe(deep);
     });
 
     it("still preserves a deeply nested file that fails to parse when the locator overflows", async () => {
       mkdirSync(join(dir, "sub"), { recursive: true });
-      writeFileSync(store.path, "[".repeat(50_000) + "x", "utf-8");
+      const broken = "[".repeat(50_000) + "x";
+
+      writeFileSync(store.path, broken, "utf-8");
       const onRejected = vi.fn<(rejection: SettingsFileRejection) => void>();
 
       expect(await validating(() => undefined, onRejected).load()).toBeUndefined();
 
       expect(existsSync(store.path)).toBe(false);
       expect(onRejected).toHaveBeenCalledTimes(1);
+      expect(readFileSync(onRejected.mock.calls[0][0].preservedAt, "utf-8")).toBe(broken);
     });
 
     it("treats a validator that throws as a refusal, never as a failed read", async () => {
