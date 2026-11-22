@@ -254,10 +254,10 @@ describe("the Fuel buttons' preconditions (issue #1702)", () => {
   /**
    * The wet version: each session the precondition could be asked about,
    * handed to the running translator, whose `getSessionClass()` is what the
-   * fuel gate reads. The precondition's session lookup mirrors the
-   * translator's (unexported) `resolveSessionType`, so this is what holds the
-   * two together: every preset, no session at all, a weekend read in either
-   * of its sessions, and a session number past the end of the list.
+   * fuel gate reads. The precondition calls the translator's own
+   * `resolveSessionType` and `classifySession`; this checks the two answers
+   * agree on every preset, no session at all, a weekend read in either of its
+   * sessions, and a session number past the end of the list.
    */
   const weekend = (): Record<string, unknown> => ({
     ...readPreset("session", "race"),

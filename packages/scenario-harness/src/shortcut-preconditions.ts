@@ -30,6 +30,7 @@ import {
   parseTrackLengthMeters,
   resolvePaceLineup,
   resolvePlayerCarIdx,
+  resolveSessionType,
 } from "@iracedeck/sim-events-iracing";
 
 import {
@@ -161,23 +162,15 @@ function readFormationGrid(state: HarnessPreconditionState): PaceLineup | null {
 
 /**
  * The session the mock is in, classified as the Race Engineer classifies it
- * (issue #1702): the session list's entry for the telemetry's `SessionNum`,
- * its `SessionType` handed to the translator's own `classifySession`, which
- * is what `getSessionClass()` answers once the translator has a tick. The
- * classifier is asked, not restated, so "a race" means here what it means to
- * the fuel countdown's session gate. The lookup in front of it mirrors the
- * translator's `resolveSessionType`, which the package does not export;
- * `fuel-countdown-shortcuts.test.ts` holds the two together by asking the
- * running translator about every session preset.
+ * (issue #1702): the translator's own `resolveSessionType` and
+ * `classifySession`, which is what `getSessionClass()` answers once the
+ * translator has a tick. Both are asked, not restated, so "a race" means here
+ * what it means to the fuel countdown's session gate;
+ * `fuel-countdown-shortcuts.test.ts` checks the two agree on every session
+ * preset.
  */
 function classifyMockSession(state: HarnessPreconditionState): SessionClass | null {
-  const sessions = (state.sessionInfo?.SessionInfo as Record<string, unknown> | undefined)?.Sessions;
-  const current = Array.isArray(sessions)
-    ? (sessions[state.telemetry.SessionNum ?? 0] as Record<string, unknown> | undefined)
-    : undefined;
-  const sessionType = current?.SessionType;
-
-  return classifySession(typeof sessionType === "string" ? sessionType : "");
+  return classifySession(resolveSessionType(state.sessionInfo, state.telemetry));
 }
 
 const PRECONDITION_RULES: Record<ShortcutPrecondition, PreconditionRule> = {
