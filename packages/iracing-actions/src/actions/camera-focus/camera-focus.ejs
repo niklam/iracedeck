@@ -484,12 +484,17 @@
 				function createGroupSelector(gridId, selectAllId, clearId) {
 					var state = emptyGroupMap();
 					var save = null;
+					// Whether a push or the user has set the state (#1653 review). The
+					// value sdpi held before the subscription is read once, late, and
+					// applies only while neither has: it must never overwrite either.
+					var known = false;
 
 					function persist() {
 						if (save) save(JSON.stringify({ groups: state }));
 					}
 					function render() {
 						renderGroupCheckboxes(gridId, state, function (name, checked) {
+							known = true;
 							ensureAllGroupsTracked(state);
 							// A custom group is in the map only while ticked (#1653), so
 							// unticking one drops it rather than storing false.
@@ -502,6 +507,7 @@
 						});
 					}
 					function setAll(value) {
+						known = true;
 						ensureAllGroupsTracked(state);
 						for (var i = 0; i < ALL_GROUPS.length; i++) {
 							state[ALL_GROUPS[i]] = value;
@@ -518,7 +524,15 @@
 					}
 
 					return {
-						setState: function (groups) { state = foldLegacyNames(groups || {}); render(); },
+						setState: function (groups) { known = true; state = foldLegacyNames(groups || {}); render(); },
+						// The stored value read through the hook's getter: applied only
+						// while no push or choice has set the state. Writes nothing.
+						seedState: function (groups) {
+							if (known) return;
+							known = true;
+							state = foldLegacyNames(groups || {});
+							render();
+						},
 						setSave: function (fn) { save = fn; },
 						render: render,
 						wireButtons: function () {
@@ -615,50 +629,55 @@
 						// skips it when a push delivered it first.
 						catalogHook[0]().then(applyCatalog);
 
+						// A stored subset's group map, or null for none or an unreadable one.
+						function readGroups(value) {
+							if (!value) return null;
+							try {
+								var parsed = JSON.parse(value);
+								return parsed && parsed.groups ? parsed.groups : null;
+							} catch (e) {
+								return null;
+							}
+						}
+
 						// Keypad selector: per-action setting with a legacy global fallback.
 						var legacyGroups = null;
-						window.SDPIComponents.useGlobalSettings(SETTING_KEY, function (value) {
-							if (value) {
-								try {
-									var parsed = JSON.parse(value);
-									if (parsed && parsed.groups) legacyGroups = parsed.groups;
-								} catch (e) {
-									// ignore
-								}
-							}
+						var legacyKnown = false;
+						var legacyHook = window.SDPIComponents.useGlobalSettings(SETTING_KEY, function (value) {
+							legacyKnown = true;
+							var groups = readGroups(value);
+							if (groups) legacyGroups = groups;
 						});
 
+						// The per-action value, or — with none yet — the legacy global one.
+						function keypadGroups(value) {
+							return readGroups(value) || (value ? {} : legacyGroups) || {};
+						}
+
 						var keypadHook = window.SDPIComponents.useSettings(SETTING_KEY, function (value) {
-							var groups = {};
-							if (value) {
-								try {
-									var parsed = JSON.parse(value);
-									if (parsed && parsed.groups) groups = parsed.groups;
-								} catch (e) {
-									groups = {};
-								}
-							} else if (legacyGroups) {
-								// No per-action value yet — seed from legacy global setting
-								groups = legacyGroups;
-							}
-							keypadSelector.setState(groups);
+							keypadSelector.setState(keypadGroups(value));
 						});
 						keypadSelector.setSave(keypadHook[1]);
 
 						// Dial selector: the GLOBAL cameraGroupSubset (read + save).
 						var dialHook = window.SDPIComponents.useGlobalSettings(SETTING_KEY, function (value) {
-							var groups = {};
-							if (value) {
-								try {
-									var parsed = JSON.parse(value);
-									if (parsed && parsed.groups) groups = parsed.groups;
-								} catch (e) {
-									groups = {};
-								}
-							}
-							dialSelector.setState(groups);
+							dialSelector.setState(readGroups(value) || {});
 						});
 						dialSelector.setSave(dialHook[1]);
+
+						// Like the catalog, the subsets may have arrived before these
+						// subscriptions, and sdpi replays no push to a late one (#1653
+						// review): read what sdpi holds through each hook's getter (a local
+						// read that sends nothing). A push or a choice made meanwhile wins:
+						// seedState applies a held value only while neither has set the
+						// grid, and the legacy fallback only while no push has set it.
+						Promise.all([keypadHook[0](), legacyHook[0]()]).then(function (held) {
+							if (!legacyKnown) legacyGroups = readGroups(held[1]);
+							keypadSelector.seedState(keypadGroups(held[0]));
+						});
+						dialHook[0]().then(function (value) {
+							dialSelector.seedState(readGroups(value) || {});
+						});
 					}
 
 					keypadSelector.wireButtons();

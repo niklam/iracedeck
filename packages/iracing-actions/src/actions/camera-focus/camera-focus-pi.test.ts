@@ -287,16 +287,21 @@ describe("camera-focus PI Cycle Camera grids: the Remembered groups section (#16
   let global: Map<string, ((value: unknown) => void)[]>;
   let keypadSave: ReturnType<typeof vi.fn>;
   let dialSave: ReturnType<typeof vi.fn>;
-  /** The global values sdpi already holds, which a hook's getter returns. */
+  /**
+   * The values sdpi already holds, which a hook's getter returns; a promise
+   * stands for a getter that resolves later.
+   */
   let storedGlobals: Map<string, unknown>;
+  let storedPerKey: Map<string, unknown>;
 
   /** Builds the page and runs the template's script, letting initializePI run to its end. */
   async function load(): Promise<void> {
     dom.document.body.innerHTML = SKELETON;
     new Function(script)();
 
-    // initializePI awaits whenDefined("sdpi-select"); let it run to its end.
-    for (let i = 0; i < 5; i++) await Promise.resolve();
+    // initializePI awaits whenDefined("sdpi-select"); let it, and the getter
+    // reads it starts, run to their end.
+    await new Promise((resolve) => setTimeout(resolve, 0));
   }
 
   beforeAll(() => {
@@ -312,18 +317,19 @@ describe("camera-focus PI Cycle Camera grids: the Remembered groups section (#16
     keypadSave = vi.fn();
     dialSave = vi.fn();
     storedGlobals = new Map();
+    storedPerKey = new Map();
 
     Object.assign(dom.window, {
       SDPIComponents: {
         useSettings: (key: string, callback: (value: unknown) => void) => {
           perKey.set(key, callback);
 
-          return [async () => "", keypadSave];
+          return [async () => (await storedPerKey.get(key)) ?? "", keypadSave];
         },
         useGlobalSettings: (key: string, callback: (value: unknown) => void) => {
           global.set(key, [...(global.get(key) ?? []), callback]);
 
-          return [async () => storedGlobals.get(key) ?? "", dialSave];
+          return [async () => (await storedGlobals.get(key)) ?? "", dialSave];
         },
       },
       irdCameraGroups: CAMERA_GROUP_HELPERS,
@@ -495,6 +501,82 @@ describe("camera-focus PI Cycle Camera grids: the Remembered groups section (#16
     ]);
     expect(keypadSave).not.toHaveBeenCalled();
     expect(dialSave).not.toHaveBeenCalled();
+  });
+
+  describe("the subsets sdpi held before the grids subscribed (#1653 review)", () => {
+    const SUBSET_KEY = "cameraGroupSubset";
+    const subset = (groups: Record<string, boolean>): string => JSON.stringify({ groups });
+
+    beforeEach(() => {
+      storedGlobals.set(CAMERA_CATALOG_KEY, JSON.stringify(CATALOG));
+    });
+
+    it("shows their custom ticks, and a toggle then saves them", async () => {
+      storedPerKey.set(SUBSET_KEY, subset({ Nose: true, SpeedCam: true }));
+      storedGlobals.set(SUBSET_KEY, subset({ Zulu: true }));
+      await load();
+
+      expect(checkbox("camera-groups-grid", "SpeedCam")?.checked).toBe(true);
+      expect(checkbox("dial-camera-groups-grid", "Zulu")?.checked).toBe(true);
+      expect(keypadSave).not.toHaveBeenCalled();
+      expect(dialSave).not.toHaveBeenCalled();
+
+      toggle("camera-groups-grid", "DynamicTV");
+      expect(lastSaved(keypadSave)).toMatchObject({ Nose: true, SpeedCam: true, DynamicTV: true });
+
+      toggle("dial-camera-groups-grid", "Alpha");
+      expect(lastSaved(dialSave)).toMatchObject({ Zulu: true, Alpha: true });
+    });
+
+    it("falls back to the held global subset for a key that stores none", async () => {
+      storedGlobals.set(SUBSET_KEY, subset({ SpeedCam: true }));
+      await load();
+
+      expect(checkbox("camera-groups-grid", "SpeedCam")?.checked).toBe(true);
+    });
+
+    it("never overwrites a choice or a push made before the held value is read", async () => {
+      let releaseKeypad: (value: string) => void = () => {};
+      let releaseGlobal: (value: string) => void = () => {};
+      storedPerKey.set(SUBSET_KEY, new Promise<string>((resolve) => (releaseKeypad = resolve)));
+      storedGlobals.set(SUBSET_KEY, new Promise<string>((resolve) => (releaseGlobal = resolve)));
+      await load();
+
+      toggle("camera-groups-grid", "DynamicTV");
+      pushGlobal(SUBSET_KEY, subset({ Alpha: true }));
+      const keypadSaves = keypadSave.mock.calls.length;
+      const dialSaves = dialSave.mock.calls.length;
+
+      releaseKeypad(subset({ SpeedCam: true }));
+      releaseGlobal(subset({ Zulu: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(checkbox("camera-groups-grid", "DynamicTV")?.checked).toBe(true);
+      expect(checkbox("camera-groups-grid", "SpeedCam")?.checked).toBe(false);
+      expect(checkbox("dial-camera-groups-grid", "Alpha")?.checked).toBe(true);
+      expect(checkbox("dial-camera-groups-grid", "Zulu")?.checked).toBe(false);
+      expect(keypadSave.mock.calls.length).toBe(keypadSaves);
+      expect(dialSave.mock.calls.length).toBe(dialSaves);
+    });
+
+    it("never overwrites Select All or Clear made before the held value is read", async () => {
+      let releaseKeypad: (value: string) => void = () => {};
+      let releaseGlobal: (value: string) => void = () => {};
+      storedPerKey.set(SUBSET_KEY, new Promise<string>((resolve) => (releaseKeypad = resolve)));
+      storedGlobals.set(SUBSET_KEY, new Promise<string>((resolve) => (releaseGlobal = resolve)));
+      await load();
+
+      grid("btn-select-all").click();
+      grid("dial-btn-clear").click();
+
+      releaseKeypad(subset({ Zulu: true }));
+      releaseGlobal(subset({ Zulu: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(checkbox("camera-groups-grid", "SpeedCam")?.checked).toBe(true);
+      expect(checkbox("camera-groups-grid", "Zulu")?.checked).toBe(false);
+      expect(checkbox("dial-camera-groups-grid", "Zulu")?.checked).toBe(false);
+    });
   });
 
   it("writes nothing when the catalog arrives or changes", () => {
