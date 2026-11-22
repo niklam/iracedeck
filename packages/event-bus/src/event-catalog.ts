@@ -1727,9 +1727,12 @@ export type SimEventMap = {
    *   in a timed race, up to the player's first crossing after the leader's
    *   predicted chequered flag); an unknown race length keeps emitting.
    * - In any other session, a heat race or a warmup included: the final lap
-   *   is the white flag on the player's own last lap, and nothing is emitted
-   *   while the tank covers a lap-limited session's remaining laps by its own
-   *   lap counter; with no lap limit the tank alone decides.
+   *   is the white flag on the tick, which practice and qualifying show on
+   *   the player's own last lap (how a heat race or a warmup shows it is
+   *   unmeasured; a field-wide white would silence the countdown up to a lap
+   *   early), and nothing is emitted while the tank covers a lap-limited
+   *   session's remaining laps by its own lap counter; with no lap limit the
+   *   tank alone decides.
    * Replaces the never-consumed `fuel.lapsRemaining.crossed` event.
    */
   "fuel.lapsLeft.crossed": SimEvent<"fuel.lapsLeft.crossed", { count: number; lapsLeft: number }>;
