@@ -38,13 +38,16 @@ import {
  * live one (`LIVE_CAR_PROGRESS_POLICY`):
  *
  * - **Both directions.** A replay rewinds as often as it plays (the capture
- *   steps `SessionTime` back 0.2 s a tick) and most of the nine blinks happened
- *   rewinding; a forward-only span corrects one of them.
+ *   steps `SessionTime` back 0.2 s a tick). The nine blinks are on forward
+ *   ticks, but a forward-only span breaks every car's chain at each rewind
+ *   tick, and the cars about to cross resume inside the band, where the
+ *   band-exit rule never confirms them: under the live policy 8 of the 9 stay.
  * - **Confirmed by a run of three.** Car 4's crossing in the capture is on pit
  *   road at pit speed, inside the line guard band for the 400 ticks before it,
  *   so the band-exit rule never confirms it. Three continuing readings at
  *   distinct `SessionTime`s cannot all be a lap off when the disagreement lasts
- *   one tick; a paused replay repeats one `SessionTime` and adds nothing.
+ *   one tick; a repeated reading (a paused replay, or arrays standing still
+ *   while the clock runs) adds nothing.
  * - **A hair below zero is the line.** Car 4 reads -0.00004 for a tick after
  *   its crossing; the raw `>= 0` test drops it from the order for that tick
  *   and moves every car behind it up. `readLapFraction` takes it as the line.

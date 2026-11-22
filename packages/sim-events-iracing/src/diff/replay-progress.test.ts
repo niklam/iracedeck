@@ -188,6 +188,37 @@ describe("stepReplayProgress — confirmation", () => {
     expect(resumed).toBeCloseTo(7.0001, 10);
   });
 
+  it("does not confirm a disagreeing frame whose arrays stand still while SessionTime runs on (an in-session replay paused at its live edge)", () => {
+    const slice = createReplayProgressState();
+
+    drive(slice, [
+      [6, 0.9997],
+      [6, 0.9998],
+    ]);
+
+    // The clock advances every tick, but the frame (and so the reading) repeats.
+    const t = 100 + 2 * TICK_S;
+    const paused = drive(
+      slice,
+      [
+        [7, 0.9999],
+        [7, 0.9999],
+        [7, 0.9999],
+        [7, 0.9999],
+        [7, 0.9999],
+      ],
+      t,
+    );
+
+    expect(paused.every((p) => Math.abs(p! - 7.9999) < 1e-9)).toBe(true);
+    expect(slice.continuingRun[0]).toBe(0);
+    expect(slice.lastProgressConfirmed[0]).toBe(false);
+
+    const [resumed] = drive(slice, [[7, 0.0001, t + 5 * TICK_S]], t + 5 * TICK_S);
+
+    expect(resumed).toBeCloseTo(7.0001, 10);
+  });
+
   it("keeps a confirmed car corrected while the replay pauses on its disagreeing frame", () => {
     const slice = createReplayProgressState();
 

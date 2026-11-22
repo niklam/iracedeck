@@ -198,11 +198,16 @@ export function confirmedLastProgress(slice: CarProgressState, carIdx: number): 
 }
 
 /**
- * How many consecutive continuing readings, each at a distinct `SessionTime`,
- * confirm a car's progress under a policy with `confirmByRun` (issue #1682).
- * The counter and the fraction disagree for one tick in every capture, so
- * three readings in a row that each continue the one before cannot all be a
- * lap off.
+ * How many consecutive continuing readings, each at a distinct `SessionTime`
+ * and each a different progress from the one before, confirm a car's progress
+ * under a policy with `confirmByRun` (issue #1682). The counter and the
+ * fraction disagree for one tick in every capture, so three readings in a row
+ * that each continue the one before cannot all be a lap off. A repeated
+ * reading adds nothing, whatever the clock does: a paused saved replay
+ * repeats its `SessionTime`, but arrays that stand still while `SessionTime`
+ * runs on (an in-session replay paused at its live edge, where the arrays are
+ * the replay's and the clock is live) repeat the reading, and either way one
+ * frame, the disagreeing one included, must not confirm itself.
  */
 export const CAR_PROGRESS_CONFIRM_RUN = 3;
 
@@ -251,7 +256,7 @@ export const LIVE_CAR_PROGRESS_POLICY: CarProgressPolicy = {
  * reading (`continues`: inside the span and within half a lap) AND the last
  * was confirmed, or it was read clear of the line guard band, or — only under
  * a policy with `confirmByRun` — `run` (the consecutive continuing readings
- * at distinct `SessionTime`s, this one included) has reached
+ * at distinct `SessionTime`s that each moved, this one included) has reached
  * {@link CAR_PROGRESS_CONFIRM_RUN}. The one confirmation rule; a reader picks
  * only whether the run counts.
  */
@@ -305,8 +310,9 @@ export type CarProgressReading = {
  * against the last progress when that is confirmed and the tick is inside the
  * span, then judged by {@link confirmsCarProgress}. It continues the last
  * reading when the tick is inside the span and it lies within half a lap of
- * it; the run grows by one only at a distinct `SessionTime`, and a reading
- * that continues nothing starts it again at 0.
+ * it; the run grows by one only at a distinct `SessionTime` AND a progress
+ * other than the last (a repeated reading is the same frame again), and a
+ * reading that continues nothing starts it again at 0.
  */
 export function readCarLineProgress(
   lapCompleted: unknown,
@@ -330,7 +336,8 @@ export function readCarLineProgress(
   // continues nothing, and confirms only on a later one.
   const continues =
     tick.inSpan && last.progress !== undefined && Math.abs(progress - last.progress) <= CAR_PROGRESS_CONTINUOUS_LAPS;
-  const run = !continues ? 0 : tick.distinctSessionTime ? last.run + 1 : last.run;
+  const moved = progress !== last.progress;
+  const run = !continues ? 0 : tick.distinctSessionTime && moved ? last.run + 1 : last.run;
 
   return { progress, confirmed: confirmsCarProgress(continues, last.confirmed, fraction, run, policy), run };
 }
