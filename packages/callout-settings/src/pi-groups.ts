@@ -261,7 +261,7 @@ export const CALLOUT_PI_SECTIONS = [
         id: "opponent-pits",
         title: "Opponent Pits",
         description:
-          "In a race, the engineer tells you when the leader, or the car just ahead of you or behind you in your class, heads into the pits.",
+          "In a race, the engineer tells you when the leader, or a car on your lap within two places of you in your class, heads into the pits.",
         families: [OPPONENT_PIT_CALLOUTS],
       },
     ],
@@ -299,7 +299,7 @@ export const CALLOUT_PI_SECTIONS = [
         id: "corner-names",
         title: "Corner Names and Sectors",
         description:
-          "In practice and test sessions, the engineer names each corner just before you reach it, and each sector after the first as it begins.",
+          "In practice and test sessions, the engineer names each corner just before you reach it, and each sector after the first just before it starts.",
         families: [CORNER_NAME_CALLOUTS, CORNER_NAMES_TOGGLE_CALLOUTS, SECTOR_START_CALLOUTS],
       },
     ],
