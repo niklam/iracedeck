@@ -2231,6 +2231,46 @@ function gatedSettle<T extends Gated>(s: T, isOpen: () => boolean): Pick<Gated, 
 }
 
 /**
+ * The one `where:` gate body the master, pit-action cooldown, pit-service
+ * request and fuel session-kind wrappers share:
+ * consult `isOpen` on every event arrival, before the scenario's own `where:`,
+ * and refuse the event while it is closed, logging `<suppressedLabel>: <id>`
+ * at debug. Refusing before `attemptFire` means a clip already in flight is
+ * never cut, only future events are suppressed. A declared `settle` answers
+ * ready while the gate is closed ({@link gatedSettle}). A scenario with no
+ * `when:` block is returned unchanged.
+ *
+ * @internal Exported for the shared-gate tests (`where-gate.test.ts`).
+ */
+export function wrapWhereGate<T extends Gated>(
+  s: T,
+  isOpen: () => boolean,
+  suppressedLabel: string,
+  logger: ILogger | undefined,
+): T {
+  if (!s.when) return s;
+
+  const baseWhere = s.when.where;
+
+  return {
+    ...s,
+    ...gatedSettle(s, isOpen),
+    when: {
+      event: s.when.event,
+      where: (ev) => {
+        if (!isOpen()) {
+          logger?.debug(`${suppressedLabel}: ${s.id}`);
+
+          return false;
+        }
+
+        return baseWhere ? baseWhere(ev) : true;
+      },
+    },
+  };
+}
+
+/**
  * Wrap a Race Engineer voice scenario with the plugin-wide master gate
  * (issue #515). Plugins compose the closure from
  * `pitCrewRaceEngineerEnabled === true`. Read live on every event
@@ -2244,28 +2284,15 @@ function gatedSettle<T extends Gated>(s: T, isOpen: () => boolean): Pick<Gated, 
  * only ever reached through an `@` include (the radio frame was one until
  * issue #1064 moved it into the engine) runs inside a parent scenario whose
  * master-gate check has already passed.
+ *
+ * @internal Exported for the shared-gate tests (`where-gate.test.ts`).
  */
-function wrapRaceEngineerMasterGate<T extends Gated>(s: T, getEnabled: () => boolean, logger: ILogger | undefined): T {
-  if (!s.when) return s;
-
-  const baseWhere = s.when.where;
-
-  return {
-    ...s,
-    ...gatedSettle(s, getEnabled),
-    when: {
-      event: s.when.event,
-      where: (ev) => {
-        if (!getEnabled()) {
-          logger?.debug(`race engineer master gate suppressed: ${s.id}`);
-
-          return false;
-        }
-
-        return baseWhere ? baseWhere(ev) : true;
-      },
-    },
-  };
+export function wrapRaceEngineerMasterGate<T extends Gated>(
+  s: T,
+  getEnabled: () => boolean,
+  logger: ILogger | undefined,
+): T {
+  return wrapWhereGate(s, getEnabled, "race engineer master gate suppressed", logger);
 }
 
 /**
@@ -2273,27 +2300,15 @@ function wrapRaceEngineerMasterGate<T extends Gated>(s: T, getEnabled: () => boo
  * `pitLane.exited` / pre-start grid entry suppresses fires during the
  * cooldown window. Same gate-at-event-arrival shape as
  * `wrapCalloutScenario`, but global rather than per-id.
+ *
+ * @internal Exported for the shared-gate tests (`where-gate.test.ts`).
  */
-function wrapPitActionScenario<T extends Gated>(s: T, getAllowed: () => boolean, logger: ILogger | undefined): T {
-  if (!s.when) return s;
-
-  const baseWhere = s.when.where;
-
-  return {
-    ...s,
-    when: {
-      event: s.when.event,
-      where: (ev) => {
-        if (!getAllowed()) {
-          logger?.debug(`pit-action suppressed (cooldown active): ${s.id}`);
-
-          return false;
-        }
-
-        return baseWhere ? baseWhere(ev) : true;
-      },
-    },
-  };
+export function wrapPitActionScenario<T extends Gated>(
+  s: T,
+  getAllowed: () => boolean,
+  logger: ILogger | undefined,
+): T {
+  return wrapWhereGate(s, getAllowed, "pit-action suppressed (cooldown active)", logger);
 }
 
 /**
@@ -2302,31 +2317,15 @@ function wrapPitActionScenario<T extends Gated>(s: T, getAllowed: () => boolean,
  * toggle off mid-session takes effect on the next event arrival without
  * cutting an in-flight clip — same gate-at-event-arrival shape as the
  * other wrappers.
+ *
+ * @internal Exported for the shared-gate tests (`where-gate.test.ts`).
  */
-function wrapPitServiceRequestsScenario<T extends Gated>(
+export function wrapPitServiceRequestsScenario<T extends Gated>(
   s: T,
   getEnabled: () => boolean,
   logger: ILogger | undefined,
 ): T {
-  if (!s.when) return s;
-
-  const baseWhere = s.when.where;
-
-  return {
-    ...s,
-    when: {
-      event: s.when.event,
-      where: (ev) => {
-        if (!getEnabled()) {
-          logger?.debug(`pit service request suppressed: ${s.id}`);
-
-          return false;
-        }
-
-        return baseWhere ? baseWhere(ev) : true;
-      },
-    },
-  };
+  return wrapWhereGate(s, getEnabled, "pit service request suppressed", logger);
 }
 
 /**
@@ -2335,34 +2334,16 @@ function wrapPitServiceRequestsScenario<T extends Gated>(
  * the kind of session being driven. Read live on every event arrival, so a
  * toggle flipped mid-session takes effect on the next count without cutting
  * an in-flight clip — the same gate-at-event-arrival shape as
- * {@link wrapPitServiceRequestsScenario}. Like the master gate, a closed gate
- * also answers a declared `settle` as ready, so a silenced line never waits.
+ * {@link wrapPitServiceRequestsScenario}, through the same {@link wrapWhereGate}.
+ *
+ * @internal Exported for the shared-gate tests (`where-gate.test.ts`).
  */
-function wrapFuelCountdownSessionScenario<T extends Gated>(
+export function wrapFuelCountdownSessionScenario<T extends Gated>(
   s: T,
   getEnabled: () => boolean,
   logger: ILogger | undefined,
 ): T {
-  if (!s.when) return s;
-
-  const baseWhere = s.when.where;
-
-  return {
-    ...s,
-    ...gatedSettle(s, getEnabled),
-    when: {
-      event: s.when.event,
-      where: (ev) => {
-        if (!getEnabled()) {
-          logger?.debug(`fuel countdown suppressed in this session kind: ${s.id}`);
-
-          return false;
-        }
-
-        return baseWhere ? baseWhere(ev) : true;
-      },
-    },
-  };
+  return wrapWhereGate(s, getEnabled, "fuel countdown suppressed in this session kind", logger);
 }
 
 /**
