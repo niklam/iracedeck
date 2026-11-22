@@ -3449,15 +3449,20 @@ describe("sim-events-iracing translator", () => {
     /**
      * Two validated laps (~2 L each), then the low-fuel mid-lap sample that
      * says "1 lap of fuel left" — the first test's recipe — with `beforeSample`
-     * run against the live state just before the sample.
+     * run against the live state just before the sample. `sessionType` picks
+     * the session (a race by default) and `sampleFlags` the `SessionFlags` of
+     * the sample tick alone (issue #1702).
      */
-    function sampleLowFuel(beforeSample: (state: TranslatorState) => void): ReturnType<typeof vi.fn> {
+    function sampleLowFuel(
+      beforeSample: (state: TranslatorState) => void,
+      { sessionType = "Race", sampleFlags = 0 }: { sessionType?: string; sampleFlags?: number } = {},
+    ): ReturnType<typeof vi.fn> {
       const controller = createMockController();
       const bus = getEventBus();
       const handler = vi.fn();
       bus.subscribe("fuel.lapsLeft.crossed", handler);
       controller.__setSessionInfo({
-        SessionInfo: { Sessions: [{ SessionType: "Race" }] },
+        SessionInfo: { Sessions: [{ SessionType: sessionType }] },
         DriverInfo: { DriverCarIdx: 0 },
       });
       initializeSimEventsIracing(bus, controller, createMockLogger(), {
@@ -3475,7 +3480,9 @@ describe("sim-events-iracing translator", () => {
       controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.05, SessionTime: 180, FuelLevel: 60 }));
       controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.45, SessionTime: 200, FuelLevel: 5.0 }));
       beforeSample(liveState());
-      controller.__tick(telemetry({ Lap: 4, LapDistPct: 0.55, SessionTime: 210, FuelLevel: 4.9 }));
+      controller.__tick(
+        telemetry({ Lap: 4, LapDistPct: 0.55, SessionTime: 210, FuelLevel: 4.9, SessionFlags: sampleFlags }),
+      );
 
       return handler;
     }
@@ -3493,6 +3500,37 @@ describe("sim-events-iracing translator", () => {
       });
 
       expect(handler).not.toHaveBeenCalled();
+    });
+
+    describe("the final-lap signal per session kind (issue #1702)", () => {
+      it.each(["Practice", "Lone Qualify", "Offline Testing"])(
+        "speaks the low-fuel sample in %s (the control for the tests below)",
+        (sessionType) => {
+          expect(sampleLowFuel(() => {}, { sessionType })).toHaveBeenCalledTimes(1);
+        },
+      );
+
+      it.each(["Practice", "Lone Qualify", "Offline Testing"])(
+        "is silenced in %s by the white flag on the tick, the player's own last lap there",
+        (sessionType) => {
+          expect(sampleLowFuel(() => {}, { sessionType, sampleFlags: Flags.White })).not.toHaveBeenCalled();
+        },
+      );
+
+      it("does not read the sticky race marker outside a race", () => {
+        const handler = sampleLowFuel(
+          (state) => {
+            state.playerFinalLapStarted = true;
+          },
+          { sessionType: "Practice" },
+        );
+
+        expect(handler).toHaveBeenCalledTimes(1);
+      });
+
+      it("in a race the sticky marker governs, not the white flag: the leader's white a lap early still speaks", () => {
+        expect(sampleLowFuel(() => {}, { sampleFlags: Flags.White })).toHaveBeenCalledTimes(1);
+      });
     });
 
     it("re-arms the fuel reassurance when a green re-opens the player's final lap (issue #880 review, #1405)", () => {

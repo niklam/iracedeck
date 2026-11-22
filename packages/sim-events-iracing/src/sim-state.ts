@@ -57,12 +57,16 @@ import type { CautionGap, GapNeighbor, LiveGaps, LiveOpponentFlags, LivePosition
 
 /**
  * Why the laps-of-fuel-left count is compared with no race distance: the
- * states in which `resolveFuelRaceCoverage` has no meaningful answer, each of
- * which `diffFuelLapsLeft` returns on before it would call it.
+ * states in which `resolveFuelRaceCoverage` has no meaningful answer.
+ * `diffFuelLapsLeft` never calls it outside a race, and returns on the other
+ * two before it would.
  *
  * - `"not-a-race-session"` — there is no race to cover. The lap counter and
  *   the clock mean something else outside a race, and the timed side is a
- *   model of how a race finishes.
+ *   model of how a race finishes. The diff runs there all the same (issue
+ *   #1702) and compares the tank with a lap-limited session's own lap counter
+ *   (`resolveFuelSessionLapsAfterCurrent`); this section does not report
+ *   that comparison.
  * - `"race-over"` — the chequered flag is out or the field is cooling down.
  * - `"final-lap"` — the player has started their own final lap
  *   (`playerFinalLapStarted`). The coverage arithmetic assumes they have not:
@@ -258,7 +262,7 @@ export type SimStateParts = {
   replay: ReplayState;
   fuel: {
     windowLaps: number;
-    /** `handleTick`'s own `isRaceSession`, which `diffFuelLapsLeft` returns on first. */
+    /** `handleTick`'s own `isRaceSession`, which picks `diffFuelLapsLeft`'s race branch (issue #1702). */
     isRaceSession: boolean;
     /** The stats the laps-of-fuel-left diff reads, over `windowLaps`. */
     stats: FuelStats;

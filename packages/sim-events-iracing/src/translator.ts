@@ -42,7 +42,9 @@ import {
   classPositionOrOfficial,
   extractQualifyResults,
   extractSectorStarts,
+  Flags,
   getCarNumberFromSessionInfo,
+  hasFlag,
   IRSDK_UNLIMITED_LAPS,
   isPostRace,
   isPreGreen,
@@ -2638,6 +2640,26 @@ function fuelLapsLeftStats(self: TranslatorInstance): FuelStats {
 }
 
 /**
+ * Whether the player has started their own final lap, as `diffFuelLapsLeft`
+ * reads it (issue #1702). In a race: the flags' STICKY marker
+ * (`playerFinalLapStarted`, issue #880) as `diffFlags` left it earlier in the
+ * tick — set at the player's crossing under the white, so the leader's white
+ * a lap earlier does not silence the countdown, and kept through a caution
+ * replacing the white. That marker is set in races only; in any other session
+ * iRacing shows the White when the player starts their own last lap
+ * (`diff/flags.ts`, the two-stage white), so the bit on this tick is the
+ * signal. Computed here and handed over as a value (the slice convention), so
+ * the diff reads no flag state of its own.
+ */
+function fuelFinalLapStarted(
+  isRaceSession: boolean,
+  playerFinalLapStarted: boolean,
+  telemetry: TelemetryData,
+): boolean {
+  return isRaceSession ? playerFinalLapStarted : hasFlag(telemetry.SessionFlags, Flags.White);
+}
+
+/**
  * The race leader as the laps-of-fuel-left race coverage reads them (issues
  * #880, #1405): their recent lap time ({@link resolveLeaderLapTimeS}), the
  * predicted chequered flag in seconds and in crossings, and the player's
@@ -4087,22 +4109,21 @@ function handleLiveSteps(
   steps.run("orderMarkerCalls", () =>
     orderMarkerCalls(pending, markerCallsFrom, markerCallsBehind.sector, markerCallsBehind.corner),
   );
-  // Laps-of-fuel-left callout crossings (issue #838). Reads the SAME
-  // validated estimator as Session Info's Laps to Empty (issue #748), over
-  // the same default window, so the spoken count tracks the display. Runs
-  // after diffFlags so the race-coverage suppression (#866) reads a
-  // same-tick-fresh sticky `playerFinalLapStarted` final-lap marker, and after
-  // diffLeaderWhite so the leader's chequered prediction (#1405) reads a
-  // current post-expiry crossing marker. Without a canonical order this tick
-  // the leader is unknown (#1559).
+  // Laps-of-fuel-left callout crossings (issue #838), in every session kind
+  // since #1702. Reads the SAME validated estimator as Session Info's Laps to
+  // Empty (issue #748), over the same default window, so the spoken count
+  // tracks the display. Runs after diffFlags so the race-coverage suppression
+  // (#866) reads a same-tick-fresh sticky `playerFinalLapStarted` final-lap
+  // marker, and after diffLeaderWhite so the leader's chequered prediction
+  // (#1405) reads a current post-expiry crossing marker. Without a canonical
+  // order this tick the leader is unknown (#1559).
   const leaderPositions = order.ok ? order.value : null;
   steps.live("diffFuelLapsLeft", pending, () =>
     diffFuelLapsLeft(
       self.state.fuelCallout,
       telemetry,
       isRaceSession,
-      // The flags' sticky final-lap marker, as `diffFlags` left it above.
-      self.state.playerFinalLapStarted,
+      fuelFinalLapStarted(isRaceSession, self.state.playerFinalLapStarted, telemetry),
       () => fuelLapsLeftStats(self),
       self.getFuelLapsLeftMarginLaps,
       (playerLapS) =>

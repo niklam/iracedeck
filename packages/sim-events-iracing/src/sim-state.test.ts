@@ -873,6 +873,34 @@ describe("readSimState — the -1 clock before the race starts (issue #1405)", (
 });
 
 describe("readSimState — a curated half that cannot be built", () => {
+  /**
+   * A margin closure that answers 0 until `breakNow()`, then throws `thrown`.
+   * The fuel callout's own diff calls it at its mid-lap samples in every
+   * session (issue #1702), so it may break only once the laps are driven;
+   * after that the reader is what reaches it.
+   */
+  function breaksAfterDriving(thrown: unknown): {
+    closure: () => number;
+    breakNow: () => void;
+    brokenCalls: () => number;
+  } {
+    let broken = false;
+    let calls = 0;
+
+    return {
+      closure: (): number => {
+        if (!broken) return 0;
+
+        calls += 1;
+        throw thrown;
+      },
+      breakNow: () => {
+        broken = true;
+      },
+      brokenCalls: () => calls,
+    };
+  }
+
   /** Session info whose `DriverInfo` cannot be read — what `getLivePosition()` asks for first. */
   function poisonedSessionInfo(): Record<string, unknown> {
     return Object.defineProperty({ ...RACE_SESSION }, "DriverInfo", {
@@ -915,20 +943,18 @@ describe("readSimState — a curated half that cannot be built", () => {
   });
 
   it("still carries the raw state when the margin closure throws under the estimate", () => {
-    const getFuelLapsLeftMarginLaps = vi.fn((): number => {
-      throw new Error("settings not loaded");
-    });
-    const { controller } = start(null, { getFuelLapsLeftMarginLaps });
+    const margin = breaksAfterDriving(new Error("settings not loaded"));
+    const { controller } = start(null, { getFuelLapsLeftMarginLaps: margin.closure });
 
-    // No session info, so the fuel callout's own diff — race-only — never
-    // reaches the closure; only the reader does, once there is an average.
     driveTwoValidLaps(controller);
+    margin.breakNow();
 
     const state = readDegraded();
 
-    expect(getFuelLapsLeftMarginLaps).toHaveBeenCalledTimes(1);
+    // The reader is the one call that reached the broken closure.
+    expect(margin.brokenCalls()).toBe(1);
     expect(state.curatedError).toBe("settings not loaded");
-    expect(state.raw.state.fuelCallout.lastSampledLap).toBe(-1);
+    expect(state.raw.state.fuelCallout.lastSampledLap).toBe(3);
     expect(state.raw.instance.firstOnTrackSeeded).toBe(true);
   });
 
@@ -960,25 +986,21 @@ describe("readSimState — a curated half that cannot be built", () => {
         throw new Error("toString");
       },
     };
-    const { controller } = start(null, {
-      getFuelLapsLeftMarginLaps: () => {
-        throw hostile;
-      },
-    });
+    const margin = breaksAfterDriving(hostile);
+    const { controller } = start(null, { getFuelLapsLeftMarginLaps: margin.closure });
 
     driveTwoValidLaps(controller);
+    margin.breakNow();
 
     expect(readDegraded().curatedError).toBe("unknown error");
   });
 
   it("bounds the reason it records", () => {
-    const { controller } = start(null, {
-      getFuelLapsLeftMarginLaps: () => {
-        throw new Error("x".repeat(5000));
-      },
-    });
+    const margin = breaksAfterDriving(new Error("x".repeat(5000)));
+    const { controller } = start(null, { getFuelLapsLeftMarginLaps: margin.closure });
 
     driveTwoValidLaps(controller);
+    margin.breakNow();
 
     expect(readDegraded().curatedError.length).toBeLessThanOrEqual(300);
   });
