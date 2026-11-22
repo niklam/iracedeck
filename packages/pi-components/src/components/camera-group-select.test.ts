@@ -107,6 +107,22 @@ describe("ird-camera-group-select", () => {
     expect([...mock.global.keys()]).toEqual([CAMERA_CATALOG_KEY]);
   });
 
+  describe("the select's accessible name (#1653 review)", () => {
+    it("is the enclosing item's label", () => {
+      const item = document.createElement("sdpi-item");
+      item.setAttribute("label", "Camera Group");
+      const picker = document.createElement("ird-camera-group-select");
+      item.appendChild(picker);
+      document.body.appendChild(item);
+
+      expect(picker.querySelector("select")?.getAttribute("aria-label")).toBe("Camera Group");
+    });
+
+    it("falls back to a name of its own outside an item", () => {
+      expect(select().getAttribute("aria-label")).toBe("Camera group");
+    });
+  });
+
   describe("on load and on pushes it writes nothing", () => {
     it("shows an old key's group from its number, without writing the name", () => {
       pushName(undefined);
@@ -288,6 +304,20 @@ describe("ird-camera-group-select", () => {
 
           expect(saveNumber().mock.calls).toEqual([["12"]]);
         });
+      });
+
+      it("takes a listed standard choice made before the read as the baseline (#1653 review)", async () => {
+        chooseName("TV1"); // leaves Other… and writes 17
+        chooseOther();
+        type("Chase"); // writes 12
+        type("Chase Cam");
+
+        expect(saveNumber().mock.calls).toEqual([["17"], ["12"], ["17"]]);
+
+        release(9);
+        await settle();
+
+        expect(saveNumber().mock.calls).toEqual([["17"], ["12"], ["17"]]);
       });
     });
   });

@@ -102,8 +102,9 @@ export class CameraGroupSelect extends HTMLElement {
    */
   private numberKnown = false;
   /**
-   * Whether a push or the held read has reported the key's own number — a
-   * local write does not, since the number it replaced is still unknown.
+   * Whether the key's number is established: reported by a push or the held
+   * read, or chosen deliberately from the list. A typed prefix's write does not
+   * count, since the number it replaced is still unknown.
    */
   private numberHeard = false;
   /**
@@ -169,6 +170,9 @@ export class CameraGroupSelect extends HTMLElement {
 
   private buildDOM(): void {
     this.select = document.createElement("select");
+    // The enclosing sdpi-item draws its label in its shadow root, which names
+    // nothing for the native select: it takes the label itself (#1653 review).
+    this.select.setAttribute("aria-label", this.closest("sdpi-item")?.getAttribute("label") || "Camera group");
     this.otherWrap = document.createElement("div");
     this.otherWrap.className = "ird-cgs-other";
     this.otherWrap.hidden = true;
@@ -205,8 +209,15 @@ export class CameraGroupSelect extends HTMLElement {
       this.otherMode = false;
       this.showOther(false);
 
-      // A listed standard group writes its own number: nothing to put back.
-      if (this.commit(this.select.value)) this.restorePending = false;
+      // A listed standard group writes its own number: nothing to put back, and
+      // the user's deliberate choice is the key's number from now on — the
+      // baseline a later custom name restores, which a held read arriving
+      // after it must not replace (#1653 review). A typed prefix stays
+      // provisional.
+      if (this.commit(this.select.value)) {
+        this.restorePending = false;
+        this.numberHeard = true;
+      }
 
       // A listed custom group ends Other… like a typed custom name: a number a
       // standard prefix typed on the way wrote is put back (#1653 review). A
