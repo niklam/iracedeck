@@ -821,7 +821,10 @@ export function getSessionClass(): SessionClass | null {
  * Whether the player has started their own last lap of the session — true
  * from that lap's start (which the session's chequered flag being out also
  * implies) until the session changes; null before the first tick, with no
- * translator, or while the session cannot be read.
+ * translator, or while the session cannot be read and its chequered flag is
+ * not out. The chequered flag answers true on its own, whatever the session,
+ * so a count queued before it is not heard after it while the session type
+ * is unreadable.
  *
  * The rule `handleTick` hands `diffFuelLapsLeft` for its final-lap silence,
  * over the latest tick and the state that tick left (issue #1702): the
@@ -840,7 +843,7 @@ export function isPlayerFinalLapStarted(): boolean | null {
 
   const branch = resolveFuelSessionBranch(getSessionType());
 
-  if (branch === "unknown") return null;
+  if (branch === "unknown") return isPostRace(telemetry) ? true : null;
 
   return isPlayerFinalLapReached(
     telemetry,

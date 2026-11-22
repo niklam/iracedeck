@@ -108,7 +108,7 @@ export interface SimRuntime {
   isDamageRepairNeeded(): boolean | null;
   /** Whether the pit-service toggle confirmations may speak right now (#476). */
   isPitActionsAllowed(): boolean;
-  /** Whether the player has started their own last lap of the session — true from that lap's start (which the session's chequered flag being out also implies) until the session changes; `null` before the first tick, with no translator, or while the session cannot be read (#1702). */
+  /** Whether the player has started their own last lap of the session — true from that lap's start (which the session's chequered flag being out also implies) until the session changes; `null` before the first tick, with no translator, or while the session cannot be read and its chequered flag is not out — the flag answers `true` on its own (#1702). */
   isPlayerFinalLapStarted(): boolean | null;
   /** Whether the race has finished for the player this session (#569). */
   isRaceFinished(): boolean;

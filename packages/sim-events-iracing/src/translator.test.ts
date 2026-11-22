@@ -1688,6 +1688,20 @@ describe("sim-events-iracing translator", () => {
       expect(isPlayerFinalLapStarted()).toBeNull();
     });
 
+    it.each([SessionState.Checkered, SessionState.CoolDown])(
+      "is true while the session cannot be read once its chequered flag is out (state %s)",
+      (sessionState) => {
+        const controller = start("Race");
+        controller.__tick(telemetry({ SessionState: SessionState.Racing }));
+        controller.__setSessionInfo(null);
+        controller.__tick(telemetry({ SessionState: SessionState.Racing }));
+        expect(isPlayerFinalLapStarted()).toBeNull();
+
+        controller.__tick(telemetry({ SessionState: sessionState }));
+        expect(isPlayerFinalLapStarted()).toBe(true);
+      },
+    );
+
     it("reads a SessionType that is not a string as an unreadable session, and the tick does not throw", () => {
       const controller = createMockController();
       controller.__setSessionInfo({ SessionInfo: { Sessions: [{ SessionNum: 0, SessionType: 42 }] } });
