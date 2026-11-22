@@ -598,14 +598,22 @@
 						// to a click; sdpi re-delivers every key on every push, so an
 						// unchanged value is skipped.
 						var lastCatalog;
-						window.SDPIComponents.useGlobalSettings(CATALOG_KEY, function (value) {
+						function applyCatalog(value) {
 							var raw = typeof value === "string" ? value : JSON.stringify(value === undefined ? null : value);
 							if (raw === lastCatalog) return;
 							lastCatalog = raw;
 							catalog = window.irdCameraGroups ? window.irdCameraGroups.parseCatalog(value) : null;
 							keypadSelector.render();
 							dialSelector.render();
-						});
+						}
+						var catalogHook = window.SDPIComponents.useGlobalSettings(CATALOG_KEY, applyCatalog);
+						// sdpi hands a subscription only the pushes after it, and this one
+						// is made late (after DOMContentLoaded and whenDefined), so the push
+						// that brought the catalog may be gone. The hook's getter returns
+						// the value sdpi already holds — a local read that sends nothing,
+						// resolving once global settings first arrive — and lastCatalog
+						// skips it when a push delivered it first.
+						catalogHook[0]().then(applyCatalog);
 
 						// Keypad selector: per-action setting with a legacy global fallback.
 						var legacyGroups = null;

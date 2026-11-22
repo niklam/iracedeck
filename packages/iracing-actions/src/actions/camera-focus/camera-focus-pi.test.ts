@@ -287,6 +287,17 @@ describe("camera-focus PI Cycle Camera grids: the Remembered groups section (#16
   let global: Map<string, ((value: unknown) => void)[]>;
   let keypadSave: ReturnType<typeof vi.fn>;
   let dialSave: ReturnType<typeof vi.fn>;
+  /** The global values sdpi already holds, which a hook's getter returns. */
+  let storedGlobals: Map<string, unknown>;
+
+  /** Builds the page and runs the template's script, letting initializePI run to its end. */
+  async function load(): Promise<void> {
+    dom.document.body.innerHTML = SKELETON;
+    new Function(script)();
+
+    // initializePI awaits whenDefined("sdpi-select"); let it run to its end.
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+  }
 
   beforeAll(() => {
     // The script waits for sdpi-select before it wires anything.
@@ -296,11 +307,11 @@ describe("camera-focus PI Cycle Camera grids: the Remembered groups section (#16
   });
 
   beforeEach(async () => {
-    dom.document.body.innerHTML = SKELETON;
     perKey = new Map();
     global = new Map();
     keypadSave = vi.fn();
     dialSave = vi.fn();
+    storedGlobals = new Map();
 
     Object.assign(dom.window, {
       SDPIComponents: {
@@ -312,7 +323,7 @@ describe("camera-focus PI Cycle Camera grids: the Remembered groups section (#16
         useGlobalSettings: (key: string, callback: (value: unknown) => void) => {
           global.set(key, [...(global.get(key) ?? []), callback]);
 
-          return [async () => "", dialSave];
+          return [async () => storedGlobals.get(key) ?? "", dialSave];
         },
       },
       irdCameraGroups: CAMERA_GROUP_HELPERS,
@@ -322,10 +333,7 @@ describe("camera-focus PI Cycle Camera grids: the Remembered groups section (#16
       irdApplyDialView: () => {},
     });
 
-    new Function(script)();
-
-    // initializePI awaits whenDefined("sdpi-select"); let it run to its end.
-    for (let i = 0; i < 5; i++) await Promise.resolve();
+    await load();
   });
 
   /** One global push, delivered the way sdpi delivers: to every subscription of the key. */
@@ -470,6 +478,23 @@ describe("camera-focus PI Cycle Camera grids: the Remembered groups section (#16
 
     expect(Object.keys(saved).sort()).toEqual([...STANDARD].sort());
     expect(Object.values(saved).every((v) => v === false)).toBe(true);
+  });
+
+  it("draws the catalog sdpi already held when the grids subscribed (#1653 review)", async () => {
+    // The push that brought it came before initializePI subscribed, and sdpi
+    // does not replay one; only the hook's getter still has it.
+    storedGlobals.set(CAMERA_CATALOG_KEY, JSON.stringify(CATALOG));
+    await load();
+
+    expect(remembered("camera-groups-grid").map((e) => e.name)).toEqual(["SpeedCam", "DynamicTV", "Alpha", "Zulu"]);
+    expect(remembered("dial-camera-groups-grid").map((e) => e.name)).toEqual([
+      "SpeedCam",
+      "DynamicTV",
+      "Alpha",
+      "Zulu",
+    ]);
+    expect(keypadSave).not.toHaveBeenCalled();
+    expect(dialSave).not.toHaveBeenCalled();
   });
 
   it("writes nothing when the catalog arrives or changes", () => {
