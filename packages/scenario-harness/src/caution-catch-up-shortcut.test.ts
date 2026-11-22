@@ -471,6 +471,7 @@ describe('the "Caution → catch-up" shortcut (issue #1168)', () => {
       telemetry: controller.getState().telemetry,
       translatorTelemetry: controller.getState().telemetry,
       playerFinalLapStarted: false,
+      translatorSubSessionId: null,
     });
 
     expect(

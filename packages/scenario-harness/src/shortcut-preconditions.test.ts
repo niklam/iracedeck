@@ -91,6 +91,7 @@ function connectedWith(sessionInfo: Record<string, unknown> | null): HarnessPrec
     telemetry: BOOT_TELEMETRY,
     translatorTelemetry: BOOT_TELEMETRY,
     playerFinalLapStarted: false,
+    translatorSubSessionId: null,
   };
 }
 
@@ -101,6 +102,7 @@ const AT_BOOT: HarnessPreconditionState = {
   telemetry: BOOT_TELEMETRY,
   translatorTelemetry: null,
   playerFinalLapStarted: null,
+  translatorSubSessionId: null,
 };
 
 function readSessionPreset(name: string): Record<string, unknown> {
@@ -199,6 +201,7 @@ describe("checkShortcutPreconditions", () => {
         telemetry: BOOT_TELEMETRY,
         translatorTelemetry: null,
         playerFinalLapStarted: null,
+        translatorSubSessionId: null,
       });
 
       expect(refusal, `"${id}" ran disconnected`).toEqual(expect.stringContaining("Connect the mock SDK"));
@@ -229,6 +232,7 @@ describe("checkShortcutPreconditions", () => {
         telemetry: BOOT_TELEMETRY,
         translatorTelemetry: null,
         playerFinalLapStarted: null,
+        translatorSubSessionId: null,
       });
 
       expect(refusal, `ran disconnected on ${preset}`).toEqual(expect.stringContaining("Connect the mock SDK"));
@@ -409,6 +413,7 @@ describe("the rolling-start preconditions (issue #1167)", () => {
         telemetry: BOOT_TELEMETRY,
         translatorTelemetry: null,
         playerFinalLapStarted: null,
+        translatorSubSessionId: null,
       });
 
       expect(refusal, `"${id}" ran disconnected`).toEqual(expect.stringContaining("Connect the mock SDK"));
@@ -482,6 +487,7 @@ describe("the rolling-start preconditions (issue #1167)", () => {
       telemetry: { ...BOOT_TELEMETRY, SessionNum } as TelemetryData,
       translatorTelemetry: { ...BOOT_TELEMETRY, SessionNum } as TelemetryData,
       playerFinalLapStarted: false,
+      translatorSubSessionId: null,
     });
 
     expect(checkShortcutPreconditions(["rolling-start-oval-grid"], inSession(0))).not.toBeNull();

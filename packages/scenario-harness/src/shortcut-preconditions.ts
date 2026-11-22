@@ -22,7 +22,7 @@
  * caution buttons cannot drift from each other's wording.
  */
 import type { SessionClass } from "@iracedeck/event-bus";
-import type { TelemetryData } from "@iracedeck/iracing-sdk";
+import { readSubSessionId, type TelemetryData } from "@iracedeck/iracing-sdk";
 import {
   classifySession,
   isOvalTrack,
@@ -98,9 +98,12 @@ import { TRAFFIC_PLAYER_CAR_IDX } from "./traffic-telemetry.js";
  * not reach the translator until the next tick. With the tick loop paused or
  * slowed, a session number changed by hand is one the precondition would see
  * and the gate would not: the button would be accepted and every fuel line
- * judged against the session before. Connecting and applying a session
- * preset open no such window (the mock delivers a tick on connect, and session
- * info is read live by both).
+ * judged against the session before, its kind and its final-lap marker. So
+ * the rule compares the session identity the translator keeps, `SessionNum`
+ * and a named `SubSessionID` (whose change it takes, and resets the session
+ * for, on a tick too), not the session type, which two entries of one kind
+ * share. Connecting opens no such window (the mock delivers a tick on
+ * connect).
  *
  * `before-final-lap` — the player is not on their final lap and the
  * session's chequered flag is not out (#1702), as the translator's
@@ -139,6 +142,14 @@ export type HarnessPreconditionState = {
    * tick.
    */
   translatorTelemetry: TelemetryData | null;
+  /**
+   * The `WeekendInfo.SubSessionID` the translator last took into its session
+   * identity (`readSimState()`'s `lastObservedSubSessionId`), `null` while it
+   * has none. Session info is read live by both sides, but the translator
+   * takes a new subsession, and resets the session's state for it, only on
+   * its next tick.
+   */
+  translatorSubSessionId: number | null;
   /**
    * The translator's `isPlayerFinalLapStarted()`: true from the player's own
    * last lap or with the chequered flag out, `null` when it cannot tell (no
@@ -210,18 +221,25 @@ function classifyMockSession(state: HarnessPreconditionState): SessionClass | nu
 }
 
 /**
- * Whether the translator's latest tick names the same session as the mock's
- * telemetry (issue #1702), asked of the same `resolveSessionType`: the
- * session type is what `getSessionClass()` classifies, so equal types are an
- * equal answer at speak time.
+ * Whether the translator has processed the session the mock is in (issue
+ * #1702), by the translator's own session identity, `(SubSessionID,
+ * SessionNum)` (`session-identity.ts`, #1509): its latest tick carries the
+ * mock's `SessionNum`, and, when the mock's session info names a
+ * subsession, the translator has taken that one. Comparing the session TYPE
+ * alone let a switch between two entries of one type through, with the old
+ * session's state (its final-lap marker) still on the translator; the
+ * identity is also what makes the translator reset that state, on the tick
+ * that sees it change. A session info without a `SubSessionID` (every
+ * preset) leaves that half out, as the translator does.
  */
 function translatorSeesMockSession(state: HarnessPreconditionState): boolean {
   if (state.translatorTelemetry === null) return false;
 
-  return (
-    resolveSessionType(state.sessionInfo, state.translatorTelemetry) ===
-    resolveSessionType(state.sessionInfo, state.telemetry)
-  );
+  if (state.translatorTelemetry.SessionNum !== state.telemetry.SessionNum) return false;
+
+  const subSessionId = readSubSessionId(state.sessionInfo);
+
+  return subSessionId === null || subSessionId === state.translatorSubSessionId;
 }
 
 const PRECONDITION_RULES: Record<ShortcutPrecondition, PreconditionRule> = {
@@ -317,10 +335,11 @@ const PRECONDITION_RULES: Record<ShortcutPrecondition, PreconditionRule> = {
   "translator-session-current": {
     satisfied: translatorSeesMockSession,
     reason:
-      "The translator has not read the session you are in yet. The Race Engineer reads which kind of session it is " +
-      "from the translator's latest tick (SessionInfo.Sessions[SessionNum].SessionType), and the session number in " +
-      "the telemetry has changed since that tick, because the tick loop is paused or slowed. Tick once (or resume the " +
-      "loop) and press again: run now, every fuel line would be judged against the session before.",
+      "The translator has not read the session you are in yet. The Race Engineer reads which session it is from the " +
+      "translator's latest tick (SessionInfo.Sessions[SessionNum], and WeekendInfo.SubSessionID when the session " +
+      "info names one), and the session has changed since that tick, because the tick loop is paused or slowed. Tick " +
+      "once (or resume the loop) and press again: run now, every fuel line would be judged against the session before, " +
+      "its kind and whether its final lap had started.",
   },
 };
 

@@ -24,6 +24,8 @@ import {
   getSessionClass,
   initializeSimEventsIracing,
   isPlayerFinalLapStarted,
+  readSimState,
+  type SimStateSnapshot,
 } from "@iracedeck/sim-events-iracing";
 import type { FastifyInstance } from "fastify";
 import { readdirSync, readFileSync } from "node:fs";
@@ -109,6 +111,7 @@ function stateWith(
         ? null
         : ({ ...BOOT_TELEMETRY, SessionNum: translatorSessionNum } as TelemetryData),
     playerFinalLapStarted: options.playerFinalLapStarted ?? (isConnected ? false : null),
+    translatorSubSessionId: null,
   };
 }
 
@@ -432,6 +435,7 @@ describe("the final-lap precondition against the running translator (issue #1702
       telemetry,
       translatorTelemetry: getLatestTelemetry(),
       playerFinalLapStarted: isPlayerFinalLapStarted(),
+      translatorSubSessionId: subSessionIdOf(readSimState()),
     };
   }
 
@@ -439,6 +443,98 @@ describe("the final-lap precondition against the running translator (issue #1702
     controller.mutateTelemetry(patch);
     controller.tickOnce();
   }
+
+  /** As the route reads it: the subsession the translator last took. */
+  function subSessionIdOf(sim: SimStateSnapshot): number | null {
+    return sim.initialized ? sim.raw.instance.lastObservedSubSessionId : null;
+  }
+
+  /** The white shown, then the player's own crossing past the heads-up gap: the race's last lap is marked. */
+  function markLastLap(controller: MockSDKController): void {
+    tick(controller, { LapCompleted: 4 });
+    tick(controller, { SessionFlags: Flags.White });
+    vi.advanceTimersByTime(10_000);
+    tick(controller, { LapCompleted: 5 });
+  }
+
+  /** The race preset as a meeting of two Race entries, numbered 0 and 1, optionally in a named subsession. */
+  function twoRaces(subSessionId?: number): Record<string, unknown> {
+    const race = readPreset("session", "race");
+
+    return {
+      ...race,
+      ...(subSessionId === undefined
+        ? {}
+        : { WeekendInfo: { ...(race.WeekendInfo as Record<string, unknown>), SubSessionID: subSessionId } }),
+      SessionInfo: {
+        Sessions: [
+          { SessionNum: 0, SessionType: "Race" },
+          { SessionNum: 1, SessionType: "Race" },
+        ],
+      },
+    };
+  }
+
+  it("asks for a tick on a switch between two Race entries with the loop paused, then judges the new one", () => {
+    const { controller } = startTranslator(null, "hot-lap");
+
+    controller.setSessionInfo(twoRaces() as unknown as SessionInfo);
+    controller.tickOnce();
+    markLastLap(controller);
+
+    expect(isPlayerFinalLapStarted()).toBe(true);
+
+    // The loop paused: the mock is in the second race, the translator still
+    // in the first, on its final lap. Both are "Race", so the type alone
+    // would pass and the final-lap rule would refuse with the old latch.
+    controller.mutateTelemetry({ SessionNum: 1, SessionFlags: 0 });
+
+    const pending = checkShortcutPreconditions(requiresOf(RACE_COVERED_ID), routeState(controller));
+
+    expect(pending).toContain("has not read the session you are in yet");
+    expect(pending).not.toContain("You are on your final lap");
+
+    controller.tickOnce();
+
+    expect(isPlayerFinalLapStarted()).toBe(false);
+    expect(checkShortcutPreconditions(requiresOf(RACE_COVERED_ID), routeState(controller))).toBeNull();
+  });
+
+  it("still refuses on the final lap of the session the translator has read", () => {
+    const { controller } = startTranslator(null, "hot-lap");
+
+    controller.setSessionInfo(twoRaces() as unknown as SessionInfo);
+    controller.tickOnce();
+    markLastLap(controller);
+
+    expect(checkShortcutPreconditions(requiresOf(RACE_COVERED_ID), routeState(controller))).toContain(
+      "on your final lap",
+    );
+  });
+
+  it("asks for a tick when the session info names another subsession, then judges the new one", () => {
+    const { controller } = startTranslator(null, "hot-lap");
+
+    controller.setSessionInfo(twoRaces(111) as unknown as SessionInfo);
+    controller.tickOnce();
+    markLastLap(controller);
+
+    expect(subSessionIdOf(readSimState())).toBe(111);
+
+    // The same SessionNum in a new subsession: session info is read live,
+    // but the translator takes the change, and resets the session, on a tick.
+    controller.setSessionInfo(twoRaces(222) as unknown as SessionInfo);
+    controller.mutateTelemetry({ SessionFlags: 0 });
+
+    expect(checkShortcutPreconditions(requiresOf(RACE_COVERED_ID), routeState(controller))).toContain(
+      "has not read the session you are in yet",
+    );
+
+    controller.tickOnce();
+
+    expect(subSessionIdOf(readSimState())).toBe(222);
+    expect(checkShortcutPreconditions(requiresOf(RACE_COVERED_ID), routeState(controller))).toBeNull();
+  });
 
   it("refuses the per-count buttons under a chequered flag, and runs them on a racing lap again", () => {
     const { controller } = startTranslator("practice", "hot-lap");
