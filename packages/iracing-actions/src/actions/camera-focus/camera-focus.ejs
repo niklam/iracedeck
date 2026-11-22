@@ -598,11 +598,15 @@
 							if (known) return;
 							show(groups);
 						},
-						// The subset that applies is known: the grid takes choices from now on.
-						markReady: function () {
-							if (ready) return;
-							ready = true;
+						// Whether the subset that applies is known: the grid takes choices
+						// only while it is.
+						setReady: function (value) {
+							if (ready === value) return;
+							ready = value;
 							applyReady();
+						},
+						markReady: function () {
+							this.setReady(true);
 						},
 						setSave: function (fn) { save = fn; },
 						render: render,
@@ -738,7 +742,10 @@
 							}
 							if (held) keypadSelector.showDefault(legacyGroups || emptyGroupMap());
 							else keypadSelector.setDefault(legacyGroups || emptyGroupMap());
-							settleKeypad();
+							// No subset of its own (any more): the fallback applies, so the grid
+							// takes choices only once it is known — not on the strength of an own
+							// subset an earlier push brought and this one cleared (#1653 review).
+							keypadSelector.setReady(legacyKnown);
 						}
 						function takeDial(value, held) {
 							dialKnown = true;

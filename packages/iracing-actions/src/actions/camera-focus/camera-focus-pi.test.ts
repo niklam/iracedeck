@@ -571,6 +571,29 @@ describe("camera-focus PI Cycle Camera grids: the Remembered groups section (#16
       expect(lastSaved(keypadSave)).toMatchObject({ Nose: true, SpeedCam: true, Gearbox: true });
     });
 
+    it("takes no choice again once a push clears the key's own subset before the fallback is known", async () => {
+      let releaseGlobal: (value: string) => void = () => {};
+      storedGlobals.set(SUBSET_KEY, new Promise<string>((resolve) => (releaseGlobal = resolve)));
+      await load();
+
+      pushKeypadSubset({ SpeedCam: true });
+      toggle("camera-groups-grid", "Gearbox");
+      expect(keypadSave).toHaveBeenCalledTimes(1);
+
+      // The key's subset is cleared: the defaults show only provisionally.
+      perKey.get(SUBSET_KEY)?.("");
+      toggle("camera-groups-grid", "Cockpit");
+      grid("btn-select-all").click();
+      expect(keypadSave).toHaveBeenCalledTimes(1);
+
+      releaseGlobal(subset({ Zulu: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(checkbox("camera-groups-grid", "Zulu")?.checked).toBe(true);
+      toggle("camera-groups-grid", "Gearbox");
+      expect(lastSaved(keypadSave)).toMatchObject({ Zulu: true });
+    });
+
     it("takes no choice until the subset that applies is known", async () => {
       let releaseKeypad: (value: string) => void = () => {};
       let releaseGlobal: (value: string) => void = () => {};
