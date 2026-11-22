@@ -85,12 +85,22 @@ function requiresOf(id: string): readonly string[] | undefined {
 
 function stateWith(
   sessionInfo: Record<string, unknown> | null,
-  options: { isConnected?: boolean; sessionNum?: number } = {},
+  options: { isConnected?: boolean; sessionNum?: number; translatorSessionNum?: number | null } = {},
 ): HarnessPreconditionState {
+  const isConnected = options.isConnected ?? true;
+  const sessionNum = options.sessionNum ?? 0;
+  // The translator's latest tick: by default the same session as the mock's,
+  // none while disconnected.
+  const translatorSessionNum = options.translatorSessionNum === undefined ? sessionNum : options.translatorSessionNum;
+
   return {
     sessionInfo,
-    isConnected: options.isConnected ?? true,
-    telemetry: { ...BOOT_TELEMETRY, SessionNum: options.sessionNum ?? 0 } as TelemetryData,
+    isConnected,
+    telemetry: { ...BOOT_TELEMETRY, SessionNum: sessionNum } as TelemetryData,
+    translatorTelemetry:
+      !isConnected || translatorSessionNum === null
+        ? null
+        : ({ ...BOOT_TELEMETRY, SessionNum: translatorSessionNum } as TelemetryData),
   };
 }
 
@@ -181,9 +191,33 @@ describe("the Fuel buttons' preconditions (issue #1702)", () => {
     expect(fuel.sort()).toEqual([...COUNT_IDS, RACE_COVERED_ID, RUN_ID].sort());
 
     for (const id of [...COUNT_IDS, RUN_ID])
-      expect(requiresOf(id), id).toEqual(["session-classified", "sdk-connected"]);
+      expect(requiresOf(id), id).toEqual(["session-classified", "sdk-connected", "translator-session-current"]);
 
-    expect(requiresOf(RACE_COVERED_ID)).toEqual(["race-session", "sdk-connected"]);
+    expect(requiresOf(RACE_COVERED_ID)).toEqual(["race-session", "sdk-connected", "translator-session-current"]);
+  });
+
+  it("refuses them while the translator's latest tick is in another session than the mock, asking for a tick", () => {
+    // A session number changed by hand with the tick loop paused: the mock is
+    // in session 0, the translator last read session 5, which the preset does
+    // not list, so the fuel gate would classify nothing.
+    const stale = stateWith(readPreset("session", "race"), { sessionNum: 0, translatorSessionNum: 5 });
+
+    for (const id of [...COUNT_IDS, RUN_ID, RACE_COVERED_ID]) {
+      const refusal = checkShortcutPreconditions(SCENARIO_SHORTCUTS.find((s) => s.id === id)?.requires, stale);
+
+      expect(refusal, id).toEqual(expect.stringContaining("Tick once"));
+    }
+
+    // The same session on both sides runs; a translator with no tick at all does not.
+    expect(
+      checkShortcutPreconditions(["translator-session-current"], stateWith(readPreset("session", "race"))),
+    ).toBeNull();
+    expect(
+      checkShortcutPreconditions(
+        ["translator-session-current"],
+        stateWith(readPreset("session", "race"), { translatorSessionNum: null }),
+      ),
+    ).not.toBeNull();
   });
 
   it("refuses every Fuel button as the harness boots, asking for a session preset and naming the toggles", () => {
@@ -546,6 +580,10 @@ describe("POST /api/shortcut/start for the Fuel buttons (issue #1702)", () => {
     // Fastify's request handling runs on real timers; nothing here ticks.
     vi.useRealTimers();
     controller = new MockSDKController({ onSubscriberError: "rethrow" });
+    // The translator the route asks for its latest tick, as `main.ts` runs it.
+    initializeSimEventsIracing(getEventBus(), controller as unknown as SDKController, silentLogger, {
+      onStepError: "rethrow",
+    });
     app = await createServer({
       controller,
       adapter: {} as unknown as MockPlatformAdapter,
@@ -593,6 +631,40 @@ describe("POST /api/shortcut/start for the Fuel buttons (issue #1702)", () => {
     controller.setConnected(true);
 
     for (const id of [...COUNT_IDS, RUN_ID]) expect((await start(id)).statusCode, id).toBe(204);
+  });
+
+  it("refuses them while the translator has not ticked on a session number changed by hand, and runs them once it has", async () => {
+    // Connecting delivers a tick and session info is read live, so applying a
+    // preset opens no window; a SessionNum written with the loop paused does.
+    controller.setSessionInfo(readPreset("session", "testing") as unknown as SessionInfo);
+    controller.setConnected(true);
+    controller.mutateTelemetry({ SessionNum: 5 });
+    controller.tickOnce();
+    controller.mutateTelemetry({ SessionNum: 0 });
+
+    // The window is real: the mock is in the test session, the gate reads none.
+    expect(getSessionClass()).toBeNull();
+
+    for (const id of [...COUNT_IDS, RUN_ID]) {
+      const res = await start(id);
+
+      expect(res.statusCode, id).toBe(409);
+      expect(res.error).toContain("Tick once");
+    }
+
+    controller.tickOnce();
+
+    expect(getSessionClass()).toEqual({ category: "practice", soloQualifying: false, testing: true });
+
+    for (const id of [...COUNT_IDS, RUN_ID]) expect((await start(id)).statusCode, id).toBe(204);
+  });
+
+  it("control: right after connecting with a preset applied, the translator already reads the session", async () => {
+    controller.setSessionInfo(readPreset("session", "practice") as unknown as SessionInfo);
+    controller.setConnected(true);
+
+    expect(getSessionClass()).not.toBeNull();
+    expect((await start(RUN_ID)).statusCode).toBe(204);
   });
 
   it("refuses Enough fuel to finish outside a race, naming the two presets, and lets it run in one", async () => {

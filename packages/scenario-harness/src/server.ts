@@ -14,6 +14,7 @@ import type { IEventBus, PitReadbackSnapshot, SimEventName, SimEventOf } from "@
 import type { SessionInfo, TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import { getGlobalSettings, onGlobalSettingsChange, updateGlobalSettings } from "@iracedeck/settings";
+import { getLatestTelemetry } from "@iracedeck/sim-events-iracing";
 import { fastify, type FastifyInstance } from "fastify";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -579,6 +580,7 @@ export async function createServer(ctx: HarnessContext): Promise<FastifyInstance
       sessionInfo: sessionInfo as Record<string, unknown> | null,
       isConnected,
       telemetry,
+      translatorTelemetry: getLatestTelemetry(),
     });
 
     if (refusal !== null) return reply.code(409).send({ error: refusal });

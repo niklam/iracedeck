@@ -90,6 +90,17 @@ import { TRAFFIC_PLAYER_CAR_IDX } from "./traffic-telemetry.js";
  *
  * `race-session` — that, and the session is a race (#1702). The enough-fuel
  * confirmation is the race countdown's closing line and is heard only there.
+ *
+ * `translator-session-current` — the translator's latest tick is in the
+ * session the mock is in (#1702). The two rules above classify the mock's
+ * telemetry, but the fuel gate classifies the translator's (`getSessionClass()`
+ * reads the session number off its latest tick), and a telemetry write does
+ * not reach the translator until the next tick. With the tick loop paused or
+ * slowed, a session number changed by hand is one the precondition would see
+ * and the gate would not: the button would be accepted and every fuel line
+ * judged against the session before. Connecting and applying a session
+ * preset open no such window (the mock delivers a tick on connect, and session
+ * info is read live by both).
  */
 export type ShortcutPrecondition =
   | "player-car-index"
@@ -99,7 +110,8 @@ export type ShortcutPrecondition =
   | "track-length"
   | "traffic-player-car"
   | "session-classified"
-  | "race-session";
+  | "race-session"
+  | "translator-session-current";
 
 /** The live harness state a precondition is checked against, read by the route on every start. */
 export type HarnessPreconditionState = {
@@ -111,6 +123,13 @@ export type HarnessPreconditionState = {
    * of the session list, and the translator answers it against this.
    */
   telemetry: TelemetryData;
+  /**
+   * The translator's latest telemetry (`getLatestTelemetry()`), `null` before
+   * its first tick or once disconnected: what `getSessionClass()` reads the
+   * session number from. It lags {@link telemetry} by a write until the next
+   * tick.
+   */
+  translatorTelemetry: TelemetryData | null;
 };
 
 type PreconditionRule = {
@@ -171,6 +190,21 @@ function readFormationGrid(state: HarnessPreconditionState): PaceLineup | null {
  */
 function classifyMockSession(state: HarnessPreconditionState): SessionClass | null {
   return classifySession(resolveSessionType(state.sessionInfo, state.telemetry));
+}
+
+/**
+ * Whether the translator's latest tick names the same session as the mock's
+ * telemetry (issue #1702), asked of the same `resolveSessionType`: the
+ * session type is what `getSessionClass()` classifies, so equal types are an
+ * equal answer at speak time.
+ */
+function translatorSeesMockSession(state: HarnessPreconditionState): boolean {
+  if (state.translatorTelemetry === null) return false;
+
+  return (
+    resolveSessionType(state.sessionInfo, state.translatorTelemetry) ===
+    resolveSessionType(state.sessionInfo, state.telemetry)
+  );
 }
 
 const PRECONDITION_RULES: Record<ShortcutPrecondition, PreconditionRule> = {
@@ -252,6 +286,14 @@ const PRECONDITION_RULES: Record<ShortcutPrecondition, PreconditionRule> = {
       'Apply the "race" or "race-oval" session preset first. "Enough fuel to finish" is the race countdown’s ' +
       "closing line, retracting the warnings before it, so the Race Engineer speaks it in a race only, and only " +
       'with "Fuel countdown: speak in Race" checked. In any other session it is silent.',
+  },
+  "translator-session-current": {
+    satisfied: translatorSeesMockSession,
+    reason:
+      "The translator has not read the session you are in yet. The Race Engineer reads which kind of session it is " +
+      "from the translator's latest tick (SessionInfo.Sessions[SessionNum].SessionType), and the session number in " +
+      "the telemetry has changed since that tick, because the tick loop is paused or slowed. Tick once (or resume the " +
+      "loop) and press again: run now, every fuel line would be judged against the session before.",
   },
 };
 

@@ -2689,12 +2689,22 @@ function playerFastestLapCompleted(lap: number): PublishedEvent {
  * which is `null` (no fuel line at all) until a session preset is applied
  * AND the translator has a tick to read the session number from, which a
  * disconnected mock SDK never delivers. The session is asked for first, as
- * the caution catch-up button does.
+ * the caution catch-up button does, and last that the translator's latest tick
+ * is in that session: a session number changed by hand reaches it only on its
+ * next tick, which a paused or slowed loop delays.
  */
-const FUEL_COUNTDOWN_REQUIRES: readonly ShortcutPrecondition[] = ["session-classified", "sdk-connected"];
+const FUEL_COUNTDOWN_REQUIRES: readonly ShortcutPrecondition[] = [
+  "session-classified",
+  "sdk-connected",
+  "translator-session-current",
+];
 
 /** The same for "Enough fuel to finish", which is heard in a race only (issue #1702). */
-const FUEL_RACE_COVERED_REQUIRES: readonly ShortcutPrecondition[] = ["race-session", "sdk-connected"];
+const FUEL_RACE_COVERED_REQUIRES: readonly ShortcutPrecondition[] = [
+  "race-session",
+  "sdk-connected",
+  "translator-session-current",
+];
 
 /** The sentences every per-count Fuel button's description ends on (issue #1702). */
 const FUEL_SESSION_NOTE =

@@ -469,6 +469,7 @@ describe('the "Caution → catch-up" shortcut (issue #1168)', () => {
       sessionInfo: sessionInfo as Record<string, unknown>,
       isConnected: true,
       telemetry: controller.getState().telemetry,
+      translatorTelemetry: controller.getState().telemetry,
     });
 
     expect(
