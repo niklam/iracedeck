@@ -669,6 +669,52 @@ describe("camera-focus PI Cycle Camera grids: the Remembered groups section (#16
     });
   });
 
+  describe("a push that repeats a subset while an edit's save is pending (#1653 review)", () => {
+    const SUBSET_KEY = "cameraGroupSubset";
+    const subset = (groups: Record<string, boolean>): string => JSON.stringify({ groups });
+    const updatedCatalog = { ...CATALOG, current: { trackId: 2, groups: ["TV1", "SpeedCam", "DynamicTV", "Zulu"] } };
+
+    beforeEach(async () => {
+      storedGlobals.set(CAMERA_CATALOG_KEY, JSON.stringify(CATALOG));
+      storedGlobals.set(SUBSET_KEY, subset({ Nose: true }));
+      storedPerKey.set(SUBSET_KEY, subset({ Nose: true }));
+      await load();
+    });
+
+    it("keeps the dial's edits when a catalog push re-delivers the old global subset", () => {
+      toggle("dial-camera-groups-grid", "SpeedCam");
+      // A camera-file update: the whole global snapshot, the subset still as it was.
+      pushGlobal(SUBSET_KEY, subset({ Nose: true }));
+      pushCatalog(updatedCatalog);
+      toggle("dial-camera-groups-grid", "DynamicTV");
+
+      expect(lastSaved(dialSave)).toMatchObject({ Nose: true, SpeedCam: true, DynamicTV: true });
+    });
+
+    it("keeps the keypad's edits when a push re-delivers the key's old subset", () => {
+      toggle("camera-groups-grid", "SpeedCam");
+      pushKeypadSubset({ Nose: true });
+      pushGlobal(SUBSET_KEY, subset({ Nose: true }));
+      toggle("camera-groups-grid", "DynamicTV");
+
+      expect(lastSaved(keypadSave)).toMatchObject({ Nose: true, SpeedCam: true, DynamicTV: true });
+    });
+
+    it("still applies a real change and an explicit clear", () => {
+      toggle("dial-camera-groups-grid", "SpeedCam");
+      pushGlobal(SUBSET_KEY, subset({ Zulu: true }));
+
+      expect(checkbox("dial-camera-groups-grid", "Zulu")?.checked).toBe(true);
+      expect(checkbox("dial-camera-groups-grid", "SpeedCam")?.checked).toBe(false);
+
+      pushGlobal(SUBSET_KEY, "");
+      expect(checkbox("dial-camera-groups-grid", "Zulu")?.checked).toBe(false);
+
+      pushKeypadSubset({ Zulu: true });
+      expect(checkbox("camera-groups-grid", "Zulu")?.checked).toBe(true);
+    });
+  });
+
   describe("the legacy global subset arriving after the key's own empty value (#1653 review)", () => {
     const SUBSET_KEY = "cameraGroupSubset";
     const subset = (groups: Record<string, boolean>): string => JSON.stringify({ groups });

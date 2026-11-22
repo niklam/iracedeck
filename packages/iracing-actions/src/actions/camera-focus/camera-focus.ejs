@@ -719,6 +719,18 @@
 						var legacyGroups = null;
 						var legacyKnown = false;
 						var dialKnown = false;
+						// The subset each hook last delivered (#1653 review). sdpi hands every
+						// hook its key's value on every push — a catalog-only push included — and
+						// the snapshot it carries still holds the value from before an edit whose
+						// debounced save has not gone out yet. Applying that repeat would replace
+						// the edit, and the next save would drop it; only a delivery that differs
+						// from the last one, an explicit clear included, is a change.
+						var lastKeypadRaw;
+						var lastDialRaw;
+
+						function rawOf(value) {
+							return typeof value === "string" ? value : JSON.stringify(value === undefined ? null : value);
+						}
 
 						function settleKeypad() {
 							if (keypadResolved && legacyKnown) keypadSelector.markReady();
@@ -732,6 +744,9 @@
 							settleKeypad();
 						}
 						function takeKeypad(value, held) {
+							var raw = rawOf(value);
+							if (keypadResolved && raw === lastKeypadRaw) return;
+							lastKeypadRaw = raw;
 							keypadResolved = true;
 							var groups = readGroups(value);
 							if (groups) {
@@ -748,6 +763,9 @@
 							keypadSelector.setReady(legacyKnown);
 						}
 						function takeDial(value, held) {
+							var raw = rawOf(value);
+							if (dialKnown && raw === lastDialRaw) return;
+							lastDialRaw = raw;
 							dialKnown = true;
 							var groups = readGroups(value);
 							if (groups) {
