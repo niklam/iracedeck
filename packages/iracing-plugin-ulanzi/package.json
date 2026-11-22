@@ -21,7 +21,7 @@
     "@types/node": "26.6.6",
     "rimraf": "6.1.4",
     "rollup": "4.68.3",
-    "typescript": "5.9.3"
+    "typescript": "6.0.3"
   },
   "license": "SEE LICENSE IN LICENSE"
 }
