@@ -13,14 +13,16 @@
  * dial long-press threshold and turn a tap into a long press. At a press it
  * reads the key's `windowFocus` from the event's settings and does two things:
  *
- * - **Press time.** Before a key down, dial down or dial rotation reaches the
- *   handler it asks for focus as the key's setting says
- *   (`focusIRacingForPress` in the focus service). A touch-strip tap never
- *   focuses at press time (#978).
  * - **Keystroke time.** It runs every press member — down, up, rotate and
  *   touch — inside the focus service's async scope, so the keystrokes the
  *   handler sends, however deep and however late, are focused as the key's
  *   setting says.
+ * - **Press time.** Inside that scope, before a key down, dial down or dial
+ *   rotation reaches the handler, it asks for focus as the key's setting says
+ *   (`focusIRacingForPress` in the focus service). Asking inside the scope is
+ *   what lets the press-time ask and the keystrokes share the scope's
+ *   once-per-call flags, so each per-key debug line goes out at most once per
+ *   handler call. A touch-strip tap never focuses at press time (#978).
  *
  * Nothing here may break a press: the settings read never throws (an
  * unreadable value is `global`), a press-time focus failure is logged and
@@ -30,7 +32,7 @@
  */
 import { type WindowFocusOverride, WindowFocusOverrideSchema } from "./common-settings.js";
 import type { IDeckActionHandler } from "./types.js";
-import { focusIRacingForPress, type FocusPressKind, runInWindowFocusScope } from "./window-focus-service.js";
+import { focusIRacingForPress, runInWindowFocusScope } from "./window-focus-service.js";
 
 /**
  * Every member of {@link IDeckActionHandler}, each one required to be present
@@ -61,9 +63,9 @@ export function readWindowFocusOverride(settings: unknown): WindowFocusOverride 
  * swallows the focuser's; this catches what is left (a settings read or a
  * logger that throws).
  */
-function focusAtPress(override: WindowFocusOverride, kind: FocusPressKind): void {
+function focusAtPress(override: WindowFocusOverride): void {
   try {
-    focusIRacingForPress(override, kind);
+    focusIRacingForPress(override);
   } catch {
     // Best-effort by contract. There is nothing reliable left to log with.
   }
@@ -76,8 +78,8 @@ function focusAtPress(override: WindowFocusOverride, kind: FocusPressKind): void
  * and the same result, and a member the handler lacks stays `undefined`, so
  * this wrapper exposes exactly the members the handler it wraps has.
  *
- * - `onKeyDown`, `onDialDown`, `onDialRotate`: the press-time focus, then the
- *   handler, inside the key's scope.
+ * - `onKeyDown`, `onDialDown`, `onDialRotate`: inside the key's scope, the
+ *   press-time focus and then the handler.
  * - `onKeyUp`, `onDialUp`: the handler inside the key's scope, no focus.
  * - `onTouchTap`: the handler inside the key's scope, no press-time focus.
  * - Everything else: forwarded unchanged, outside any scope.
@@ -102,9 +104,12 @@ export function withWindowFocus<T>(handler: IDeckActionHandler<T>): IDeckActionH
     onKeyDown: handler.onKeyDown
       ? (ev) => {
           const override = readWindowFocusOverride(ev.payload.settings);
-          focusAtPress(override, "press");
 
-          return runInWindowFocusScope(override, () => handler.onKeyDown!(ev));
+          return runInWindowFocusScope(override, () => {
+            focusAtPress(override);
+
+            return handler.onKeyDown!(ev);
+          });
         }
       : undefined,
 
@@ -115,9 +120,12 @@ export function withWindowFocus<T>(handler: IDeckActionHandler<T>): IDeckActionH
     onDialDown: handler.onDialDown
       ? (ev) => {
           const override = readWindowFocusOverride(ev.payload.settings);
-          focusAtPress(override, "press");
 
-          return runInWindowFocusScope(override, () => handler.onDialDown!(ev));
+          return runInWindowFocusScope(override, () => {
+            focusAtPress(override);
+
+            return handler.onDialDown!(ev);
+          });
         }
       : undefined,
 
@@ -128,19 +136,17 @@ export function withWindowFocus<T>(handler: IDeckActionHandler<T>): IDeckActionH
     onDialRotate: handler.onDialRotate
       ? (ev) => {
           const override = readWindowFocusOverride(ev.payload.settings);
-          focusAtPress(override, "press");
 
-          return runInWindowFocusScope(override, () => handler.onDialRotate!(ev));
+          return runInWindowFocusScope(override, () => {
+            focusAtPress(override);
+
+            return handler.onDialRotate!(ev);
+          });
         }
       : undefined,
 
     onTouchTap: handler.onTouchTap
-      ? (ev) => {
-          const override = readWindowFocusOverride(ev.payload.settings);
-          focusAtPress(override, "touch");
-
-          return runInWindowFocusScope(override, () => handler.onTouchTap!(ev));
-        }
+      ? (ev) => runInWindowFocusScope(readWindowFocusOverride(ev.payload.settings), () => handler.onTouchTap!(ev))
       : undefined,
   };
 

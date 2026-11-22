@@ -200,7 +200,6 @@ export {
   _resetWindowFocus,
   type ElevationMismatchCheck,
   FOCUS_TIMEOUT_COOLDOWN_MS,
-  type FocusPressKind,
   FocusResult,
   focusIRacingBeforeInput,
   focusIRacingForKey,

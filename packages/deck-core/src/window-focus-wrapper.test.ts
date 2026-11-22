@@ -296,19 +296,129 @@ describe("withWindowFocus (issue #1654)", () => {
         "handler:onKeyDown",
       ]);
     });
+  });
 
-    it("logs the per-key debug line once per press", async () => {
+  describe("the per-key debug lines (spec decision 6)", () => {
+    const SKIPPED = "Focus skipped for this key (per-key setting)";
+    const REQUESTED = "Focus requested by this key's setting";
+
+    const perKeyLines = (logger: ILogger): unknown[] =>
+      vi
+        .mocked(logger.debug)
+        .mock.calls.map(([line]) => line)
+        .filter((line) => line === SKIPPED || line === REQUESTED);
+
+    /** A handler whose every press member taps the test binding `taps` times. */
+    const tapping = (taps: number): IDeckActionHandler<unknown> =>
+      recordingHandler(async () => {
+        for (let i = 0; i < taps; i++) await getBindingDispatcher().tap(BINDING_KEY);
+      });
+
+    it("logs nothing for a no-focus key down under required that sends no keystroke: nothing would have focused", async () => {
       setMode("required");
       const logger = arrange();
-      const wrapped = withWindowFocus(recordingHandler());
+
+      await press(withWindowFocus(tapping(0)), "onKeyDown", "no-focus");
+
+      expect(perKeyLines(logger)).toEqual([]);
+    });
+
+    it("logs the skip once for a no-focus key down under required that sends two keystrokes", async () => {
+      setMode("required");
+      const logger = arrange();
+
+      await press(withWindowFocus(tapping(2)), "onKeyDown", "no-focus");
+
+      expect(keystrokeLog()).toEqual(["send:59", "send:59"]);
+      expect(perKeyLines(logger)).toEqual([SKIPPED]);
+    });
+
+    it("logs the skip once for a no-focus key down under always that also sends keystrokes", async () => {
+      setMode("always");
+      const logger = arrange();
+
+      await press(withWindowFocus(tapping(2)), "onKeyDown", "no-focus");
+
+      expect(keystrokeLog()).toEqual(["send:59", "send:59"]);
+      expect(perKeyLines(logger)).toEqual([SKIPPED]);
+    });
+
+    it.each(["onDialDown", "onDialRotate"] as const)(
+      "logs the skip once for a no-focus %s under always",
+      async (member) => {
+        setMode("always");
+        const logger = arrange();
+
+        await press(withWindowFocus(tapping(1)), member, "no-focus");
+
+        expect(perKeyLines(logger)).toEqual([SKIPPED]);
+      },
+    );
+
+    it("logs nothing for a focus touch tap under never that sends no keystroke: no focus was asked", async () => {
+      setMode("never");
+      const logger = arrange();
+
+      await press(withWindowFocus(tapping(0)), "onTouchTap", "focus");
+
+      expect(keystrokeLog()).toEqual([]);
+      expect(perKeyLines(logger)).toEqual([]);
+    });
+
+    it("logs the request once for a focus touch tap under never that sends keystrokes", async () => {
+      setMode("never");
+      const logger = arrange();
+
+      await press(withWindowFocus(tapping(2)), "onTouchTap", "focus");
+
+      expect(keystrokeLog()).toEqual(["focus", "send:59", "focus", "send:59"]);
+      expect(perKeyLines(logger)).toEqual([REQUESTED]);
+    });
+
+    it("logs the request once for a focus key down under required, at press time, not again at its keystrokes", async () => {
+      setMode("required");
+      const logger = arrange();
+
+      await press(withWindowFocus(tapping(2)), "onKeyDown", "focus");
+
+      expect(perKeyLines(logger)).toEqual([REQUESTED]);
+    });
+
+    it("logs one line per handler call: a release that sends no keystroke adds none", async () => {
+      setMode("required");
+      const logger = arrange();
+      const wrapped = withWindowFocus(tapping(0));
 
       await press(wrapped, "onKeyDown", "no-focus");
       await press(wrapped, "onKeyDown", "focus");
       await press(wrapped, "onKeyUp", "focus");
 
-      const lines = vi.mocked(logger.debug).mock.calls.map(([line]) => line);
-      expect(lines.filter((line) => line === "Focus skipped for this key (per-key setting)")).toHaveLength(1);
-      expect(lines.filter((line) => line === "Focus requested by this key's setting")).toHaveLength(1);
+      expect(perKeyLines(logger)).toEqual([REQUESTED]);
+    });
+
+    it("keeps two keys pressed together on their own flags", async () => {
+      setMode("required");
+      const logger = arrange();
+      const gateA = deferred();
+      const gateB = deferred();
+      const key = (gate: { promise: Promise<void> }): IDeckActionHandler<unknown> =>
+        withWindowFocus<unknown>({
+          onKeyDown: async () => {
+            await getBindingDispatcher().tap(BINDING_KEY);
+            await gate.promise;
+            await getBindingDispatcher().tap(BINDING_KEY);
+          },
+        });
+
+      // Both keys log their skip at their first keystroke; neither's second keystroke logs again.
+      const pressA = press(key(gateA), "onKeyDown", "no-focus", "ctx-a");
+      const pressB = press(key(gateB), "onKeyDown", "no-focus", "ctx-b");
+      gateA.resolve();
+      gateB.resolve();
+      await Promise.all([pressA, pressB]);
+
+      expect(keystrokeLog()).toEqual(["send:59", "send:59", "send:59", "send:59"]);
+      expect(perKeyLines(logger)).toEqual([SKIPPED, SKIPPED]);
     });
   });
 
