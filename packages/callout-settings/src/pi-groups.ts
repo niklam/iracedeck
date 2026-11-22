@@ -281,7 +281,7 @@ export const CALLOUT_PI_SECTIONS = [
         id: "fuel",
         title: "Fuel",
         description:
-          "In the sessions you tick under Speak in, the engineer tells you mid-lap how many full laps your fuel will last, once at each count you switch on, and when to box for fuel.",
+          "In the sessions you tick under Speak in, the engineer tells you mid-lap how many full laps of fuel you have, once at each count you switch on, and when to box.",
         families: [FUEL_CALLOUTS],
       },
       {
