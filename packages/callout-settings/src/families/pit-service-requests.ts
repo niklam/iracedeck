@@ -18,7 +18,7 @@ export const PIT_SERVICE_REQUEST_CALLOUTS = defineCalloutFamily({
       key: "calloutEnabledPitServiceRequests",
       label: "Pit service requests",
       description:
-        "Each time you change the fuel, tires, windshield clean or fast repair for your next stop, confirms the change.",
+        "Confirms each change to your next stop's tires, windshield clean, fast repair and, with autofuel off, fuel.",
     },
   },
 });
