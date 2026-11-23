@@ -152,7 +152,8 @@ function afterMerge(merge, command, cwd, shell) {
     ];
   if (named && !isHomeRepo(named))
     return [`gh pr merge ran in ${named}, not ${HOME_REPO}: no Roadmap card moved and no post-merge runs listed.`];
-  const ran = cwdAt(command, cwd, at, shell);
+  // The merge gate lets only plain `cd`s run ahead of a merge, so its directory is always known here (#1646).
+  const ran = cwdAt(command, cwd, at, shell) ?? cwd;
   const pr = ghJson(
     [
       "pr",

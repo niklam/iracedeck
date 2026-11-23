@@ -6587,21 +6587,86 @@ describe("a carried merge or tag push behind a quoted lead value (#1646)", () =>
     });
 
     // A shell without job control runs a pipeline's final stage in itself
-    // under `shopt -s lastpipe`, which a profile or BASH_ENV the hook cannot
-    // see may set, so a cd there always moves on (CodeRabbit CLI at 6146b0d79).
+    // under `shopt -s lastpipe`; set here, a cd there moves on, and otherwise,
+    // since a profile or BASH_ENV the hook cannot see may set it, the tree is
+    // unknown (CodeRabbit CLI at 6146b0d79, CodeRabbit on PR #1788).
     it.each([
-      "true | cd ../ir-integration; pnpm dev:voices",
       "shopt -s lastpipe; true | cd ../ir-integration; pnpm dev:voices",
       "bash -c 'shopt -s lastpipe; true | cd ../ir-integration; pnpm dev:voices'",
-      "export SHELLOPTS; true | cd ../ir-integration; pnpm dev:voices",
       String.raw`printf 'shopt -s lastpipe; true | cd %s; pnpm %s\n' ../ir-integration dev:voices | bash`,
-    ])("follows a final-stage cd: %s", (c) => expect(asks(c, linked)).toMatch(there));
+    ])("follows a final-stage cd under an explicit lastpipe: %s", (c) => expect(asks(c, linked)).toMatch(there));
+
+    it.each([
+      "true | cd ../ir-integration; pnpm dev:voices",
+      "export SHELLOPTS; true | cd ../ir-integration; pnpm dev:voices",
+      "cd ../ir-integration && ls | cd ../ir-5; pnpm dev:voices",
+    ])("refuses dev:voices after a final-stage cd it cannot follow: %s", (c) =>
+      expect(deny(c, linked)).toMatch(/leaves unknown/),
+    );
+
+    it("passes a command whose tree decides nothing after a final-stage cd", () =>
+      passes("ls | cd ../ir-integration; pnpm test", linked));
 
     it.each([
       "cd ../ir-integration | cat; pnpm dev:voices",
       "shopt -s lastpipe; cd ../ir-integration | cat; pnpm dev:voices",
     ])("keeps a cd in a subshell stage from moving what follows: %s", (c) => passes(c, linked));
+
+    // The PR #1788 review (CodeRabbit at 7e8cd2e37).
+    it.each([
+      "cd ../ir-integration && false && cd ../ir-5; pnpm dev:voices",
+      "cd ../ir-integration && echo 'false && cd ../ir-5; pnpm dev:voices' | bash",
+      "echo 'true || cd ../ir-5; pnpm dev:voices' | bash",
+      "trap 'cd \"$X\"; pnpm dev:voices' EXIT",
+      "echo 'cd \"$X\"; pnpm dev:voices' | bash",
+      "eval 'true; cd ../ir-integration'; pnpm dev:voices",
+    ])("refuses dev:voices where a cd ahead of it may not run or cannot be read: %s", (c) =>
+      expect(deny(c, linked)).toMatch(/leaves unknown/),
+    );
+
+    it.each([
+      "echo 'true && cd ../ir-integration && pnpm dev:voices' | bash",
+      "cd ../ir-integration && bash -c 'true; cd ../ir-5; true'; pnpm dev:voices",
+    ])("asks for dev:voices that runs in the linked tree: %s", (c) => expect(asks(c, linked)).toMatch(there));
+
+    it.each([
+      "bash -c 'true; cd ../ir-integration; true'; pnpm dev:voices",
+      "echo 'cd \"$X\"; pnpm test' | bash",
+      "trap 'cd \"$X\"; pnpm test' EXIT",
+    ])("passes what a child's cd or an unknown tree does not decide: %s", (c) => passes(c, linked));
+
+    it("judges a push after a child shell's cd in the tree it was typed in", () => {
+      const branchByTree = ctx({
+        branch: (d) => (isInside(d, INTEGRATION) ? "integration" : "master"),
+        toplevel: (d) => ROOTS.find((r) => isInside(d, r)),
+      });
+      passes("bash -c 'true; cd ../ir-integration; true'; git push", branchByTree);
+      expect(deny("cd ../ir-integration && git push", branchByTree)).toMatch(/integration` branch is local/);
+    });
+
+    it("refuses a worktree remove whose relative target a cd ahead of it leaves unknown", () => {
+      expect(deny("false && cd ../ir-5; git worktree remove ../ir-integration", linked)).toMatch(
+        /cannot tell which tree/,
+      );
+      expect(deny("git worktree remove ../ir-integration", linked)).toMatch(/plugin link points into/);
+    });
   });
+
+  it.each([
+    [String.raw`printf 'set -o pipefail; bash -c "pnpm %s | tail"\n' test | bash`, true],
+    [String.raw`printf 'echo "set -o pipefail"; pnpm %s | tail\n' test | bash`, true],
+    [String.raw`printf 'true # set -o pipefail\npnpm %s | tail\n' test | bash`, true],
+    [String.raw`printf 'bash -c "set -o pipefail; pnpm %s | tail"\n' test | bash`, false],
+    [String.raw`printf 'bash -o pipefail -c "pnpm %s | tail"\n' test | bash`, false],
+    [String.raw`printf 'set -o pipefail; pnpm %s | tail\n' test | bash`, false],
+  ])("excuses a decoded pnpm's pipe only by the pipefail of the shell that owns it: %s", (c, hidden) =>
+    hidden ? expect(deny(c)).toMatch(/hides its exit code/) : passes(c),
+  );
+
+  it.each([
+    String.raw`printf 'echo a\\ #b; gh pr %s 7\n' merge | bash`,
+    String.raw`printf 'echo a\\;#b; gh pr %s 7\n' merge | bash`,
+  ])("reads the command after a # inside an escaped word: %s", (c) => expect(refused(c)).toBeTruthy());
 
   // Round 7 (#1646, the CodeRabbit CLI findings at 28552cfbe).
   it("asks for a tag push a reused printf format prints after another push", () =>

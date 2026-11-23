@@ -37,7 +37,6 @@ import {
   commandEnd,
   excuseDecodedHit,
   GIT_GLOBALS,
-  gitCwd,
   gitPlace,
   gitPlaceAt,
   has,
@@ -396,6 +395,11 @@ const REDIRECT_WORD = /^\d*(?:<<<|[<>]&|&>>?|>>|>\||<>|<|>)(.*)$/;
 /** The deny of the piped-pnpm rule. */
 const PIPED_PNPM =
   "Piping `pnpm build/test/...` hides its exit code (you get tail's). Prefix `set -o pipefail;` or check the log before claiming green.";
+/** `s` with its quoted text and its comments blanked: what its shell runs as code ({@link pipedPnpm}). */
+function liveText(s) {
+  return maskInert(s).masked.replace(/(^|[\s;&|()])#[^\n]*/g, "$1");
+}
+
 /** The pnpm commands whose exit code a pipe hides ({@link pipedPnpm}). */
 const PIPED_PNPM_RE = cmd(/pnpm\s+(?:run\s+)?(?:build|test|typecheck|lint|format)\b/);
 
@@ -406,14 +410,15 @@ const PIPED_PNPM_RE = cmd(/pnpm\s+(?:run\s+)?(?:build|test|typecheck|lint|format
  * it is the one after the pnpm in its own command, or, inside a string a shell
  * runs, the one after the string's close that pipes that shell on. A pnpm its
  * shell reads differently from the text here (`decoded`, #1646) is judged on
- * what it reads: the separator that ends it there, and a `pipefail` that
- * string's shells set ahead of it (`before`).
+ * what it reads: the separator that ends it there, and a `pipefail` the
+ * shell that owns the pipe sets — in its own text ahead of it, live, or as
+ * its own option (`before`; an ancestor's excuses nothing, CodeRabbit on PR
+ * #1788).
  */
 function pipedPnpm(c, text, m, piped) {
   const end = m.index + m[0].length;
   const string = stringBounds(c, m.program);
   const decoded = m.decoded !== undefined;
-  const lead = (m.before ?? []).map((x) => x.text).join("\n");
   if (!string)
     return !/pipefail/.test(text.slice(0, m.index)) && (decoded ? /^\|(?!\|)/.test(m.sep) : piped(text.slice(end)));
   const [open, close] = string;
@@ -421,9 +426,16 @@ function pipedPnpm(c, text, m, piped) {
   const from = text.slice(0, open).search(/[^\n;&|()\x60]*$/);
   // The shell's own `-o pipefail`, alone or ending a cluster (`-eo pipefail`);
   // a `+o pipefail` turns it off, so it excuses nothing (#1634).
-  const inner =
-    /pipefail/.test(decoded ? lead : text.slice(open, m.index)) ||
-    /(?<!\S)-[A-Za-z]*o\s+pipefail\b/.test(text.slice(from, open));
+  const option = (s) => /(?<!\S)-[A-Za-z]*o\s+pipefail\b/.test(s);
+  let inner;
+  if (decoded) {
+    // The owning level's own text, and the word handing it its string: in the
+    // level holding it, or in the typed text for the outermost string.
+    const lines = m.before ?? [];
+    const parent = lines.at(-2)?.text;
+    const handing = parent === undefined ? text.slice(from, open) : parent.slice(parent.search(/[^\n;&|()\x60]*$/));
+    inner = /\bpipefail\b/.test(liveText(lines.at(-1)?.text ?? "")) || option(handing);
+  } else inner = /pipefail/.test(text.slice(open, m.index)) || option(text.slice(from, open));
   if (!inner && (decoded ? /^\|(?!\|)/.test(m.sep) : piped(text.slice(end, close)))) return true;
   if (/pipefail/.test(text.slice(0, from))) return false;
   const after = /^(?:>&\d|&>|[^;&\n])*/.exec(text.slice(close + 1))[0];
@@ -1417,8 +1429,13 @@ export const rules = [
       if (!m) return null;
       const target = words(m[1]).find((w) => !w.startsWith("-"));
       if (!target) return null;
-      const resolved = resolveDir(gitCwd(c, ctx.cwd, GIT_WORKTREE_REMOVE, ctx.shell), target, { shell: ctx.shell });
-      const held = ctx.linkTargets().filter((l) => l.target && ctx.isInside(l.target, resolved));
+      const place = gitPlace(c, ctx.cwd, GIT_WORKTREE_REMOVE, ctx.shell);
+      const resolved = resolveDir(place.dir, target, { shell: ctx.shell });
+      const links = ctx.linkTargets().filter((l) => l.target);
+      // A `cd` ahead of it the hook cannot follow leaves a relative target unknown (#1646).
+      if (place.lost && !path.isAbsolute(target) && links.length)
+        return `A \`cd\` ahead of this \`git worktree remove\` may or may not run, or runs in a pipeline's last stage, so the hook cannot tell which tree \`${target}\` names while a deck host is linked. Run the remove on its own, with a plain \`cd <dir> &&\` ahead of it at most.`;
+      const held = links.filter((l) => ctx.isInside(l.target, resolved));
       if (held.length)
         return `${held.map((l) => l.host).join(" and ")} plugin link points into ${resolved}. Do not relink it yourself, not even to master — leave the link and the worktree as they are and tell Niklas.`;
       return null;
@@ -1446,6 +1463,11 @@ export const rules = [
     name: "nothing relinks a deck host without Niklas's go",
     test: (c, ctx) => {
       const found = deckFindings(c, ctx.cwd, ctx, ctx.shell);
+      // One that relinks only in a linked tree, run where a `cd` ahead of it
+      // leaves the tree unknown, is refused, as a lost command is elsewhere (#1646).
+      const lost = found.find((f) => f.kind === "lost");
+      if (lost)
+        return `${lost.text}: it relinks the hosts linked to that tree, and the hook cannot tell which tree it is (a \`cd\` that may not run, sits in a pipeline's last stage, expands, or runs under \`eval\`). Run the \`cd\` as a plain \`cd <dir> &&\` ahead of it.`;
       if (found.every((f) => f.kind === "restart")) return null;
       return {
         ask: `${[...new Set(found.map((f) => f.text))].join("; ")}. No deck host is relinked, linked or unlinked, nor restarted over and over by a watch or a loop, without Niklas's go (#1520, #1737): confirm only once he has said go. A restart, stop or start asks no prompt: it waits for his go in the conversation. Builds and installs need none.`,

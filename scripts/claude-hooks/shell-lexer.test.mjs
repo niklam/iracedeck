@@ -1824,7 +1824,7 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
     const bash = (text) => ({ text, shell: lexer.BASH });
     it("follows each cd and pushd at the start of a segment, as the typed command's are", () => {
       expect(lexer.dirAfter([bash("cd ../ir-5; ")], MASTER)).toBe(tree("ir-5"));
-      expect(lexer.dirAfter([bash("true && pushd ../ir-5 && cd sub; ")], MASTER)).toBe(tree("ir-5", "sub"));
+      expect(lexer.dirAfter([bash("true && pushd ../ir-5 && cd sub && ")], MASTER)).toBe(tree("ir-5", "sub"));
       expect(lexer.dirAfter([bash("cd ../ir-5; "), bash("cd ../ir-6; ")], MASTER)).toBe(tree("ir-6"));
       expect(lexer.dirAfter([bash("echo cd x; (cd ../ir-5); ")], MASTER)).toBe(MASTER);
       expect(lexer.dirAfter([{ text: "Set-Location ../ir-5; ", shell: POWERSHELL }], MASTER)).toBe(tree("ir-5"));
@@ -1905,15 +1905,61 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
     });
 
     // A lastpipe the hook cannot see (a profile, BASH_ENV) runs the final stage in the shell itself.
-    it("follows a pipeline's final-stage cd always, and no other stage's", () => {
-      expect(lexer.dirAfter([bash("true | cd ../ir-5; ")], MASTER)).toBe(tree("ir-5"));
-      expect(lexer.dirAfter([bash("cat | cd ../ir-5; ")], MASTER)).toBe(tree("ir-5"));
+    // Whether bash runs a final stage in itself (`lastpipe`, no job control)
+    // the hook cannot see: a profile or BASH_ENV may set it (CodeRabbit on PR #1788).
+    it("leaves a pipeline's final-stage cd unknown unless lastpipe is set here, and follows no other stage's", () => {
+      expect(lexer.dirAfter([bash("true | cd ../ir-5; ")], MASTER)).toBeUndefined();
+      expect(lexer.dirAfter([bash("true | cd ../ir-5; ")], MASTER, true)).toBe(tree("ir-5"));
+      expect(lexer.dirAfter([bash("shopt -s lastpipe; true | cd ../ir-5; ")], MASTER)).toBe(tree("ir-5"));
       expect(lexer.dirAfter([bash("shopt -s lastpipe; cd ../ir-5 | cat; ")], MASTER)).toBe(MASTER);
-      const bases = (c) => [...lexer.chainCommands(c, MASTER, cmd(/pnpm\b/))].map((x) => x.base);
-      expect(bases("true | cd ../ir-5; pnpm x")).toEqual([tree("ir-5")]);
-      expect(bases("bash -c 'true | cd ../ir-5; pnpm x'")).toEqual([tree("ir-5")]);
-      expect(bases("true | cd ../ir-5 | cat; pnpm x")).toEqual([MASTER]);
-      expect(lexer.cwdAt("true | cd ../ir-5; pnpm x", MASTER, 19)).toBe(tree("ir-5"));
+      const where = (c) => [...lexer.chainCommands(c, MASTER, cmd(/pnpm\b/))].map(({ base, lost }) => ({ base, lost }));
+      expect(where("true | cd ../ir-5; pnpm x")).toEqual([{ base: tree("ir-5"), lost: true }]);
+      expect(where("bash -c 'true | cd ../ir-5; pnpm x'")).toEqual([{ base: MASTER, lost: true }]);
+      expect(where("shopt -s lastpipe; true | cd ../ir-5; pnpm x")).toEqual([{ base: tree("ir-5"), lost: undefined }]);
+      expect(where("true | cd ../ir-5 | cat; pnpm x")).toEqual([{ base: MASTER, lost: undefined }]);
+      expect(lexer.cwdAt("true | cd ../ir-5; pnpm x", MASTER, 19)).toBeUndefined();
+      expect(lexer.cwdAt("shopt -s lastpipe; true | cd ../ir-5; pnpm x", MASTER, 38)).toBe(tree("ir-5"));
     });
+  });
+
+  // The PR #1788 review (CodeRabbit at 7e8cd2e37).
+  describe("a cd that may not run, or runs in a child shell", () => {
+    const bash = (text) => ({ text, shell: lexer.BASH });
+    const where = (c) => [...lexer.chainCommands(c, MASTER, cmd(/pnpm\b/))].map(({ base, lost }) => ({ base, lost }));
+
+    it("leaves the directory unknown after a cd a short-circuit may skip", () => {
+      expect(lexer.dirAfter([bash("false && cd ../ir-5; ")], MASTER)).toBeUndefined();
+      expect(lexer.dirAfter([bash("true || cd ../ir-5; ")], MASTER)).toBeUndefined();
+      expect(where("false && cd ../ir-5; pnpm x")).toEqual([{ base: tree("ir-5"), lost: true }]);
+      expect(lexer.cwdAt("false && cd ../ir-5; pnpm x", MASTER, 21)).toBeUndefined();
+    });
+
+    it("follows a conditional cd into what can only run after it", () => {
+      expect(lexer.dirAfter([bash("true && cd ../ir-5 && ")], MASTER)).toBe(tree("ir-5"));
+      expect(where("true && cd ../ir-5 && pnpm x")).toEqual([{ base: tree("ir-5"), lost: undefined }]);
+      expect(where("cd ../ir-5 && pnpm x")).toEqual([{ base: tree("ir-5"), lost: undefined }]);
+      expect(where("cd ../ir-5 || exit; pnpm x")).toEqual([{ base: tree("ir-5"), lost: undefined }]);
+    });
+
+    it("moves the typed command by no cd a child shell's string runs", () => {
+      expect(where("bash -c 'true; cd ../ir-5; true'; pnpm x")).toEqual([{ base: MASTER, lost: undefined }]);
+      expect(where("cd ../ir-6 && bash -c 'true; cd ../ir-5; true'; pnpm x")).toEqual([
+        { base: tree("ir-6"), lost: undefined },
+      ]);
+      expect(lexer.cwdAt("bash -c 'true; cd ../ir-5; true'; pnpm x", MASTER, 34)).toBe(MASTER);
+      // The child's own command still runs where its cd moved it.
+      expect(where("bash -c 'true; cd ../ir-5; pnpm x'")).toEqual([{ base: tree("ir-5"), lost: undefined }]);
+    });
+
+    it("leaves the directory unknown after a cd a string eval runs", () =>
+      expect(where("eval 'true; cd ../ir-5'; pnpm x")[0].lost).toBe(true));
+
+    it.each([
+      [String.raw`printf 'echo a\\ #b; gh pr %s 7\n' merge | bash`, true],
+      [String.raw`printf 'echo a\\;#b; gh pr %s 7\n' merge | bash`, true],
+      [String.raw`printf 'echo a #b; gh pr %s 7\n' merge | bash`, false],
+    ])("starts a comment only at a word's start, past an escaped blank or separator: %s", (c, merges) =>
+      expect(lexer.has(c, MERGE)).toBe(merges),
+    );
   });
 });

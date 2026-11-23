@@ -1189,9 +1189,15 @@ function level(text, at = null, end = null, live = null) {
   let start = 0;
   let heredocs = [];
   let unread = false;
+  // Whether `i` starts a word: at the start, or after an unescaped blank or
+  // operator. An escaped one is part of its word, so `a\ #b` holds no
+  // comment (CodeRabbit on PR #1788).
+  let wordStart = true;
   for (let i = 0; i < text.length;) {
     const c = text[i];
-    if (c === "#" && (i === 0 || /[\s;&|()]/.test(text[i - 1]))) {
+    const atWord = wordStart;
+    wordStart = false;
+    if (c === "#" && atWord) {
       const nl = text.indexOf("\n", i);
       i = nl < 0 ? text.length : nl;
     } else if (c === "<" && text[i + 1] === "<" && text[i + 2] !== "<" && text[i - 1] !== "<") {
@@ -1230,8 +1236,11 @@ function level(text, at = null, end = null, live = null) {
           }
       if (c === "\n") heredocs = [];
       commands.push((start = i));
+      wordStart = true;
     } else {
       const e = pieceEnd(text, i);
+      // A plain blank or redirection character, read alone, ends a word.
+      wordStart = e === i + 1 && /[\s<>&]/.test(c);
       i = e < 0 ? text.length : e;
     }
   }
@@ -3305,18 +3314,97 @@ const DIR_CHANGE = /^\s*(?:\w+=\S*\s+)*(cd|pushd|popd|chdir|sl|set-location|push
 const NESTED_DIR_CHANGE =
   /^\s*(?:(?:[({!]|then|else|elif|do|if|while|until|time)\s*)+(?:\w+=\S*\s+)*(?:cd|pushd|popd|chdir|sl|set-location|push-location|pop-location)(?=\s|$)/i;
 
+/** An explicit `shopt -s … lastpipe`: a pipeline's final stage then runs in the shell itself ({@link cdSteps}). */
+const EXPLICIT_LASTPIPE = /\bshopt\s+-s\b[^;&|\n]*\blastpipe\b/;
+
 /**
- * Whether the chain segment `[a, b)` of the masked `text` ({@link ranges}
- * over {@link CHAIN}) is a stage of a pipeline other than its last: a lone
- * `|` (or `|&`) ends it. bash runs such a stage in a subshell under any
- * option, so a `cd` there moves nothing after the pipeline (CodeRabbit CLI on
- * #1646). The final stage is read as moving on: under `shopt -s lastpipe` a
- * shell without job control (a script, `bash -c`) runs it in itself, and a
- * profile or `BASH_ENV` the hook cannot see may set that.
+ * What each `cd` among the chain segments of `text` does to the directory of
+ * the shell reading `text` (#1646, CodeRabbit on PR #1788): `{ ranges, seps,
+ * steps }`, `seps[k]` the separator after segment `k` (`;`, `&&`, `||`, `|`,
+ * a newline) and `steps[k]` `null` for a segment that moves nothing, or `{
+ * kind, to }`:
+ *
+ * - `"move"`: it runs, and moves the shell to `to`.
+ * - `"cond"`: it runs only as the command before it fared (after `&&` or
+ *   `||`), so it moves only a command reached from it through `&&` alone.
+ * - `"final"`: the final stage of a pipeline, which bash runs in the shell
+ *   itself only under `lastpipe` without job control, neither of which the
+ *   hook can see (a profile or `BASH_ENV` may set them), so the directory is
+ *   unknown after it — unless `lastpipe` is set explicitly here.
+ * - `"lost"`: one whose directory cannot be known — it expands (`cd "$X"`),
+ *   steps through history (`cd -`), has no directory or has options, is a
+ *   `popd`, sits inside a compound command whose extent the segment does not
+ *   show (`{ cd x; …`, `then cd x`), or inside a string `eval` runs, which
+ *   runs in this shell — `strict` only, else read as the hook always read the
+ *   typed command's own (`cd -` moves nothing, an expansion is a name).
+ *
+ * A `cd` in a pipeline stage before the last runs in a subshell under any
+ * option, one in parentheses closed in its own segment (`(cd x)`) moves
+ * nothing, and one inside a string a child shell runs (`bash -c 'cd x; …'`,
+ * `… | bash`) moves only that child: none is a step.
  */
-function pipelineStage(text, a, b) {
-  return text[b] === "|" && text[b + 1] !== "|";
+function cdSteps(text, shell, strict) {
+  const v = view(text);
+  const masked = v.text;
+  const rs = ranges(masked, CHAIN);
+  const seps = rs.map(([, b], k) => (k + 1 < rs.length ? masked.slice(b, rs[k + 1][0]) : undefined));
+  const steps = rs.map(([a, b], k) => {
+    const segment = masked.slice(a, b);
+    const name = DIR_CHANGE.exec(segment)?.[1]?.toLowerCase();
+    if (!name) {
+      if (!strict || !NESTED_DIR_CHANGE.test(segment)) return null;
+      // A subshell closed in its own segment moves nothing; any other compound is unknown.
+      const opens = (segment.match(/\(/g) ?? []).length;
+      if (/^\s*\(/.test(segment) && opens > 0 && opens === (segment.match(/\)/g) ?? []).length) return null;
+      return { kind: "lost" };
+    }
+    if (shell !== POWERSHELL && !/^(?:cd|pushd|popd)$/.test(name)) return null;
+    if (!strict && !/^(?:cd|chdir|sl|set-location)$/.test(name)) return null;
+    // Inside a string a shell is handed: a child's own, or this shell's under `eval`.
+    const word = a + segment.search(/\S/);
+    const string = stringAround(v, word);
+    if (string) return v.quoteKinds.get(string[0])?.via === "eval" ? { kind: "lost" } : null;
+    if (seps[k] === "|") return null;
+    const to = /^(?:pushd|push-location)$/.test(name)
+      ? argIn(text, masked, a, b, PUSHD_RE)
+      : /^pop/.test(name)
+        ? undefined
+        : argIn(text, masked, a, b, cdRe(shell));
+    if (strict ? !to || HISTORY_DIR.has(to) || /[$\x60~*?[]/.test(to) : !to) return strict ? { kind: "lost" } : null;
+    if (!strict && HISTORY_DIR.has(to)) return null;
+    const before = k > 0 ? seps[k - 1] : undefined;
+    const kind = before === "|" ? "final" : before === "&&" || before === "||" ? "cond" : "move";
+    return { kind, to };
+  });
+  return { ranges: rs, seps, steps };
 }
+
+/**
+ * The directory a shell starting in `base` is in at segment `upTo` of `text`
+ * ({@link cdSteps}, every segment before it), or `undefined` where it cannot
+ * be known: a `"lost"` step, a `"final"` one without `lastpipe`, or a
+ * `"cond"` one not followed by `&&` alone up to `upTo` — so `false && cd x;
+ * pnpm …` is unknown, and `cd x && pnpm …` and `true && cd x && pnpm …` run
+ * in `x`. `loose` follows every step that names a directory and skips the
+ * rest, never `undefined`: the fallback a lost command keeps.
+ */
+function dirThrough({ seps, steps }, upTo, base, shell, lastpipe, loose = false) {
+  let dir = base;
+  for (let k = 0; k < upTo; k++) {
+    const step = steps[k];
+    if (!step || (loose && step.kind === "lost")) continue;
+    if (loose) {
+      dir = resolveDir(dir, step.to, { shell });
+      continue;
+    }
+    if (step.kind === "lost") return undefined;
+    if (step.kind === "final" && !lastpipe) return undefined;
+    if (step.kind === "cond" && !seps.slice(k, upTo).every((s) => s === "&&")) return undefined;
+    dir = resolveDir(dir, step.to, { shell });
+  }
+  return dir;
+}
+
 /** `pushd <dir>` and PowerShell's `Push-Location`, as {@link CD_RE} reads a `cd`. */
 const PUSHD_RE = new RegExp(
   String.raw`^\s*(?:\w+=\S*\s+)*(?:pushd|push-location)(?:\s+-(?:path|literalpath))?\s+${QUOTED_ARG}\s*$`,
@@ -3326,42 +3414,21 @@ const PUSHD_RE = new RegExp(
 /**
  * Where the lines `lines` ({@link levelLead}: `{ text, shell }`, the text a
  * string's shell runs ahead of a command) leave a shell that starts in `base`
- * (#1646, CodeRabbit CLI): each `cd`, `pushd` or `Set-Location` at the start
- * of a chain segment followed, as the typed command's are ({@link
- * chainCommands}), its directory resolved as {@link resolveDir} resolves
- * one. `undefined` where one cannot be known — a directory that expands
- * (`cd "$X"`), a history step (`cd -`), a `cd` or `pushd` with no directory
- * or with options, a `popd` — so the caller judges the command lost rather
- * than in the wrong tree. One in a pipeline stage before the last moves
- * nothing after it ({@link pipelineStage}), nor does one in parentheses closed in its own
- * segment (`(cd x)`); one inside a compound command whose extent the segment
- * does not show (`{ cd x; …`, `then cd x`, `(cd x; …`) cannot be known.
+ * (#1646, CodeRabbit CLI): each line's `cd`, `pushd` or `Set-Location` steps
+ * read strictly ({@link cdSteps}), through the line's end, where the next
+ * line's string or the command itself is handed over ({@link dirThrough}).
+ * `undefined` where the directory cannot be known, so the caller judges the
+ * command lost rather than in the wrong tree. `lastpipe`: set explicitly in
+ * the command, so a final stage's `cd` moves on.
  */
-export function dirAfter(lines, base) {
+export function dirAfter(lines, base, lastpipe = false) {
   let dir = base;
   for (const { text, shell } of lines) {
     if (!/(?:cd|pushd|popd|chdir|sl|location)\b/i.test(text)) continue;
-    const masked = trustedMask(text);
-    for (const [a, b] of ranges(masked, CHAIN)) {
-      const segment = masked.slice(a, b);
-      const name = DIR_CHANGE.exec(segment)?.[1]?.toLowerCase();
-      if (!name) {
-        if (!NESTED_DIR_CHANGE.test(segment)) continue;
-        // A subshell closed in its own segment moves nothing; any other compound is unknown.
-        const opens = (segment.match(/\(/g) ?? []).length;
-        if (/^\s*\(/.test(segment) && opens > 0 && opens === (segment.match(/\)/g) ?? []).length) continue;
-        return undefined;
-      }
-      if (shell !== POWERSHELL && !/^(?:cd|pushd|popd)$/.test(name)) continue;
-      if (pipelineStage(masked, a, b)) continue;
-      const to = /^(?:pushd|push-location)$/.test(name)
-        ? argIn(text, masked, a, b, PUSHD_RE)
-        : /^pop/.test(name)
-          ? undefined
-          : argIn(text, masked, a, b, cdRe(shell));
-      if (!to || HISTORY_DIR.has(to) || /[$\x60~*?[]/.test(to)) return undefined;
-      dir = resolveDir(dir, to, { shell });
-    }
+    const steps = cdSteps(text, shell, true);
+    // Through the last segment, which holds the word handing the next string over, or the command.
+    dir = dirThrough(steps, steps.ranges.length - 1, dir, shell, lastpipe || EXPLICIT_LASTPIPE.test(text));
+    if (dir === undefined) return undefined;
   }
   return dir;
 }
@@ -3416,7 +3483,11 @@ export const gitCwd = (command, cwd, re, shell = BASH) => gitPlace(command, cwd,
  * Where the git command a rule matched runs, as {@link gitCwd} finds it, and
  * whether its global options or its environment move what it acts on
  * ({@link gitPlaceAt}): `{ dir, movesRepo, movesTree }`. Without `re`, the
- * first git command of the whole command is read.
+ * first git command of the whole command is read. Where a `cd` ahead of it
+ * leaves its directory unknown ({@link cwdAt}), `lost` is set, and so are
+ * `movesRepo` and `movesTree`, as for anything that hides which repository it
+ * acts on; `dir` is then the fallback with every `cd` that names a directory
+ * followed (#1646).
  */
 export function gitPlace(command, cwd, re, shell = BASH) {
   const text = trustedMask(command);
@@ -3425,27 +3496,48 @@ export function gitPlace(command, cwd, re, shell = BASH) {
   // or the first word a shell or a wrapper runs, #1634), and its segment.
   const m = re ? matchAt(command, re) : null;
   const at = m ? segs.findIndex(([a, b]) => a <= m.program && m.program < b) : -1;
-  const base = cwdAt(command, cwd, at >= 0 ? segs[at][0] : command.length, shell);
+  const index = at >= 0 ? segs[at][0] : command.length;
+  const base = cwdAt(command, cwd, index, shell);
   const [a, b] = at >= 0 ? segs[at] : [0, command.length];
-  return gitPlaceAt(command, m ? m.program : a, base, shell, b);
+  if (base !== undefined) return gitPlaceAt(command, m ? m.program : a, base, shell, b);
+  const fallback = typedDirAt(command, cwd, shell, true)(index);
+  return {
+    ...gitPlaceAt(command, m ? m.program : a, fallback, shell, b),
+    movesRepo: true,
+    movesTree: true,
+    lost: true,
+  };
 }
 
 /**
  * The session cwd moved by every `cd <dir>` in the chain segments that end
  * before `index` ({@link gitCwd}'s walk, split and read as it is): where the
- * command starting at `index` runs. The post-hook reads a merge's PR back
- * there, at the merge `firstMerge` found rather than the first mention (#1607).
+ * command starting at `index` runs, or `undefined` where a `cd` ahead of it
+ * leaves that unknown ({@link typedDirAt}). The post-hook reads a merge's PR
+ * back there, at the merge `firstMerge` found rather than the first mention
+ * (#1607).
  */
 export function cwdAt(command, cwd, index, shell = BASH) {
-  const text = trustedMask(command);
-  let base = cwd;
-  for (const [a, b] of ranges(text, CHAIN)) {
-    if (b > index) break;
-    const dir = argIn(command, text, a, b, cdRe(shell));
-    // A cd in a pipeline stage runs in a subshell and moves nothing after it (#1646).
-    if (dir && !HISTORY_DIR.has(dir) && !pipelineStage(text, a, b)) base = resolveDir(base, dir, { shell });
-  }
-  return base;
+  return typedDirAt(command, cwd, shell)(index);
+}
+
+/**
+ * For the typed command, a function from a view index to the directory its
+ * shell is in there — every `cd` that runs in that shell, in the segments
+ * ending before it, followed ({@link cdSteps}, read as the typed command's
+ * always were; {@link dirThrough}) — or `undefined` where one leaves it
+ * unknown (#1646, CodeRabbit on PR #1788). A `cd` inside a string a child
+ * shell runs moves only that child, so `bash -c 'true; cd ../x; true'; pnpm
+ * …` runs `pnpm` where it started.
+ */
+function typedDirAt(command, cwd, shell, loose = false) {
+  const steps = cdSteps(command, shell, false);
+  const lastpipe = EXPLICIT_LASTPIPE.test(command);
+  return (index) => {
+    let upTo = 0;
+    while (upTo < steps.ranges.length && steps.ranges[upTo][1] <= index) upTo++;
+    return dirThrough(steps, upTo, cwd, shell, lastpipe, loose);
+  };
 }
 
 /** The program word `git` in the rewritten text, wherever a word starts: {@link gitWord}'s fallback. */
@@ -3658,20 +3750,24 @@ export function cdsAhead(command, re, cwd, shell = BASH) {
 export function* chainCommands(command, cwd, re, shell = BASH) {
   const text = trustedMask(command);
   const v = view(command);
-  let base = cwd;
-  // Each chain range's start with the directory its commands start in.
-  const starts = [];
-  // The directory the typed command's `cd`s leave at its view index `p`.
-  const baseAt = (p) => starts.findLast(([a]) => a <= p)?.[1] ?? cwd;
+  // The directory the typed command's own `cd`s leave at a view index, and
+  // that one with every conditional or final-stage `cd` followed and an
+  // unknowable one skipped, which a command whose directory is lost keeps as
+  // its `base` for the rules that read no `lost`.
+  const dirAt = typedDirAt(command, cwd, shell);
+  const looseAt = typedDirAt(command, cwd, shell, true);
+  const lastpipe = EXPLICIT_LASTPIPE.test(command);
   for (const [a, b] of ranges(text, CHAIN)) {
-    starts.push([a, base]);
     for (const f of [...found(command, re, a, b)].sort((x, y) => x.program - y.program)) {
       // A command a string runs runs where the `cd`s ahead of it in that
       // string, and in the strings holding it, moved (#1646, CodeRabbit CLI):
       // `printf 'cd %s; pnpm %s\n' ../ir-x dev:voices | bash`. They start from
       // where the typed command's own leave the word handing the string over,
       // never from a `cd` the chain ranges read inside that string.
-      const lead = f.before?.length ? dirAfter(f.before, baseAt(f.before.root)) : base;
+      const root = f.before?.length ? f.before.root : a;
+      const outer = dirAt(root);
+      const lead = outer !== undefined && f.before?.length ? dirAfter(f.before, outer, lastpipe) : outer;
+      const base = looseAt(root);
       const start = programStart(command, f.at);
       const from = f.end;
       const stop = text.slice(from, b).search(COMMAND_END);
@@ -3700,9 +3796,6 @@ export function* chainCommands(command, cwd, re, shell = BASH) {
         ...(f.kind.attached ? { attached: true } : {}),
       };
     }
-    const dir = argIn(command, text, a, b, cdRe(shell));
-    // A cd in a pipeline stage runs in a subshell and moves nothing after it (#1646).
-    if (dir && !HISTORY_DIR.has(dir) && !pipelineStage(text, a, b)) base = resolveDir(base, dir, { shell });
   }
 }
 

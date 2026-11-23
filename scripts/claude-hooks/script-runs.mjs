@@ -820,11 +820,12 @@ function shapeAt(re, decoded) {
  * (a line that closes a known cycle is no unread body), for {@link
  * deckFindings} to judge.
  */
-function deckReach(c, cwd, ctx, shell, trail) {
+function deckReach(c, cwd, ctx, shell, trail, lostDir = false) {
   const found = [];
   const cycles = new Set();
   let cut;
-  const finding = (text, kind, again) => found.push(repeated(text, kind, again));
+  // A lost finding stays one, whatever repeats it: it is refused, never asked.
+  const finding = (text, kind, again) => found.push(kind === "lost" ? { text, kind } : repeated(text, kind, again));
   const links = ctx.linkTargets().filter((l) => l.target);
   // Every command this reader judges, each with `at`, where its program word
   // ends, and the lexer's `via`: the Stream Deck CLI, what stops or starts a
@@ -939,6 +940,10 @@ function deckReach(c, cwd, ctx, shell, trail) {
       judged.push(...(r.lines ?? []));
       if (reason) r.repeats ??= reason;
     }
+    // A runner whose directory a `cd` ahead of it leaves unknown (`lost`, or
+    // read in a line that is) is never judged in the fallback tree where the
+    // tree decides (#1646, CodeRabbit on PR #1788).
+    if (m.lost || lostDir) for (const r of own) r.lost = true;
     runs.set(m, own);
   }
   for (const m of matches)
@@ -953,6 +958,10 @@ function deckReach(c, cwd, ctx, shell, trail) {
         // so what it runs is still read, and a `restart:x` that relinks asks.
         if (kind !== "restart") continue;
       } else if (DECK_IF_LINKED.test(name)) {
+        if (run.lost) {
+          finding(`\`${run.label}\` runs in a directory a \`cd\` ahead of it leaves unknown`, "lost");
+          continue;
+        }
         const root = ctx.toplevel?.(run.dir) ?? run.dir;
         const held = links.filter((l) => ctx.isInside(l.target, root));
         if (held.length) {
@@ -987,7 +996,7 @@ function deckReach(c, cwd, ctx, shell, trail) {
         const [text, lineShell] = lineAs(line, as);
         // A lifecycle script is named in the path ({@link bodyLines}).
         const via = step ? `\`${run.label}\` → \`${step}\`` : `\`${run.label}\``;
-        const inner = deckReach(text, dir, ctx, lineShell, [...trail, key]);
+        const inner = deckReach(text, dir, ctx, lineShell, [...trail, key], Boolean(run.lost));
         const itself = key && inner.cycles.delete(key);
         for (const k of inner.cycles) cycles.add(k);
         if (inner.cut) cut ??= `${via} → ${inner.cut}`;
