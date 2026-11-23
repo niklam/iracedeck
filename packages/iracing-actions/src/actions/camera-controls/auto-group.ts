@@ -15,6 +15,15 @@
  *   only recorded; a tick with no telemetry (iRacing gone) changes nothing.
  *   Each change (re)arms one {@link AUTO_GROUP_SETTLE_MS} timer, so a burst
  *   of changes ends in one switch.
+ * - **A fresh read beside the ticks.** The controller dispatches each
+ *   `SessionTick` once, and in a paused replay the tick stands still while
+ *   iRacing goes on moving the camera to another car, so the subscription
+ *   never hears that change. While a run is on, one
+ *   {@link AUTO_GROUP_POLL_MS} interval also reads the camera fresh
+ *   (`getCurrentTelemetry()`) into the same car-change step: a tick and a
+ *   read that see the same car are one change, never two. The interval
+ *   starts with the subscription, survives a replace as it does, and ends on
+ *   a stop.
  * - **The send** goes once, when the timer fires, through the replay engine's
  *   `requestCameraSwitch` with `interruptsWalks: false`; its target is worked
  *   out when it goes out, from the car the camera is on then, and it keeps
@@ -51,6 +60,16 @@ export const AUTO_GROUP_SETTLE_MS = 250;
 
 /** The run's telemetry subscription id: plugin-wide, apart from every action context's. */
 export const AUTO_GROUP_SUBSCRIBER_ID = "camera-auto-group";
+
+/**
+ * How often a running automation reads the camera fresh, for the car changes
+ * no tick delivers (a paused replay's frozen `SessionTick`). It is the delay
+ * such a change can wait before its settle time starts, so a paused-replay
+ * switch goes out at most 450 ms after the car change rather than 250 ms;
+ * shorter buys little against the 250 ms settle, and it costs five native
+ * reads a second beside the controller's own hundred.
+ */
+export const AUTO_GROUP_POLL_MS = 200;
 
 /** What starts a run: its owner, the list and pick order it runs with, and where its lines are logged. */
 export interface AutoGroupStart {
@@ -90,6 +109,9 @@ interface Run {
 }
 
 let active: Run | null = null;
+
+/** The fresh-read interval, standing while a run is on: one for the module, like the subscription. */
+let poll: ReturnType<typeof setInterval> | null = null;
 
 /** Module wiring, registered by the action once: {@link _resetAutoGroup} leaves it. */
 const listeners = new Set<AutoGroupChangeListener>();
@@ -141,6 +163,8 @@ export function toggleAutoGroup(start: AutoGroupStart): AutoGroupToggleResult {
     throw err;
   }
 
+  startPoll();
+
   run.logger.info("Auto group on");
   run.logger.debug(`Auto group owner ${run.owner}, pick ${run.pick}, groups: ${run.names.join(", ") || "(none)"}`);
   notify(run.owner, run.logger);
@@ -173,6 +197,7 @@ export function stopAutoGroup(): void {
   if (run === null) return;
 
   clearTimer(run);
+  stopPoll();
   active = null;
 
   try {
@@ -206,12 +231,13 @@ export function onAutoGroupChange(listener: AutoGroupChangeListener): () => void
 
 /**
  * @internal For tests: the plugin-start state, nothing running. Clears the
- * timer and leaves the listeners, as a plugin start never registers them twice.
- * Tells no listener and ends no subscription.
+ * timer and the fresh-read interval and leaves the listeners, as a plugin
+ * start never registers them twice. Tells no listener and ends no subscription.
  */
 export function _resetAutoGroup(): void {
   if (active !== null) clearTimer(active);
 
+  stopPoll();
   active = null;
 }
 
@@ -236,8 +262,47 @@ function arm(run: Run): void {
   run.timer = setTimeout(() => settle(run), AUTO_GROUP_SETTLE_MS);
 }
 
-/** One telemetry tick: records the camera's car, and arms the timer when it changed. */
+function startPoll(): void {
+  stopPoll();
+  poll = setInterval(onPoll, AUTO_GROUP_POLL_MS);
+}
+
+function stopPoll(): void {
+  if (poll !== null) clearInterval(poll);
+
+  poll = null;
+}
+
+/** One telemetry tick: into the car-change step. */
 function onTick(telemetry: TelemetryData | null): void {
+  observe(telemetry);
+}
+
+/**
+ * The fresh read, for a car change under a frozen tick. A read that throws
+ * changes nothing: the next one, or the next tick, tries again.
+ */
+function onPoll(): void {
+  if (active === null) return;
+
+  let telemetry: TelemetryData | null;
+
+  try {
+    telemetry = getController().getCurrentTelemetry();
+  } catch {
+    return;
+  }
+
+  observe(telemetry);
+}
+
+/**
+ * The car-change step every read goes through, tick or fresh: records the
+ * camera's car, and arms the timer when it changed. Comparing with the car
+ * last seen, whichever read saw it, is what keeps a tick and a fresh read of
+ * the same change from arming twice.
+ */
+function observe(telemetry: TelemetryData | null): void {
   const run = active;
 
   if (run === null || telemetry === null) return;

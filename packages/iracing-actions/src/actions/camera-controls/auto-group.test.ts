@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   _resetAutoGroup,
+  AUTO_GROUP_POLL_MS,
   AUTO_GROUP_SETTLE_MS,
   AUTO_GROUP_SUBSCRIBER_ID,
   autoGroupOwner,
@@ -193,14 +194,134 @@ describe("auto group triggers", () => {
     expect(switchNum).toHaveBeenCalledWith(104, G.TV1, 0);
   });
 
-  it("builds the switch from the car the camera is on when it goes out", () => {
+  it("builds the switch from the camera as it is when it goes out", () => {
     start();
     fake.controller.camera(4, G.Nose);
-    // The camera moves on between two deliveries: the send reads it fresh.
-    fake.controller.setCamera(6, G.Nose);
+    // The group changes between two deliveries: the send reads it fresh.
+    fake.controller.setCamera(4, G.TV1);
     vi.advanceTimersByTime(AUTO_GROUP_SETTLE_MS);
 
-    expect(switchNum).toHaveBeenCalledExactlyOnceWith(106, G.TV1, 0);
+    expect(switchNum).toHaveBeenCalledExactlyOnceWith(104, G.TV2, 0);
+  });
+
+  describe("a car change no tick delivers (a paused replay's frozen tick)", () => {
+    it("is seen by the fresh read, and the switch goes out once after the settle time", () => {
+      start();
+      // iRacing moves the camera under a frozen tick: no delivery.
+      fake.controller.setCamera(4, G.Nose);
+
+      vi.advanceTimersByTime(AUTO_GROUP_POLL_MS);
+      expect(switchNum).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(AUTO_GROUP_SETTLE_MS - 1);
+      expect(switchNum).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(1);
+      expect(switchNum).toHaveBeenCalledExactlyOnceWith(104, G.TV1, 0);
+
+      vi.advanceTimersByTime(AUTO_GROUP_POLL_MS * 20);
+      expect(switchNum).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps the car the start saw as the baseline: the first fresh read of it is no change", () => {
+      start();
+      vi.advanceTimersByTime(AUTO_GROUP_POLL_MS * 10);
+
+      expect(fake.controller.getCurrentTelemetry).toHaveBeenCalled();
+      expect(engine.requestCameraSwitch).not.toHaveBeenCalled();
+    });
+
+    it("arms once when a tick sees the change first and the fresh read sees it again", () => {
+      start();
+      vi.advanceTimersByTime(AUTO_GROUP_POLL_MS - 50);
+      // The tick lands 50 ms before the next fresh read.
+      fake.controller.camera(4, G.Nose);
+
+      // Re-armed by the read, it would go out 50 ms later than this.
+      vi.advanceTimersByTime(AUTO_GROUP_SETTLE_MS);
+      expect(switchNum).toHaveBeenCalledExactlyOnceWith(104, G.TV1, 0);
+
+      vi.advanceTimersByTime(AUTO_GROUP_POLL_MS * 20);
+      expect(switchNum).toHaveBeenCalledTimes(1);
+    });
+
+    it("arms once when the fresh read sees the change first and a tick then delivers it", () => {
+      start();
+      fake.controller.setCamera(4, G.Nose);
+      vi.advanceTimersByTime(AUTO_GROUP_POLL_MS);
+      vi.advanceTimersByTime(100);
+      // The delivery of the same car 100 ms on is no new change.
+      fake.controller.tick();
+
+      vi.advanceTimersByTime(AUTO_GROUP_SETTLE_MS - 100);
+      expect(switchNum).toHaveBeenCalledExactlyOnceWith(104, G.TV1, 0);
+
+      vi.advanceTimersByTime(AUTO_GROUP_POLL_MS * 20);
+      expect(switchNum).toHaveBeenCalledTimes(1);
+    });
+
+    it("carries on through a replace, recording the car anew for the new owner", () => {
+      start("key-a");
+      start("key-b");
+
+      // The first read after the replace records the car the camera is on.
+      vi.advanceTimersByTime(AUTO_GROUP_POLL_MS);
+      expect(engine.requestCameraSwitch).not.toHaveBeenCalled();
+
+      fake.controller.setCamera(4, G.Nose);
+      vi.advanceTimersByTime(AUTO_GROUP_POLL_MS + AUTO_GROUP_SETTLE_MS);
+
+      expect(switchNum).toHaveBeenCalledExactlyOnceWith(104, G.TV1, 0);
+    });
+
+    it("changes nothing when the fresh read throws, and carries on", () => {
+      start();
+      fake.controller.getCurrentTelemetry.mockImplementationOnce(() => {
+        throw new Error("read failed");
+      });
+      fake.controller.setCamera(4, G.Nose);
+
+      vi.advanceTimersByTime(AUTO_GROUP_POLL_MS);
+      expect(autoGroupOwner()).toBe("key-a");
+
+      vi.advanceTimersByTime(AUTO_GROUP_POLL_MS + AUTO_GROUP_SETTLE_MS);
+      expect(switchNum).toHaveBeenCalledExactlyOnceWith(104, G.TV1, 0);
+    });
+
+    it.each([
+      ["a stop", () => stopAutoGroup()],
+      ["a plugin-start reset", () => _resetAutoGroup()],
+    ])("is read no more after %s", (_label, end) => {
+      start();
+      expect(vi.getTimerCount()).toBe(1);
+
+      end();
+      expect(vi.getTimerCount()).toBe(0);
+
+      fake.controller.getCurrentTelemetry.mockClear();
+      fake.controller.setCamera(4, G.Nose);
+      vi.advanceTimersByTime(AUTO_GROUP_POLL_MS * 20);
+
+      expect(fake.controller.getCurrentTelemetry).not.toHaveBeenCalled();
+      expect(engine.requestCameraSwitch).not.toHaveBeenCalled();
+    });
+
+    it("leaves one interval when started again after a stop", () => {
+      start();
+      stopAutoGroup();
+      start();
+
+      expect(vi.getTimerCount()).toBe(1);
+    });
+
+    it("starts no interval when the subscription throws", () => {
+      fake.controller.subscribe.mockImplementationOnce(() => {
+        throw new Error("no SDK");
+      });
+
+      expect(() => start()).toThrow("no SDK");
+      expect(vi.getTimerCount()).toBe(0);
+    });
   });
 
   it("goes through the replay engine's camera-switch waiter as a yielding switch of the angle only", () => {
