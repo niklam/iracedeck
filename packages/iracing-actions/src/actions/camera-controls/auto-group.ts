@@ -25,7 +25,12 @@
  *   (`yields: true`), and the engine's camera-switch waiter keeps the rule:
  *   it never takes the waiting slot from a user's switch, gives it up to any
  *   user's switch, and waits out a lap press (Jump to Fastest Lap / Race
- *   Start) or a paced search. The run reads none of the engine's state.
+ *   Start) or a paced search. The send also says how long ago the car
+ *   change that armed the timer happened (`triggeredMsAgo`), so the waiter
+ *   drops it when a user's own switch went out since then: a Cycle Camera
+ *   or Change Camera press inside the settle time is not overwritten. A
+ *   user's switch that changes the car is a later trigger of its own. The
+ *   run reads none of the engine's state.
  */
 import { getCommands, getController } from "@iracedeck/deck-iracing";
 import {
@@ -73,6 +78,8 @@ interface Run {
   lastCar: number | null;
   /** The name of the group picked last, for In order. */
   lastPicked: string | null;
+  /** When (`Date.now()`) the car change that armed the timer last was seen; null before the first. */
+  changedAt: number | null;
   timer: ReturnType<typeof setTimeout> | null;
 }
 
@@ -103,6 +110,7 @@ export function toggleAutoGroup(start: AutoGroupStart): AutoGroupToggleResult {
     logger: start.logger,
     lastCar: null,
     lastPicked: null,
+    changedAt: null,
     timer: null,
   };
 
@@ -239,13 +247,17 @@ function onTick(telemetry: TelemetryData | null): void {
   if (car === run.lastCar) return;
 
   run.lastCar = car;
+  run.changedAt = Date.now();
   arm(run);
 }
 
 /**
  * The camera's car stayed put for the settle time: asks for the switch, once,
  * as a yielding one, so the engine's waiter puts any switch the user asks for
- * first and holds this one through a lap press or a paced search.
+ * first and holds this one through a lap press or a paced search. It says how
+ * long ago the car change was, measured rather than taken as the settle time,
+ * since a timer can fire late: a user's switch that went out since then
+ * drops it.
  */
 function settle(run: Run): void {
   run.timer = null;
@@ -257,6 +269,7 @@ function settle(run: Run): void {
   void requestCameraSwitch(() => sendAuto(run), {
     by: "camera-controls auto-group",
     yields: true,
+    triggeredMsAgo: run.changedAt === null ? undefined : Math.max(0, Date.now() - run.changedAt),
     interruptsWalks: false,
     label: "Camera controls",
     name: "auto group",

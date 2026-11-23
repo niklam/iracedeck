@@ -222,6 +222,28 @@ describe("auto group triggers", () => {
     expect(options.stillValid()).toBe(true);
   });
 
+  it("says how long ago the latest car change was, so a user's switch since then drops it (second read)", () => {
+    start();
+    fake.controller.camera(4, G.Nose);
+    vi.advanceTimersByTime(100);
+    // The car moves again inside the window: the trigger is this change, not the first.
+    fake.controller.camera(5, G.Nose);
+    vi.advanceTimersByTime(AUTO_GROUP_SETTLE_MS);
+
+    expect(engine.requestCameraSwitch).toHaveBeenCalledTimes(1);
+    expect(engine.requestCameraSwitch.mock.calls[0][1].triggeredMsAgo).toBe(AUTO_GROUP_SETTLE_MS);
+  });
+
+  it("measures the age when the timer fires, rather than taking the settle time", () => {
+    start();
+    fake.controller.camera(4, G.Nose);
+    // The clock runs on while the timer is late to fire.
+    vi.setSystemTime(Date.now() + 40);
+    vi.advanceTimersByTime(AUTO_GROUP_SETTLE_MS);
+
+    expect(engine.requestCameraSwitch.mock.calls[0][1].triggeredMsAgo).toBe(AUTO_GROUP_SETTLE_MS + 40);
+  });
+
   it("asks once per settled change, however long the switch then waits in the engine", () => {
     engine.state.sendAtOnce = false;
     start();
