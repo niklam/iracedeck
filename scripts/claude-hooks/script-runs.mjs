@@ -50,6 +50,7 @@
 import { Buffer } from "node:buffer";
 
 import {
+  ansiOpen,
   BASH,
   chainCommands,
   cmd,
@@ -861,8 +862,9 @@ function deckReach(c, cwd, ctx, shell, trail) {
     if (how === "shell" && !stdin && isWrapper(via)) continue;
     const string = stringBounds(c, at - 1);
     if (string) {
-      // An ANSI-C string is read from its `$`, so its escapes are decoded as the judged line has them (#1646).
-      const open = string[0] - (c[string[0] - 1] === "$" && c[string[0]] === "'" ? 1 : 0);
+      // An ANSI-C string is read from its `$`, so its escapes are decoded as the
+      // judged line has them; an escaped `$` opens none (#1646).
+      const open = string[0] - (ansiOpen(c, string[0]) ? 1 : 0);
       const text = wordText(c.slice(open, string[1] + 1));
       if (judged.some((line) => line === text || line.startsWith(`${text} `))) continue;
     }

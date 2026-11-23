@@ -55,6 +55,7 @@ import {
   trustedIn,
   trustedMask,
   unclosedLead,
+  unprintable,
   unreadablePrograms,
   unsettled,
   view,
@@ -2106,12 +2107,27 @@ export function checkBash(command, ctx) {
 
 /** {@link checkBash} over the command read as bash (`text`); `depth` counts the re-judges with a respelled name in place. */
 function checkText(text, ctx, powershell, depth) {
-  const { respelled, spliced } = respelledPrograms(text);
+  const { respelled, spliced, reprinted } = respelledPrograms(text);
   if (spliced.length)
     return `The program \`${spliced[0].word}\` in a string this command hands to a shell is spliced from quoted pieces, so the hook cannot read which program it runs. Spell the program as one plain word.`;
-  if (respelled.length) {
+  if (reprinted.length || respelled.length) {
     if (depth > 0)
-      return `The program \`${respelled[0].word}\` in a string this command hands to a shell is quoted or escaped so the hook cannot read it in place. Spell the program as a plain word.`;
+      return `A program in a string this command hands to a shell is quoted, escaped or printed so the hook cannot read it in place${respelled.length ? ` (\`${respelled[0].word}\`)` : ""}. Spell the program as a plain word.`;
+  }
+  if (reprinted.length) {
+    // An echo -e or printf whose output holds a word its raw text cannot spell
+    // is judged as printing that output plainly, from the last, so the earlier
+    // ones keep their indices (#1646).
+    let plain = text;
+    const seen = new Set();
+    for (const { from, to, text: out } of [...reprinted].sort((x, y) => y.from - x.from)) {
+      if (seen.has(from)) continue;
+      seen.add(from);
+      plain = `${plain.slice(0, from)}printf '%s' '${out.replace(/'/g, "'\\''")}'${plain.slice(to)}`;
+    }
+    return checkText(plain, ctx, powershell, depth + 1);
+  }
+  if (respelled.length) {
     // Each word replaced by the name its shell runs, from the last, so the
     // earlier ones keep their indices; and once more by the name its raw text
     // spells, where that differs, the stricter verdict standing.
@@ -2121,10 +2137,11 @@ function checkText(text, ctx, powershell, depth) {
         out = out.slice(0, w.start) + w[key] + out.slice(w.end);
       return out;
     };
+    // A substitution that gives back the command unchanged reads nothing new.
     const verdicts = [named("name"), named("rawName")]
-      .filter((c, k, all) => all.indexOf(c) === k)
+      .filter((c, k, all) => all.indexOf(c) === k && c !== text)
       .map((c) => checkText(c, ctx, powershell, depth + 1));
-    return verdicts.find((v) => typeof v === "string") ?? verdicts.find((v) => v) ?? null;
+    if (verdicts.length) return verdicts.find((v) => typeof v === "string") ?? verdicts.find((v) => v) ?? null;
   }
   // Shells or wrappers nested past the lexer's depth leave the program at the
   // bottom unread by every rule, and a re-judge hits the same depth, so the
@@ -2132,11 +2149,14 @@ function checkText(text, ctx, powershell, depth) {
   // on PR #1637: `nice` nested nine times let a merge through).
   if (unsettled(text))
     return "This command nests shells or wrappers (`bash -c`, `sudo`, `nice`, `env` …) deeper than the hook can read, so it cannot see what runs at the bottom. Run the inner command directly, or with fewer wrappers around it.";
-  // A lead in a string a shell runs that opens a quote it never closes: which
-  // word runs after it cannot be read, so the command is refused whole rather
-  // than passed on a guess (#1646).
+  // A lead in a string a shell runs that opens a quote it never closes, or a
+  // heredoc with no delimiter: which word runs after it cannot be read, so the
+  // command is refused whole rather than passed on a guess (#1646).
   if (unclosedLead(text))
-    return "A command this one hands to a shell (`bash -c`, `eval`, a piped script …) starts with a quote that never closes, so the hook cannot read which program it runs. Close the quote, or run the inner command directly.";
+    return "A command this one hands to a shell (`bash -c`, `eval`, a piped script …) starts with a quote that never closes, or has a heredoc with no delimiter, so the hook cannot read which program it runs. Close the quote, or run the inner command directly.";
+  // printf output piped to a shell that the hook cannot work out (#1646).
+  if (unprintable(text))
+    return "This command pipes `printf` output to a shell, and part of that output cannot be known here — a `*` width, a number that is no literal, an argument that expands — so the hook cannot read which program the shell runs. Run the inner command directly.";
   const verdict = judge(text, ctx, powershell);
   if (typeof verdict === "string") return verdict;
   // An ask the command carries anyway, from another command of the chain, is

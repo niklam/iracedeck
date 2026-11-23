@@ -6325,4 +6325,46 @@ describe("a carried merge or tag push behind a quoted lead value (#1646)", () =>
 
   it("judges a program escaped in its string by the name its shell runs, an ask kept an ask", () =>
     expect(asks(String.raw`bash -c "\"git\" push origin v1.2.3"`)).toMatch(/Pushing a tag cuts a release/));
+
+  // The second read on 9b4dfb0de: each passed master and the branch, and the
+  // shell it is handed runs the merge.
+  it.each([
+    `bash -c 'X="$(echo "a b")" gh pr merge 7'`,
+    `bash -c 'X="\${Y:-"a b"}" gh pr merge 7'`,
+    "bash -c 'X=a$(a $(b $(c)))b gh pr merge 7'",
+    'bash -c \'X="`echo "a b"`" gh pr merge 7\'',
+    'X=$(a $(b $(c)))"" gh pr merge 7',
+    String.raw`printf '%s\ngh pr merge 7\n' x | bash`,
+    String.raw`printf '%%\ngh pr merge 7\n' | bash`,
+    String.raw`printf '%b' 'x\ngh pr merge 7' | bash`,
+    String.raw`bash -c $'ls #\'\ngh pr merge 7'`,
+    String.raw`printf "ls #'\ngh pr merge 7\n" | bash`,
+    String.raw`bash -c $'cat <<E\nx it\'s\nE\ngh pr merge 7'`,
+    String.raw`echo -e \$'x\' 'y\ngh pr merge 7' | bash`,
+  ])("refuses the merge the shell runs: %s", (c) => refused(c));
+
+  it.each([
+    `bash -c 'X="$(echo "a b")" git push origin v1.2.3'`,
+    'X=$(a $(b $(c)))"" git push origin v1.2.3',
+    String.raw`printf '%s\ngit push origin v1.2.3\n' x | bash`,
+  ])("asks for the tag push the shell runs: %s", (c) => expect(asks(c)).toMatch(/Pushing a tag cuts a release/));
+
+  it.each([
+    String.raw`printf '%d\ngh pr merge 7\n' "$N" | bash`,
+    String.raw`printf '%*s\n' 5 x | bash`,
+    String.raw`printf '%s\n' "$CMD" | bash`,
+  ])("refuses printf output piped to a shell that cannot be known: %s", (c) =>
+    expect(refused(c)).toMatch(/cannot be known/),
+  );
+
+  it.each([
+    'bash -c \'X="`echo "a b"`" ls\'',
+    String.raw`bash -c $'cat <<E\n\'x\nE\necho hi'`,
+    String.raw`printf '%s\n' 'echo hi' | bash`,
+    String.raw`printf '%d\n' 5 | bash`,
+    "bash -c 'ls # a comment'",
+  ])("passes what the shell runs harmlessly, with no unclosed quote read: %s", (c) => passes(c));
+
+  it("refuses a heredoc with no delimiter in a string a shell runs", () =>
+    expect(refused(String.raw`bash -c $'cat <<\ngh pr merge 7'`)).toMatch(/heredoc with no delimiter/));
 });

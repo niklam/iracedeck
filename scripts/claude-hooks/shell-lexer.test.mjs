@@ -1561,7 +1561,7 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
     `echo '"gh" pr merge 7' | bash`,
     String.raw`bash -c 'X='\''a b'\'' gh pr merge 7'`,
   ])("lists nothing respelled where the raw text spells the program: %s", (c) =>
-    expect(lexer.respelledPrograms(c)).toEqual({ respelled: [], spliced: [] }),
+    expect(lexer.respelledPrograms(c)).toEqual({ respelled: [], spliced: [], reprinted: [] }),
   );
 
   // What echo -e and printf print is the script the piped shell reads.
@@ -1584,5 +1584,104 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
   it("sets no unclosed lead for cmd.exe, which has no single quotes", () => {
     expect(view(`cmd /c "it's.bat"`).unclosedLead).toBe(false);
     expect(view(`bash -c "it's"`).unclosedLead).toBe(true);
+  });
+
+  // Second read on 9b4dfb0de: a lead value nesting a quote in a substitution
+  // or expansion inside `"…"`, or a substitution three deep, ended early in
+  // the lead regex. The lead is now stepped with the one word reader, at top
+  // level too, so the program after it is a known program position.
+  it.each([
+    `bash -c 'X="$(echo "a b")" gh pr merge 7'`,
+    `bash -c 'X="\${Y:-"a b"}" gh pr merge 7'`,
+    "bash -c 'X=a$(a $(b $(c)))b gh pr merge 7'",
+    'bash -c \'X="`echo "a b"`" gh pr merge 7\'',
+    'X=$(a $(b $(c)))"" gh pr merge 7',
+    `X="\${Y:-"a b"}" gh pr merge 7`,
+    "nice env X=a$(a $(b $(c)))b gh pr merge 7",
+  ])("finds the program after a lead value that nests: %s", (c) => {
+    expect(lexer.has(c, MERGE)).toBe(true);
+    expect(view(c).unclosedLead).toBe(false);
+  });
+
+  it("finds a push after such a value, in a string and at top level", () => {
+    expect(lexer.has(`bash -c 'X="$(echo "a b")" git push origin v1.2.3'`, PUSH)).toBe(true);
+    expect(lexer.has('X=$(a $(b $(c)))"" git push origin v1.2.3', PUSH)).toBe(true);
+  });
+
+  it.each([`bash -c 'X="$(echo "a b")" echo gh pr merge 7'`, "X=$(a $(b $(c)))b echo gh pr merge 7"])(
+    "finds no merge where the word after the value is an argument: %s",
+    (c) => expect(lexer.has(c, MERGE)).toBe(false),
+  );
+
+  // printf's output, as it prints it, read by the piped shell.
+  it.each([
+    String.raw`printf '%s\ngh pr merge 7\n' x | bash`,
+    String.raw`printf '%%\ngh pr merge 7\n' | bash`,
+    String.raw`printf '%s\n' 'gh pr merge 7' | bash`,
+    String.raw`printf '%s\n%s\n' 'cd x' 'gh pr merge 7' | bash`,
+    String.raw`printf '%s\n' a 'gh pr merge 7' | bash`,
+    String.raw`printf '%5s\ngh pr merge 7\n' x | bash`,
+    String.raw`printf '%d\ngh pr merge 7\n' 5 | bash`,
+  ])("reads what printf prints from its format and arguments: %s", (c) => expect(lexer.has(c, MERGE)).toBe(true));
+
+  it.each([
+    String.raw`printf 'echo %s\n' 'gh pr merge 7' | bash`,
+    String.raw`printf '%s\n' 'echo hi' | bash`,
+    String.raw`printf '%b' 'x\cgh pr merge 7' | bash`,
+  ])("finds no merge printf does not print at a command's start: %s", (c) => expect(lexer.has(c, MERGE)).toBe(false));
+
+  it.each([
+    String.raw`printf '%d\ngh pr merge 7\n' "$N" | bash`,
+    String.raw`printf '%*s\n' 5 x | bash`,
+    String.raw`printf '%s\n' "$CMD" | bash`,
+    String.raw`printf '%f\n' 1 | bash`,
+  ])("reports printf output it cannot know: %s", (c) => expect(view(c).unprintable).toBe(true));
+
+  it.each([
+    String.raw`printf '%s\n' 'echo hi' | bash`,
+    String.raw`printf '%d\n' 5 | bash`,
+    String.raw`printf '%s\n' "$X"`,
+  ])("reports nothing unknown where printf's output is known or goes to no shell: %s", (c) =>
+    expect(view(c).unprintable).toBe(false),
+  );
+
+  // A `#` comment and a heredoc body hold no command: a quote in them closes nothing.
+  it.each([
+    String.raw`bash -c $'ls #\'\ngh pr merge 7'`,
+    String.raw`printf "ls #'\ngh pr merge 7\n" | bash`,
+    String.raw`bash -c $'cat <<E\nx it\'s\nE\ngh pr merge 7'`,
+    String.raw`bash -c $'cat <<\'E\'\nx it\'s\nE\ngh pr merge 7'`,
+    String.raw`bash -c $'cat <<-E\n\tx it\'s\n\tE\ngh pr merge 7'`,
+  ])("reads the command after a comment or a heredoc body: %s", (c) => {
+    expect(lexer.has(c, MERGE)).toBe(true);
+    expect(view(c).unclosedLead).toBe(false);
+  });
+
+  it.each([
+    String.raw`bash -c $'cat <<E\n\'x\nE\necho hi'`,
+    String.raw`bash -c $'#it\'s\nls'`,
+    String.raw`bash -c $'cat <<E\ngh pr merge 7\nE'`,
+    String.raw`bash -c 'echo a#b'`,
+  ])("reads no command, and no unclosed quote, in a comment or a heredoc body: %s", (c) => {
+    expect(lexer.has(c, MERGE)).toBe(false);
+    expect(view(c).unclosedLead).toBe(false);
+  });
+
+  it("reports a heredoc operator with no delimiter, which the shell refuses", () =>
+    expect(view(String.raw`bash -c $'cat <<\ngh pr merge 7'`).unclosedLead).toBe(true));
+
+  it("reads a shift in an arithmetic command as no heredoc", () =>
+    expect(lexer.has(String.raw`bash -c $'(( x = 1 << 3 ))\ngh pr merge 7'`, MERGE)).toBe(true));
+
+  // An escaped `$` opens no ANSI-C string: `\$'x\'` is `$` and a plain `'x\'`.
+  it("reads an escaped `$` before a quote as no ANSI-C opener", () => {
+    const c = String.raw`echo -e \$'x\' 'y\ngh pr merge 7' | bash`;
+    expect(view(c).quotes.map(([a, b]) => c.slice(a, b + 1))).toEqual([
+      String.raw`'x\'`,
+      String.raw`'y\ngh pr merge 7'`,
+    ]);
+    expect(lexer.ansiOpen(c, c.indexOf("'"))).toBe(false);
+    expect(lexer.ansiOpen("$'x'", 1)).toBe(true);
+    expect(lexer.ansiOpen(String.raw`\\$'x'`, 3)).toBe(true);
   });
 });
