@@ -40,6 +40,8 @@ import subCameraPreviousSvg from "@iracedeck/icons/camera-cycle/sub-camera-previ
 import trackPositionAheadSvg from "@iracedeck/icons/camera-cycle/track-position-ahead.svg";
 import trackPositionBehindSvg from "@iracedeck/icons/camera-cycle/track-position-behind.svg";
 // Focus icons
+import autoGroupOffSvg from "@iracedeck/icons/camera-focus/auto-group-off.svg";
+import autoGroupOnSvg from "@iracedeck/icons/camera-focus/auto-group-on.svg";
 import focusOnIncidentSvg from "@iracedeck/icons/camera-focus/focus-on-incident.svg";
 import focusOnLeaderSvg from "@iracedeck/icons/camera-focus/focus-on-leader.svg";
 import focusOnMostExcitingSvg from "@iracedeck/icons/camera-focus/focus-on-most-exciting.svg";
@@ -87,11 +89,20 @@ import { getGlobalColors, getGlobalSettings, onGlobalSettingsChange } from "@ira
 import { getLiveRacePositions } from "@iracedeck/sim-events-iracing";
 import z from "zod";
 
+import { borderColorForState } from "../../icons/status-bar.js";
 import { carCycleBindingKey } from "../../shared/car-cycle-bindings.js";
 import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { setSelectIntent } from "../../shared/car-select-intent.js";
 import { availableProfilesForDevice, deviceProfileEntries, profileEntriesEqual } from "../../shared/profile-entries.js";
 import { unavailableLook } from "../../shared/unavailable-look.js";
+import {
+  autoGroupNames,
+  type AutoGroupPick,
+  AutoGroupPickField,
+  AutoGroupSubsetField,
+  isAutoGroupUnavailable,
+} from "./auto-group-pick.js";
+import { isAutoGroupOwner, onAutoGroupChange, toggleAutoGroup, updateAutoGroupSettings } from "./auto-group.js";
 import type { CarouselGlyph } from "./camera-dial-render.js";
 import { CameraDialSurface, DialSettings } from "./camera-dial-surface.js";
 import {
@@ -149,7 +160,15 @@ const FOCUS_TARGET_VALUES = [
 
 const CHANGE_CAMERA_TARGET_VALUES = ["change-camera"] as const;
 
-const TARGET_VALUES = [...CHANGE_CAMERA_TARGET_VALUES, ...CYCLE_TARGET_VALUES, ...FOCUS_TARGET_VALUES] as const;
+/** Auto Group on Car Change (#1656): a press turns the plugin's one automation on or off. */
+const AUTO_GROUP_TARGET_VALUES = ["auto-group"] as const;
+
+const TARGET_VALUES = [
+  ...CHANGE_CAMERA_TARGET_VALUES,
+  ...CYCLE_TARGET_VALUES,
+  ...FOCUS_TARGET_VALUES,
+  ...AUTO_GROUP_TARGET_VALUES,
+] as const;
 
 type CycleTarget = (typeof CYCLE_TARGET_VALUES)[number];
 type Target = (typeof TARGET_VALUES)[number];
@@ -352,6 +371,13 @@ const FOCUS_TITLES: Record<string, string> = {
   "set-camera-state": "SET\nCAM STATE",
 };
 
+/**
+ * @internal Exported for testing
+ *
+ * Auto Group on Car Change's default title (#1656, spec decision 7), on and off alike.
+ */
+export const AUTO_GROUP_TITLE = "AUTO\nGROUP";
+
 // --- Settings schema ---
 
 /**
@@ -517,6 +543,11 @@ export const CameraControlsSettingsFields = {
   cameraGroup: CameraGroupField,
   // #1653: the group by name, any group a camera file defines; wins when set.
   cameraGroupName: CameraGroupNameField,
+  // Auto Group on Car Change (#1656, spec decision 6): the key's own list and
+  // pick order. Each `.catch`es to its default alone, so junk never resets the
+  // key's mode through the full-defaults fallback in parseSettings.
+  autoGroupSubset: AutoGroupSubsetField,
+  autoGroupPick: AutoGroupPickField,
   // focus-select-car (#790): the profile the press switches to. May hold a
   // device-suffixed manifest name, a legacy name, or a name suffixed for
   // another device — resolved at press time.
@@ -549,6 +580,12 @@ type CameraControlsSettings = z.infer<typeof CameraControlsSettings>;
  * Switch by Car Number and Switch by Position draw their configured target in
  * the artwork (#1352), so `carNumber` / `position` are part of what the icon is
  * drawn from.
+ *
+ * An Auto Group on Car Change key (#1656, spec decision 7) draws its on or off
+ * icon by `autoGroupOn`, with the toggle actions' state border: green on, grey
+ * off. While its list leaves no candidate in the session it takes the
+ * unavailable look over either, an on key included (spec decision 5): the
+ * on/off icon still tells the two apart.
  */
 export function generateCameraControlsSvg(
   settings: {
@@ -561,13 +598,20 @@ export function generateCameraControlsSvg(
     Partial<CommonSettings>,
   bindingMissing = false,
   unavailable = false,
+  autoGroupOn = false,
 ): string {
   const { target, direction = "next" } = settings;
 
   let iconSvg: string;
   let defaultTitle: string;
+  // The toggle state border, for the one mode that is a toggle (#1656).
+  let stateColor: string | undefined;
 
-  if (isCycleTarget(target)) {
+  if (target === "auto-group") {
+    iconSvg = autoGroupOn ? autoGroupOnSvg : autoGroupOffSvg;
+    defaultTitle = AUTO_GROUP_TITLE;
+    stateColor = borderColorForState(autoGroupOn ? "on" : "na");
+  } else if (isCycleTarget(target)) {
     if (target === "cycle-camera") {
       const enabledNames = getEnabledGroupNames(settings.cameraGroupSubset);
 
@@ -595,7 +639,7 @@ export function generateCameraControlsSvg(
 
   const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const title = resolveTitleSettings(iconSvg, getGlobalTitleSettings(), settings.titleOverrides, defaultTitle);
-  const border = resolveBorderSettings(iconSvg, getGlobalBorderSettings(), settings.borderOverrides);
+  const border = resolveBorderSettings(iconSvg, getGlobalBorderSettings(), settings.borderOverrides, stateColor);
 
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
   const templateValues = switchTargetTemplateValues(target, settings);
@@ -982,6 +1026,13 @@ interface KeyLook {
 
 type KeyEvent = IDeckWillAppearEvent<CameraControlsSettings> | IDeckDidReceiveSettingsEvent<CameraControlsSettings>;
 
+/** How a failed redraw's log line names the keys whose look follows the sim or the plugin's own state. */
+const REDRAWN_KEY_NAMES: Partial<Record<Target, string>> = {
+  "change-camera": "Change Camera",
+  "cycle-camera": "Cycle Camera",
+  "auto-group": "Auto Group",
+};
+
 /** Who awaits a settings write: the handler that asked for it. */
 interface SettingsWaiter {
   resolve: () => void;
@@ -1054,6 +1105,8 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     groups: CameraGroup[];
     /** Per group name, whether it is unavailable in this session; filled on first ask (#1653 review). */
     unavailable: Map<string, boolean>;
+    /** Per Auto Group list (its names as JSON), whether it leaves no candidate in this session (#1656). */
+    autoGroupUnavailable: Map<string, boolean>;
   } | null = null;
 
   /**
@@ -1098,6 +1151,16 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
    * connect. The subscription lives for the plugin's lifetime.
    */
   private readonly unsubscribeGlobalSettings = onGlobalSettingsChange(() => this.dialSurface.refreshAll());
+
+  /**
+   * Redraws this instance's Auto Group keys whenever the automation's owner
+   * changes (#1656, spec decision 2): a start, a takeover or a stop. The owner
+   * is module state shared by every Camera Controls instance (the camera-focus
+   * action and the legacy camera-cycle UUID), so each instance hears every
+   * change and redraws only its own contexts. Lives for the plugin's lifetime,
+   * like the global-settings listener above.
+   */
+  private readonly unsubscribeAutoGroup = onAutoGroupChange(() => this.onAutoGroupOwnerChange());
 
   override async onWillAppear(ev: IDeckWillAppearEvent<CameraControlsSettings>): Promise<void> {
     await super.onWillAppear(ev);
@@ -1159,6 +1222,13 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     await this.persistMigratedSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
+
+    // The running automation's own key: its edited list and pick order apply
+    // at once (spec decision 2). Any other key's edit waits for its press.
+    if (settings.target === "auto-group") {
+      updateAutoGroupSettings(ev.action.id, autoGroupNames(settings.autoGroupSubset), settings.autoGroupPick);
+    }
+
     await this.pushDeviceProfiles(ev, settings);
     await this.requestSettingsWrite(ev);
   }
@@ -1169,6 +1239,12 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
 
     if (settings.target === "focus-select-car") {
       await this.executeFocusSelectCar(ev, settings);
+
+      return;
+    }
+
+    if (settings.target === "auto-group") {
+      this.toggleAutoGroupFor(ev.action.id, settings.autoGroupSubset, settings.autoGroupPick);
 
       return;
     }
@@ -1258,6 +1334,33 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
   /** A dial's ask for a camera switch: its context, and how the waiter's log names the input. */
   private dialAsk(contextId: string, asked: string): CameraSwitchAsk {
     return { contextId, surface: "the dial", asked: `dial ${asked}` };
+  }
+
+  /**
+   * Auto Group on Car Change's press (#1656, spec decision 2), from a key or a
+   * dial gesture alike: off when `owner` runs the automation, otherwise on with
+   * its own list and pick order, taking it over from any other key or dial.
+   * The module logs what the press did. A start can fail only when the SDK
+   * controller refuses the telemetry subscription; that is logged here and
+   * leaves the automation off.
+   */
+  private toggleAutoGroupFor(
+    owner: string,
+    subset: string | Record<string, unknown> | undefined,
+    pick: AutoGroupPick,
+  ): void {
+    try {
+      toggleAutoGroup({ owner, names: autoGroupNames(subset), pick, logger: this.logger });
+    } catch (err) {
+      this.logger.warn(`Auto group could not start: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /** The automation's owner changed: every Auto Group key of this instance redraws its on or off look. */
+  private onAutoGroupOwnerChange(): void {
+    for (const [contextId, settings] of this.activeContexts) {
+      if (settings.target === "auto-group") this.requestRender(contextId);
+    }
   }
 
   /** Whether a key or dial context of this action is still on screen. */
@@ -1939,6 +2042,7 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
         sessionInfo,
         groups: normalizeSessionGroups(getCameraGroupsFromSessionInfo(sessionInfo)),
         unavailable: new Map(),
+        autoGroupUnavailable: new Map(),
       };
     }
 
@@ -1964,6 +2068,29 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     if (unavailable === undefined) {
       unavailable = isChangeCameraUnavailable(groupName, groups);
       cache.unavailable.set(groupName, unavailable);
+    }
+
+    return unavailable;
+  }
+
+  /**
+   * Whether an Auto Group key's list leaves no candidate in the session (#1656,
+   * spec decision 5): an empty list included, never with no session. Computed
+   * once per list per session-info update, as for a Change Camera key's group,
+   * since the key is drawn on every tick.
+   */
+  private isAutoGroupUnavailableCached(names: readonly string[]): boolean {
+    const groups = this.readSessionGroupsCached();
+    const cache = this.sessionGroupsCache;
+
+    if (cache === null || groups.length === 0) return false;
+
+    const key = JSON.stringify(names);
+    let unavailable = cache.autoGroupUnavailable.get(key);
+
+    if (unavailable === undefined) {
+      unavailable = isAutoGroupUnavailable(names, groups);
+      cache.autoGroupUnavailable.set(key, unavailable);
     }
 
     return unavailable;
@@ -2096,7 +2223,7 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
       return true;
     }
 
-    const look = this.restingLook(settings, render.settingsVersion);
+    const look = this.restingLook(contextId, settings, render.settingsVersion);
     render.settingsInFlight = write;
 
     try {
@@ -2144,7 +2271,8 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
       written = await this.updateKeyImage(contextId, look.render());
     } catch (err) {
       // Debug, not warn: a host that keeps refusing would log this every tick.
-      const which = this.activeContexts.get(contextId)?.target === "change-camera" ? "Change Camera" : "Cycle Camera";
+      const target = this.activeContexts.get(contextId)?.target;
+      const which = (target && REDRAWN_KEY_NAMES[target]) ?? "Camera Controls";
       this.logger.debug(`Failed to redraw a ${which} key: ${err instanceof Error ? err.message : err}`);
       written = false;
     }
@@ -2181,7 +2309,7 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
 
     const version = render.settingsVersion;
 
-    if (settings.target !== "cycle-camera") return this.restingLook(settings, version);
+    if (settings.target !== "cycle-camera") return this.restingLook(contextId, settings, version);
 
     const telemetry = this.sdkController.getCurrentTelemetry();
 
@@ -2190,12 +2318,12 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     // none of, since a press stays unusable (#1653 review). An unreadable list
     // and the next-group look keep the normal grid.
     if (!telemetry) {
-      if (settings.cycleIconMode !== "current") return this.restingLook(settings, version);
+      if (settings.cycleIconMode !== "current") return this.restingLook(contextId, settings, version);
 
       const groups = this.readSessionGroupsFresh();
       const unusable = isCycleCameraUnavailable(getEnabledGroupNames(settings.cameraGroupSubset), groups);
 
-      return unusable ? this.groupLook(settings, version, "", true) : this.restingLook(settings, version);
+      return unusable ? this.groupLook(settings, version, "", true) : this.restingLook(contextId, settings, version);
     }
 
     const sessionGroups = this.readSessionGroupsFresh();
@@ -2219,7 +2347,7 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
         return null;
       }
 
-      return this.restingLook(settings, version);
+      return this.restingLook(contextId, settings, version);
     }
 
     if (settings.cycleIconMode === "current") {
@@ -2241,7 +2369,7 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
 
     // No enabled group in this session, so no next group to preview (#1653
     // review): a press does nothing, and the key shows its configured grid.
-    if (!nextEntry) return this.restingLook(settings, version);
+    if (!nextEntry) return this.restingLook(contextId, settings, version);
 
     return this.groupLook(settings, version, nextEntry.groupName, false);
   }
@@ -2249,13 +2377,17 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
   /**
    * A key's resting icon. A Change Camera key's is drawn unavailable while the
    * session lacks its group (#1653); the binding state is read when it is drawn.
+   *
+   * An Auto Group key's (#1656) is on only while this key owns the running
+   * automation, and unavailable while its list leaves no candidate in the
+   * session. Both are in the look's id, so an owner change, which redraws the
+   * key, and a session update that flips availability each write it once.
    */
-  private restingLook(settings: CameraControlsSettings, version: number): KeyLook {
-    const changeCamera = settings.target === "change-camera";
-    const unavailable = changeCamera && this.isChangeCameraUnavailableCached(changeCameraGroupName(settings));
+  private restingLook(contextId: string, settings: CameraControlsSettings, version: number): KeyLook {
+    const { unavailable, autoGroupOn } = this.restingState(contextId, settings);
 
     return {
-      id: `rest:${version}:${unavailable ? 1 : 0}`,
+      id: `rest:${version}:${unavailable ? 1 : 0}:${autoGroupOn ? 1 : 0}`,
       version,
       kind: "rest",
       unavailable,
@@ -2265,11 +2397,30 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
         // SDK-driven camera keys around it.
         const bindingMissing = this.isBindingMissing(resolveBindingKey(settings.target, settings.direction));
 
-        return changeCamera
-          ? generateCameraControlsSvg(settings, bindingMissing, unavailable)
-          : generateCameraControlsSvg(settings, bindingMissing);
+        return generateCameraControlsSvg(settings, bindingMissing, unavailable, autoGroupOn);
       },
     };
+  }
+
+  /** What a key's resting icon depends on beyond its settings, read now. */
+  private restingState(
+    contextId: string,
+    settings: CameraControlsSettings,
+  ): { unavailable: boolean; autoGroupOn: boolean } {
+    switch (settings.target) {
+      case "change-camera":
+        return {
+          unavailable: this.isChangeCameraUnavailableCached(changeCameraGroupName(settings)),
+          autoGroupOn: false,
+        };
+      case "auto-group":
+        return {
+          unavailable: this.isAutoGroupUnavailableCached(autoGroupNames(settings.autoGroupSubset)),
+          autoGroupOn: isAutoGroupOwner(contextId),
+        };
+      default:
+        return { unavailable: false, autoGroupOn: false };
+    }
   }
 
   /** A Cycle Camera key's group icon. */

@@ -19,12 +19,15 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import z from "zod";
 
+import { borderColorForState } from "../../icons/status-bar.js";
 import { CAR_CYCLE_BINDING_KEYS } from "../../shared/car-cycle-bindings.js";
 import { _resetSelectIntents, getSelectIntent } from "../../shared/car-select-intent.js";
 import { describePressShapeRouting } from "../../shared/press-shape.test-support.js";
 import { engineOverDeck } from "../../shared/replay-engine-deck.test-support.js";
 import keyBindings from "../data/key-bindings.json" with { type: "json" };
+import { _resetAutoGroup, autoGroupOwner } from "./auto-group.js";
 import {
+  AUTO_GROUP_TITLE,
   CAMERA_GROUP_MAP,
   CAMERA_GROUPS_SETTING_KEY,
   CameraControls,
@@ -139,6 +142,12 @@ vi.mock("@iracedeck/icons/camera-focus/set-camera-state.svg", () => ({
 vi.mock("@iracedeck/icons/camera-focus/focus-select-car.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">focus-select-car {{mainLabel}} {{subLabel}}</svg>',
 }));
+vi.mock("@iracedeck/icons/camera-focus/auto-group-on.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">auto-group-on {{mainLabel}} {{subLabel}}</svg>',
+}));
+vi.mock("@iracedeck/icons/camera-focus/auto-group-off.svg", () => ({
+  default: '<svg xmlns="http://www.w3.org/2000/svg">auto-group-off {{mainLabel}} {{subLabel}}</svg>',
+}));
 
 // focus-select-car (#790): the shared device-filtered bundled-profile reader
 // (unit-tested in shared/profile-entries.test.ts), mocked to a device that
@@ -172,8 +181,11 @@ vi.mock("@iracedeck/sim-events-iracing", () => ({
   getLiveRacePositions: vi.fn(() => null),
 }));
 
-const { mockGetGlobalSettings, mockCamera } = vi.hoisted(() => ({
+const { mockGetGlobalSettings, mockCamera, autoGroupSdk } = vi.hoisted(() => ({
   mockGetGlobalSettings: vi.fn(() => ({})),
+  // The SDK controller the Auto Group automation subscribes to (#1656); while
+  // null, `getController` is the real one.
+  autoGroupSdk: { controller: null as unknown },
   // Stable camera-command surface so tests can assert WHICH SDK command a cycle
   // dispatches (switchNum vs the raw cycle helper). `getCommands` returns this
   // same object every call; `vi.clearAllMocks()` in beforeEach resets its history.
@@ -190,10 +202,15 @@ const { mockGetGlobalSettings, mockCamera } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@iracedeck/deck-iracing")>()),
-  getCommands: vi.fn(() => ({ camera: mockCamera })),
-}));
+vi.mock("@iracedeck/deck-iracing", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@iracedeck/deck-iracing")>();
+
+  return {
+    ...actual,
+    getCommands: vi.fn(() => ({ camera: mockCamera })),
+    getController: () => (autoGroupSdk.controller ?? actual.getController()) as ReturnType<typeof actual.getController>,
+  };
+});
 
 vi.mock("@iracedeck/deck-core", async () => ({
   // The dial surface arms the REAL hold-preview helper (#1120) on every dial
@@ -4646,5 +4663,345 @@ describe("one generic icon for every custom camera group (#1653)", () => {
     expect(JSON.stringify(host.getGroupGlyph("DynamicTV"))).toContain("custom-artwork");
     expect(JSON.stringify(host.getGroupGlyph("TV1"))).toContain("tv1-artwork");
     expect(host.getGroupGlyph("")).toBeNull();
+  });
+});
+
+describe("Auto Group on Car Change key (#1656)", () => {
+  /** A stand-in SDK controller for the automation's own telemetry subscription. */
+  const controller = { subscribe: vi.fn(), unsubscribe: vi.fn() };
+
+  /** Every key that appeared in a test, so the test's end can take it off screen again. */
+  let shown: { action: CameraControls; ctx: ReturnType<typeof keyContext> }[];
+
+  function keyContext(id: string) {
+    return {
+      id,
+      deviceId: "dev-1",
+      deviceType: 0,
+      isKey: () => true,
+      isDial: () => false,
+      setTitle: vi.fn(async () => {}),
+      setSettings: vi.fn(async () => {}),
+      setImage: vi.fn(async () => {}),
+    };
+  }
+
+  const flush = (): Promise<unknown> => new Promise((resolve) => setTimeout(resolve, 0));
+
+  /** A Camera Controls instance with a session whose camera groups are `groups` (null: no session). */
+  function newAction(groups: { groupNum: number; groupName: string }[] | null = ROAD_GROUPS): CameraControls {
+    const action = new CameraControls();
+    vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ CamCarIdx: 4, CamGroupNumber: 5 });
+    vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue(groups === null ? null : {});
+    vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue(groups ?? []);
+
+    return action;
+  }
+
+  async function appear(
+    action: CameraControls,
+    id: string,
+    settings: Record<string, unknown> = {},
+  ): Promise<ReturnType<typeof keyContext>> {
+    const ctx = keyContext(id);
+    shown.push({ action, ctx });
+    await action.onWillAppear({ action: ctx, payload: { settings: { target: "auto-group", ...settings } } } as never);
+
+    return ctx;
+  }
+
+  async function press(action: CameraControls, ctx: ReturnType<typeof keyContext>, settings = {}): Promise<void> {
+    await action.onKeyDown({ action: ctx, payload: { settings: { target: "auto-group", ...settings } } } as never);
+    await flush();
+  }
+
+  /** The last image the key was sent, decoded: settings writes and redraws alike. */
+  function lastImage(action: CameraControls, id: string): string {
+    const writes = vi
+      .mocked(action["setKeyImage"])
+      .mock.calls.filter(([ev]) => (ev as { action: { id: string } }).action.id === id)
+      .map((call) => call[1]);
+    const redraws = vi
+      .mocked(action["updateKeyImage"])
+      .mock.calls.filter(([contextId]) => contextId === id)
+      .map((call) => call[1]);
+    // A key's redraws all follow its settings write, so its last redraw, if any, is what it shows.
+    const last = redraws.at(-1) ?? writes.at(-1);
+
+    return decodeURIComponent(String(last));
+  }
+
+  const isOn = (action: CameraControls, id: string): boolean => lastImage(action, id).includes("auto-group-on");
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetAutoGroup();
+    autoGroupSdk.controller = controller;
+    shown = [];
+  });
+
+  afterEach(async () => {
+    for (const { action, ctx } of shown) await action.onWillDisappear({ action: ctx } as never);
+
+    _resetAutoGroup();
+    autoGroupSdk.controller = null;
+    vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue([]);
+  });
+
+  describe("settings", () => {
+    const ActionFields = z.object(CameraControlsSettingsFields);
+
+    it("defaults to In order with no list stored, which reads as TV1, TV2 and TV3", () => {
+      const parsed = ActionFields.parse({ target: "auto-group" });
+
+      expect(parsed.autoGroupPick).toBe("in-order");
+      expect(parsed.autoGroupSubset).toBeUndefined();
+    });
+
+    it("keeps the key's mode when either field holds junk", () => {
+      const parsed = ActionFields.parse({ target: "auto-group", autoGroupSubset: 42, autoGroupPick: "sideways" });
+
+      expect(parsed.target).toBe("auto-group");
+      expect(parsed.autoGroupPick).toBe("in-order");
+      expect(parsed.autoGroupSubset).toBeUndefined();
+    });
+
+    it("keeps a stored list and Random", () => {
+      const subset = { groups: { Chase: true } };
+      const parsed = ActionFields.parse({ target: "auto-group", autoGroupSubset: subset, autoGroupPick: "random" });
+
+      expect(parsed.autoGroupSubset).toEqual(subset);
+      expect(parsed.autoGroupPick).toBe("random");
+    });
+  });
+
+  describe("generateCameraControlsSvg", () => {
+    it("draws the off icon with the AUTO GROUP title and the grey state border", () => {
+      const svg = decodeURIComponent(generateCameraControlsSvg({ target: "auto-group" }));
+
+      expect(AUTO_GROUP_TITLE).toBe("AUTO\nGROUP");
+      expect(svg).toContain("auto-group-off");
+      expect(svg).toContain(AUTO_GROUP_TITLE);
+      expect(vi.mocked(deckCore.resolveBorderSettings).mock.calls.at(-1)?.[3]).toBe(borderColorForState("na"));
+      expect(lastIconOptions().dimmed).toBeUndefined();
+    });
+
+    it("draws the on icon with the green state border", () => {
+      const svg = decodeURIComponent(generateCameraControlsSvg({ target: "auto-group" }, false, false, true));
+
+      expect(svg).toContain("auto-group-on");
+      expect(svg).toContain(AUTO_GROUP_TITLE);
+      expect(vi.mocked(deckCore.resolveBorderSettings).mock.calls.at(-1)?.[3]).toBe(borderColorForState("on"));
+    });
+
+    it("keeps the unavailable look on an on key, its on icon still telling it apart", () => {
+      const svg = decodeURIComponent(generateCameraControlsSvg({ target: "auto-group" }, false, true, true));
+
+      expect(svg).toContain("auto-group-on");
+      expect(lastIconOptions().dimmed).toBe(true);
+    });
+
+    it("passes no state border for any other mode", () => {
+      generateCameraControlsSvg({ target: "focus-your-car" }, false, false, true);
+
+      expect(vi.mocked(deckCore.resolveBorderSettings).mock.calls.at(-1)?.[3]).toBeUndefined();
+    });
+  });
+
+  describe("presses", () => {
+    it("is off at a plugin start", async () => {
+      const action = newAction();
+      await appear(action, "ag-1");
+
+      expect(autoGroupOwner()).toBeNull();
+      expect(isOn(action, "ag-1")).toBe(false);
+    });
+
+    it("starts on the first press and stops on the second, redrawing the key each time", async () => {
+      const action = newAction();
+      const ctx = await appear(action, "ag-1");
+
+      await press(action, ctx);
+
+      expect(autoGroupOwner()).toBe("ag-1");
+      expect(controller.subscribe).toHaveBeenCalledTimes(1);
+      expect(isOn(action, "ag-1")).toBe(true);
+
+      await press(action, ctx);
+
+      expect(autoGroupOwner()).toBeNull();
+      expect(controller.unsubscribe).toHaveBeenCalledTimes(1);
+      expect(isOn(action, "ag-1")).toBe(false);
+    });
+
+    it("starts with the key's own list and pick order", async () => {
+      const action = newAction();
+      const settings = { autoGroupSubset: { groups: { Chase: true, Nose: true } }, autoGroupPick: "random" };
+      const ctx = await appear(action, "ag-1", settings);
+
+      await press(action, ctx, settings);
+
+      expect(action["logger"].debug).toHaveBeenCalledWith("Auto group owner ag-1, pick random, groups: Chase, Nose");
+    });
+
+    it("hands the automation to a second key, which lights while the first goes off", async () => {
+      const action = newAction();
+      const first = await appear(action, "ag-1");
+      const second = await appear(action, "ag-2");
+
+      await press(action, first);
+      await press(action, second);
+
+      expect(autoGroupOwner()).toBe("ag-2");
+      expect(isOn(action, "ag-1")).toBe(false);
+      expect(isOn(action, "ag-2")).toBe(true);
+      // A takeover keeps the one telemetry subscription.
+      expect(controller.subscribe).toHaveBeenCalledTimes(1);
+      expect(controller.unsubscribe).not.toHaveBeenCalled();
+    });
+
+    it("hands it over between the two Camera Controls actions (camera-focus and the legacy camera-cycle UUID)", async () => {
+      const focus = newAction();
+      const cycle = newAction();
+      const first = await appear(focus, "ag-focus");
+      const second = await appear(cycle, "ag-cycle");
+
+      await press(focus, first);
+
+      expect(isOn(focus, "ag-focus")).toBe(true);
+      expect(isOn(cycle, "ag-cycle")).toBe(false);
+
+      await press(cycle, second);
+
+      expect(autoGroupOwner()).toBe("ag-cycle");
+      expect(isOn(focus, "ag-focus")).toBe(false);
+      expect(isOn(cycle, "ag-cycle")).toBe(true);
+    });
+
+    it("draws on only on the owner: every other Auto Group key stays off", async () => {
+      const action = newAction();
+      const keys = [await appear(action, "ag-1"), await appear(action, "ag-2"), await appear(action, "ag-3")];
+
+      await press(action, keys[1]);
+
+      expect(keys.map((ctx) => isOn(action, ctx.id))).toEqual([false, true, false]);
+    });
+
+    it("keeps running when its key leaves the screen, and the key is on again when it is back", async () => {
+      const action = newAction();
+      const ctx = await appear(action, "ag-1");
+      await press(action, ctx);
+
+      await action.onWillDisappear({ action: ctx } as never);
+
+      expect(autoGroupOwner()).toBe("ag-1");
+      expect(controller.unsubscribe).not.toHaveBeenCalled();
+
+      await appear(action, "ag-1");
+
+      expect(isOn(action, "ag-1")).toBe(true);
+    });
+
+    it("leaves it off and warns when the SDK controller refuses the subscription", async () => {
+      autoGroupSdk.controller = {
+        subscribe: () => {
+          throw new Error("not connected");
+        },
+        unsubscribe: vi.fn(),
+      };
+      const action = newAction();
+      const ctx = await appear(action, "ag-1");
+
+      await press(action, ctx);
+
+      expect(autoGroupOwner()).toBeNull();
+      expect(action["logger"].warn).toHaveBeenCalledWith("Auto group could not start: not connected");
+      expect(isOn(action, "ag-1")).toBe(false);
+    });
+
+    it("sends no camera switch at the press", async () => {
+      const action = newAction();
+      const ctx = await appear(action, "ag-1");
+
+      await press(action, ctx);
+
+      expect(mockCamera.switchNum).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("settings edits", () => {
+    async function edit(
+      action: CameraControls,
+      ctx: ReturnType<typeof keyContext>,
+      settings: Record<string, unknown>,
+    ): Promise<void> {
+      await action.onDidReceiveSettings({
+        action: ctx,
+        payload: { settings: { target: "auto-group", ...settings } },
+      } as never);
+    }
+
+    it("applies the owner's edited list and pick order to the running automation at once", async () => {
+      const action = newAction();
+      const ctx = await appear(action, "ag-1");
+      await press(action, ctx);
+
+      await edit(action, ctx, { autoGroupSubset: { groups: { Chase: true } }, autoGroupPick: "random" });
+
+      expect(autoGroupOwner()).toBe("ag-1");
+      expect(action["logger"].debug).toHaveBeenCalledWith("Auto group settings updated: pick random, groups: Chase");
+    });
+
+    it("ignores another key's edit until that key is pressed", async () => {
+      const action = newAction();
+      const owner = await appear(action, "ag-1");
+      const other = await appear(action, "ag-2");
+      await press(action, owner);
+
+      await edit(action, other, { autoGroupSubset: { groups: { Chase: true } } });
+
+      expect(autoGroupOwner()).toBe("ag-1");
+      expect(action["logger"].debug).not.toHaveBeenCalledWith(expect.stringContaining("Auto group settings updated"));
+    });
+  });
+
+  describe("the unavailable look", () => {
+    it("is drawn while a session lacks every ticked group", async () => {
+      const action = newAction(CASE_TWIN_GROUPS);
+      await appear(action, "ag-1");
+
+      expect(lastIconOptions().dimmed).toBe(true);
+    });
+
+    it("is drawn for an empty list in a session", async () => {
+      const action = newAction();
+      await appear(action, "ag-1", { autoGroupSubset: { groups: { TV1: false } } });
+
+      expect(lastIconOptions().dimmed).toBe(true);
+    });
+
+    it("is not drawn while the session has one ticked group", async () => {
+      const action = newAction(CASE_TWIN_GROUPS);
+      await appear(action, "ag-1", { autoGroupSubset: { groups: { TV1: true, Chase: true } } });
+
+      expect(lastIconOptions().dimmed).toBeUndefined();
+    });
+
+    it("is never drawn with no session, an empty list included", async () => {
+      const action = newAction(null);
+      await appear(action, "ag-1", { autoGroupSubset: { groups: {} } });
+
+      expect(lastIconOptions().dimmed).toBeUndefined();
+    });
+
+    it("keeps the on icon while unavailable", async () => {
+      const action = newAction(CASE_TWIN_GROUPS);
+      const ctx = await appear(action, "ag-1");
+
+      await press(action, ctx);
+
+      expect(isOn(action, "ag-1")).toBe(true);
+      expect(lastIconOptions().dimmed).toBe(true);
+    });
   });
 });
