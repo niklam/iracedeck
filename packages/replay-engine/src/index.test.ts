@@ -658,7 +658,21 @@ describe("every name on the barrel has a production consumer outside the engine 
   const engine = createVirtualProgram(engineSources, ENGINE_ROOT, { resolveImports: true });
   const exports = barrelExports(engine, `${ENGINE_ROOT}index.ts`);
   const contractTypes = scanSignatureTypes(engine, `${ENGINE_ROOT}index.ts`).named;
-  const PRODUCTION = "packages/iracing-actions/src/actions/replay-control/replay-control.ts";
+  /*
+   * The controls' sources sit in fictional packages: the check reads only a
+   * path's shape (its package, a test or fixture name, a testing entry), and a
+   * real package's path spelled in this test would read, to
+   * `scripts/cross-package-reach.test.mjs`, as a reach into that package.
+   */
+  const FIXTURE_PACKAGES = [
+    "fixture-actions",
+    "fixture-deck",
+    "fixture-pi",
+    "fixture-runtime",
+    "fixture-scenarios",
+    "fixture-sim",
+  ];
+  const PRODUCTION = "packages/fixture-actions/src/actions/replay-control/replay-control.ts";
   const check = (files: Record<string, string>, testingEntries: readonly string[] = []): BarrelConsumerCheck =>
     checkBarrelConsumers({
       exports,
@@ -671,6 +685,13 @@ describe("every name on the barrel has a production consumer outside the engine 
     result.unconsumed.map((line) => line.slice(0, line.indexOf(":")));
   /** Every export but the contract type imported by one production source, so a control isolates the one it leaves out. */
   const ALL = 'import { ONLY_TESTS, take, UNUSED, USED, type Orphan, type UsedType } from "@iracedeck/replay-engine";';
+
+  it("places its controls' sources in no workspace package", () => {
+    const workspace = trackedPackageDirs(REPO_ROOT);
+
+    expect(workspace.length).toBeGreaterThan(20);
+    expect(workspace.filter((dir) => FIXTURE_PACKAGES.includes(dir))).toEqual([]);
+  });
 
   it("classes the virtual barrel's exports as values and types", () => {
     expect(exports).toEqual([
@@ -702,15 +723,15 @@ describe("every name on the barrel has a production consumer outside the engine 
     const result = check(
       {
         [PRODUCTION]: 'import { take, UNUSED, USED, type Orphan, type UsedType } from "@iracedeck/replay-engine";',
-        "packages/iracing-actions/src/actions/replay-control/replay-control.test.ts": onlyTests,
-        "packages/iracing-actions/src/shared/replay-engine-deck.test-support.ts": onlyTests,
-        "packages/plugin-runtime/src/test-support/module-mocks.ts": onlyTests,
-        "packages/audio-scenarios/src/catalog/timed-audio.test-util.ts": onlyTests,
-        "packages/iracing-actions/src/shared/dial-box-baseline.fixture-cases.ts": onlyTests,
-        "packages/deck-iracing/src/testing.ts": onlyTests,
-        "packages/sim-events-iracing/src/diff/__fixtures__/recorded-session.ts": onlyTests,
+        "packages/fixture-actions/src/actions/replay-control/replay-control.test.ts": onlyTests,
+        "packages/fixture-actions/src/shared/replay-engine-deck.test-support.ts": onlyTests,
+        "packages/fixture-runtime/src/test-support/module-mocks.ts": onlyTests,
+        "packages/fixture-scenarios/src/catalog/timed-audio.test-util.ts": onlyTests,
+        "packages/fixture-actions/src/shared/dial-box-baseline.fixture-cases.ts": onlyTests,
+        "packages/fixture-deck/src/testing.ts": onlyTests,
+        "packages/fixture-sim/src/diff/__fixtures__/recorded-session.ts": onlyTests,
       },
-      ["packages/deck-iracing/src/testing.ts"],
+      ["packages/fixture-deck/src/testing.ts"],
     );
 
     expect(unconsumedNames(result)).toEqual(["ONLY_TESTS"]);
@@ -789,14 +810,14 @@ describe("every name on the barrel has a production consumer outside the engine 
   });
 
   it("classes production sources as the repo does", () => {
-    const entries = new Set(["packages/deck-iracing/src/testing.ts"]);
+    const entries = new Set(["packages/fixture-deck/src/testing.ts"]);
 
     for (const file of [
-      "packages/iracing-actions/src/actions/replay-control/replay-control.ts",
-      "packages/plugin-runtime/src/phases/replay.ts",
-      "packages/iracing-actions/src/shared/replay-busy-indicator.ts",
-      "packages/deck-iracing/src/testing-helpers.ts",
-      "packages/plugin-runtime/src/fixtures.ts",
+      "packages/fixture-actions/src/actions/replay-control/replay-control.ts",
+      "packages/fixture-runtime/src/phases/replay.ts",
+      "packages/fixture-actions/src/shared/replay-busy-indicator.ts",
+      "packages/fixture-deck/src/testing-helpers.ts",
+      "packages/fixture-runtime/src/fixtures.ts",
     ]) {
       expect(isProductionConsumer(file, entries, isTestSource), file).toBe(true);
     }
@@ -804,11 +825,11 @@ describe("every name on the barrel has a production consumer outside the engine 
     for (const file of [
       "packages/replay-engine/src/replay-cursor.ts",
       "packages/replay-engine/src/index.ts",
-      "packages/iracing-actions/src/actions/replay-control/replay-control.test.ts",
-      "packages/iracing-actions/src/shared/replay-engine-deck.test-support.ts",
-      "packages/plugin-runtime/src/test-support/module-mocks.ts",
-      "packages/deck-iracing/src/testing.ts",
-      "packages/sim-events-iracing/src/diff/__fixtures__/recorded-session.ts",
+      "packages/fixture-actions/src/actions/replay-control/replay-control.test.ts",
+      "packages/fixture-actions/src/shared/replay-engine-deck.test-support.ts",
+      "packages/fixture-runtime/src/test-support/module-mocks.ts",
+      "packages/fixture-deck/src/testing.ts",
+      "packages/fixture-sim/src/diff/__fixtures__/recorded-session.ts",
     ]) {
       expect(isProductionConsumer(file, entries, isTestSource), file).toBe(false);
     }
@@ -820,19 +841,19 @@ describe("every name on the barrel has a production consumer outside the engine 
         exports: { "./testing": { import: "./dist/testing.js", types: "./dist/testing.d.ts" } },
       }),
     ).toBe("packages/replay-engine/src/testing.ts");
-    expect(testingEntrySourceOf("pi-components", { exports: { "./testing": "./src/build/testing.ts" } })).toBe(
-      "packages/pi-components/src/build/testing.ts",
+    expect(testingEntrySourceOf("fixture-pi", { exports: { "./testing": "./src/build/testing.ts" } })).toBe(
+      "packages/fixture-pi/src/build/testing.ts",
     );
-    expect(testingEntrySourceOf("deck-core", { exports: { "./testing": "./dist/testing.mjs" } })).toBe(
-      "packages/deck-core/src/testing.mts",
+    expect(testingEntrySourceOf("fixture-deck", { exports: { "./testing": "./dist/testing.mjs" } })).toBe(
+      "packages/fixture-deck/src/testing.mts",
     );
     expect(testingEntrySourceOf("logger", { exports: { ".": "./dist/index.js" } })).toBeUndefined();
     expect(testingEntrySourceOf("logger", { exports: { ".": "./dist/index.js", "./testing": null } })).toBeUndefined();
     expect(testingEntrySourceOf("logger", {})).toBeUndefined();
-    expect(() => testingEntrySourceOf("deck-core", { exports: { "./testing": { types: "./dist/x.d.ts" } } })).toThrow(
-      "declares a ./testing export",
-    );
-    expect(() => testingEntrySourceOf("deck-core", { exports: { "./testing": "./dist/testing.json" } })).toThrow(
+    expect(() =>
+      testingEntrySourceOf("fixture-deck", { exports: { "./testing": { types: "./dist/x.d.ts" } } }),
+    ).toThrow("declares a ./testing export");
+    expect(() => testingEntrySourceOf("fixture-deck", { exports: { "./testing": "./dist/testing.json" } })).toThrow(
       "is a dist/ file whose source cannot be derived",
     );
   });
@@ -886,7 +907,8 @@ describe("every name on the barrel has a production consumer outside the engine 
       expect(result.scan.importers.every((file) => isProductionConsumer(file, testingEntries, isTestSource))).toBe(
         true,
       );
-      expect(result.scan.importers).toContain("packages/plugin-runtime/src/phases/replay.ts");
+      // plugin-runtime's initReplay phase configures the engine.
+      expect(result.scan.consumed.get("configureReplayEngine")?.length ?? 0).toBeGreaterThan(0);
       expect(result.scan.consumed.size).toBeGreaterThanOrEqual(50);
       expect(realExports.filter(({ kind }) => kind === "value").length).toBeGreaterThanOrEqual(40);
       expect(realExports.filter(({ kind }) => kind === "type").length).toBeGreaterThanOrEqual(30);
@@ -904,10 +926,14 @@ describe("every name on the barrel has a production consumer outside the engine 
       expect(result.unconsumed).toEqual([]);
     });
 
-    it("reports a name once its only production importer is gone (positive control)", () => {
+    it("reports a name once its production importers are gone (positive control)", () => {
+      // Taken from the scan rather than spelled, so this test names no other package's file.
+      const importers = result.scan.consumed.get("configureReplayEngine") ?? [];
       const without = new Map(realFiles);
 
-      without.delete("packages/plugin-runtime/src/phases/replay.ts");
+      expect(importers.length).toBeGreaterThan(0);
+
+      for (const file of importers) without.delete(file);
 
       const planted = checkBarrelConsumers({
         exports: realExports,
