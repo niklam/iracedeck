@@ -6434,4 +6434,58 @@ describe("a carried merge or tag push behind a quoted lead value (#1646)", () =>
 
   it("keeps each word `watch -x` runs one word, so the restart it repeats asks", () =>
     expect(asks("watch -x bash -c 'pnpm restart:stream-deck'")).toBeTruthy());
+
+  // Round 5 (#1646, the CodeRabbit CLI findings at 87efe3f78).
+  const tick = "\x60";
+  it.each([
+    String.raw`printf '%d\n' >"$(gh pr merge 7)" 5 | bash`,
+    String.raw`printf '%d\n' >$(gh pr merge 7) 5 | bash`,
+    String.raw`printf '%d\n' >"${tick}gh pr merge 7${tick}" 5 | bash`,
+    String.raw`printf '%d\n' 2>"$(gh pr merge 7)" 5 >/dev/null | bash`,
+    String.raw`echo -e 'x\nls' >"$(gh pr merge 7)" y | bash`,
+  ])("keeps a reprinted printer's redirections in the text it judges: %s", (c) => expect(refused(c)).toBeTruthy());
+
+  it("asks for a tag push in a reprinted printer's redirection, and passes a plain one", () => {
+    expect(asks(String.raw`printf '%d\n' >"$(git push origin v1.2.3)" 5 | bash`)).toMatch(/tag cuts a release/);
+    passes(String.raw`printf '%d\n' >/dev/null 5 | bash`);
+    passes(String.raw`printf '%d\n' 5 | bash`);
+  });
+
+  it("reads a shell's string in printf output whose words are out of view order", () => {
+    expect(refused(String.raw`printf '%s -c "gh pr merge 7"\n' bash | bash`)).toBeTruthy();
+    expect(refused(String.raw`printf 'bash -c "gh pr %s 7"\n' view merge | bash`)).toBeTruthy();
+    expect(asks(String.raw`printf '%s -c "git push origin v1.2.3"\n' bash | bash`)).toMatch(/tag cuts a release/);
+    passes(String.raw`printf '%s -c "echo ready"\n' bash | bash`);
+  });
+
+  it("names a decoded Stream Deck CLI or host stop as its shell reads it", () => {
+    const cli = asks(String.raw`printf '%s %s\n' streamdeck 'link' | bash`);
+    expect(cli).toMatch(/`streamdeck link` links, unlinks or relinks/);
+    expect(cli).not.toMatch(/undefined/);
+    expect(asks(String.raw`printf '%s %s\n' taskkill '/IM StreamDeck.exe' | bash; pnpm relink:stream-deck`)).toMatch(
+      /`taskkill … StreamDeck\.exe` stops or starts a deck host app/,
+    );
+  });
+
+  it("never lets an ask stand over a decoded command its rule did not judge", () => {
+    const noSpec = ctx({ specFiles: () => [] });
+    expect(deny(`eval "git worktree" add ../ir-42 -b ir-42 && git worktree add ../ir-43 -b ir-43`, noSpec)).toMatch(
+      /reads its words differently/,
+    );
+    // Each tag push is judged, so one read as its shell reads it still asks behind another.
+    expect(asks(`git push origin v1.2.3 && eval "git push" origin v2.0.0`)).toMatch(/tag cuts a release/);
+  });
+
+  it.each([
+    String.raw`echo "-e" 'first\ngh pr merge 7' | bash`,
+    String.raw`echo -e'' 'first\ngh pr merge 7' | bash`,
+    String.raw`echo "-ne" 'first\ngh pr merge 7' | bash`,
+    String.raw`echo -ne 'first\ngh pr merge 7' | bash`,
+    String.raw`echo -e 'first\ngh pr merge 7' | bash`,
+  ])("reads echo's options as echo gets them, its quotes removed: %s", (c) => expect(refused(c)).toBeTruthy());
+
+  it.each([String.raw`echo '-E' 'first\ngh pr merge 7' | bash`, String.raw`echo "-e" 'first\nls' | bash`])(
+    "passes an echo whose output runs no merge: %s",
+    (c) => passes(c),
+  );
 });

@@ -799,6 +799,16 @@ export function deckFindings(c, cwd, ctx, shell, trail = []) {
 }
 
 /**
+ * The shape of the {@link cmd} regex `re` (its `inner`) at the start of
+ * `decoded`, a command as its shell reads it (#1646), its flags kept, or
+ * `null` ({@link deckReach}).
+ */
+function shapeAt(re, decoded) {
+  const shape = re.inner ?? re;
+  return new RegExp(shape.source, `${shape.flags.replace(/[gy]/g, "")}y`).exec(decoded);
+}
+
+/**
  * {@link deckFindings}'s recursion: the findings, and `cycles`, the keys of
  * the scripts above whose bodies this line runs again — the cycle guard cut
  * there (#1737, CodeRabbit CLI). The level that expanded such a script makes
@@ -825,20 +835,31 @@ function deckReach(c, cwd, ctx, shell, trail) {
     [...chainCommands(c, cwd, re, shell)].map((m) => ({ ...m, read, whole, re })),
   );
   const again = repeatsAt(c, shell);
+  // A command its shell reads differently from the text here (#1646: a string
+  // printf or `echo -e` prints, words `eval` joins) is judged on what that
+  // shell reads, and its decoded hit excused only once judged; a shape the
+  // decoded text does not hold leaves the hit standing, which `checkBash`
+  // refuses (CodeRabbit CLI on #1646).
   for (const { m, at, via } of cli) {
+    const shape = m.decoded === undefined ? null : shapeAt(STREAMDECK_CLI, m.decoded);
+    if (m.decoded !== undefined && !shape) continue;
     // The match starts at the operator ahead of the command (`&& streamdeck link`).
-    const text = m[0].replace(/^[\s|;&()`]+/, "").trim();
+    const text = (shape ? shape[0] : m[0]).replace(/^[\s|;&()`]+/, "").trim();
     const kind = STREAMDECK_KIND[text.split(/\s+/).pop()];
     finding(`\`${text}\` ${FINDING_KINDS[kind]}`, kind, again(at, via));
+    if (shape) excuseDecodedHit(c, STREAMDECK_CLI, m.program);
   }
-  for (const { head, args, at, via } of hosts) {
-    const app = args.match(HOST_APP);
+  for (const { head, args, at, via, decoded, program } of hosts) {
+    const shape = decoded === undefined ? null : shapeAt(HOST_CONTROL, decoded);
+    if (decoded !== undefined && !shape) continue;
+    const app = (shape ? decoded.slice(shape[0].length) : args).match(HOST_APP);
     if (app)
       finding(
-        `\`${head.replace(/^[\s|;&()`]+/, "").trim()} … ${app[0]}\` stops or starts a deck host app`,
+        `\`${(shape ? shape[0] : head).replace(/^[\s|;&()`]+/, "").trim()} … ${app[0]}\` stops or starts a deck host app`,
         "restart",
         again(at, via),
       );
+    if (shape) excuseDecodedHit(c, HOST_CONTROL, program);
   }
   // The runners' commands are read in order of position: a command is read
   // before the lexer's matches inside the strings it hands on come up, so
@@ -893,7 +914,7 @@ function deckReach(c, cwd, ctx, shell, trail) {
     // from what that shell reads, past the runner the rule's shape matched
     // there; its decoded hit is excused only once its words are judged. A
     // shape the decoded text does not hold leaves the hit standing.
-    const shape = m.decoded === undefined ? null : new RegExp((re.inner ?? re).source, "y").exec(m.decoded);
+    const shape = m.decoded === undefined ? null : shapeAt(re, m.decoded);
     const words = shape
       ? commandWordsRaw(m.decoded, shape[0].length, m.decoded.length)
       : commandWordsRaw(c, at, stringEnd(c, at - 1));

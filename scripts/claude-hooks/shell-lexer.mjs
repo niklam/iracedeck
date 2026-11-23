@@ -903,14 +903,6 @@ function pipelinesOf(command, a, b) {
   return { quotes, pipelines };
 }
 
-/** The words of `text[a, b)` as `{ w, at }`, quotes and escapes kept whole ({@link stdinShellIn}, {@link printedArgs}). */
-function wordsIn(text, a, b) {
-  return [...text.slice(a, b).matchAll(/(?:"(?:[^"\\]|\\[\s\S])*"|'[^']*'|\\[\s\S]|[^\s"'\\])+/g)].map((m) => ({
-    w: m[0],
-    at: a + m.index,
-  }));
-}
-
 /** A redirection that gives a command its stdin: `<`, `<<`, `<<<`, `<&`, `<>`, with an optional fd 0. Group 1 is the operator. */
 const INPUT_REDIRECT = /^0?(<<<|<<-?|<&|<>|<)(?!\()/;
 
@@ -941,22 +933,67 @@ function stdinShellIn(text, byName, [s, e]) {
 }
 
 /**
+ * A word as the shell reading it passes it on (`"-e"`, `-e''` and `-e` are
+ * all `-e`), or `undefined` when an expansion in it makes it unknown here
+ * ({@link printedArgs}, {@link echoEscapes}).
+ */
+function literalWord(w) {
+  const chars = decodeWord(w, true);
+  return chars.some((x) => x.live) ? undefined : chars.map((x) => x.c).join("");
+}
+
+/**
+ * The words of a printer's `text[a, b)` as `{ w, at }` ({@link printedArgs},
+ * {@link echoEscapes}): each whole as {@link wordEnd} reads it, a
+ * substitution with its blanks too (`>$(gh pr merge 7)` is one word, a
+ * redirection and its target); a quote never closed takes the rest.
+ */
+function printerWords(text, a, b) {
+  const out = [];
+  for (let i = blanksFrom(text, a); i < b;) {
+    const j = wordEnd(text, i, true);
+    const end = j < 0 ? b : Math.min(j, b);
+    if (end <= i) break;
+    out.push({ w: text.slice(i, end), at: i });
+    i = blanksFrom(text, end);
+  }
+  return out;
+}
+
+/** An `echo` option word as echo reads it: `-n`, `-e`, `-E` or a cluster of them ({@link printedArgs}). */
+const ECHO_OPTION = /^-[neE]+$/;
+
+/**
  * The words an `echo` or `printf` (named `name`, its word ending at `from` in
- * `text`) prints, up to `e`, as `{ w, at }`: its options and redirections
- * skipped, each argument one word with its quotes. `undefined` for a `printf
- * -v`, which prints nothing.
+ * `text`) prints, up to `e`, as `{ w, at }`: its options skipped as the
+ * command reads them, its quotes removed (`echo "-e" …`, CodeRabbit CLI on
+ * #1646), each argument one word with its quotes. `redirs`, a property of the
+ * list, holds each redirection among them with its target word, as
+ * `{ w, at }` of its raw text, for a printer re-judged as printing its output
+ * plainly to keep (`checkBash`). `undefined` for a `printf -v`, which prints
+ * nothing.
  */
 function printedArgs(text, from, e, name) {
   const args = [];
-  const words = wordsIn(text, from, e);
+  const redirs = [];
+  const words = printerWords(text, from, e);
+  let ended = false;
   for (let k = 0; k < words.length; k++) {
-    const { w } = words[k];
+    const { w, at } = words[k];
     if (/^\d*[<>&]/.test(w)) {
       if (/^\d*(?:[<>]{1,3}-?|[<>]&|&>>?|>\|)$/.test(w)) k++;
-    } else if (name === "printf" && w === "-v") return undefined;
-    else if (args.length === 0 && (w === "--" || (name === "echo" ? /^-[neE]+$/ : /^-/).test(w))) continue;
-    else args.push(words[k]);
+      const last = words[Math.min(k, words.length - 1)];
+      redirs.push({ w: text.slice(at, last.at + last.w.length), at });
+      continue;
+    }
+    // Options are read only ahead of the first argument, each as the command sees it.
+    const plain = args.length === 0 && !ended ? literalWord(w) : undefined;
+    if (name === "printf" && plain === "-v") return undefined;
+    if (plain === "--") ended = name === "printf";
+    if (plain !== undefined && (plain === "--" || (name === "echo" ? ECHO_OPTION : /^-/).test(plain))) continue;
+    args.push(words[k]);
   }
+  args.redirs = redirs;
   return args;
 }
 
@@ -1452,6 +1489,28 @@ function levelIndex(L, p) {
 }
 
 /**
+ * Where in the {@link level} `L` each word whose program name starts at view
+ * index `p`, `n` characters long, ends ({@link fedStarts}), for its options
+ * to be read past. A level whose characters keep their view order is
+ * searched by index (`p + n`). One a printf printed is not in that order —
+ * an argument's characters come after the format's they fill (`printf '%s -c
+ * "gh pr merge 7"\n' bash`, CodeRabbit CLI on #1646) — and a reused format
+ * prints the same characters more than once, so each word there starting at
+ * `p` is read in the level's own text, to where {@link wordEnd} ends it.
+ */
+function wordEndsAt(L, p, n) {
+  L.ordered ??= !L.at || L.at.every((x, k) => k === 0 || x >= L.at[k - 1]);
+  if (L.ordered) return [levelIndex(L, p + n)];
+  const out = [];
+  for (let k = 0; k < L.at.length; k++) {
+    if (L.at[k] !== p || (k > 0 && L.at[k - 1] === p)) continue;
+    const e = wordEnd(L.text, k);
+    out.push(e < 0 ? L.text.length : e);
+  }
+  return out;
+}
+
+/**
  * The shells that join every word after their string switch or options into
  * the line they run, and how ({@link readLevel}): `sudo -s` escapes each.
  */
@@ -1481,7 +1540,7 @@ function levelWord(L, d, e) {
   for (let k = d + 1; k < e; k++) if (L.at[k] !== L.at[k - 1] && L.at[k] !== L.end[k - 1]) contiguous = false;
   const start = part ? part.from : L.at[d];
   const end = part ? part.to : L.end[e - 1];
-  const printed = L.printed === undefined ? undefined : { from: L.printed, to: L.to, text: L.text };
+  const printed = L.printed === undefined ? undefined : { from: L.printed, to: L.to, text: L.text, kept: L.kept };
   return { start, end, chars, contiguous, text, printed };
 }
 
@@ -1652,22 +1711,23 @@ function fedStarts(command, text, fed, programs) {
         p,
         () => {
           const L = levelAt(p);
-          const d = levelIndex(L, p + via.length);
-          const kind = via === "sudo" && !sudoRunsShell(L.text, d) ? { how: "wrapper", via } : { how: "shell", via };
-          const limit = L === base ? b : L.text.length;
-          const { program, string, attached } = commandOf(OPTION_SPECS.get(via) ?? NO_OPTIONS, L.text, d, limit);
-          // `watch -x` (`--exec`) runs its words as they are, no shell joining
-          // them: each is kept one word, as sudo -s keeps its (#1646).
-          const exec =
-            via === "watch" &&
-            program !== undefined &&
-            /(?:^|\s)(?:--exec|-[A-Za-z]*x[A-Za-z]*)(?=\s)/.test(L.text.slice(d, program));
-          const join = exec ? "escaped" : JOINING_SHELLS.get(via);
-          // A wrapper's word is the program whole, quoted or not; a shell's is the string it runs.
-          if (program !== undefined)
-            if (kind.how === "wrapper") jobs.push([L, program, kind]);
-            else stringAt(L, program, kind, join);
-          if (string !== undefined) stringAt(L, string, attached ? { ...kind, attached: true } : kind, join);
+          for (const d of wordEndsAt(L, p, via.length)) {
+            const kind = via === "sudo" && !sudoRunsShell(L.text, d) ? { how: "wrapper", via } : { how: "shell", via };
+            const limit = L === base ? b : L.text.length;
+            const { program, string, attached } = commandOf(OPTION_SPECS.get(via) ?? NO_OPTIONS, L.text, d, limit);
+            // `watch -x` (`--exec`) runs its words as they are, no shell joining
+            // them: each is kept one word, as sudo -s keeps its (#1646).
+            const exec =
+              via === "watch" &&
+              program !== undefined &&
+              /(?:^|\s)(?:--exec|-[A-Za-z]*x[A-Za-z]*)(?=\s)/.test(L.text.slice(d, program));
+            const join = exec ? "escaped" : JOINING_SHELLS.get(via);
+            // A wrapper's word is the program whole, quoted or not; a shell's is the string it runs.
+            if (program !== undefined)
+              if (kind.how === "wrapper") jobs.push([L, program, kind]);
+              else stringAt(L, program, kind, join);
+            if (string !== undefined) stringAt(L, string, attached ? { ...kind, attached: true } : kind, join);
+          }
         },
       ]);
     }
@@ -1699,14 +1759,22 @@ function fedStarts(command, text, fed, programs) {
             // printed}), and what it cannot know is refused.
             // A level the command prints is marked with where its command starts,
             // so a word in it the raw text cannot spell is judged in that output.
+            // Its redirections inside that span go with it, so a substitution
+            // in one is still judged once the printer is re-judged as printing
+            // its output plainly (CodeRabbit CLI on #1646).
+            const reprint = (N) => ({
+              ...N,
+              printed: echo.start,
+              kept: args.redirs.filter(({ at }) => at < N.to).map(({ w }) => w),
+            });
             if (echo.name === "echo") {
               const flavor = echoEscapes(command, from, args[0].at);
               let N = readLevel(base, args[0].at, true);
-              if (flavor) N = { ...unescaped(N, flavor), printed: echo.start };
+              if (flavor) N = reprint(unescaped(N, flavor));
               readAs(N, kind, base);
             } else {
               const out = printed(args.map(({ at }) => readLevel(base, at, false)));
-              if (out) readAs({ ...out, printed: echo.start }, kind, base);
+              if (out) readAs(reprint(out), kind, base);
               else unprintable = true;
             }
           },
@@ -1722,15 +1790,15 @@ function fedStarts(command, text, fed, programs) {
     const name = PROGRAM_WORD.exec(text)?.[0];
     if (!WRAPPER_NAMES.has(name) && name !== "find") continue;
     const L = levelAt(p);
-    const d = levelIndex(L, p + name.length);
-    if (WRAPPER_NAMES.has(name)) {
-      const { program } = commandOf(OPTION_SPECS.get(name) ?? NO_OPTIONS, L.text, d, L.text.length);
-      if (program !== undefined) leads(L, program, { how: "wrapper", via: name });
-    } else {
-      COMMAND_WORD.lastIndex = d;
-      for (let exec = false, m; (m = COMMAND_WORD.exec(L.text)); exec = FIND_EXEC.test(m[1]))
-        if (exec) leads(L, COMMAND_WORD.lastIndex - m[1].length, { how: "wrapper", via: "find -exec" });
-    }
+    for (const d of wordEndsAt(L, p, name.length))
+      if (WRAPPER_NAMES.has(name)) {
+        const { program } = commandOf(OPTION_SPECS.get(name) ?? NO_OPTIONS, L.text, d, L.text.length);
+        if (program !== undefined) leads(L, program, { how: "wrapper", via: name });
+      } else {
+        COMMAND_WORD.lastIndex = d;
+        for (let exec = false, m; (m = COMMAND_WORD.exec(L.text)); exec = FIND_EXEC.test(m[1]))
+          if (exec) leads(L, COMMAND_WORD.lastIndex - m[1].length, { how: "wrapper", via: "find -exec" });
+      }
   }
   for (const [L, d, kind] of jobs) leads(L, d, kind);
   return { starts, words, decoded, quotes, quoteKinds, unclosed, unprintable };
@@ -1739,12 +1807,15 @@ function fedStarts(command, text, fed, programs) {
 /**
  * Whether the `echo` whose options run from `from` to `to` in `command`
  * decodes its escapes: `"echo"` when its last `-e` or `-E` (alone or in a
- * cluster, `-ne`, `-eE`) is `-e`, else `undefined` ({@link fedStarts}).
+ * cluster, `-ne`, `-eE`; each read as echo reads it, so `"-e"` and `-e''`
+ * are `-e`) is `-e`, else `undefined` ({@link fedStarts}).
  */
 function echoEscapes(command, from, to) {
   let on = false;
-  for (const { w } of wordsIn(command, from, to))
-    if (/^-[neE]+$/.test(w)) for (const c of w.slice(1)) if (c !== "n") on = c === "e";
+  for (const { w } of printerWords(command, from, to)) {
+    const plain = literalWord(w);
+    if (plain !== undefined && ECHO_OPTION.test(plain)) for (const c of plain.slice(1)) if (c !== "n") on = c === "e";
+  }
   return on ? "echo" : undefined;
 }
 

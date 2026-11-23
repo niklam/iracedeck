@@ -1776,4 +1776,46 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
   it("reads the whole words of a long eval join in time linear in their count", { timeout: TIMING_TIMEOUT_MS }, () => {
     readsLinearly((n) => `eval ${'"echo ready;" '.repeat(n)}`, 1500, MERGE, false);
   });
+
+  // Round 5 (#1646, the CodeRabbit CLI findings at 87efe3f78).
+  it("keeps a reprinted printer's redirections, a substitution in one included", () => {
+    const [r] = lexer.respelledPrograms(String.raw`printf '%d\n' >"$(gh pr merge 7)" 5 | bash`).reprinted;
+    expect(r.kept).toEqual(['>"$(gh pr merge 7)"']);
+    // An unquoted substitution with blanks in it is one redirection target, not printed words.
+    const [s] = lexer.respelledPrograms(String.raw`printf '%d\n' >$(gh pr merge 7) 5 | bash`).reprinted;
+    expect(s.kept).toEqual([">$(gh pr merge 7)"]);
+    expect(s.text).toBe("5\n");
+    // One past the last argument is outside the span replaced, and kept where it is.
+    const [t] = lexer.respelledPrograms(String.raw`printf '%d\n' 5 >/dev/null | bash`).reprinted;
+    expect(t.kept).toEqual([]);
+  });
+
+  it.each([
+    String.raw`printf '%s -c "gh pr merge 7"\n' bash | bash`,
+    String.raw`printf '%s -o pipefail -c "gh pr merge 7"\n' bash | bash`,
+    String.raw`printf '%s %s -c "gh pr merge 7"\n' nice bash | bash`,
+    String.raw`printf 'bash -c "gh pr %s 7"\n' view merge | bash`,
+  ])("reads a shell's options and string in printf output whose words are out of view order: %s", (c) =>
+    expect(lexer.has(c, MERGE)).toBe(true),
+  );
+
+  it("reads no merge in printf output whose shell string only mentions one", () =>
+    expect(lexer.has(String.raw`printf '%s -c "echo gh pr merge 7"\n' bash | bash`, MERGE)).toBe(false));
+
+  it.each([
+    String.raw`echo -e 'first\ngh pr merge 7' | bash`,
+    String.raw`echo "-e" 'first\ngh pr merge 7' | bash`,
+    String.raw`echo -e'' 'first\ngh pr merge 7' | bash`,
+    String.raw`echo '-ne' 'first\ngh pr merge 7' | bash`,
+    String.raw`echo -ne 'first\ngh pr merge 7' | bash`,
+    String.raw`echo "-E" -e 'first\ngh pr merge 7' | bash`,
+  ])("reads echo's options with their quotes removed, as echo gets them: %s", (c) =>
+    expect(lexer.has(c, MERGE)).toBe(true),
+  );
+
+  it.each([
+    String.raw`echo '-E' 'first\ngh pr merge 7' | bash`,
+    String.raw`echo "-e" -E 'first\ngh pr merge 7' | bash`,
+    String.raw`echo first "-e" 'x\ngh pr merge 7' | bash`,
+  ])("decodes no escapes where echo reads none: %s", (c) => expect(lexer.has(c, MERGE)).toBe(false));
 });

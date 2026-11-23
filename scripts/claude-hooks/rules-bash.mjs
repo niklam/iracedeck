@@ -1020,12 +1020,13 @@ export const rules = [
     test: (c) => {
       const text = trustedMask(c);
       const segments = ranges(text, CHAIN_AND_BACKGROUND);
-      const tagPush = [...matchesAt(c, GIT_PUSH)].some((m) => {
+      // Every push is judged, so each one read as its shell reads it is excused
+      // only once judged, never left behind an earlier tag (CodeRabbit CLI on #1646).
+      const pushes = [...matchesAt(c, GIT_PUSH)].map((m) => {
         // The segment holding the program word: an anchored match's `index` is its boundary.
         const [, b] = segments.find(([s, e]) => s <= m.program && m.program < e);
         // From the raw word's start, not its rewritten name's: `"git" push` begins at the quote (CodeRabbit on #1634).
         // A push its shell reads differently from the text here is judged as it reads it (#1646).
-        if (m.decoded !== undefined) excuseDecodedHit(c, GIT_PUSH, m.program);
         const own = m.decoded ?? c.slice(programStart(c, m.program), Math.min(b, stringEnd(c, m.program) ?? b));
         // Its inert text blanked, a comment included, which the raw text of a fed span keeps.
         // The comment starts at the `#` the lexer's top-level text blanks to a space: a quoted
@@ -1034,9 +1035,11 @@ export const rules = [
         let comment = -1;
         for (let i = 0; i < own.length && comment < 0; i++) if (own[i] === "#" && top[i] === " ") comment = i;
         const live = comment < 0 ? own : own.slice(0, comment);
-        return !/--dry-run\b/.test(code) && /\bpush(?:\s[^|&;]*)?\s["']?(--tags\b|v\d+\.\d+)/.test(live);
+        const tag = !/--dry-run\b/.test(code) && /\bpush(?:\s[^|&;]*)?\s["']?(--tags\b|v\d+\.\d+)/.test(live);
+        if (m.decoded !== undefined) excuseDecodedHit(c, GIT_PUSH, m.program);
+        return tag;
       });
-      return tagPush && { ask: "Pushing a tag cuts a release. The maintainer confirms." };
+      return pushes.some(Boolean) && { ask: "Pushing a tag cuts a release. The maintainer confirms." };
     },
   },
   {
@@ -1064,7 +1067,6 @@ export const rules = [
           const verb = new RegExp(GIT_PUSH.inner.source, "y").exec(decoded);
           read = verb ? decoded.slice(verb[0].length) : "";
           moved ||= !verb || /(?:^|\s)(?:-C|--git-dir|--work-tree)(?=[\s=]|$)/.test(verb[0]);
-          excuseDecodedHit(c, GIT_PUSH, program);
         }
         let unknown = false;
         const fromIntegration = () =>
@@ -1075,6 +1077,8 @@ export const rules = [
           return unknown
             ? movedRepo("push")
             : `The \`${INTEGRATION_BRANCH}\` branch is local and never pushed: it is origin/${MAIN_BRANCH} plus the branches under manual test, rebuilt by scripts/integration-build.mjs (#1520). Push each issue branch from its own ../ir-<issue> tree.`;
+        // Judged as its shell reads it: its decoded hit is excused only now.
+        if (decoded !== undefined) excuseDecodedHit(c, GIT_PUSH, program);
       }
       return null;
     },
@@ -2136,13 +2140,16 @@ function checkText(text, ctx, powershell, depth) {
   if (reprinted.length) {
     // An echo -e or printf whose output holds a word its raw text cannot spell
     // is judged as printing that output plainly, from the last, so the earlier
-    // ones keep their indices (#1646).
+    // ones keep their indices (#1646). Its redirections inside the span it
+    // replaces go with it, so a substitution in one is still judged
+    // (`printf '%d\n' >"$(gh pr merge 7)" 5 | bash`, CodeRabbit CLI).
     let plain = text;
     const seen = new Set();
-    for (const { from, to, text: out } of [...reprinted].sort((x, y) => y.from - x.from)) {
+    for (const { from, to, text: out, kept } of [...reprinted].sort((x, y) => y.from - x.from)) {
       if (seen.has(from)) continue;
       seen.add(from);
-      plain = `${plain.slice(0, from)}printf '%s' '${out.replace(/'/g, "'\\''")}'${plain.slice(to)}`;
+      const redirs = kept?.length ? ` ${kept.join(" ")}` : "";
+      plain = `${plain.slice(0, from)}printf '%s' '${out.replace(/'/g, "'\\''")}'${redirs}${plain.slice(to)}`;
     }
     return checkText(plain, ctx, powershell, depth + 1);
   }
@@ -2245,10 +2252,13 @@ function judge(text, ctx, powershell) {
     // reads its arguments from raw text that differs (an escape it decodes,
     // words `eval` or `printf` join), never passes on them (#1646; reading
     // them as that shell does is #1783). A rule that read that command as
-    // its shell does excused its match (`excuseDecodedHit`).
-    if (!v && takeDecodedHits(text).size) return DECODED_REFUSAL;
-    if (!v) continue;
+    // its shell does excused its match (`excuseDecodedHit`). Nor does it ask
+    // on them: an ask the rule raised over another command of the chain says
+    // nothing of the one it read mis-sliced, which the prompt would run
+    // unnamed (CodeRabbit CLI on #1646). A deny stands as it is.
     if (typeof v === "string") return v;
+    if (takeDecodedHits(text).size) return DECODED_REFUSAL;
+    if (!v) continue;
     asks.push(v.ask);
   }
   // Every ask in one prompt: a chain the maintainer approves runs whole, so a
