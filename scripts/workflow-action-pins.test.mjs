@@ -8,7 +8,7 @@
  * repository's secrets and `GITHUB_TOKEN`. A full 40-hex commit hash cannot be
  * moved. So every `uses:` whose owner is not GitHub's own `actions` org
  * (compared case-insensitively) must name `@<40 lowercase hex>` and carry a
- * same-line `# v<major>(.<minor>…)` comment naming the release, which is how a
+ * same-line `# v<major>.<minor>[.<patch>]` comment naming the release, which is how a
  * reader sees the version and how Dependabot's github-actions updates rewrite
  * the hash and the comment together. First-party `actions/*` stay on tags;
  * local `./…` actions and reusable workflows are this repository's own code.
@@ -17,17 +17,33 @@
  * - **Exactly 40 lowercase hex.** GitHub's commit ids are SHA-1, and Dependabot
  *   writes them lowercase; an uppercase or short hash is refused, since a short
  *   one is ambiguous and GitHub resolves neither as a commit pin.
- * - **The comment is the release tag and nothing else**: `# v6.1.1`, `# v0.11.0`,
- *   `# v3`. Dependabot rewrites a version comment only when it ends with the
- *   old release (`comment.rstrip.end_with?(version)` in dependabot-core's
- *   github_actions version commenter), so `# v6.1.1 (pnpm)` would get its hash
- *   bumped and its comment left naming the old release; the regex is anchored
- *   at both ends, which also refuses text before the tag, so a reader never has
- *   to work out which word is the version. It must be on the `uses:` line
- *   itself, so the test reads that line from the source (the scalar's `range`) rather than trusting where the
- *   parser attaches a comment: `yaml` 2.9.1 puts a same-line comment on the
+ * - **The comment is the release tag and nothing else, at least major.minor**:
+ *   `# v6.1.1`, `# v0.11.0`, `# 1.4.0`, `# v2.0.0-rc.1`. Dependabot writes it as
+ *   ` # <tag>` in the tag's own spelling, with or without the `v` and with any
+ *   semver prerelease suffix, and rewrites it only when the comment ends with
+ *   the most specific tag for the old hash (`comment.rstrip.end_with?(version)`
+ *   in dependabot-core's github_actions version commenter). So
+ *   `# v6.1.1 (pnpm)` would get its hash bumped and its comment left naming the
+ *   old release, and so would a moving major, `# v6` on a v6.1.1 commit. The
+ *   regex is anchored at both ends, which also refuses text before the tag, so
+ *   a reader never has to work out which word is the version. An action that
+ *   publishes only major tags is the one case where `# v3` is right, since `v3`
+ *   is then its most specific tag; pinning one means widening this regex for
+ *   it, with that reason, in the same change.
+ * - **The comment is on the line where the value is written.** The test reads
+ *   that line from the source (the scalar's `range`) rather than trusting where
+ *   the parser attaches a comment: `yaml` 2.9.1 puts a same-line comment on the
  *   scalar's `comment`, but a comment on the following line can land on the
- *   step or the next key instead, and only the line is unambiguous.
+ *   step or the next key instead, and only the line is unambiguous. For a value
+ *   reached through an alias, that is the anchored definition's line, which is
+ *   where Dependabot edits it and where a violation points.
+ * - **Nothing is skipped because it is spelled unusually.** Keys (`jobs`,
+ *   `steps`, `runs`, `uses`, `name`) are matched case-insensitively, a key
+ *   spelled twice is checked under both spellings, aliases (`- *setup`,
+ *   `uses: *pin`, an aliased job or `steps`) are resolved, and a merge key
+ *   (`<<: *base`) is followed, whether or not GitHub honours it: a guard that
+ *   passes what it cannot read fails open. An alias with no anchor is
+ *   reported, and an alias or merge cycle ends rather than loops.
  * - **`docker://` is refused outright.** A Docker image is third-party code too,
  *   and a `@sha256:` digest would pin it, but Dependabot's github-actions
  *   updates do not keep a digest current and nothing names its version, so it
@@ -47,7 +63,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { isMap, isScalar, isSeq, LineCounter, parseDocument } from "yaml";
+import { isAlias, isMap, isScalar, isSeq, LineCounter, parseDocument } from "yaml";
 
 const REPO = path.join(import.meta.dirname, "..");
 const GITHUB = path.join(REPO, ".github");
@@ -57,7 +73,10 @@ const MIN_THIRD_PARTY_USES = 9;
 const MIN_FILES = 10;
 
 const FULL_SHA = /^[0-9a-f]{40}$/;
-const RELEASE_COMMENT = /^#\s*v\d+(?:\.\d+)*\s*$/;
+/** Applied to the trimmed rest of the line: `# [v]<major>.<minor>[.<patch>…][-<prerelease>]`, nothing else. */
+const RELEASE_COMMENT = /^#\s*v?\d+\.\d+(?:\.\d+)*(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+/** More alias hops than any real document needs; past it the alias is reported as unresolved. */
+const MAX_ALIAS_HOPS = 8;
 
 /** Workflow files plus composite-action files, as repo-relative names. */
 function discoverFiles() {
@@ -81,36 +100,87 @@ function discoverFiles() {
   return files;
 }
 
-/** The value node under `key` in a YAML map node, or undefined. */
-function child(node, key) {
-  return isMap(node) ? node.get(key, true) : undefined;
-}
-
-/** Every `{ where, node, local }` `uses:` value node of a parsed document. */
-function usesNodes(doc) {
+/**
+ * Every `{ where, node, level }` `uses:` value of a parsed document, with each
+ * node already resolved through any alias, plus the aliases that resolve to
+ * nothing (`problems`, as `<line>: <message>`).
+ */
+function usesNodes(doc, lineCounter) {
   const out = [];
+  const problems = new Set();
+  const lineOf = (node) => (node?.range ? lineCounter.linePos(node.range[0]).line : "?");
+
+  /** The node an alias names (the node itself when it is none), or undefined, reported, when it names nothing. */
+  const resolve = (node) => {
+    let n = node;
+    for (let hops = 0; isAlias(n); hops++) {
+      const target = hops < MAX_ALIAS_HOPS ? n.resolve(doc) : undefined;
+      if (target === undefined) {
+        problems.add(
+          `${lineOf(node)}: alias *${node.source} does not resolve to a node, so what it names is unchecked`,
+        );
+        return undefined;
+      }
+      n = target;
+    }
+    return n;
+  };
+
+  /**
+   * A map's `{ key, lower, value }` entries (`value` unresolved), merge keys
+   * (`<<`) expanded in place; each map is expanded once per call, so a merge
+   * cycle ends.
+   */
+  const entries = (node, seen = new Set()) => {
+    const map = resolve(node);
+    if (!isMap(map) || seen.has(map)) return [];
+    seen.add(map);
+    const result = [];
+    for (const pair of map.items) {
+      const keyNode = resolve(pair.key);
+      if (!isScalar(keyNode)) continue;
+      const key = String(keyNode.value);
+      if (key !== "<<") {
+        result.push({ key, lower: key.toLowerCase(), value: pair.value });
+        continue;
+      }
+      const source = resolve(pair.value);
+      for (const merged of isSeq(source) ? source.items : [source]) result.push(...entries(merged, seen));
+    }
+    return result;
+  };
+
+  /** Every value under `key` (matched case-insensitively), resolved; a key spelled twice yields both. */
+  const children = (node, key) =>
+    entries(node)
+      .filter((entry) => entry.lower === key)
+      .map((entry) => resolve(entry.value))
+      .filter((value) => value !== undefined);
+
   const fromSteps = (steps, prefix) => {
     if (!isSeq(steps)) return;
-    steps.items.forEach((step, i) => {
-      const node = child(step, "uses");
-      if (node === undefined) return;
-      const name = child(step, "name");
+    steps.items.forEach((item, i) => {
+      const step = resolve(item);
+      const [name] = children(step, "name");
       const named = isScalar(name) && typeof name.value === "string" ? ` (${JSON.stringify(name.value)})` : "";
-      out.push({ where: `${prefix} step ${i + 1}${named}`, node, level: "step" });
+      for (const node of children(step, "uses")) {
+        out.push({ where: `${prefix} step ${i + 1}${named}`, node, level: "step" });
+      }
     });
   };
-  const jobs = child(doc.contents, "jobs");
-  if (isMap(jobs)) {
-    for (const pair of jobs.items) {
-      const jobId = isScalar(pair.key) ? String(pair.key.value) : String(pair.key);
-      const job = pair.value;
-      const node = child(job, "uses");
-      if (node !== undefined) out.push({ where: `job "${jobId}"`, node, level: "job" });
-      fromSteps(child(job, "steps"), `job "${jobId}"`);
+
+  const root = resolve(doc.contents);
+  for (const jobs of children(root, "jobs")) {
+    for (const { key: jobId, value } of entries(jobs)) {
+      const job = resolve(value);
+      for (const node of children(job, "uses")) out.push({ where: `job "${jobId}"`, node, level: "job" });
+      for (const steps of children(job, "steps")) fromSteps(steps, `job "${jobId}"`);
     }
   }
-  fromSteps(child(child(doc.contents, "runs"), "steps"), "composite");
-  return out;
+  for (const runs of children(root, "runs")) {
+    for (const steps of children(runs, "steps")) fromSteps(steps, "composite");
+  }
+  return { found: out, problems: [...problems] };
 }
 
 /** The text after a scalar on its own source line: where its trailing comment is. */
@@ -144,7 +214,9 @@ function pinViolations(fileName, source) {
   let thirdParty = 0;
   const localSteps = [];
   for (const error of doc.errors) violations.push(`${fileName}: does not parse as YAML: ${error.message}`);
-  for (const { where, node, level } of usesNodes(doc)) {
+  const { found, problems } = usesNodes(doc, lineCounter);
+  for (const problem of problems) violations.push(`${fileName}:${problem}`);
+  for (const { where, node, level } of found) {
     const line = node.range ? lineCounter.linePos(node.range[0]).line : "?";
     const label = `${fileName}:${line}: ${where}`;
     if (!isScalar(node) || typeof node.value !== "string") {
@@ -294,6 +366,20 @@ describe("pinViolations (positive controls)", () => {
     expect(check(step(`owner/tool@${SHA} # pnpm v6.1.1`)).violations).toHaveLength(1);
   });
 
+  it("reports a moving major, which Dependabot would leave stale on a more specific commit", () => {
+    for (const comment of ["# v6", "# 6"]) {
+      const v = check(step(`pnpm/action-setup@${SHA} ${comment}`)).violations;
+      expect(v, comment).toHaveLength(1);
+      expect(v[0], comment).toContain(`found ${JSON.stringify(comment)}`);
+    }
+  });
+
+  it("reports a malformed prerelease or anything after one", () => {
+    for (const comment of ["# v2.0.0-", "# v2.0.0-rc.1 beta", "# v2.0.0-rc..1", "# v2.0.0+build.5"]) {
+      expect(check(step(`owner/tool@${SHA} ${comment}`)).violations, comment).toHaveLength(1);
+    }
+  });
+
   it("reports a version comment on the next line instead of the uses line", () => {
     const doc = `jobs:\n  build:\n    steps:\n      - uses: owner/tool@${SHA}\n        # v1.2.3\n        with:\n          a: 1\n`;
     expect(check(doc).violations[0]).toMatch(/without a same-line release comment/);
@@ -325,6 +411,81 @@ describe("pinViolations (positive controls)", () => {
   });
 });
 
+describe("pinViolations (unusual spellings are read, not skipped)", () => {
+  it("reports a Uses: spelled in another case, at step and job level", () => {
+    const doc =
+      "Jobs:\n  Build:\n    Steps:\n      - Name: Setup\n        Uses: owner/tool@v1\n  call:\n    USES: owner/repo/.github/workflows/x.yml@v2\n";
+    const r = check(doc);
+    expect(r.thirdParty).toBe(2);
+    expect(r.violations).toHaveLength(2);
+    expect(r.violations[0]).toMatch(/^w\.yml:5: job "Build" step 1 \("Setup"\) uses owner\/tool@v1: "v1"/);
+    expect(r.violations[1]).toMatch(/^w\.yml:7: job "call" uses owner\/repo\/\.github\/workflows\/x\.yml@v2: "v2"/);
+  });
+
+  it("reports both spellings of a key written twice", () => {
+    const doc = `jobs:\n  b:\n    steps:\n      - uses: owner/tool@${SHA} # v1.2.3\n        Uses: owner/other@v1\n`;
+    const r = check(doc);
+    expect(r.thirdParty).toBe(2);
+    expect(r.violations).toHaveLength(1);
+    expect(r.violations[0]).toMatch(/^w\.yml:5: job "b" step 1 uses owner\/other@v1/);
+  });
+
+  it("reports a step aliased from an anchor the walk does not otherwise visit", () => {
+    const doc = "env:\n  template: &setup\n    uses: owner/tool@v1\njobs:\n  build:\n    steps:\n      - *setup\n";
+    const r = check(doc);
+    expect(r.thirdParty).toBe(1);
+    expect(r.violations).toHaveLength(1);
+    expect(r.violations[0]).toMatch(/^w\.yml:3: job "build" step 1 uses owner\/tool@v1: "v1"/);
+  });
+
+  it("reads an aliased uses value, checking the comment on the anchored line", () => {
+    const pinned = `env:\n  PIN: &pin owner/tool@${SHA} # v1.2.3\njobs:\n  b:\n    steps:\n      - uses: *pin # v9.9.9 latest\n`;
+    expect(check(pinned)).toEqual({ violations: [], thirdParty: 1, localSteps: [] });
+    const bare = `env:\n  PIN: &pin owner/tool@${SHA}\njobs:\n  b:\n    steps:\n      - uses: *pin # v1.2.3\n`;
+    expect(check(bare).violations[0]).toMatch(
+      /^w\.yml:2: job "b" step 1 uses owner\/tool@[0-9a-f]{40} without a same-line/,
+    );
+  });
+
+  it("reports an aliased job, an aliased steps list and a merged step", () => {
+    const doc = [
+      "env:",
+      "  job: &job",
+      "    uses: owner/repo/.github/workflows/x.yml@v2",
+      "  steps: &steps",
+      "    - uses: owner/listed@v3",
+      "  base: &base",
+      "    uses: owner/merged@v4",
+      "jobs:",
+      "  call: *job",
+      "  a:",
+      "    steps: *steps",
+      "  b:",
+      "    steps:",
+      "      - <<: *base",
+      "        name: Merged",
+      "",
+    ].join("\n");
+    const v = check(doc).violations;
+    expect(v).toHaveLength(3);
+    expect(v[0]).toMatch(/^w\.yml:3: job "call" uses owner\/repo\/\.github\/workflows\/x\.yml@v2/);
+    expect(v[1]).toMatch(/^w\.yml:5: job "a" step 1 uses owner\/listed@v3/);
+    expect(v[2]).toMatch(/^w\.yml:7: job "b" step 1 \("Merged"\) uses owner\/merged@v4/);
+  });
+
+  it("ends an alias cycle and a merge cycle, still reporting what they hold", () => {
+    const seq = "jobs:\n  b:\n    steps: &s\n      - *s\n      - uses: owner/tool@v1\n";
+    expect(check(seq).violations).toEqual([expect.stringMatching(/^w\.yml:5: job "b" step 2 uses owner\/tool@v1/)]);
+    const merge = "jobs:\n  b:\n    steps:\n      - &m { <<: *m, uses: owner/tool@v1 }\n";
+    expect(check(merge).violations).toEqual([expect.stringMatching(/^w\.yml:4: job "b" step 1 uses owner\/tool@v1/)]);
+  });
+
+  it("reports an alias that names no anchor", () => {
+    const v = check("jobs:\n  b:\n    steps:\n      - *nope\n").violations;
+    expect(v).toEqual([expect.stringMatching(/^w\.yml:4: alias \*nope does not resolve to a node/)]);
+  });
+});
+
 describe("pinViolations (negative controls)", () => {
   it("accepts first-party actions on tags, in any case", () => {
     const doc = "jobs:\n  b:\n    steps:\n      - uses: actions/checkout@v7\n      - uses: Actions/Checkout@v4\n";
@@ -348,12 +509,18 @@ describe("pinViolations (negative controls)", () => {
       "        with:",
       "          run_install: false",
       `      - uses: "owner/tool@${SHA}"   #v0.11.0`,
-      `      - uses: owner/tool/sub@${SHA} # v3`,
+      `      - uses: owner/tool/sub@${SHA} # v3.2.0`,
       "",
     ].join("\r\n");
     const r = check(doc);
     expect(r.violations).toEqual([]);
     expect(r.thirdParty).toBe(4);
+  });
+
+  it("accepts a tag spelled without the v and a semver prerelease, as Dependabot writes them", () => {
+    for (const comment of ["# 1.4.0", "# v2.0.0-rc.1", "# 2.0.0-beta-2", "# v1.2"]) {
+      expect(check(step(`owner/tool@${SHA} ${comment}`)).violations, comment).toEqual([]);
+    }
   });
 });
 
