@@ -402,6 +402,19 @@ export const AUTO_GROUP_GESTURE_LABEL = "Auto Group on/off";
 export const AUTO_GROUP_PREVIEW_TEXT = { on: "AUTO ON", off: "AUTO OFF" } as const;
 
 /**
+ * Whether a dial's settings offer Auto Group on/off on a slot this host can
+ * fire (#1656): any of the four on a Stream Deck+, Press alone where the
+ * extended gestures are compiled out (a Mirabox knob has Push only, which is
+ * Press). An owning dial that no longer offers it has no way left to stop
+ * the automation, so its owner stops it.
+ */
+export function dialOffersAutoGroup(dial: DialSettings): boolean {
+  if (!__FEATURE_DIAL_EXTENDED_GESTURES__) return dial.pressAction === "auto-group";
+
+  return Object.values(gestureSlots(dial)).includes("auto-group");
+}
+
+/**
  * @internal Exported for testing
  *
  * Computes the encoder trigger descriptions from the current dial settings.

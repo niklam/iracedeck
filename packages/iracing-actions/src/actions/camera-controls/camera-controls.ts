@@ -102,9 +102,15 @@ import {
   AutoGroupSubsetField,
   isAutoGroupUnavailable,
 } from "./auto-group-pick.js";
-import { isAutoGroupOwner, onAutoGroupChange, toggleAutoGroup, updateAutoGroupSettings } from "./auto-group.js";
+import {
+  isAutoGroupOwner,
+  onAutoGroupChange,
+  stopAutoGroup,
+  toggleAutoGroup,
+  updateAutoGroupSettings,
+} from "./auto-group.js";
 import type { CarouselGlyph } from "./camera-dial-render.js";
-import { CameraDialSurface, DialSettings } from "./camera-dial-surface.js";
+import { CameraDialSurface, dialOffersAutoGroup, DialSettings } from "./camera-dial-surface.js";
 import {
   CAMERA_GROUPS_SETTING_KEY,
   CHANGE_CAMERA_GROUPS,
@@ -1218,9 +1224,21 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
 
     if (ev.action.isDial()) {
       const settings = this.parseSettings(ev.payload.settings);
+
       // The running automation's own dial: its edited list and pick order
-      // apply at once (spec decision 2); any other dial's edit is ignored.
-      updateAutoGroupSettings(ev.action.id, autoGroupNames(settings.dial.autoGroupSubset), settings.dial.autoGroupPick);
+      // apply at once (spec decision 2); any other dial's edit is ignored. An
+      // owning dial with no slot left on the gesture could never stop it, so
+      // the edit stops it.
+      if (dialOffersAutoGroup(settings.dial)) {
+        updateAutoGroupSettings(
+          ev.action.id,
+          autoGroupNames(settings.dial.autoGroupSubset),
+          settings.dial.autoGroupPick,
+        );
+      } else {
+        this.stopAutoGroupOffered(ev.action.id, "dial");
+      }
+
       await this.dialSurface.didReceiveSettings(ev.action, settings.dial);
 
       return;
@@ -1231,9 +1249,12 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     this.activeContexts.set(ev.action.id, settings);
 
     // The running automation's own key: its edited list and pick order apply
-    // at once (spec decision 2). Any other key's edit waits for its press.
+    // at once (spec decision 2). Any other key's edit waits for its press. An
+    // owning key moved to another mode could never stop it, so the edit stops it.
     if (settings.target === "auto-group") {
       updateAutoGroupSettings(ev.action.id, autoGroupNames(settings.autoGroupSubset), settings.autoGroupPick);
+    } else {
+      this.stopAutoGroupOffered(ev.action.id, "key");
     }
 
     await this.pushDeviceProfiles(ev, settings);
@@ -1361,6 +1382,19 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     } catch (err) {
       this.logger.warn(`Auto group could not start: ${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+
+  /**
+   * Stops the automation when `contextId` owns it and its settings no longer
+   * offer Auto Group (#1656): a key moved to another mode, a dial with no slot
+   * left on the gesture. Nothing else could stop it then. The listener redraws
+   * every key and dial as for any stop; a non-owner's edit changes nothing.
+   */
+  private stopAutoGroupOffered(contextId: string, control: "key" | "dial"): void {
+    if (!isAutoGroupOwner(contextId)) return;
+
+    this.logger.info(`Auto group stopped: its ${control} no longer offers it`);
+    stopAutoGroup();
   }
 
   /**

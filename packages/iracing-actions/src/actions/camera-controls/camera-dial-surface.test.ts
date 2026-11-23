@@ -23,6 +23,7 @@ import {
   CameraDialSurface,
   clockwiseDirection,
   DIAL_MODES,
+  dialOffersAutoGroup,
   DialSettings,
   GESTURE_ACTIONS,
 } from "./camera-dial-surface.js";
@@ -2517,6 +2518,24 @@ describe("the Auto Group on/off gesture (#1656)", () => {
       expect(parsed.longPressAction).toBe("focus-my-car");
       expect(parsed.autoGroupSubset).toBeUndefined();
       expect(parsed.autoGroupPick).toBe("in-order");
+    });
+
+    it("is offered on any of the four slots where the extended gestures are on", () => {
+      expect(dialOffersAutoGroup(dial())).toBe(false);
+
+      for (const slot of ["pressAction", "longPressAction", "tapAction", "longTouchAction"] as const) {
+        expect(dialOffersAutoGroup(dial({ [slot]: "auto-group" }))).toBe(true);
+      }
+    });
+
+    it("is offered on Press alone where the extended gestures are off (a Mirabox knob's Push)", () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+
+      expect(dialOffersAutoGroup(dial({ pressAction: "auto-group" }))).toBe(true);
+
+      for (const slot of ["longPressAction", "tapAction", "longTouchAction"] as const) {
+        expect(dialOffersAutoGroup(dial({ [slot]: "auto-group" }))).toBe(false);
+      }
     });
 
     it("names the gesture Auto Group on/off in the trigger description, on every slot", () => {

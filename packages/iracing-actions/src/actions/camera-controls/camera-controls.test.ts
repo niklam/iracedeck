@@ -4717,16 +4717,20 @@ describe("Auto Group on Car Change key (#1656)", () => {
 
   /** The last image the key was sent, decoded: settings writes and redraws alike. */
   function lastImage(action: CameraControls, id: string): string {
-    const writes = vi
-      .mocked(action["setKeyImage"])
-      .mock.calls.filter(([ev]) => (ev as { action: { id: string } }).action.id === id)
-      .map((call) => call[1]);
-    const redraws = vi
-      .mocked(action["updateKeyImage"])
-      .mock.calls.filter(([contextId]) => contextId === id)
-      .map((call) => call[1]);
-    // A key's redraws all follow its settings write, so its last redraw, if any, is what it shows.
-    const last = redraws.at(-1) ?? writes.at(-1);
+    const sent: { order: number; image: unknown }[] = [];
+    const writes = vi.mocked(action["setKeyImage"]).mock;
+    const redraws = vi.mocked(action["updateKeyImage"]).mock;
+
+    writes.calls.forEach(([ev, image], i) => {
+      if ((ev as { action: { id: string } }).action.id === id)
+        sent.push({ order: writes.invocationCallOrder[i], image });
+    });
+    redraws.calls.forEach(([contextId, image], i) => {
+      if (contextId === id) sent.push({ order: redraws.invocationCallOrder[i], image });
+    });
+
+    // Settings writes and redraws interleave: the one sent last is what the key shows.
+    const last = sent.sort((a, b) => a.order - b.order).at(-1)?.image;
 
     return decodeURIComponent(String(last));
   }
@@ -4963,6 +4967,35 @@ describe("Auto Group on Car Change key (#1656)", () => {
       expect(autoGroupOwner()).toBe("ag-1");
       expect(action["logger"].debug).not.toHaveBeenCalledWith(expect.stringContaining("Auto group settings updated"));
     });
+
+    it("stops the automation when the owning key moves to another mode, which then draws that mode", async () => {
+      const action = newAction();
+      const ctx = await appear(action, "ag-1");
+      await press(action, ctx);
+
+      await edit(action, ctx, { target: "focus-your-car" });
+      await flush();
+
+      expect(autoGroupOwner()).toBeNull();
+      expect(controller.unsubscribe).toHaveBeenCalledTimes(1);
+      expect(action["logger"].info).toHaveBeenCalledWith("Auto group stopped: its key no longer offers it");
+      expect(lastImage(action, "ag-1")).toContain("focus-your-car");
+      expect(lastImage(action, "ag-1")).not.toContain("auto-group-on");
+    });
+
+    it("leaves it running when another key moves to another mode", async () => {
+      const action = newAction();
+      const owner = await appear(action, "ag-1");
+      const other = await appear(action, "ag-2");
+      await press(action, owner);
+
+      await edit(action, other, { target: "focus-your-car" });
+      await flush();
+
+      expect(autoGroupOwner()).toBe("ag-1");
+      expect(controller.unsubscribe).not.toHaveBeenCalled();
+      expect(isOn(action, "ag-1")).toBe(true);
+    });
   });
 
   describe("the dial gesture (spec decision 9)", () => {
@@ -5089,6 +5122,74 @@ describe("Auto Group on Car Change key (#1656)", () => {
       await action.onWillDisappear({ action: ctx } as never);
 
       expect(autoGroupOwner()).toBe("dial-1");
+    });
+
+    describe("an owning dial whose settings no longer offer the gesture", () => {
+      afterEach(() => {
+        vi.unstubAllGlobals();
+      });
+
+      async function editDial(action: CameraControls, ctx: { id: string }, dial: Record<string, unknown>) {
+        await action.onDidReceiveSettings({ action: ctx, payload: { settings: { dial } } } as never);
+        await flush();
+      }
+
+      it("stops it when no slot is left on Auto Group on/off, and the marker goes", async () => {
+        const action = newAction();
+        const ctx = await appearDial(action, "dial-1");
+        await pressDial(action, ctx);
+
+        await editDial(action, ctx, { ...DIAL, pressAction: "focus-my-car" });
+
+        expect(autoGroupOwner()).toBeNull();
+        expect(controller.unsubscribe).toHaveBeenCalledTimes(1);
+        expect(action["logger"].info).toHaveBeenCalledWith("Auto group stopped: its dial no longer offers it");
+        expect(marked(ctx)).toBe(false);
+      });
+
+      it("keeps it, with a live update, while another slot still offers it", async () => {
+        const action = newAction();
+        const ctx = await appearDial(action, "dial-1");
+        await pressDial(action, ctx);
+
+        await editDial(action, ctx, {
+          ...DIAL,
+          pressAction: "none",
+          longTouchAction: "auto-group",
+          autoGroupPick: "in-order",
+        });
+
+        expect(autoGroupOwner()).toBe("dial-1");
+        expect(action["logger"].debug).toHaveBeenCalledWith(
+          "Auto group settings updated: pick in-order, groups: Chase",
+        );
+        expect(marked(ctx)).toBe(true);
+      });
+
+      it("counts only Press on a host without the extended gestures (Mirabox Push)", async () => {
+        vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+        const action = newAction();
+        const ctx = await appearDial(action, "dial-1");
+        await pressDial(action, ctx);
+
+        await editDial(action, ctx, { ...DIAL, pressAction: "none", longPressAction: "auto-group" });
+
+        expect(autoGroupOwner()).toBeNull();
+        expect(marked(ctx)).toBe(false);
+      });
+
+      it("leaves it running when another dial drops the gesture", async () => {
+        const action = newAction();
+        const owner = await appearDial(action, "dial-1");
+        const other = await appearDial(action, "dial-2");
+        await pressDial(action, owner);
+
+        await editDial(action, other, { ...DIAL, pressAction: "focus-my-car" });
+
+        expect(autoGroupOwner()).toBe("dial-1");
+        expect(controller.unsubscribe).not.toHaveBeenCalled();
+        expect(marked(owner)).toBe(true);
+      });
     });
 
     it("keeps the dial's Mode and gestures when its two fields hold junk", () => {
