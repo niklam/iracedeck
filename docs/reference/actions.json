@@ -643,7 +643,12 @@
             },
             { "value": "switch-by-position", "label": "Switch by Position" },
             { "value": "switch-by-car-number", "label": "Switch by Car Number" },
-            { "value": "set-camera-state", "label": "Set Camera State" }
+            { "value": "set-camera-state", "label": "Set Camera State" },
+            {
+              "value": "auto-group",
+              "label": "Auto Group on Car Change",
+              "description": "A press turns the plugin's one automation on or off: while on, each car change the camera makes, from any source, switches that car to the next group of the key's own list (autoGroupSubset, TV1-TV3 by default; autoGroupPick in-order or random) once the car has held for 250 ms (#1656). Also a dial gesture, Auto Group on/off, with the dial's own list."
+            }
           ]
         }
       ]
