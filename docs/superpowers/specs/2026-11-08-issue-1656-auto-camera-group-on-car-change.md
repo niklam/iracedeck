@@ -33,7 +33,7 @@ A streamer turns this on and off during a stream: before the start, off for a ba
 
 An edit to the running key's or dial's own list or Pick takes effect on the running automation at once, with no need to press it off and on; an edit on any other key or dial changes nothing until that one is pressed (added 2026-11-22).
 
-It is run-scoped: never persisted, off at every plugin start, because a camera automation that starts by itself in the middle of someone's stream is worse than one they have to press. It stays on when its key leaves the screen (a profile switch mid-stream). It ends only with a press, a press on another Auto Group key, or the plugin stopping. On iRacing disconnect it does nothing (there is no camera to move), and it carries on in the next session if it is still on.
+It is run-scoped: never persisted, off at every plugin start, because a camera automation that starts by itself in the middle of someone's stream is worse than one they have to press. It stays on when its key leaves the screen (a profile switch mid-stream). It ends only with a press, a press on another Auto Group key, the plugin stopping, or (added 2026-11-23) its owner no longer offering it: the owning key's Mode changed away from Auto Group, or the owning dial left with no press slot set to Auto Group on/off, since otherwise it would run with no control left that can stop it. On iRacing disconnect it does nothing (there is no camera to move), and it carries on in the next session if it is still on.
 
 Rejected:
 - **Stopping it when the key leaves the screen.** A profile switch is routine during a stream, and the automation would stop behind the user's back.
@@ -83,7 +83,7 @@ A Camera Controls dial is where a broadcaster spins through the field, which is 
 - **Ownership is decision 2's:** the dial's context is the owner when its gesture started the automation; a press of the same gesture on the active dial stops it, and a key or another dial takes over as a key would.
 - **The dial shows the state** on its strip (the screen above the knob on Mirabox): while it is the active owner, an on marker in the strip's Camera Controls style, drawn the same on both hosts. The marker's look is approved by Niklas on a review page with the key icons.
 - **Comms:** the dial's comms map gains the same `api` entry; no binding.
-- **Hold preview** (added 2026-11-22): on Long Press or Long Touch the strip previews the outcome mid-hold (on or off), as `encoders-and-touchscreen.md` rule 9 requires whenever the outcome is the plugin's own state. Its text is user-facing and goes to Niklas with the rest.
+- **Hold preview** (added 2026-11-22, narrowed 2026-11-23): on Long Press the strip previews the outcome mid-hold (on or off), as `encoders-and-touchscreen.md` rule 9 requires whenever the outcome is the plugin's own state. Long Touch cannot preview, since the host reports a touch only once it has ended, and the Mirabox knob has no long press, so the preview is Stream Deck+ Long Press only. Its text is user-facing and goes to Niklas with the rest.
 
 Rejected:
 - **A dial Mode, Auto Group,** that the rotation would drive. Turning has nothing to do with on/off, and the Mode is what makes the dial useful for picking the car the automation then follows.
