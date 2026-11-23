@@ -28,7 +28,7 @@ VSD Craft passes connection parameters via `process.argv`; `parseConnectionParam
 - `argv[5]` = plugin UUID
 - `argv[7]` = registration event name
 
-`argv[9]` (JSON info, includes `application.language`) exists in the protocol but is never parsed.
+`argv[9]` (JSON info, includes `application.language`) is read for one field only since #1678: `application.version`, by `parseHostVersion`, for `hostApplication`. Anything else in it stays unparsed.
 
 The protocol uses the same event names as Elgato (`willAppear`, `keyDown`, `setImage`, etc.); the knob/touch-strip differences are documented in `docs/reference/stream-deck-plus-encoders.md` (which links Mirabox's own porting guide).
 
