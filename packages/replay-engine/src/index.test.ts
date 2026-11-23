@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { join, posix, sep } from "node:path";
+import { join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -335,9 +335,9 @@ describe("the barrel exports the types its functions take and return (#1502)", (
  * `dist/`, `node_modules/` and the plugin bundles (`trackedPackageSources`),
  * less tests and test-only support (`isTestSource`: `*.test.*`,
  * `*.test-support.*`, `*.test-util.*`, `*.fixture-cases.*`, a `test-support/`
- * folder) and each package's `./testing` entry. Both helpers are imported from
- * `scripts/lib/`; the entry derivation lives in that guard's test file, so it
- * is mirrored here (`testingEntrySourceOf`). Two more exclusions are this
+ * folder) and each package's `./testing` entry (`testingEntrySources`). All
+ * three come from `scripts/lib/` (`source-imports.mjs`, `package-exports.mjs`),
+ * the guard's own definitions rather than copies. Two more exclusions are this
  * check's own: the engine's sources, which are not consumers of their own
  * barrel, and anything under a `__fixtures__/` folder (recorded sessions,
  * every one of them a test today).
@@ -586,53 +586,15 @@ const {
 const { trackedPackageDirs }: { trackedPackageDirs: (root: string) => string[] } = await import(
   scriptsLib("workspace-packages.mjs")
 );
-const { pickTarget }: { pickTarget: (value: unknown) => string | null } = await import(
-  scriptsLib("package-exports.mjs")
-);
-
-/** The source extension each compiled `dist/` extension is built from. */
-const SOURCE_EXTENSION: Readonly<Record<string, string>> = { ".js": ".ts", ".mjs": ".mts", ".cjs": ".cts" };
-
-/**
- * The source a package's `./testing` export is built from, repo-relative, or
- * undefined when it declares none. A mirror of `testingEntrySource` in
- * `scripts/testing-entries-test-only.test.mjs`, which a test cannot import
- * without registering that file's tests: the target resolved as a test's
- * `import` resolves it (`pickTarget`), `./dist/<x>.js` mapped to
- * `src/<x>.ts`, a source export taken as it is. Throws where that one does.
- */
-function testingEntrySourceOf(dir: string, manifest: { readonly exports?: unknown }): string | undefined {
-  const { exports } = manifest;
-  const target =
-    exports !== null && typeof exports === "object" && !Array.isArray(exports)
-      ? (exports as Record<string, unknown>)["./testing"]
-      : undefined;
-
-  if (target === undefined || target === null) return undefined;
-
-  const file = pickTarget(target);
-
-  if (file === null) {
-    throw new Error(
-      `packages/${dir}/package.json declares a ./testing export with no import, node, development or default target`,
-    );
-  }
-
-  const relative = posix.normalize(file.replaceAll("\\", "/"));
-
-  if (!relative.startsWith("dist/")) return posix.join("packages", dir, relative);
-
-  const extension = posix.extname(relative);
-  const sourceExtension = SOURCE_EXTENSION[extension];
-
-  if (sourceExtension === undefined) {
-    throw new Error(
-      `packages/${dir}/package.json's ./testing export ${file} is a dist/ file whose source cannot be derived`,
-    );
-  }
-
-  return posix.join("packages", dir, `src/${relative.slice("dist/".length, -extension.length)}${sourceExtension}`);
-}
+const {
+  testingEntrySources,
+}: {
+  testingEntrySources: (
+    dirs: readonly string[],
+    manifestOf: (dir: string) => { exports?: unknown },
+    tracked: ReadonlySet<string>,
+  ) => { sources: Set<string>; problems: string[] };
+} = await import(scriptsLib("package-exports.mjs"));
 
 describe("every name on the barrel has a production consumer outside the engine (#1661)", () => {
   /** A virtual engine: values and types, one of them named by a signature, re-exported by a barrel. */
@@ -835,34 +797,12 @@ describe("every name on the barrel has a production consumer outside the engine 
     }
   });
 
-  it("derives a package's testing entry source as the root guard does", () => {
-    expect(
-      testingEntrySourceOf("replay-engine", {
-        exports: { "./testing": { import: "./dist/testing.js", types: "./dist/testing.d.ts" } },
-      }),
-    ).toBe("packages/replay-engine/src/testing.ts");
-    expect(testingEntrySourceOf("fixture-pi", { exports: { "./testing": "./src/build/testing.ts" } })).toBe(
-      "packages/fixture-pi/src/build/testing.ts",
-    );
-    expect(testingEntrySourceOf("fixture-deck", { exports: { "./testing": "./dist/testing.mjs" } })).toBe(
-      "packages/fixture-deck/src/testing.mts",
-    );
-    expect(testingEntrySourceOf("logger", { exports: { ".": "./dist/index.js" } })).toBeUndefined();
-    expect(testingEntrySourceOf("logger", { exports: { ".": "./dist/index.js", "./testing": null } })).toBeUndefined();
-    expect(testingEntrySourceOf("logger", {})).toBeUndefined();
-    expect(() =>
-      testingEntrySourceOf("fixture-deck", { exports: { "./testing": { types: "./dist/x.d.ts" } } }),
-    ).toThrow("declares a ./testing export");
-    expect(() => testingEntrySourceOf("fixture-deck", { exports: { "./testing": "./dist/testing.json" } })).toThrow(
-      "is a dist/ file whose source cannot be derived",
-    );
-  });
-
   describe("the real barrel and the repo's production sources", () => {
     let realExports: BarrelExport[];
     let realContractTypes: ReadonlySet<string>;
     let realFiles: Map<string, string>;
     let testingEntries: Set<string>;
+    let entryProblems: string[];
     let result: BarrelConsumerCheck;
 
     beforeAll(() => {
@@ -871,16 +811,11 @@ describe("every name on the barrel has a production consumer outside the engine 
       realFiles = new Map(
         trackedPackageSources(REPO_ROOT).map((file) => [file, readFileSync(join(REPO_ROOT, file), "utf8")]),
       );
-      testingEntries = new Set(
-        trackedPackageDirs(REPO_ROOT).flatMap((dir) => {
-          const manifest: { exports?: unknown } = JSON.parse(
-            readFileSync(join(REPO_ROOT, "packages", dir, "package.json"), "utf8"),
-          );
-          const entry = testingEntrySourceOf(dir, manifest);
-
-          return entry === undefined ? [] : [entry];
-        }),
-      );
+      ({ sources: testingEntries, problems: entryProblems } = testingEntrySources(
+        trackedPackageDirs(REPO_ROOT),
+        (dir) => JSON.parse(readFileSync(join(REPO_ROOT, "packages", dir, "package.json"), "utf8")),
+        new Set(realFiles.keys()),
+      ));
       result = checkBarrelConsumers({
         exports: realExports,
         contractTypes: realContractTypes,
@@ -893,6 +828,7 @@ describe("every name on the barrel has a production consumer outside the engine 
     it("reads the repo's sources and every testing entry, so an empty read cannot pass", () => {
       expect(realFiles.size).toBeGreaterThan(1_000);
       expect([...realFiles.keys()].some((file) => file.split("/").includes("dist"))).toBe(false);
+      expect(entryProblems).toEqual([]);
       // audio-service, deck-core, deck-iracing, pi-components, replay-engine, replay-store, sim-events-iracing on 2026-11-23.
       expect(testingEntries.size).toBeGreaterThanOrEqual(7);
       expect(testingEntries).toContain(`${ENGINE_DIR}src/testing.ts`);
