@@ -117,7 +117,7 @@ packages/
   track-data/                  Bundled Lovely Sim Racing corner markers; the pit-lane landmark model
 
   # Audio and the Race Engineer
-  audio-native/                C++ N-API addon: the miniaudio five-channel mixer
+  audio-native/                C++ N-API addon: the miniaudio six-channel mixer
   audio-service/               The mixer singleton: buses, voice sequences, the output device
   audio-assets/                Voice clips, sound effects, the clip generator, voice configs, packer and catalog
   callout-script/              The voice-pack contract: callout-script grammar and voice-pack.json rules
@@ -169,7 +169,7 @@ packages/
 | `@iracedeck/sim-events-iracing` | The iRacing translator, from SDK ticks to bus events, the replay recorder, and the canonical live race order |
 | `@iracedeck/track-data` | Bundled corner markers from Lovely Sim Racing, keyed by track name, and the pure model of the pit-lane landmarks learned from live telemetry |
 | **Audio and the Race Engineer** | |
-| `@iracedeck/audio-native` | C++ Node.js addon around miniaudio: a five-channel mixer with device selection; mocked off Windows |
+| `@iracedeck/audio-native` | C++ Node.js addon around miniaudio: a six-channel mixer with device selection; mocked off Windows |
 | `@iracedeck/audio-service` | The mixer singleton over `audio-native`: buses, voice sequences and the device lifecycle |
 | `@iracedeck/audio-assets` | The voice clips, `sfx/`, the ElevenLabs generator, per-voice configs, the voice-pack packer and the catalog |
 | `@iracedeck/callout-script` | The shared contract of a voice pack: the `callouts.json` grammar and parser and the `voice-pack.json` rules |
