@@ -26,11 +26,14 @@
  *   a stop.
  * - **The send** goes once, when the timer fires, through the replay engine's
  *   `requestCameraSwitch` with `interruptsWalks: false`; its target is worked
- *   out when it goes out, from the car the camera is on then, and it keeps
- *   that car (`switchNum` with its `CarNumberRaw`), so it cannot trigger the
- *   run again. It is dropped if the run was stopped or replaced while it
- *   waited, or if a later car change arrived meanwhile: that change has its
- *   own timer and its own send, so each change ends in at most one switch.
+ *   out when it goes out, from the camera as it is then, and it keeps the
+ *   car (`switchNum` with its `CarNumberRaw`), so it cannot trigger the run
+ *   again. It is dropped if the run was stopped or replaced while it waited,
+ *   or if a later car change arrived meanwhile: that change has its own timer
+ *   and its own send, so each change ends in at most one switch. It is
+ *   dropped too when the fresh read at the send finds the camera on another
+ *   car than the change it answers, before any tick or read reported that:
+ *   the read is then the new change, with its own settle time.
  * - **A user's switch comes first** (decision 4): the send is a yielding one
  *   (`yields: true`), and the engine's camera-switch waiter keeps the rule:
  *   it never takes the waiting slot from a user's switch, gives it up to any
@@ -344,8 +347,12 @@ function settle(run: Run): void {
   if (autoGroupTargets(run, true).length === 0) return;
 
   const trigger = run.trigger;
+  // The car this change settled on: the timer is armed only once one is seen.
+  const car = run.lastCar;
 
-  void requestCameraSwitch(() => sendAuto(run, trigger), {
+  if (car === null) return;
+
+  void requestCameraSwitch(() => sendAuto(run, trigger, car), {
     by: "camera-controls auto-group",
     yields: true,
     triggeredMsAgo: run.changedAt === null ? undefined : Math.max(0, Date.now() - run.changedAt),
@@ -389,8 +396,15 @@ function answersCurrent(run: Run, trigger: number): boolean {
   return run === active && run.trigger === trigger;
 }
 
-/** The switch, worked out from the camera as it is when it goes out. */
-function sendAuto(run: Run, trigger: number): void {
+/**
+ * The switch, worked out from the camera as it is when it goes out, for the
+ * car the change it answers settled on (`car`) only. A switch that waited
+ * behind a replay jump can find the camera on another car that no tick or
+ * fresh read has reported yet, so `answersCurrent` still passes: switching
+ * that car's group would skip its settle time. The read is then taken as the
+ * new car change, which arms its own timer and sends its own switch.
+ */
+function sendAuto(run: Run, trigger: number, car: number): void {
   if (!answersCurrent(run, trigger)) return;
 
   const controller = getController();
@@ -399,6 +413,15 @@ function sendAuto(run: Run, trigger: number): void {
 
   if (!telemetry || typeof carIdx !== "number" || carIdx < 0) {
     run.logger.debug("Auto group: no camera car to switch, nothing sent");
+
+    return;
+  }
+
+  if (carIdx !== car) {
+    run.logger.debug(
+      `Auto group: the camera moved from car ${car} to ${carIdx} before the switch went out, nothing sent`,
+    );
+    observe(telemetry);
 
     return;
   }

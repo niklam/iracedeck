@@ -753,6 +753,37 @@ describe("auto group ownership", () => {
       expect(switchNum).toHaveBeenCalledExactlyOnceWith(105, G.TV1, 0);
     });
 
+    it("sends nothing when the camera is on another car no read has reported yet, and that car gets its own settle time", () => {
+      engine.state.sendAtOnce = false;
+      start("key-a");
+      landOn(4);
+      expect(engine.state.held).toHaveLength(1);
+
+      // The camera reaches car 5 behind the jump, before any tick or fresh read sees it.
+      fake.controller.setCamera(5, G.Nose);
+      expect(engine.state.held[0].options.stillValid()).toBe(true);
+
+      endHold(0);
+      expect(switchNum).not.toHaveBeenCalled();
+      expect(logger.debug).toHaveBeenCalledWith(
+        "Auto group: the camera moved from car 4 to 5 before the switch went out, nothing sent",
+      );
+
+      // Car 5 settles for the whole settle time from that read, then gets one switch.
+      vi.advanceTimersByTime(AUTO_GROUP_SETTLE_MS - 1);
+      expect(engine.state.held).toHaveLength(1);
+
+      vi.advanceTimersByTime(1);
+      expect(engine.state.held).toHaveLength(2);
+      expect(engine.state.held[1].options.triggeredMsAgo).toBe(AUTO_GROUP_SETTLE_MS);
+      endHold(1);
+
+      expect(switchNum).toHaveBeenCalledExactlyOnceWith(105, G.TV1, 0);
+
+      vi.advanceTimersByTime(AUTO_GROUP_POLL_MS * 20);
+      expect(engine.state.held).toHaveLength(2);
+    });
+
     it("is dropped by a car change back to the car it was asked for", () => {
       engine.state.sendAtOnce = false;
       start("key-a");
