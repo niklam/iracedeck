@@ -53,19 +53,25 @@ describe.skipIf(BASH === undefined)("runStepAsync", { timeout: 20_000 }, () => {
   it("ends a step that hangs in a process it started, within the timeout, with status null", async () => {
     const pidFile = path.join(box.work, "hanging.pid").replaceAll("\\", "/");
     // node, not bash, holds the pipes: it inherits them and never exits on its own.
+    // The echo after it runs only if node exits 0, which it does only if the hang
+    // ends on its own. A plain next line would also run when the kill ends node
+    // first: `taskkill /T` ends the tree leaf first (node, then the MSYS fork that
+    // started it, then bash), and on a busy machine bash gets a time slice between
+    // those kills and goes on to its next line (#1647).
     const script = [
       'echo "before the hang"',
-      `node -e "require('fs').writeFileSync(process.argv[1], String(process.pid)); setInterval(() => {}, 1000)" "${pidFile}"`,
-      'echo "never reached"',
+      `node -e "require('fs').writeFileSync(process.argv[1], String(process.pid)); setInterval(() => {}, 1000)" "${pidFile}" && echo "the hang ended on its own"`,
       "",
     ].join("\n");
     const started = Date.now();
+    // node has written its pid long before the timeout: at most 267 ms after the
+    // spawn in 90 runs under full-suite and parallel-build load (#1647).
     const run = await box.runStepAsync(script, box.work, {}, { timeoutMs: 2_000 });
     const elapsed = Date.now() - started;
 
     expect(run.status).toBeNull();
     expect(run.output).toContain("before the hang");
-    expect(run.output).not.toContain("never reached");
+    expect(run.output).not.toContain("the hang ended on its own");
     // The timeout plus the exit grace, with room for a loaded machine; a hang would run to vitest's 20 s.
     expect(elapsed).toBeLessThan(8_000);
     expect(existsSync(pidFile), "the hanging node never started").toBe(true);

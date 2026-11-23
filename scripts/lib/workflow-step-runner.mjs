@@ -61,6 +61,11 @@ const EXIT_GRACE_MS = 500;
  * Kills `child` and every process it started. On Windows a signal reaches the
  * one process only, so `taskkill /T` walks the tree; elsewhere `child` leads
  * its own process group (spawned `detached`), which one signal reaches whole.
+ *
+ * `taskkill /T` ends the tree leaf first, one process at a time, so a step's
+ * bash can outlive the command it was waiting on by a moment and run its next
+ * line before its own kill lands (#1647). A test that asserts where a step
+ * stopped must make that line unable to run once the command dies.
  */
 export function killTree(child) {
   if (child.pid === undefined) return;
