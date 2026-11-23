@@ -30,7 +30,7 @@ export { cancelLapWalks, FASTEST_LAP_WALK_OWNER, RACE_START_WALK_OWNER } from ".
 export { _activeLapPress } from "./lap-press.js";
 export { _getFastestLapSessionCache } from "./lap-walk.js";
 export { jumpToRecordedLapStart } from "./fastest-lap-press.js";
-export { isReplayJumpSequenceOpen } from "./replay-command-gate.js";
+export { isReplayJumpSequenceOpen, isReplayMoveUnderWay } from "./replay-command-gate.js";
 export {
   type CursorTestEvent,
   cursorTestEvent,

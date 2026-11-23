@@ -2369,6 +2369,11 @@ export function isReplayJumpSequenceOpen(): boolean {
   return held !== null && held.claim.cancelledBy === null && (held.target !== null || held.onScreen);
 }
 
+/** Whether the plugin is moving the replay right now: a jump, a search on its way, a held replay jump, a waiting press. */
+export function isReplayMoveUnderWay(): boolean {
+  return busy() || (held !== null && held.claim.cancelledBy === null);
+}
+
 // ---------------------------------------------------------------------------
 // The waits #1426 and #801 build on
 // ---------------------------------------------------------------------------

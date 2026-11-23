@@ -25,6 +25,7 @@ import {
   claimReplayCursor,
   currentReplayCursorOwner,
   FASTEST_LAP_WALK_OWNER,
+  isReplayMoveUnderWay,
   noteReplaySpeedSent,
   noteTelemetrySpeed,
   RACE_START_WALK_OWNER,
@@ -4458,17 +4459,11 @@ describe("ReplayControlDialSurface — the busy look (#1437)", () => {
       const notices: ReplayGateNotice[] = [];
       const unsubscribe = subscribeReplayGate((notice) => notices.push(notice));
       const { surface, ctx } = await onScreen(PAUSED, dial({ mode }));
-      // The gate's record of a move under way: a target, a search, a held jump or a waiting press.
-      const moveUnderWay = (): boolean => {
-        const record = getReplayGateRecord();
-
-        return record.target !== null || record.search !== null || record.jump !== null || record.waiting !== null;
-      };
       let underWaySeen = false;
 
       for (let i = 0; i < 6; i++) {
         surface.rotate(ctx as never, dial({ mode }), i % 2 === 0 ? 1 : 2, false);
-        underWaySeen ||= moveUnderWay();
+        underWaySeen ||= isReplayMoveUnderWay();
 
         expect(getReplayGateView("dial-1")).toEqual({ underWay: null, waiting: null });
         await settle(30);
