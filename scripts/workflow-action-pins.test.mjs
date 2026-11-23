@@ -408,13 +408,16 @@ function normalizeDir(dir) {
 /**
  * Whether a Dependabot directory names `dir`: a literal one (`directory`)
  * exactly, a `directories` entry also by its `*` (one segment) and `**` (any
- * depth) globs.
+ * depth) globs. A globstar covers its own layer as well as every one below it,
+ * so `/ci/**` names `/ci` and `/ci/**` + `/setup` names `/ci/setup`: a `/**`
+ * segment matches zero or more whole segments.
  */
 function dirMatches({ value, glob }, dir) {
   if (!glob) return normalizeDir(value) === dir;
+  const GLOB_PARTS = { "/**": "(?:/.*)?", "**": ".*", "*": "[^/]*" };
   const regex = normalizeDir(value)
-    .split(/(\*\*|\*)/)
-    .map((part) => (part === "**" ? ".*" : part === "*" ? "[^/]*" : part.replace(/[.+?^${}()|[\]\\]/g, "\\$&")))
+    .split(/(\/\*\*(?=\/|$)|\*\*|\*)/)
+    .map((part) => GLOB_PARTS[part] ?? part.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
     .join("");
   return new RegExp(`^${regex}$`).test(dir);
 }
@@ -933,6 +936,21 @@ describe("scan (Dependabot sees every pin)", () => {
     const deep = ".github/actions/group/setup/action.yml";
     const r = scan([deep], tree({ [deep]: pinned }, dependabotYml(actionsEntry(["/", "/.github/actions/*"]))));
     expect(r.violations).toEqual([expect.stringMatching(/does not cover \/\.github\/actions\/group\/setup/)]);
+  });
+
+  it("lets a /** segment match zero or more whole segments, and nothing else", () => {
+    const covers = (value, dir) => dirMatches({ value, glob: true }, dir);
+    expect(covers("/ci/**/setup", "/ci/setup")).toBe(true);
+    expect(covers("/ci/**/setup", "/ci/group/setup")).toBe(true);
+    expect(covers("/ci/**/setup", "/ci/a/b/setup")).toBe(true);
+    expect(covers("/ci/**/setup", "/cix/setup")).toBe(false);
+    expect(covers("/ci/**/setup", "/ci/setupx")).toBe(false);
+    expect(covers("/.github/actions/**", "/.github/actions")).toBe(true);
+    expect(covers("/.github/actions/**", "/.github/actions/group/setup")).toBe(true);
+    expect(covers("/.github/actions/**", "/.github/actionsx")).toBe(false);
+    expect(covers("/**", "/")).toBe(true);
+    expect(covers("/ci/*/setup", "/ci/setup")).toBe(false);
+    expect(dirMatches({ value: "/ci/**", glob: false }, "/ci")).toBe(false);
   });
 
   it("needs no listing for a composite action with only first-party steps", () => {
