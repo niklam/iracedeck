@@ -69,7 +69,7 @@ Rejected: weights per group. Nothing asked for them, and a name ticked twice can
 
 ### 7. The key icon
 
-The key uses the tri-state toggle template of the Pit Crew toggles (Corner Names on/off, Race Engineer on/off), as Niklas asked on 2026-11-23: one artwork (a camera between rotation arrows, with the amber "A" auto badge) and the shared status bar. It shows **ON** (green) while this key runs the automation, **OFF** (red) when it is off or another key or dial runs it, and **N/A** (grey) when the session has none of the ticked groups or none is ticked. The border follows `borderColorForState` (green, red, grey) and shows only when key borders are on; the `AUTO\nGROUP` title is hidden by default, as on the Pit Crew keys. Niklas approves the icons on a review page before they are committed.
+The key uses the tri-state toggle template of the Pit Crew toggles (Corner Names on/off, Race Engineer on/off), as Niklas asked on 2026-11-23: one artwork (a camera between rotation arrows; no "A" auto badge, since ON/OFF already says it — Niklas, 2026-11-23) and the shared status bar. It shows **ON** (green) while this key runs the automation, **OFF** (red) when it is off or another key or dial runs it, and **N/A** (grey) when the session has none of the ticked groups or none is ticked. The border follows `borderColorForState` (green, red, grey) and shows only when key borders are on; the `AUTO\nGROUP` title is hidden by default, as on the Pit Crew keys. Niklas approves the icons on a review page before they are committed.
 
 ### 8. Communication method
 
