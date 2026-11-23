@@ -47,6 +47,18 @@
  *   jump takes; it is dropped only at the ceiling #1276 puts on any jump's
  *   wait, when the wait fails, or when the switch is no longer valid (its key
  *   or dial left the screen, or the replay was left).
+ * - **An automated switch yields to a user's** (#1656, decision 4 of
+ *   `docs/superpowers/specs/2026-11-08-issue-1656-auto-camera-group-on-car-change.md`):
+ *   one asked for with `yields: true` (Auto Group on Car Change's) never
+ *   replaces a waiting switch that does not yield, and is dropped instead;
+ *   any switch that does not yield replaces a waiting yielding one, ending
+ *   its wait and then waiting, or going out, on its own terms, as if nothing
+ *   had waited. A yielding switch is also held for the whole of a Jump to
+ *   Fastest Lap or Jump to Race Start press and for a paced search's run,
+ *   interrupts no walk, outlives a lap press that starts while it waits (it
+ *   waits for that press anyway), and has its own ceiling
+ *   ({@link YIELDING_SWITCH_MAX_WAIT_MS}). So the automation keeps no replay
+ *   state of its own, and the one-slot rule stays here.
  *
  * Not a lane in the replay command gate: the gate's one newest-wins slot
  * holds a speed, search or pause, and the keypad's Next / Prev Car are
@@ -56,7 +68,7 @@
 import type { ILogger } from "@iracedeck/logger";
 
 import { now, pollUntil } from "./engine-clock.js";
-import { isLapPressWindingDown, onLapPressStarted } from "./lap-press.js";
+import { isLapPressInFlight, isLapPressWindingDown, onLapPressStarted } from "./lap-press.js";
 import { interruptLapWalks } from "./lap-walk-owners.js";
 import {
   isReplayJumpSequenceOpen,
@@ -66,6 +78,7 @@ import {
 } from "./replay-command-gate.js";
 import { engineLogger, engineReads } from "./replay-engine-env.js";
 import { onReplayLeft } from "./replay-left.js";
+import { pendingReplaySearch, SEARCH_QUEUE_MAX } from "./replay-search-queue.js";
 import { isSeeking } from "./replay-seek.js";
 import { REPLAY_JUMP_MAX_WAIT_MS, STABILIZATION_POLL_INTERVAL_MS } from "./replay-timing.js";
 
@@ -103,6 +116,17 @@ export interface CameraSwitchOptions {
   /** Whether the switch may still go out once a wait ends: its key or dial on screen, with a replay to act on. */
   readonly stillValid: () => boolean;
   /**
+   * Whether the switch is an automation's rather than a user's, and so gives
+   * way to the user's (#1656): false by default. A yielding switch never
+   * replaces a waiting switch that does not yield (it is dropped instead),
+   * and any switch that does not yield replaces a waiting yielding one. It is
+   * also held while a Jump to Fastest Lap or Jump to Race Start press is in
+   * flight, its walk included, and while a paced search runs; never
+   * interrupts a walk, whatever `interruptsWalks` says; and waits up to
+   * {@link YIELDING_SWITCH_MAX_WAIT_MS} rather than the ceiling of one jump.
+   */
+  readonly yields?: boolean;
+  /**
    * The jump reads; the gate's own ({@link isReplayJumpUnderWay}, {@link waitForReplayJumpsToLand}) by default.
    * The plugin's holds ({@link isHeldByPlugin}) are added to whichever reads are used.
    */
@@ -116,6 +140,20 @@ interface CameraSwitchRequest {
   readonly send: () => unknown;
   readonly options: CameraSwitchOptions;
 }
+
+/**
+ * The longest a yielding switch waits (#1656): a full paced search,
+ * `SEARCH_QUEUE_MAX` searches each waited for at most `REPLAY_JUMP_MAX_WAIT_MS`
+ * by its runner (20 minutes). A yielding switch waits for the whole run, and
+ * the ceiling of one jump would drop it in the middle of a long one. Every
+ * hold it waits on still ends on a read, so this bound only gives up on a
+ * hold that never ends, and a long one costs nothing meanwhile: the switch
+ * never stands in a user's way (any switch that does not yield replaces it),
+ * and one whose automation stopped is dropped by its `stillValid()` once the
+ * wait ends. Each wait for the jumps inside it is still bounded by
+ * `REPLAY_JUMP_MAX_WAIT_MS`.
+ */
+export const YIELDING_SWITCH_MAX_WAIT_MS = SEARCH_QUEUE_MAX * REPLAY_JUMP_MAX_WAIT_MS;
 
 /** The one camera switch waiting behind a jump, for the whole plugin: the newest one asked for. */
 let waiting: CameraSwitchRequest | null = null;
@@ -167,6 +205,30 @@ function isHeldByPlugin(): boolean {
   return isLapPressWindingDown() || isReplayJumpSequenceOpen();
 }
 
+/**
+ * What holds a yielding switch beside {@link isHeldByPlugin} (#1656): a Jump
+ * to Fastest Lap or Jump to Race Start press in flight, its walk included, and
+ * a paced search's run. Both are the user's, and an automated switch neither
+ * interrupts the one nor lands in the middle of the other.
+ */
+function isHeldForYielding(): boolean {
+  return isLapPressInFlight() || pendingReplaySearch() !== null;
+}
+
+/** Whether the plugin holds a switch of this kind: a yielding one is held for more. */
+function isHeld(yields: boolean): boolean {
+  return isHeldByPlugin() || (yields && isHeldForYielding());
+}
+
+function yieldsOf(options: CameraSwitchOptions): boolean {
+  return options.yields === true;
+}
+
+/** How the failed-wait line names a dropped switch: a user's is a tap, an automation's is not. */
+function droppedOf(options: CameraSwitchOptions): string {
+  return yieldsOf(options) ? "automatic switch dropped" : "tap dropped";
+}
+
 function jumpsOf(options: CameraSwitchOptions): CameraSwitchJumps {
   return options.jumps ?? GATE_JUMPS;
 }
@@ -199,22 +261,25 @@ function hasLeftReplay(): boolean {
  * the replay was left.
  */
 function isUnderWay(options: CameraSwitchOptions): boolean {
-  return !hasLeftReplay() && (jumpsOf(options).isUnderWay() || isHeldByPlugin());
+  return !hasLeftReplay() && (jumpsOf(options).isUnderWay() || isHeld(yieldsOf(options)));
 }
 
 /**
  * Waits until nothing a switch waits for is under way: the plugin's holds
  * end, then the jumps settle, and again while a hold has begun meanwhile.
- * Bounded overall by `REPLAY_JUMP_MAX_WAIT_MS` from the start, which only
- * gives up: every end is a read.
+ * Bounded overall by `REPLAY_JUMP_MAX_WAIT_MS` from the start, or for a
+ * yielding switch by {@link YIELDING_SWITCH_MAX_WAIT_MS}, each wait for the
+ * jumps inside it by `REPLAY_JUMP_MAX_WAIT_MS` still; both only give up:
+ * every end is a read.
  */
-async function waitUntilQuiet(jumps: CameraSwitchJumps): Promise<ReplaySettledOutcome> {
-  const deadline = now() + REPLAY_JUMP_MAX_WAIT_MS;
+async function waitUntilQuiet(jumps: CameraSwitchJumps, yields: boolean): Promise<ReplaySettledOutcome> {
+  const deadline = now() + (yields ? YIELDING_SWITCH_MAX_WAIT_MS : REPLAY_JUMP_MAX_WAIT_MS);
   const left = (): number => Math.max(0, deadline - now());
+  const held = (): boolean => isHeld(yields);
 
   for (;;) {
-    if (isHeldByPlugin()) {
-      const released = await pollUntil(() => (isHeldByPlugin() ? undefined : true), {
+    if (held()) {
+      const released = await pollUntil(() => (held() ? undefined : true), {
         intervalMs: STABILIZATION_POLL_INTERVAL_MS,
         timeoutMs: left(),
       });
@@ -222,9 +287,9 @@ async function waitUntilQuiet(jumps: CameraSwitchJumps): Promise<ReplaySettledOu
       if (released.kind === "timed-out") return "gave-up";
     }
 
-    const outcome = await jumps.waitToSettle(left());
+    const outcome = await jumps.waitToSettle(Math.min(left(), REPLAY_JUMP_MAX_WAIT_MS));
 
-    if (outcome !== "settled" || !isHeldByPlugin()) return outcome;
+    if (outcome !== "settled" || !held()) return outcome;
 
     if (left() === 0) return "gave-up";
   }
@@ -236,7 +301,7 @@ function loggerOf(options: CameraSwitchOptions): ILogger {
 
 /** Interrupts a lap walk for a switch that changes the camera's car. The walk's owner, or null when none was. */
 function interruptWalks(options: CameraSwitchOptions): string | null {
-  if (options.interruptsWalks === false) return null;
+  if (options.interruptsWalks === false || yieldsOf(options)) return null;
 
   const owner = interruptLapWalks(options.by);
 
@@ -274,14 +339,14 @@ async function switchWhenJumpsSettle(starter: CameraSwitchOptions, generation: n
   let outcome: ReplaySettledOutcome;
 
   try {
-    outcome = await waitUntilQuiet(jumpsOf(starter));
+    outcome = await waitUntilQuiet(jumpsOf(starter), yieldsOf(starter));
   } catch (error) {
     // A wait that failed sends nothing, and leaves no switch waiting: the
     // next one asked for is one of its own.
     if (waitGeneration === generation) waiting = null;
 
     loggerOf(starter).warn(
-      `${starter.label}: tap dropped, the wait for the jump under way failed: ${error instanceof Error ? error.message : String(error)}`,
+      `${starter.label}: ${droppedOf(starter)}, the wait for the jump under way failed: ${error instanceof Error ? error.message : String(error)}`,
     );
 
     return;
@@ -303,7 +368,9 @@ async function switchWhenJumpsSettle(starter: CameraSwitchOptions, generation: n
 
   if (outcome !== "settled") {
     loggerOf(options).debug(
-      `${options.label}: tap dropped (${options.name}), the jump under way did not land within the longest a jump waits`,
+      yieldsOf(options)
+        ? `${options.label}: automatic switch dropped (${options.name}), the replay was still busy at the longest it waits`
+        : `${options.label}: tap dropped (${options.name}), the jump under way did not land within the longest a jump waits`,
     );
 
     return;
@@ -311,7 +378,9 @@ async function switchWhenJumpsSettle(starter: CameraSwitchOptions, generation: n
 
   if (!options.stillValid()) {
     loggerOf(options).debug(
-      `${options.label}: tap dropped (${options.name}), ${options.surface} left the screen or the replay was left while it waited`,
+      yieldsOf(options)
+        ? `${options.label}: automatic switch dropped (${options.name}), ${options.surface} no longer asks for it`
+        : `${options.label}: tap dropped (${options.name}), ${options.surface} left the screen or the replay was left while it waited`,
     );
 
     return;
@@ -325,14 +394,26 @@ async function switchWhenJumpsSettle(starter: CameraSwitchOptions, generation: n
  * position jump under way as the one switch that waits for the whole plugin,
  * replacing any switch already waiting. A lap walk is interrupted at once,
  * not when the switch goes out: it would keep moving the replay meanwhile,
- * and the switch then waits for it to put the replay back. Resolves when the
- * switch has gone out, failed (logged) or been dropped; never rejects for a
- * failed send.
+ * and the switch then waits for it to put the replay back. A yielding switch
+ * (`yields`, #1656) is dropped while a switch that does not yield waits, and
+ * a switch that does not yield ends a yielding one's wait and then goes on as
+ * if nothing had waited. Resolves when the switch has gone out, failed
+ * (logged) or been dropped; never rejects for a failed send.
  */
 export function requestCameraSwitch(sendSwitch: () => unknown, options: CameraSwitchOptions): Promise<void> {
   const request: CameraSwitchRequest = { send: sendSwitch, options };
 
+  if (yieldsOf(options) && waiting !== null && !yieldsOf(waiting.options)) {
+    loggerOf(options).debug(
+      `${options.label}: automatic switch dropped (${options.name}), the ${waiting.options.name} switch waiting for a jump goes first`,
+    );
+
+    return Promise.resolve();
+  }
+
   interruptWalks(options);
+
+  if (!yieldsOf(options) && waiting !== null && yieldsOf(waiting.options)) endYieldingWait(options);
 
   if (waiter !== null) {
     const replaced = waiting?.options.name;
@@ -371,15 +452,51 @@ export function requestCameraSwitch(sendSwitch: () => unknown, options: CameraSw
 }
 
 /**
+ * A switch that does not yield replaces a waiting yielding one (#1656): the
+ * yielding switch is dropped and its wait ends, as a lap press ends one, so
+ * the new switch waits by its own holds, ceiling and jump reads rather than
+ * a yielding switch's, or goes out at once when nothing it waits for is
+ * under way.
+ */
+function endYieldingWait(by: CameraSwitchOptions): void {
+  const dropped = waiting;
+
+  waiting = null;
+
+  if (waiter !== null) {
+    waiter = null;
+    waitGeneration++;
+  }
+
+  if (dropped === null) return;
+
+  const { options } = dropped;
+
+  loggerOf(options).debug(
+    `${options.label}: automatic switch dropped (${options.name}), the ${by.name} switch asked for after it goes instead`,
+  );
+}
+
+/**
  * A lap press drops the switch still waiting from before it (#1428 / #1435):
  * the press is the newer one, and the older switch would otherwise go out at
  * its walk's first quiet moment and interrupt it. The wait it sat behind ends
  * with it, as {@link _resetCameraSwitchWaiter} ends one: its run goes on to
  * its end and sends nothing, and a switch asked for after the press is one of
  * its own — its own ceiling from its own request, and its own jump reads —
- * never folded into the older wait.
+ * never folded into the older wait. A yielding switch (#1656) is the
+ * exception: it is held for the whole press in any case and interrupts no
+ * walk, so it keeps waiting, in its own wait, and goes out after the press.
  */
 onLapPressStarted((label) => {
+  if (waiting !== null && yieldsOf(waiting.options)) {
+    const { options } = waiting;
+
+    loggerOf(options).debug(`${options.label}: the ${options.name} switch waits for the ${label} press too`);
+
+    return;
+  }
+
   const dropped = waiting;
 
   waiting = null;
