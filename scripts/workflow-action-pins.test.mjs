@@ -37,7 +37,11 @@
  *   scalar's `comment`, but a comment on the following line can land on the
  *   step or the next key instead, and only the line is unambiguous. For a value
  *   reached through an alias, that is the anchored definition's line, which is
- *   where Dependabot edits it and where a violation points.
+ *   where Dependabot edits it and where a violation points. The comment is
+ *   found in the rest of that line the way Dependabot finds it
+ *   (`findYamlComment`, a port of its `YamlCommentFinder`), so a flow-map
+ *   step `- { uses: owner/tool@<hash> } # v1.2.3` passes while a `#` inside a
+ *   quoted scalar after the value is not taken for a comment.
  * - **Nothing is skipped because it is spelled unusually.** Keys (`jobs`,
  *   `steps`, `runs`, `uses`, `name`) are matched case-insensitively, a key
  *   spelled twice is checked under both spellings, aliases (`- *setup`,
@@ -238,6 +242,57 @@ function restOfLine(source, node) {
 }
 
 /**
+ * The YAML comment in `suffix` (the rest of a `uses:` line), from its leading
+ * whitespace to the end of the line, or undefined when there is none. A port
+ * of dependabot-core's `YamlCommentFinder#find` (github_actions
+ * `file_updater/workflow_updater/yaml_comment_finder.rb`), which finds the
+ * comment Dependabot rewrites: a `#` at index > 0 whose previous character is
+ * whitespace, skipping a quoted scalar (`'` or `"` opening when the previous
+ * non-whitespace character is absent or one of `:,[{?-`; `''` and a backslash
+ * escape inside), so `} # v1.2.3` after a flow map is found and the `#` in
+ * `{ a: "x # v1.2.3" }` is not. The one difference is where `suffix` starts:
+ * Dependabot's starts after its `uses` declaration pattern, this one after the
+ * parsed scalar, closing quote included.
+ */
+function findYamlComment(suffix) {
+  let previousNonWhitespace;
+  let index = 0;
+  while (index < suffix.length) {
+    const character = suffix[index];
+    if (
+      (character === "'" || character === '"') &&
+      (previousNonWhitespace === undefined || ":,[{?-".includes(previousNonWhitespace))
+    ) {
+      previousNonWhitespace = character;
+      index = quotedScalarEnd(suffix, index);
+      continue;
+    }
+    if (character === "#" && index > 0 && /\s/.test(suffix[index - 1])) {
+      let start = index;
+      while (start > 0 && /\s/.test(suffix[start - 1])) start--;
+      return suffix.slice(start);
+    }
+    if (!/\s/.test(character)) previousNonWhitespace = character;
+    index++;
+  }
+  return undefined;
+}
+
+/** The index just past the quoted scalar opening at `quoteIndex`, or the end of `suffix`. */
+function quotedScalarEnd(suffix, quoteIndex) {
+  const quote = suffix[quoteIndex];
+  let index = quoteIndex + 1;
+  while (index < suffix.length) {
+    const character = suffix[index];
+    if (quote === "'" && character === "'" && suffix[index + 1] === "'") index += 2;
+    else if (quote === '"' && character === "\\") index += 2;
+    else if (character === quote) return index + 1;
+    else index++;
+  }
+  return suffix.length;
+}
+
+/**
  * Whether a `uses:` value names this repository's own code: a `./` path in the
  * workspace, or a `$/` self repository reference, which GitHub resolves to
  * this repository at the running commit.
@@ -310,11 +365,10 @@ function pinViolations(fileName, source) {
       );
       continue;
     }
-    const rest = restOfLine(source, node).trim();
-    if (!RELEASE_COMMENT.test(rest)) {
-      violations.push(
-        `${label} uses ${uses} without a same-line release comment like "# v1.2.3" (found ${JSON.stringify(rest)})`,
-      );
+    const comment = findYamlComment(restOfLine(source, node))?.trim();
+    if (comment === undefined || !RELEASE_COMMENT.test(comment)) {
+      const found = comment === undefined ? "no comment on that line" : JSON.stringify(comment);
+      violations.push(`${label} uses ${uses} without a same-line release comment like "# v1.2.3" (found ${found})`);
     }
   }
   return { violations, thirdParty, localSteps };
@@ -641,6 +695,52 @@ describe("pinViolations (unusual spellings are read, not skipped)", () => {
   it("reports an alias that names no anchor", () => {
     const v = check("jobs:\n  b:\n    steps:\n      - *nope\n").violations;
     expect(v).toEqual([expect.stringMatching(/^w\.yml:4: alias \*nope does not resolve to a node/)]);
+  });
+});
+
+describe("pinViolations (the release comment is found as Dependabot finds it)", () => {
+  const flow = (body) => `jobs:\n  b:\n    steps:\n      - ${body}\n`;
+
+  it("accepts a release comment after a flow map's closing brace", () => {
+    expect(check(flow(`{ uses: owner/tool@${SHA} } # v1.2.3`))).toEqual({
+      violations: [],
+      thirdParty: 1,
+      localSteps: [],
+    });
+  });
+
+  it("still refuses a tag inside a flow map, whatever its comment", () => {
+    expect(check(flow("{ uses: owner/tool@v1 } # v1.2.3")).violations).toEqual([
+      expect.stringMatching(/^w\.yml:4: job "b" step 1 uses owner\/tool@v1: "v1" is not a full/),
+    ]);
+  });
+
+  it("does not take a # inside a quoted scalar for the comment", () => {
+    const v = check(flow(`{ uses: owner/tool@${SHA}, with: { a: "x # v1.2.3" } }`)).violations;
+    expect(v).toEqual([
+      expect.stringMatching(/without a same-line release comment .*\(found no comment on that line\)$/),
+    ]);
+    const single = check(flow(`{ uses: owner/tool@${SHA}, with: { a: 'x # v1.2.3' } }`)).violations;
+    expect(single).toEqual([expect.stringMatching(/found no comment on that line/)]);
+  });
+
+  it("finds the real comment after a quoted # , through escaped quotes", () => {
+    for (const quoted of [`"x # v9.9.9"`, `"a \\" # v9.9.9"`, `'it''s # v9.9.9'`]) {
+      const doc = flow(`{ uses: owner/tool@${SHA}, with: { a: ${quoted} } } # v1.2.3`);
+      expect(check(doc).violations, quoted).toEqual([]);
+      const bad = flow(`{ uses: owner/tool@${SHA}, with: { a: ${quoted} } } # pinned`);
+      expect(check(bad).violations, quoted).toEqual([expect.stringMatching(/\(found "# pinned"\)$/)]);
+    }
+  });
+
+  it("matches dependabot-core's finder on its edge cases", () => {
+    expect(findYamlComment(" # v1.2.3")).toBe(" # v1.2.3");
+    expect(findYamlComment("   #v0.11.0")).toBe("   #v0.11.0");
+    expect(findYamlComment("# v1.2.3")).toBeUndefined();
+    expect(findYamlComment(" }# v1.2.3")).toBeUndefined();
+    expect(findYamlComment(' } # a "b" # c')).toBe(' # a "b" # c');
+    expect(findYamlComment(' x"y # v1.2.3')).toBe(" # v1.2.3");
+    expect(findYamlComment(', a: "unterminated # v1.2.3')).toBeUndefined();
   });
 });
 
