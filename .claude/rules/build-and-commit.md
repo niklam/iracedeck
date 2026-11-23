@@ -21,6 +21,8 @@ pnpm relink:stream-deck     # Unlink + link (useful when switching worktrees)
 
 pnpm is pinned to one exact version (12.6.0), moved in every `packageManager` and workflow `version` together, and every pnpm setting lives in `pnpm-workspace.yaml` — the `pnpm` field of `package.json` and an `.npmrc` setting are dropped without a word. A new dependency with an install script needs its `allowBuilds` decision in the same change, or the install fails; a version published less than a day ago does not resolve (`minimumReleaseAge`; never lower it, name an exclusion instead). The details: `pnpm-and-dependencies.md`, which loads with the manifests, `pnpm-workspace.yaml` and the workflows.
 
+A third-party GitHub Action (any owner but `actions`) is pinned to a full commit hash with its release in a trailing comment, `owner/action@<sha> # vX.Y.Z`, and Dependabot moves both after a week's cooldown (#1663); `scripts/workflow-action-pins.test.mjs` refuses a tag. The why and how to add or bump one: *Third-party GitHub Actions* in the same file.
+
 ### Build verification
 
 **Always review the full build output.** Since #987 every rollup build sets `noEmitOnError` (the plugins' shared config in `@iracedeck/plugin-build`, and `pi-components`' own), so a TypeScript diagnostic in a rollup-built package is a hard build failure rather than a warning on a green build — that is what the flag is for. Reading the output still matters, because a build can fail or misbehave for reasons that are not type errors.
