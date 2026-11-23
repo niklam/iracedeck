@@ -355,14 +355,14 @@ The automation is always off when the plugin starts, so the cameras never start 
 
 In a replay, the group switch waits for a replay jump to land like any other camera switch, and it never pushes your own camera switch aside: if a switch you made is already waiting for a jump, the automation leaves that car's group to you and skips its switch, and while a Replay Control [Jump to Fastest Lap](/docs/actions/view-camera/replay-control/#jump-to-fastest-lap) or [Jump to Race Start](/docs/actions/view-camera/replay-control/#jump-to-race-start) is under way, it waits until that has finished.
 
-The button shows whether the automation is on: the on icon is solid with a filled **A** badge, the off icon outlined. With a [border](/docs/features/border-indicator/) enabled, the border is green while it is on and grey while it is off.
+The button shows whether the automation is on with a status bar along its bottom, like the other on/off buttons: **ON** in green while this button runs it, **OFF** in red otherwise, and **N/A** in grey while the session you are in has none of the button's groups. With a [border](/docs/features/border-indicator/) enabled, the border takes the same colour. A press on an **N/A** button still turns the automation on or off.
 
 #### Details
 
 - **Method:** iRacing API — no key binding needed
 - **Dial:** No rotation support — on a dial it is the Auto Group on/off gesture ([On a dial](#on-a-dial))
 - **Default binding:** No keyboard binding
-- **Telemetry-aware icon:** Yes — shows whether the automation is on, and is drawn greyed while the session you are in has none of the button's groups
+- **Telemetry-aware icon:** Yes — its status bar shows **ON**, **OFF**, or **N/A** while the session you are in has none of the button's groups
 
 #### Setting: Pick
 
@@ -377,7 +377,7 @@ With only one group available, the automation switches to it when the camera is 
 
 A checkbox grid of the groups the automation picks from, the same grid as [Cycle Camera](#cycle-camera)'s, with its **Remembered groups** section of custom camera groups (see [Custom camera files](#custom-camera-files)). TV1, TV2 and TV3 are ticked by default, the three groups every track has, so a new button works straight away; every other group starts unticked. Use **Select All** / **Clear Selection** to manage the list quickly.
 
-Groups the session you are in does not have are skipped. If none of the ticked groups is in the session, or none is ticked, nothing is switched and the button is drawn greyed until a session that has one of them is loaded.
+Groups the session you are in does not have are skipped. If none of the ticked groups is in the session, or none is ticked, nothing is switched and the button shows **N/A** until a session that has one of them is loaded.
 
 ## On a dial
 
