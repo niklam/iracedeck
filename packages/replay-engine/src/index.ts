@@ -39,8 +39,8 @@ export {
 } from "./replay-speed-state.js";
 export { shownReplaySpeed } from "./replay-speed-view.js";
 export { isRaceStartUnavailable, lastListedSessionNum } from "./green-flag-target.js";
-export { type CameraSwitchOptions, isCameraSwitchWaiting, requestCameraSwitch } from "./camera-switch-waiter.js";
-export { isLapPressInFlight, runJumpToFrame } from "./lap-press.js";
+export { type CameraSwitchOptions, requestCameraSwitch } from "./camera-switch-waiter.js";
+export { runJumpToFrame } from "./lap-press.js";
 export { LAP_START_APPROACH_FRAMES } from "./lap-walk.js";
 export { type LapPressResult, pressJumpToFastestLap } from "./fastest-lap-press.js";
 export { canJumpToRaceStart, pressJumpToRaceStart } from "./race-start-press.js";
