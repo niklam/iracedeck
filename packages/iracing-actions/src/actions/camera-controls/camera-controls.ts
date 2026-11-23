@@ -1172,6 +1172,19 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
    */
   private readonly unsubscribeAutoGroup = onAutoGroupChange(() => this.onAutoGroupOwnerChange());
 
+  /**
+   * Removes this instance's global-settings and Auto Group listeners.
+   * Production instances listen for the plugin's lifetime and never call this;
+   * a test that constructs many instances calls it in `afterEach`, because
+   * the Auto Group listener set is module state that outlives each test.
+   *
+   * @internal Exported for testing
+   */
+  _dispose(): void {
+    this.unsubscribeGlobalSettings();
+    this.unsubscribeAutoGroup();
+  }
+
   override async onWillAppear(ev: IDeckWillAppearEvent<CameraControlsSettings>): Promise<void> {
     await super.onWillAppear(ev);
 
