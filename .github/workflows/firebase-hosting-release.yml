@@ -113,7 +113,7 @@ jobs:
         # `pnpm@x.y.z` or corepack's `pnpm@x.y.z+sha512.…`; the action compares the bare version.
         run: echo "version=$(node -p "require('./package.json').packageManager.split('@')[1].split('+')[0]")" >> "$GITHUB_OUTPUT"
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
           version: ${{ steps.pnpm-pin.outputs.version }}
 
@@ -534,7 +534,7 @@ jobs:
           main().catch((error) => fail(`The catalog check failed unexpectedly (${reasonOf(error)}). ${unread}.`));
           JS
 
-      - uses: FirebaseExtended/action-hosting-deploy@v0
+      - uses: FirebaseExtended/action-hosting-deploy@500ac625ca2dd40cbd15f7659af953801858032a # v0.11.0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_IRACEDECK }}
