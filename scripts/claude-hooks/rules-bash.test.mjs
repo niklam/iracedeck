@@ -6558,5 +6558,54 @@ describe("a carried merge or tag push behind a quoted lead value (#1646)", () =>
       );
       passes(String.raw`printf 'cd %s; git push\n' ../ir-5 | bash`, branchByTree);
     });
+
+    // Round 7 (#1646, the CodeRabbit CLI findings at 28552cfbe): a cd in a
+    // pipeline stage runs in a subshell, and moves nothing after it.
+    it("judges what follows a cd in a pipeline where the pipeline started", () => {
+      const linkedHere = ctx({
+        linkTargets: () => [{ host: "Stream Deck", target: path.join(MASTER, "packages", "p", "x.sdPlugin") }],
+        toplevel: (d) => ROOTS.find((r) => isInside(d, r)),
+      });
+      expect(asks(String.raw`printf 'cd %s | cat; pnpm %s\n' ../ir-5 dev:voices | bash`, linkedHere)).toMatch(/master/);
+      expect(asks("cd ../ir-5 | cat; pnpm dev:voices", linkedHere)).toMatch(/master/);
+      passes(String.raw`printf 'cd %s; pnpm %s\n' ../ir-5 dev:voices | bash`, linkedHere);
+      passes("cd ../ir-5; pnpm dev:voices", linkedHere);
+      // A cd in a compound command the string does not close is not followed: refused.
+      expect(deny(String.raw`printf '{ cd %s; pnpm %s; }\n' ../ir-5 dev:voices | bash`, linkedHere)).toMatch(
+        /reads its words differently/,
+      );
+    });
+
+    it("pushes from where the pipeline started after a cd in one", () => {
+      const branchByTree = ctx({
+        branch: (d) => (isInside(d, INTEGRATION) ? "integration" : "master"),
+        toplevel: (d) => ROOTS.find((r) => isInside(d, r)),
+      });
+      passes("bash -c 'cd ../ir-integration | cat; git push'", branchByTree);
+      passes("cd ../ir-integration | cat; git push", branchByTree);
+      expect(deny("bash -c 'cd ../ir-integration; git push'", branchByTree)).toMatch(/integration` branch is local/);
+    });
   });
+
+  // Round 7 (#1646, the CodeRabbit CLI findings at 28552cfbe).
+  it("asks for a tag push a reused printf format prints after another push", () =>
+    expect(asks(String.raw`printf 'git push origin %s\n' main v1.2.3 | bash`)).toMatch(/tag cuts a release/));
+
+  it("names a merge a reused printf format prints second as a command of the string", () => {
+    expect(refused(String.raw`printf 'gh pr %s 7\n' view merge | bash`)).toMatch(
+      /not its own command: it is a command of a string `bash` runs/,
+    );
+    passes(String.raw`printf 'git push origin %s\n' main dev | bash`);
+  });
+
+  it.each([
+    String.raw`echo 'echo first;' 2>/dev/null 'gh pr merge 7' | bash`,
+    String.raw`echo 'echo first;' >/dev/null 'gh pr merge 7' | bash`,
+    String.raw`echo 'echo first;' 2>"$(gh pr merge 7)" 'ls' | bash`,
+  ])("refuses a merge an echo prints past a redirection, or runs in its target: %s", (c) =>
+    expect(refused(c)).toBeTruthy(),
+  );
+
+  it("passes an echo whose operands past a redirection run nothing guarded", () =>
+    passes(String.raw`echo 'echo first;' 2>/dev/null 'ls' | bash`));
 });

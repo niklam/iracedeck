@@ -847,9 +847,9 @@ function deckReach(c, cwd, ctx, shell, trail) {
     const text = (shape ? shape[0] : m[0]).replace(/^[\s|;&()`]+/, "").trim();
     const kind = STREAMDECK_KIND[text.split(/\s+/).pop()];
     finding(`\`${text}\` ${FINDING_KINDS[kind]}`, kind, again(at, via));
-    if (shape) excuseDecodedHit(c, STREAMDECK_CLI, m.program);
+    if (shape) excuseDecodedHit(c, STREAMDECK_CLI, m.occurrence);
   }
-  for (const { head, args, at, via, decoded, program } of hosts) {
+  for (const { head, args, at, via, decoded, occurrence } of hosts) {
     const shape = decoded === undefined ? null : shapeAt(HOST_CONTROL, decoded);
     if (decoded !== undefined && !shape) continue;
     const app = (shape ? decoded.slice(shape[0].length) : args).match(HOST_APP);
@@ -859,7 +859,7 @@ function deckReach(c, cwd, ctx, shell, trail) {
         "restart",
         again(at, via),
       );
-    if (shape) excuseDecodedHit(c, HOST_CONTROL, program);
+    if (shape) excuseDecodedHit(c, HOST_CONTROL, occurrence);
   }
   // The runners' commands are read in order of position: a command is read
   // before the lexer's matches inside the strings it hands on come up, so
@@ -869,10 +869,10 @@ function deckReach(c, cwd, ctx, shell, trail) {
   const judged = [];
   const runs = new Map();
   for (const m of [...matches].sort((x, y) => x.start - y.start)) {
-    const { base, start, args, at, cut, how, via, stdin, read, whole, re, program } = m;
+    const { base, start, args, at, cut, how, via, stdin, read, whole, re, occurrence } = m;
     // A match this reader leaves to a wrapper's reader of the whole string is
     // read as its shell reads it, so a decoded hit there is no mis-slice (#1646).
-    const leave = () => excuseDecodedHit(c, re, program);
+    const leave = () => excuseDecodedHit(c, re, occurrence);
     // A command inside a string a shell wrapper is handed (#1634) is read
     // through that wrapper's own string, as a command line with its own
     // `cd`s, with the same option spec the lexer found the string by ({@link

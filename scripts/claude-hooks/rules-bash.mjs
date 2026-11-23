@@ -502,16 +502,19 @@ export function firstMerge(command) {
  * The deny for a `gh pr merge` that is not its own command (#1634): the first
  * word of a string a shell runs (`bash -c 'gh pr merge 7'`, `eval "…"`, `echo
  * '…' | bash`, `pwsh -Command "…"`), or the program a wrapper runs (`sudo gh
- * pr merge 7`, `nice gh …`). Until #1634 no trap saw either, so such a merge
- * passed the gate unread; the gate reads the PR before the command runs and
+ * pr merge 7`, `nice gh …`), or a later command of such a string (`printf
+ * 'gh pr %s 7\n' view merge | bash`, #1646). Until #1634 no trap saw either,
+ * so such a merge passed the gate unread; the gate reads the PR before the command runs and
  * cannot follow what a shell or a wrapper does to the repository, the
  * checkout or the environment in between, so it refuses rather than judge
  * the merge as if typed directly. `m` is the `matchesAt` result.
  */
 const carriedMerge = (m) =>
-  m.how === "shell"
-    ? `This \`gh pr merge\` is not its own command: it is the first word of a string \`${m.via}\` runs${m.stdin ? " from its stdin" : ""}, and the gate cannot read what that shell does around it — where it runs, what reaches it, what else it runs. Type the merge directly, as its own command: \`gh pr merge <pr> --squash\` (#1634).`
-    : `This \`gh pr merge\` is not its own command: it runs under \`${m.via}\`, which can change what gh resolves the PR and the repository to after the gate has read them. Type the merge directly, as its own command, with nothing ahead of it but a plain \`cd <dir> &&\` (#1634).`;
+  m.how === "command"
+    ? `This \`gh pr merge\` is not its own command: it is a command of a string \`${m.shell}\` runs, and the gate cannot read what that shell does around it — where it runs, what reaches it, what else it runs. Type the merge directly, as its own command: \`gh pr merge <pr> --squash\` (#1634, #1646).`
+    : m.how === "shell"
+      ? `This \`gh pr merge\` is not its own command: it is the first word of a string \`${m.via}\` runs${m.stdin ? " from its stdin" : ""}, and the gate cannot read what that shell does around it — where it runs, what reaches it, what else it runs. Type the merge directly, as its own command: \`gh pr merge <pr> --squash\` (#1634).`
+      : `This \`gh pr merge\` is not its own command: it runs under \`${m.via}\`, which can change what gh resolves the PR and the repository to after the gate has read them. Type the merge directly, as its own command, with nothing ahead of it but a plain \`cd <dir> &&\` (#1634).`;
 
 /**
  * Every `gh pr merge` in the RAW text — the backstop for a separator the split
@@ -1070,7 +1073,7 @@ export const rules = [
         for (let i = 0; i < own.length && comment < 0; i++) if (own[i] === "#" && top[i] === " ") comment = i;
         const live = comment < 0 ? own : own.slice(0, comment);
         const tag = !/--dry-run\b/.test(code) && /\bpush(?:\s[^|&;]*)?\s["']?(--tags\b|v\d+\.\d+)/.test(live);
-        if (m.decoded !== undefined) excuseDecodedHit(c, GIT_PUSH, m.program);
+        if (m.decoded !== undefined) excuseDecodedHit(c, GIT_PUSH, m.occurrence);
         return tag;
       });
       return pushes.some(Boolean) && { ask: "Pushing a tag cuts a release. The maintainer confirms." };
@@ -1083,7 +1086,7 @@ export const rules = [
     // it runs in, so `cd ../ir-integration && git push` is caught.
     name: "git push: the integration branch is never pushed",
     test: (c, ctx) => {
-      for (const { base, start, args, program, decoded, lost } of chainCommands(c, ctx.cwd, GIT_PUSH, ctx.shell)) {
+      for (const { base, start, args, occurrence, decoded, lost } of chainCommands(c, ctx.cwd, GIT_PUSH, ctx.shell)) {
         // Every `-C`, in order (#1606). The push reads the current branch only
         // when no refspec names one, and only then does a `--git-dir` or
         // `GIT_DIR`, which hides whose branch that is, refuse it.
@@ -1113,7 +1116,7 @@ export const rules = [
             ? movedRepo("push")
             : `The \`${INTEGRATION_BRANCH}\` branch is local and never pushed: it is origin/${MAIN_BRANCH} plus the branches under manual test, rebuilt by scripts/integration-build.mjs (#1520). Push each issue branch from its own ../ir-<issue> tree.`;
         // Judged as its shell reads it: its decoded hit is excused only now.
-        if (decoded !== undefined) excuseDecodedHit(c, GIT_PUSH, program);
+        if (decoded !== undefined) excuseDecodedHit(c, GIT_PUSH, occurrence);
       }
       return null;
     },
@@ -1160,7 +1163,7 @@ export const rules = [
           return "One `gh pr merge` per command: each merge is checked on its own, so run them one at a time.";
         // No segment starts with the merge: it is the first word of a string a
         // shell runs, or the program a wrapper runs (#1634), named as such.
-        const carried = [...matchesAt(c, MERGE_AT)].find((m) => m.how !== "command");
+        const carried = [...matchesAt(c, MERGE_AT)].find((m) => m.how !== "command" || m.shell);
         if (carried) return carriedMerge(carried);
         return "Could not isolate the `gh pr merge` in this command; run it on its own.";
       }
@@ -1520,7 +1523,7 @@ export const rules = [
         if (pipedPnpm(c, text, m, piped)) return PIPED_PNPM;
         // A pnpm its shell reads differently from the text here was judged on
         // what that shell reads: its decoded hit is excused (#1646).
-        if (m.decoded !== undefined) excuseDecodedHit(c, PIPED_PNPM_RE, m.program);
+        if (m.decoded !== undefined) excuseDecodedHit(c, PIPED_PNPM_RE, m.occurrence);
       }
       return null;
     },

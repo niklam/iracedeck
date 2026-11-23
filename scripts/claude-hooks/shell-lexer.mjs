@@ -1325,6 +1325,26 @@ function readLevel(parent, d, join) {
 }
 
 /**
+ * The one-word {@link level}s `Ls` joined by one blank each, as `echo` joins
+ * its operands (#1646, CodeRabbit CLI): the words {@link printedArgs} chose,
+ * so a redirection between them is no part of the output, as {@link
+ * readLevel}'s own join, which runs to the command's end, would make it.
+ * Each word keeps its view span, and is a `part` as a joined word is.
+ */
+function joinedLevel(Ls) {
+  const chars = [];
+  const parts = [];
+  Ls.forEach((L, i) => {
+    if (i) chars.push({ c: " ", at: Ls[i - 1].to, end: Ls[i - 1].to, live: false });
+    const first = chars.length;
+    for (let k = 0; k < L.text.length; k++)
+      chars.push({ c: L.text[k], at: L.at[k], end: L.end[k], live: L.live[k] === 1 });
+    parts.push({ first, last: chars.length, from: L.from, to: L.to });
+  });
+  return levelOf(chars, { from: Ls[0].from, to: Ls.at(-1).to, parts: parts.length > 1 ? parts : null });
+}
+
+/**
  * The escapes `echo -e` (`flavor` `"echo"`, and printf's `%b`) or a printf
  * format (`"printf"`) decodes, as bash's builtins decode them: the letters
  * `\a \b \e \E \f \n \r \t \v \\`, an octal (`\0NNN` for echo, `\NNN` for
@@ -1688,6 +1708,7 @@ function fedStarts(command, text, fed, programs) {
     N.upAt = d;
     if (N.unread && N.via !== "cmd") unclosed = true;
     if (L === base) for (let k = N.from; k < N.to; k++) if (closes.has(k)) quoteKinds.set(k, kind);
+    N.id = levels.length;
     levels.push(N);
     owner.fill(levels.length - 1, N.from, N.to);
     N.commands.forEach((s, k) => {
@@ -1772,7 +1793,9 @@ function fedStarts(command, text, fed, programs) {
             });
             if (echo.name === "echo") {
               const flavor = echoEscapes(command, from, args[0].at);
-              let N = readLevel(base, args[0].at, true);
+              // Its operands joined by a blank, a redirection between them no
+              // output (`echo 'x;' 2>/dev/null 'gh …'`, CodeRabbit CLI on #1646).
+              let N = joinedLevel(args.map(({ at }) => readLevel(base, at, false)));
               if (flavor) N = reprint(unescaped(N, flavor));
               readAs(N, kind, base, echo.start);
             } else {
@@ -2912,7 +2935,7 @@ const COMMAND_END = /[()\x60]|(?<![<>])&(?!>)/;
  * for a pipe): its raw groups are mis-sliced, and `checkBash` lets no such
  * command pass ({@link takeDecodedHits}). A match read in a string's level
  * carries `before`, what that string's shells run ahead of it ({@link
- * levelLead}).
+ * levelLead}), and `shell`, the word of the shell that reads that string.
  */
 export function* matchesAt(command, re) {
   const all = [...found(command, re, 0, trustedMask(command).length)].sort((x, y) => x.program - y.program);
@@ -2970,8 +2993,11 @@ function* found(command, re, a, b) {
     const close = stringAround(v, a + p)?.[1];
     return close === undefined ? undefined : close - a;
   };
-  // Every program position a match was yielded at, so the decoded pass adds none twice.
+  // Every occurrence a match was yielded for ({@link occurrenceOf}), so the decoded pass adds none twice.
   const yielded = new Set();
+  // Each view index the passes reading the view's text matched at, to the
+  // command they took it for there ({@link levelCommand}'s text).
+  const readAt = new Map();
   const record = (m, kind, program) => {
     const f = {
       at: a + m.index,
@@ -2980,15 +3006,20 @@ function* found(command, re, a, b) {
       kind,
       program: a + program,
     };
-    yielded.add(f.program);
     // A command its shell reads differently from the view: what it reads, and a decoded hit.
     const read = levelCommand(v, f.program) ?? levelCommand(v, wordStartOf(v, f.program));
+    f.occurrence = read ? occurrenceOf(f.program, read.L, read.d) : String(f.program);
+    yielded.add(f.occurrence);
+    readAt.set(read ? read.L.at[read.d] : f.program, read?.text);
     if (read?.divergent) {
       f.decoded = read.text;
       f.sep = read.sep;
-      decodedHit(command, re, f.program);
+      decodedHit(command, re, f.occurrence);
     }
-    if (read) f.before = levelLead(read.L, read.d);
+    if (read) {
+      f.before = levelLead(read.L, read.d);
+      f.shell = read.L.via;
+    }
     return f;
   };
   const taken = new Set();
@@ -3019,16 +3050,25 @@ function* found(command, re, a, b) {
   }
   for (let k = lo; k < decoded.length && decoded[k][0] < b; k++) {
     const [p, L, d, kind] = decoded[k];
-    if (yielded.has(p)) continue;
+    // Each occurrence apart: a reused printf format prints its words at the
+    // same view index once per pass (`printf 'git push origin %s\n' main
+    // v1.2.3 | bash`, CodeRabbit CLI on #1646).
+    const occurrence = occurrenceOf(p, L, d);
+    if (yielded.has(occurrence)) continue;
     inner.lastIndex = d;
     const m = inner.exec(L.text);
     if (!m || m.index !== d || !m[0]) continue;
     const viewOf = (s, e) => [L.at[s] ?? L.to, e > s ? L.end[e - 1] : (L.at[s] ?? L.to)];
     const [at, end] = viewOf(d, d + m[0].length);
-    // Where the view reads the same text, the passes above read it as it is.
-    if (end > b || text.slice(at, end) === asWritten(text, L, d, d + m[0].length)) continue;
-    yielded.add(p);
-    decodedHit(command, re, p);
+    // Where the view reads the same text, the passes above read it as it is;
+    // where they matched at this index already, they read one occurrence, and
+    // another is judged here unless it is the same command.
+    const own = L.text.slice(d, L.ends[d]);
+    if (end > b) continue;
+    if (readAt.has(p) ? readAt.get(p) === own : text.slice(at, end) === asWritten(text, L, d, d + m[0].length))
+      continue;
+    yielded.add(occurrence);
+    decodedHit(command, re, occurrence);
     const indices = m.indices.map((r) => r && viewOf(r[0], r[1]));
     yield {
       at,
@@ -3036,9 +3076,11 @@ function* found(command, re, a, b) {
       indices,
       kind,
       program: p,
+      occurrence,
       decoded: L.text.slice(d, L.ends[d]),
       sep: L.text.slice(L.ends[d], L.ends[d] + 2),
       before: levelLead(L, d),
+      shell: L.via,
     };
   }
 }
@@ -3117,20 +3159,31 @@ function asWritten(viewText, L, d, e) {
 /** The decoded hits of each command read lately, by its text ({@link found}); kept small, as a hook process reads a few. */
 const DECODED_HITS = new Map();
 
-function decodedHit(command, re, program) {
+function decodedHit(command, re, occurrence) {
   if (DECODED_HITS.size > 64) DECODED_HITS.clear();
   if (!DECODED_HITS.has(command)) DECODED_HITS.set(command, new Set());
-  DECODED_HITS.get(command).add(`${re.source}@${program}`);
+  DECODED_HITS.get(command).add(`${re.source}@${occurrence}`);
 }
 
 /**
- * Drops the decoded hit of `re` at `program` in `command` ({@link found}):
+ * Which occurrence of a command a match is ({@link found}): the view index
+ * `p` of its program word, and for one read in a string's {@link level} that
+ * level and the index there, since a printf that reuses its format prints the
+ * same view index once per pass, each a command of its own (#1646). A match's
+ * `occurrence`; the key of its decoded hit.
+ */
+function occurrenceOf(p, L, d) {
+  return L.id === undefined ? String(p) : `${p}@${L.id}:${d}`;
+}
+
+/**
+ * Drops the decoded hit of `re` at the match `occurrence` in `command` ({@link found}):
  * for a consumer that judged that command as its shell reads it — from the
  * match's `decoded`, or through a reader of the whole string, as the deck-host
  * ask's `wrapperRuns` reads a wrapper's string (#1646).
  */
-export function excuseDecodedHit(command, re, program) {
-  DECODED_HITS.get(command)?.delete(`${re.source}@${program}`);
+export function excuseDecodedHit(command, re, occurrence) {
+  DECODED_HITS.get(command)?.delete(`${re.source}@${occurrence}`);
 }
 
 /**
@@ -3199,13 +3252,15 @@ function innerStart(text, m, re, known = () => false) {
 }
 
 /** A {@link matchesAt} result: the groups read from the raw command, with the match's facts. */
-function rawMatch(command, { at, indices, kind, program, decoded, sep, before }) {
+function rawMatch(command, { at, indices, kind, program, occurrence, decoded, sep, before, shell }) {
   const raw = indices.map((r) => r && command.slice(r[0], r[1]));
   raw.index = at;
   raw.program = program;
+  raw.occurrence = occurrence;
   if (decoded !== undefined) raw.decoded = decoded;
   if (sep !== undefined) raw.sep = sep;
   if (before !== undefined) raw.before = before;
+  if (shell !== undefined) raw.shell = shell;
   raw.how = kind.how;
   if (kind.via) raw.via = kind.via;
   if (kind.stdin) raw.stdin = true;
@@ -3242,6 +3297,23 @@ const HISTORY_DIR = new Set(["-", "+"]);
 
 /** A command that moves the directory, at the start of a chain segment: its name is group 1 ({@link dirAfter}). */
 const DIR_CHANGE = /^\s*(?:\w+=\S*\s+)*(cd|pushd|popd|chdir|sl|set-location|push-location|pop-location)(?=\s|$)/i;
+/**
+ * Such a command behind a paren, a brace, a `!` or a keyword that opens a
+ * compound command: whether, and for how long, it moves what follows is the
+ * compound's to say ({@link dirAfter}).
+ */
+const NESTED_DIR_CHANGE =
+  /^\s*(?:(?:[({!]|then|else|elif|do|if|while|until|time)\s*)+(?:\w+=\S*\s+)*(?:cd|pushd|popd|chdir|sl|set-location|push-location|pop-location)(?=\s|$)/i;
+
+/**
+ * Whether the chain segment `[a, b)` of the masked `text` ({@link ranges}
+ * over {@link CHAIN}) is a stage of a pipeline: a lone `|` (or `|&`) ends it
+ * or comes before it. bash runs every stage in a subshell, so a `cd` there
+ * moves nothing after the pipeline (CodeRabbit CLI on #1646).
+ */
+function pipelineStage(text, a, b) {
+  return (text[b] === "|" && text[b + 1] !== "|") || (text[a - 1] === "|" && text[a - 2] !== "|");
+}
 /** `pushd <dir>` and PowerShell's `Push-Location`, as {@link CD_RE} reads a `cd`. */
 const PUSHD_RE = new RegExp(
   String.raw`^\s*(?:\w+=\S*\s+)*(?:pushd|push-location)(?:\s+-(?:path|literalpath))?\s+${QUOTED_ARG}\s*$`,
@@ -3257,7 +3329,10 @@ const PUSHD_RE = new RegExp(
  * one. `undefined` where one cannot be known — a directory that expands
  * (`cd "$X"`), a history step (`cd -`), a `cd` or `pushd` with no directory
  * or with options, a `popd` — so the caller judges the command lost rather
- * than in the wrong tree. One inside parentheses moves only its subshell.
+ * than in the wrong tree. One in a stage of a pipeline moves nothing after it
+ * ({@link pipelineStage}), nor does one in parentheses closed in its own
+ * segment (`(cd x)`); one inside a compound command whose extent the segment
+ * does not show (`{ cd x; …`, `then cd x`, `(cd x; …`) cannot be known.
  */
 export function dirAfter(lines, base) {
   let dir = base;
@@ -3265,8 +3340,17 @@ export function dirAfter(lines, base) {
     if (!/(?:cd|pushd|popd|chdir|sl|location)\b/i.test(text)) continue;
     const masked = trustedMask(text);
     for (const [a, b] of ranges(masked, CHAIN)) {
-      const name = DIR_CHANGE.exec(masked.slice(a, b))?.[1]?.toLowerCase();
-      if (!name || (shell !== POWERSHELL && !/^(?:cd|pushd|popd)$/.test(name))) continue;
+      const segment = masked.slice(a, b);
+      const name = DIR_CHANGE.exec(segment)?.[1]?.toLowerCase();
+      if (!name) {
+        if (!NESTED_DIR_CHANGE.test(segment)) continue;
+        // A subshell closed in its own segment moves nothing; any other compound is unknown.
+        const opens = (segment.match(/\(/g) ?? []).length;
+        if (/^\s*\(/.test(segment) && opens > 0 && opens === (segment.match(/\)/g) ?? []).length) continue;
+        return undefined;
+      }
+      if (shell !== POWERSHELL && !/^(?:cd|pushd|popd)$/.test(name)) continue;
+      if (pipelineStage(masked, a, b)) continue;
       const to = /^(?:pushd|push-location)$/.test(name)
         ? argIn(text, masked, a, b, PUSHD_RE)
         : /^pop/.test(name)
@@ -3355,7 +3439,8 @@ export function cwdAt(command, cwd, index, shell = BASH) {
   for (const [a, b] of ranges(text, CHAIN)) {
     if (b > index) break;
     const dir = argIn(command, text, a, b, cdRe(shell));
-    if (dir && !HISTORY_DIR.has(dir)) base = resolveDir(base, dir, { shell });
+    // A cd in a pipeline stage runs in a subshell and moves nothing after it (#1646).
+    if (dir && !HISTORY_DIR.has(dir) && !pipelineStage(text, a, b)) base = resolveDir(base, dir, { shell });
   }
   return base;
 }
@@ -3603,6 +3688,7 @@ export function* chainCommands(command, cwd, re, shell = BASH) {
         cut,
         how: f.kind.how,
         program: f.program,
+        occurrence: f.occurrence,
         ...(lead === undefined ? { lost: true } : {}),
         ...(f.decoded !== undefined ? { decoded: f.decoded } : {}),
         ...(f.kind.via ? { via: f.kind.via } : {}),
@@ -3612,7 +3698,8 @@ export function* chainCommands(command, cwd, re, shell = BASH) {
       };
     }
     const dir = argIn(command, text, a, b, cdRe(shell));
-    if (dir && !HISTORY_DIR.has(dir)) base = resolveDir(base, dir, { shell });
+    // A cd in a pipeline stage runs in a subshell and moves nothing after it (#1646).
+    if (dir && !HISTORY_DIR.has(dir) && !pipelineStage(text, a, b)) base = resolveDir(base, dir, { shell });
   }
 }
 

@@ -1726,7 +1726,7 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
     const c = `eval "gh pr" merge 7`;
     lexer.takeDecodedHits(c);
     const m = lexer.matchAt(c, MERGE);
-    lexer.excuseDecodedHit(c, MERGE, m.program);
+    lexer.excuseDecodedHit(c, MERGE, m.occurrence);
     expect(lexer.takeDecodedHits(c).size).toBe(0);
   });
 
@@ -1858,5 +1858,50 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
   it("decodes every ANSI-C escape of a word a wrapper is handed", () => {
     expect(lexer.wordText(String.raw`$'cd\x20../x;\040pnpm\ttest'`)).toBe("cd ../x; pnpm\ttest");
     expect(lexer.wordText(String.raw`$'it\'s'`)).toBe("it's");
+  });
+
+  // Round 7 (#1646, the CodeRabbit CLI findings at 28552cfbe).
+  it("finds each command a reused printf format prints, each its own occurrence", () => {
+    const c = String.raw`printf 'git push origin %s\n' main v1.2.3 | bash`;
+    lexer.takeDecodedHits(c);
+    const pushes = [...lexer.matchesAt(c, PUSH)];
+    expect(pushes.map((m) => m.decoded)).toEqual(["git push origin main", "git push origin v1.2.3"]);
+    expect(new Set(pushes.map((m) => m.occurrence)).size).toBe(2);
+    // Excusing one occurrence leaves the other's hit standing.
+    lexer.excuseDecodedHit(c, PUSH, pushes[0].occurrence);
+    expect([...lexer.takeDecodedHits(c)]).toEqual([`${PUSH.source}@${pushes[1].occurrence}`]);
+  });
+
+  it("finds a merge a reused format prints second, and reads it as a command of the string", () => {
+    const m = [...lexer.matchesAt(String.raw`printf 'gh pr %s 7\n' view merge | bash`, MERGE)];
+    expect(m.map((x) => [x.decoded, x.shell])).toEqual([["gh pr merge 7", "bash"]]);
+  });
+
+  it.each([
+    [String.raw`echo 'echo first;' 2>/dev/null 'gh pr merge 7' | bash`, true],
+    [String.raw`echo 'echo first;' >/dev/null 'gh pr merge 7' | bash`, true],
+    [String.raw`echo 'echo first;' 2>/dev/null 'ls' | bash`, false],
+  ])("reads an echo's operands past a redirection between them: %s", (c, merges) =>
+    expect(lexer.has(c, MERGE)).toBe(merges),
+  );
+
+  describe("a cd in a pipeline or a compound command", () => {
+    const bash = (text) => ({ text, shell: lexer.BASH });
+    it.each(["cd ../ir-5 | cat; ", "cat | cd ../ir-5; ", "cd ../ir-5 |& cat; ", "echo cd x; (cd ../ir-5); "])(
+      "moves nothing after `%s`",
+      (text) => expect(lexer.dirAfter([bash(text)], MASTER)).toBe(MASTER),
+    );
+    it("moves after an or-list's cd", () =>
+      expect(lexer.dirAfter([bash("cd ../ir-5 || exit; ")], MASTER)).toBe(tree("ir-5")));
+    it.each(["{ cd ../ir-5; ", "if true; then cd ../ir-5; fi; ", "(cd ../ir-5; ", "! cd ../ir-5; "])(
+      "cannot know where `%s` leaves it",
+      (text) => expect(lexer.dirAfter([bash(text)], MASTER)).toBeUndefined(),
+    );
+    it("moves no command the typed chain runs after a cd in a pipeline", () => {
+      const bases = (c) => [...lexer.chainCommands(c, MASTER, cmd(/pnpm\b/))].map((x) => x.base);
+      expect(bases("cd ../ir-5 | cat; pnpm x")).toEqual([MASTER]);
+      expect(bases("cd ../ir-5; pnpm x")).toEqual([tree("ir-5")]);
+      expect(lexer.cwdAt("cd ../ir-5 | cat; pnpm x", MASTER, 18)).toBe(MASTER);
+    });
   });
 });
