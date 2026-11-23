@@ -729,6 +729,22 @@ describe("auto group ownership", () => {
       expect(switchedGroups()).toEqual(["TV1", "TV2"]);
     });
 
+    it("log an applied edit at info without its values, and the values at debug", () => {
+      start("key-a", ["TV1"]);
+      updateAutoGroupSettings("key-a", ["Cockpit", "TV2"], "random");
+
+      expect(logger.info).toHaveBeenCalledWith("Auto group settings updated");
+      expect(logger.debug).toHaveBeenCalledWith("Auto group pick random, groups: Cockpit, TV2");
+    });
+
+    it("log nothing for an edit they ignore", () => {
+      start("key-a", ["TV1"]);
+      vi.mocked(logger.info).mockClear();
+      updateAutoGroupSettings("key-b", ["Chase"], "random");
+
+      expect(logger.info).not.toHaveBeenCalled();
+    });
+
     it("switch the pick order", () => {
       applySwitches();
       vi.spyOn(Math, "random").mockReturnValue(0);
