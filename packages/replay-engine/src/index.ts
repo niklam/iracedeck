@@ -18,8 +18,9 @@
  * not count); and every type is too, unless it is a contract type, one a
  * signature names or a contract type's own declaration does. A production
  * source imports this barrel by name only: a namespace import, `export *`, a
- * default import, a dynamic `import(…)` or `require(…)` and a whole-module
- * `import("…")` type are refused, since they name nothing to count.
+ * default or side-effect import, an empty `import {}` or `export {}`, a
+ * dynamic `import(…)` or `require(…)` and a whole-module `import("…")` type
+ * are refused, since they name nothing to count.
  */
 export { configureReplayEngine } from "./replay-engine-configure.js";
 export type { ReplayEngineController, ReplayEngineEnv } from "./replay-engine-env.js";

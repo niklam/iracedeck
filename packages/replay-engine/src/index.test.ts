@@ -100,7 +100,8 @@ function signatureAnnotations(declaration: ts.Declaration): ts.TypeNode[] | unde
  * The barrel's contract rule (#1502, the header of `index.ts`): it exports
  * every type a function it exports takes or returns. For each exported
  * function and typed const of `barrelPath` in `program`, every type reference
- * in its parameter, return, type-parameter or const annotations — walked
+ * (a `T`, an `a.T`, an `import("./m.js").T`) in its parameter, return,
+ * type-parameter or const annotations — walked
  * through unions, generics, `Promise<…>`, object members and callback types —
  * that resolves to a declaration in the barrel's own directory must be
  * exported by the barrel itself. Type parameters are skipped, and so are
@@ -171,12 +172,21 @@ function scanSignatureTypes(program: ts.Program, barrelPath: string): SignatureT
     missing.set(target.name, owners);
   };
 
-  /** Each symbol a type reference or heritage clause in `node` names. */
+  /** The symbol a type name stands for: the last name of `a.b.C`. */
+  const symbolOfName = (name: ts.EntityName): ts.Symbol | undefined =>
+    checker.getSymbolAtLocation(ts.isQualifiedName(name) ? name.right : name);
+  /**
+   * Each symbol a type reference, a heritage clause or an `import("…").X`
+   * type in `node` names. A `typeof import("…").x` names a value, not a type,
+   * and is passed over as a `typeof x` query is.
+   */
   const referencesIn = (node: ts.Node, found: (symbol: ts.Symbol | undefined) => void): void => {
     if (ts.isTypeReferenceNode(node)) {
-      found(checker.getSymbolAtLocation(ts.isQualifiedName(node.typeName) ? node.typeName.right : node.typeName));
+      found(symbolOfName(node.typeName));
     } else if (ts.isExpressionWithTypeArguments(node)) {
       found(checker.getSymbolAtLocation(node.expression));
+    } else if (ts.isImportTypeNode(node) && !node.isTypeOf && node.qualifier !== undefined) {
+      found(symbolOfName(node.qualifier));
     }
 
     ts.forEachChild(node, (child) => referencesIn(child, found));
@@ -293,6 +303,56 @@ describe("the barrel exports the types its functions take and return (#1502)", (
     expect([...scan.named].sort()).toEqual(["Box", "Deep", "Deeper", "Shown"]);
   });
 
+  it("reads a type a signature names by an `import(…)` type (positive control)", () => {
+    const sources = new Map([
+      [
+        "contract.ts",
+        [
+          "export interface Contract { readonly n: number }",
+          "export interface Inner { readonly n: number }",
+          "export interface HiddenImported { readonly n: number }",
+          "export const VALUE = 1;",
+        ].join("\n"),
+      ],
+      [
+        "module.ts",
+        [
+          'export function viaImport(value: import("./contract.js").Contract): import("./contract.js").HiddenImported {',
+          "  return value;",
+          "}",
+          'export function viaQualified(value: Array<import("./contract.js").Inner>): typeof import("./contract.js").VALUE {',
+          "  return 1;",
+          "}",
+        ].join("\n"),
+      ],
+      [
+        "index.ts",
+        [
+          'export { viaImport, viaQualified } from "./module.js";',
+          'export type { Contract, Inner } from "./contract.js";',
+        ].join("\n"),
+      ],
+    ]);
+    const program = createVirtualProgram(sources, "/import-type-scan/", { resolveImports: true });
+    const scan = scanSignatureTypes(program, "/import-type-scan/index.ts");
+
+    expect([...scan.named].sort()).toEqual(["Contract", "Inner"]);
+    // `typeof import("…").VALUE` names a value, which the barrel need not export as a type.
+    expect(Object.fromEntries(scan.missing)).toEqual({ HiddenImported: ["viaImport"] });
+    // So a contract type spelled as an `import(…)` type needs no importer of its own.
+    expect(
+      checkBarrelConsumers({
+        exports: barrelExports(program, "/import-type-scan/index.ts"),
+        contractTypes: scan.named,
+        files: new Map([
+          ["packages/fixture-actions/src/a.ts", 'import { viaImport, viaQualified } from "@iracedeck/replay-engine";'],
+        ]),
+        testingEntries: new Set(),
+        isTest: isTestSource,
+      }).unconsumed,
+    ).toEqual([]);
+  });
+
   describe("the real barrel", () => {
     let scan: SignatureTypeScan;
 
@@ -348,15 +408,16 @@ describe("the barrel exports the types its functions take and return (#1502)", (
  * (`export { x } from`, `export type { X } from`) and an `import("…").X` type,
  * `typeof` or not. A form that does not name what it uses is refused instead,
  * so no import can slip past by its spelling: a namespace import, `export *`,
- * `export * as`, a default import, `import x = require(…)`, a dynamic
- * `import(…)` or `require(…)` call, and a whole-module `import("…")` type.
- * Resolving `re.x` off a namespace would read the same names, but a namespace
+ * `export * as`, a default import, a side-effect import, an empty
+ * `import {}` or `export {}`, `import x = require(…)`, a dynamic `import(…)`
+ * or `require(…)` call (its specifier read through parentheses, `as` and
+ * `satisfies`), and a whole-module `import("…")` type. Resolving `re.x` off a namespace would read the same names, but a namespace
  * can also be passed whole, where nothing can say what it uses; production
  * code imports the barrel by name. The walk must read at least as many
  * references to the barrel as TypeScript's own scanner (`ts.preProcessFile`,
  * what the root guards read imports with) finds, so a form neither list knows
  * is refused rather than skipped; the walk may read more, since that scanner
- * misses `export * as x from`.
+ * misses `export * as x from` and a parenthesized `import(("…"))`.
  */
 
 /** The specifier production code imports the barrel by. */
@@ -376,15 +437,92 @@ interface BarrelExport {
   readonly kind: "value" | "type";
 }
 
-/** Whether `symbol` is exported by a type-only specifier (`export { type X }`, `export type { X }`). */
-function isTypeOnlyExport(symbol: ts.Symbol): boolean {
-  return (symbol.declarations ?? []).some(
-    (declaration) =>
-      ts.isExportSpecifier(declaration) && (declaration.isTypeOnly || declaration.parent.parent.isTypeOnly),
-  );
+/**
+ * Whether an alias reaches its declaration through a type-only step anywhere
+ * along its chain: `export { type X }`, `export type { X }`,
+ * `export type * as NS`, or a re-export of a name another module exports or
+ * imports that way. Each step is the alias's immediate target, as the checker
+ * resolves it.
+ */
+function isTypeOnlyAlias(checker: ts.TypeChecker, symbol: ts.Symbol): boolean {
+  const seen = new Set<ts.Symbol>();
+
+  for (let current: ts.Symbol | undefined = symbol; current !== undefined && current.flags & ts.SymbolFlags.Alias;) {
+    if (seen.has(current)) return false;
+
+    seen.add(current);
+
+    if ((current.declarations ?? []).some((declaration) => ts.isTypeOnlyImportOrExportDeclaration(declaration))) {
+      return true;
+    }
+
+    current = checker.getImmediateAliasedSymbol(current);
+  }
+
+  return false;
 }
 
-/** Every name `barrelPath` in `program` exports, each as a value or a type. Throws on a name it cannot resolve. */
+/** Whether `symbol` is declared, or exported by a specifier, in `file` itself rather than brought in by an `export *`. */
+function isOwnExportOf(symbol: ts.Symbol, file: ts.SourceFile): boolean {
+  return (symbol.declarations ?? []).some((declaration) => declaration.getSourceFile() === file);
+}
+
+/**
+ * Each declaration the `export *` declarations of `file` bring in, followed
+ * through the modules they name and their own `export *`s, mapped to whether
+ * some path brings it in as a value: none of its stars an `export type *`, and
+ * its own export no type-only alias. An `export type *` anywhere on a path
+ * makes everything behind it a type there (#1661).
+ */
+function starExportPaths(
+  checker: ts.TypeChecker,
+  file: ts.SourceFile,
+  typeOnly: boolean,
+  into: Map<ts.Symbol, boolean>,
+  seen: Set<string>,
+): Map<ts.Symbol, boolean> {
+  const key = `${file.fileName}|${typeOnly}`;
+
+  if (seen.has(key)) return into;
+
+  seen.add(key);
+
+  for (const statement of file.statements) {
+    if (!ts.isExportDeclaration(statement) || statement.exportClause !== undefined) continue;
+
+    if (statement.moduleSpecifier === undefined) continue;
+
+    const moduleSymbol = checker.getSymbolAtLocation(statement.moduleSpecifier);
+    const moduleFile = moduleSymbol?.declarations?.find(ts.isSourceFile);
+
+    if (moduleSymbol === undefined || moduleFile === undefined) continue;
+
+    const only = typeOnly || statement.isTypeOnly;
+
+    for (const symbol of checker.getExportsOfModule(moduleSymbol)) {
+      // A name the module itself brought in by a star of its own is reached by the recursion below.
+      if (symbol.name === "default" || !isOwnExportOf(symbol, moduleFile)) continue;
+
+      const target = resolveAlias(checker, symbol);
+      const asValue = !only && !isTypeOnlyAlias(checker, symbol);
+
+      into.set(target, (into.get(target) ?? false) || asValue);
+    }
+
+    starExportPaths(checker, moduleFile, only, into, seen);
+  }
+
+  return into;
+}
+
+/**
+ * Every name `barrelPath` in `program` exports, each as a value or a type. A
+ * name is a value when what it resolves to is one and the path the barrel
+ * exports it by is not type-only: its own specifier and every alias behind it
+ * (`isTypeOnlyAlias`), or for a name an `export *` brings in, some path of
+ * stars free of `export type *` (`starExportPaths`). Throws on a name it
+ * cannot resolve.
+ */
 function barrelExports(program: ts.Program, barrelPath: string): BarrelExport[] {
   const checker = program.getTypeChecker();
   const barrelFile = program.getSourceFile(barrelPath);
@@ -395,6 +533,8 @@ function barrelExports(program: ts.Program, barrelPath: string): BarrelExport[] 
 
   if (moduleSymbol === undefined) throw new Error(`${barrelPath} is not a module`);
 
+  const starred = starExportPaths(checker, barrelFile, false, new Map(), new Set());
+
   return checker.getExportsOfModule(moduleSymbol).map((symbol) => {
     const target = resolveAlias(checker, symbol);
 
@@ -403,7 +543,10 @@ function barrelExports(program: ts.Program, barrelPath: string): BarrelExport[] 
       throw new Error(`${barrelPath} exports ${symbol.name}, which the program cannot resolve`);
     }
 
-    const value = (target.flags & ts.SymbolFlags.Value) !== 0 && !isTypeOnlyExport(symbol);
+    const exportedAsValue = isOwnExportOf(symbol, barrelFile)
+      ? !isTypeOnlyAlias(checker, symbol)
+      : starred.get(target) === true;
+    const value = (target.flags & ts.SymbolFlags.Value) !== 0 && exportedAsValue;
 
     return { name: symbol.name, kind: value ? "value" : "type" };
   });
@@ -466,10 +609,14 @@ function scanBarrelImports(files: ReadonlyMap<string, string>, specifier: string
         const clause = node.importClause;
         const bindings = clause?.namedBindings;
 
+        if (clause === undefined) refuse(node, "a side-effect import");
+
         if (clause?.name !== undefined) refuse(node, "a default import");
 
         if (bindings !== undefined && ts.isNamespaceImport(bindings)) refuse(node, "a namespace import");
-        else if (bindings !== undefined) {
+        else if (bindings !== undefined && bindings.elements.length === 0 && clause?.name === undefined) {
+          refuse(node, "an empty `import {}`");
+        } else if (bindings !== undefined) {
           for (const element of bindings.elements) consume((element.propertyName ?? element.name).text);
         }
       } else if (ts.isExportDeclaration(node) && isBarrel(node.moduleSpecifier)) {
@@ -477,6 +624,7 @@ function scanBarrelImports(files: ReadonlyMap<string, string>, specifier: string
 
         if (node.exportClause === undefined) refuse(node, "`export *`");
         else if (ts.isNamespaceExport(node.exportClause)) refuse(node, "`export * as`");
+        else if (node.exportClause.elements.length === 0) refuse(node, "an empty `export {}`");
         else for (const element of node.exportClause.elements) consume((element.propertyName ?? element.name).text);
       } else if (
         ts.isImportEqualsDeclaration(node) &&
@@ -490,7 +638,7 @@ function scanBarrelImports(files: ReadonlyMap<string, string>, specifier: string
 
         if (node.qualifier === undefined) refuse(node, "a whole-module `import(…)` type");
         else consume(leftmost(node.qualifier));
-      } else if (isModuleCall(node) && isBarrel(node.arguments[0])) {
+      } else if (isModuleCall(node) && node.arguments[0] !== undefined && isBarrel(unwrap(node.arguments[0]))) {
         read++;
         refuse(node, "a dynamic `import(…)` or `require(…)` call");
       }
@@ -669,6 +817,51 @@ describe("every name on the barrel has a production consumer outside the engine 
     expect(check({ [PRODUCTION]: ALL }).unconsumed).toEqual([]);
   });
 
+  it("classes a name by the path the barrel exports it by, so a type-only path is a type (positive control)", () => {
+    const sources = new Map([
+      ["module.ts", "export const IN_MODULE = 1;"],
+      ["types-only.ts", "export const STAR_TYPED = 1;"],
+      ["runtime.ts", "export const STAR_RUNTIME = 1;"],
+      ["both.ts", "export const BOTH = 1;"],
+      ["deep.ts", "export const DEEP_TYPED = 1;"],
+      ["deep-runtime.ts", "export const DEEP_RUNTIME = 1;"],
+      ["relay.ts", ['export type * from "./deep.js";', 'export { DEEP_RUNTIME } from "./deep-runtime.js";'].join("\n")],
+      ["chain.ts", 'export type { IN_MODULE as CHAINED } from "./module.js";'],
+      [
+        "index.ts",
+        [
+          'export * as RuntimeNs from "./module.js";',
+          'export type * as TypeNs from "./module.js";',
+          'export type * from "./types-only.js";',
+          'export * from "./runtime.js";',
+          'export type * from "./both.js";',
+          'export * from "./both.js";',
+          'export * from "./relay.js";',
+          'export { CHAINED } from "./chain.js";',
+          'export { type IN_MODULE as TYPED_SPECIFIER } from "./module.js";',
+          'export { IN_MODULE } from "./module.js";',
+        ].join("\n"),
+      ],
+    ]);
+    const program = createVirtualProgram(sources, "/export-paths/", { resolveImports: true });
+    const kinds = Object.fromEntries(
+      barrelExports(program, "/export-paths/index.ts").map(({ name, kind }) => [name, kind]),
+    );
+
+    expect(kinds).toEqual({
+      RuntimeNs: "value",
+      TypeNs: "type",
+      STAR_TYPED: "type",
+      STAR_RUNTIME: "value",
+      BOTH: "value",
+      DEEP_TYPED: "type",
+      DEEP_RUNTIME: "value",
+      CHAINED: "type",
+      TYPED_SPECIFIER: "type",
+      IN_MODULE: "value",
+    });
+  });
+
   it("reports a value no source imports, or only the engine's own (positive control)", () => {
     const result = check({
       [PRODUCTION]: 'import { ONLY_TESTS, take, USED, type Orphan, type UsedType } from "@iracedeck/replay-engine";',
@@ -746,6 +939,20 @@ describe("every name on the barrel has a production consumer outside the engine 
       ['const re = await import("@iracedeck/replay-engine");', "a dynamic `import(…)` or `require(…)` call"],
       ['const re = require("@iracedeck/replay-engine");', "a dynamic `import(…)` or `require(…)` call"],
       ['type T = typeof import("@iracedeck/replay-engine");', "a whole-module `import(…)` type"],
+      ['import "@iracedeck/replay-engine";', "a side-effect import"],
+      ['import {} from "@iracedeck/replay-engine";', "an empty `import {}`"],
+      ['import type {} from "@iracedeck/replay-engine";', "an empty `import {}`"],
+      ['export {} from "@iracedeck/replay-engine";', "an empty `export {}`"],
+      ['export type {} from "@iracedeck/replay-engine";', "an empty `export {}`"],
+      ['const re = await import(("@iracedeck/replay-engine"));', "a dynamic `import(…)` or `require(…)` call"],
+      [
+        'const re = await import("@iracedeck/replay-engine" as string);',
+        "a dynamic `import(…)` or `require(…)` call",
+      ],
+      [
+        'const re = require(("@iracedeck/replay-engine") satisfies string);',
+        "a dynamic `import(…)` or `require(…)` call",
+      ],
     ] as const) {
       const { scan } = check({ [PRODUCTION]: source });
 
@@ -825,33 +1032,44 @@ describe("every name on the barrel has a production consumer outside the engine 
       });
     }, 60_000);
 
+    /*
+     * No count floors here (#1661): a refactor that merges importers or drops
+     * names must not fail these. Each assertion holds for any healthy tree and
+     * fails on an empty or broken read: no files read has no engine barrel in
+     * it; no entries derived has no engine entry; an empty or wrong program
+     * has export names that do not match the runtime module's keys; a scan
+     * that reads no imports finds no importer of `configureReplayEngine`,
+     * which the plugin must call to start the engine at all.
+     */
     it("reads the repo's sources and every testing entry, so an empty read cannot pass", () => {
-      expect(realFiles.size).toBeGreaterThan(1_000);
+      expect(realFiles.has(`${ENGINE_DIR}src/index.ts`)).toBe(true);
+      expect(realFiles.has(`${ENGINE_DIR}src/index.test.ts`)).toBe(true);
       expect([...realFiles.keys()].some((file) => file.split("/").includes("dist"))).toBe(false);
       expect(entryProblems).toEqual([]);
-      // audio-service, deck-core, deck-iracing, pi-components, replay-engine, replay-store, sim-events-iracing on 2026-11-23.
-      expect(testingEntries.size).toBeGreaterThanOrEqual(7);
       expect(testingEntries).toContain(`${ENGINE_DIR}src/testing.ts`);
 
       for (const entry of testingEntries) expect(realFiles.has(entry), entry).toBe(true);
     });
 
     it("sees the barrel's production importers and both kinds of export, so an empty scan cannot pass", () => {
-      // 21 importers in iracing-actions and plugin-runtime naming 66 of the barrel's 87 names (49 values), and 38
-      // contract types, on 2026-11-23.
-      expect(result.scan.importers.length).toBeGreaterThanOrEqual(15);
+      // The values are exactly the runtime barrel's keys, so an empty or wrong program cannot pass.
+      expect(
+        realExports
+          .filter(({ kind }) => kind === "value")
+          .map(({ name }) => name)
+          .sort(),
+      ).toEqual(Object.keys(barrel).sort());
+      expect(Object.keys(barrel)).toContain("configureReplayEngine");
+      // `configureReplayEngine` takes the env, so its type is a contract type.
+      expect(realExports).toContainEqual({ name: "ReplayEngineEnv", kind: "type" });
+      expect(realContractTypes).toContain("ReplayEngineEnv");
+      // plugin-runtime's initReplay phase configures the engine; the importer is found, not spelled.
+      expect(result.scan.consumed.get("configureReplayEngine")?.length ?? 0).toBeGreaterThan(0);
       expect(result.scan.importers.every((file) => isProductionConsumer(file, testingEntries, isTestSource))).toBe(
         true,
       );
-      // plugin-runtime's initReplay phase configures the engine.
-      expect(result.scan.consumed.get("configureReplayEngine")?.length ?? 0).toBeGreaterThan(0);
-      expect(result.scan.consumed.size).toBeGreaterThanOrEqual(50);
-      expect(realExports.filter(({ kind }) => kind === "value").length).toBeGreaterThanOrEqual(40);
-      expect(realExports.filter(({ kind }) => kind === "type").length).toBeGreaterThanOrEqual(30);
-      expect(realContractTypes.size).toBeGreaterThan(0);
-
-      // Each name classed as a value is one the runtime barrel really exports, and each type one it does not.
-      for (const { name, kind } of realExports) expect(Object.hasOwn(barrel, name), name).toBe(kind === "value");
+      // Every name read off an import is one the barrel exports: the scan reads the right specifier's names.
+      expect([...result.scan.consumed.keys()].filter((name) => !realExports.some((e) => e.name === name))).toEqual([]);
     });
 
     it("no production source reaches the barrel in a form the check cannot count", () => {
