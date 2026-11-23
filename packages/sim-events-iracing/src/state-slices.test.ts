@@ -674,6 +674,26 @@ describe("TranslatorState keeps to the slice convention (#1588)", () => {
     ]);
   });
 
+  it("reports a module outside diff/ renaming the state inside an exported namespace that a new diff module consumes as `model.Whole`", () => {
+    // The diff module names no TranslatorState, so rule E cannot count it:
+    // rule F refusing the rename at its source is what closes the route.
+    const other = new Map(sources.other);
+    const diff = new Map(sources.diff);
+
+    other.set(
+      "planted-namespace.ts",
+      `import type { TranslatorState } from "./state.js";\nexport namespace model {\n  export type Whole = TranslatorState;\n}\n`,
+    );
+    diff.set(
+      "planted-namespace-user.ts",
+      `import type { model } from "../planted-namespace.js";\nexport function diffPlanted(state: model.Whole): boolean {\n  return state.pitLaneInitialized;\n}\n`,
+    );
+
+    const result = realFindings(scanStateSlices({ ...sources, diff, other }, LEGACY_FLAT_MEMBERS, SLICE_READS_ALLOWED));
+
+    expect(added(findings, result)).toEqual(["F:planted-namespace.ts:Whole"]);
+  });
+
   it("reports a real diff module that reads a slice through the whole state", () => {
     const flags = sources.diff.get("flags.ts") ?? "";
 
@@ -1121,6 +1141,22 @@ describe("the state-slice scanner (positive controls)", () => {
       expect(violationNames(scan)).toEqual(["C:fastestLap"]);
     });
 
+    it("reports an exported namespace member that is or holds the state and an exported `import … =` alias as stand-ins, and reads through a local one", () => {
+      const scan = planted(plantedState(), {
+        "ns.ts": `${IMPORT}export namespace model {\n  export type Whole = TranslatorState;\n  export type Raw = { state: TranslatorState };\n}\n`,
+        "alias.ts": `${IMPORT}export import Whole = TranslatorState;\n`,
+        "local-alias.ts": `import type * as facade from "../facade.js";\nimport S = facade.model.TranslatorState;\nexport function diff(state: S): unknown {\n  return state.fastestLap;\n}\n`,
+      });
+
+      expect(scan.stateImporters).toEqual(["alias.ts", "local-alias.ts", "ns.ts"]);
+      expect(scan.violations.map((v) => `${v.rule}:${v.module}:${v.line}:${v.name}`)).toEqual([
+        "C:alias.ts:2:Whole",
+        "C:local-alias.ts:4:fastestLap",
+        "C:ns.ts:3:Whole",
+        "C:ns.ts:4:Raw",
+      ]);
+    });
+
     it("passes an exported type that neither is nor holds the state", () => {
       const scan = planted(plantedState(), {
         "gaps.ts": `${IMPORT}export type Reading = { gap: number; traces: TranslatorState["pitLaneInitialized"] };\ntype Local = TranslatorState;\nexport function diff(state: Local): boolean {\n  return state.pitLaneInitialized;\n}\n`,
@@ -1484,6 +1520,48 @@ describe("the state-slice scanner (positive controls)", () => {
       });
 
       expect(fKeys(scan)).toEqual(["F:alias.ts:2:Whole"]);
+    });
+
+    it("reports a type that is the state under another name inside an exported namespace, at any depth", () => {
+      const scan = scanOther({
+        "ns.ts": `${F_IMPORT}export namespace model {\n  export type Whole = TranslatorState;\n}\n`,
+        "nested.ts": `${F_IMPORT}export namespace outer {\n  export namespace model {\n    export interface Whole extends TranslatorState {\n      now: number;\n    }\n  }\n}\n`,
+        "dotted.ts": `${F_IMPORT}export namespace outer.model {\n  export type Whole = Readonly<TranslatorState>;\n}\n`,
+        "ambient.ts": `${F_IMPORT}export declare namespace model {\n  type Whole = TranslatorState;\n}\n`,
+        "ambient-nested.ts": `${F_IMPORT}export declare namespace outer {\n  namespace model {\n    type Whole = TranslatorState;\n  }\n}\n`,
+        "local.ts": `${F_IMPORT}namespace model {\n  export type Whole = TranslatorState;\n}\nexport { model };\n`,
+        "imported-alias.ts": `import type { TranslatorState as Imported } from "./relay.js";\nexport namespace model {\n  export type Whole = Imported;\n}\n`,
+      });
+
+      expect(fKeys(scan)).toEqual([
+        "F:ambient-nested.ts:4:Whole",
+        "F:ambient.ts:3:Whole",
+        "F:dotted.ts:3:Whole",
+        "F:imported-alias.ts:3:Whole",
+        "F:local.ts:3:Whole",
+        "F:nested.ts:4:Whole",
+        "F:ns.ts:3:Whole",
+      ]);
+    });
+
+    it("reports an `import … =` alias of the state under another name, at the top level and in a namespace", () => {
+      const scan = scanOther({
+        "top.ts": `import type * as facade from "./facade.js";\nexport import Whole = facade.model.TranslatorState;\n`,
+        "in-namespace.ts": `${F_IMPORT}export namespace model {\n  export import Whole = TranslatorState;\n}\n`,
+      });
+
+      expect(fKeys(scan)).toEqual(["F:in-namespace.ts:3:Whole", "F:top.ts:2:Whole"]);
+    });
+
+    it("passes a holder, an own-name member and an unexported member of an exported namespace, and an unexported namespace", () => {
+      const scan = scanOther({
+        "holder.ts": `${F_IMPORT}export namespace model {\n  export type Raw = { state: TranslatorState };\n}\n`,
+        "own-name.ts": `export namespace model {\n  export type TranslatorState = Readonly<import("./state.js").TranslatorState>;\n}\n`,
+        "private.ts": `${F_IMPORT}export namespace model {\n  type Whole = TranslatorState;\n  export type Count = number;\n}\n`,
+        "unexported.ts": `${F_IMPORT}namespace model {\n  export type Whole = TranslatorState;\n}\nexport type Count = number;\n`,
+      });
+
+      expect(scan.violations).toEqual([]);
     });
 
     it("reports state.ts exported as a namespace, by `export * as` and by re-exporting a namespace import", () => {

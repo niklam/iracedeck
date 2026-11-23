@@ -49,9 +49,11 @@
  *   module, named, namespace or default, since that may be a namespace a
  *   facade re-exports):
  *   - names no slice type;
- *   - exports no type alias or interface that is, or holds, the state (the
- *     scan reads each module alone, so a module importing such a type would
- *     reach the state unseen);
+ *   - exports no type alias, interface or `import X = …` alias that is, or
+ *     holds, the state, at the top level or as a member of an exported
+ *     namespace at any depth (`exportedDeclarations`; the scan reads each
+ *     module alone, so a module importing such a type would reach the state
+ *     unseen);
  *   - reads no slice key off a value whose type IS the state.
  *
  *   A type is the state through parentheses, unions, intersections,
@@ -101,8 +103,12 @@
  *   name; an exported alias or interface that IS the state in rule C's sense
  *   (`type X = Readonly<TranslatorState>`, `interface X extends
  *   TranslatorState`, `import("./state.js").TranslatorState`, a local alias
- *   exported `as` another name); and `state.ts` exported as a namespace
- *   (`export * as ns from "./state.js"`, a namespace import re-exported).
+ *   exported `as` another name, an `export import X = …` alias), at the top
+ *   level or as a member of an exported namespace at any depth
+ *   (`export namespace model { export type Whole = TranslatorState }`,
+ *   dotted, `declare`d or re-exported by `export { model }` included); and
+ *   `state.ts` exported as a namespace (`export * as ns from "./state.js"`,
+ *   a namespace import re-exported).
  *   Passes: the state relayed as `TranslatorState` (`export *` included), a
  *   type that only holds it (`{ state: TranslatorState }`), and any other
  *   name renamed. A facade's `export * as ns from "./relay.js"` passes too:
@@ -791,6 +797,22 @@ function readStateTypes(file: ts.SourceFile, checker: ts.TypeChecker, sliceTypes
     return leftmost !== undefined && importedBindings.has(leftmost);
   };
 
+  // `import Whole = facade.model.TranslatorState` (or `= TranslatorState`
+  // imported by name), at the top level or in a namespace, names the state as
+  // surely as an import does; in source order, so an alias of an alias counts.
+  eachNode(file, (node) => {
+    if (!ts.isImportEqualsDeclaration(node) || ts.isExternalModuleReference(node.moduleReference)) return;
+
+    const reference = node.moduleReference;
+    const target = ts.isIdentifier(reference) ? symbolOf(reference) : undefined;
+
+    if (!isRelayedState(reference) && (target === undefined || !stateImports.has(target))) return;
+
+    const symbol = symbolOf(node.name);
+
+    if (symbol !== undefined) stateImports.add(symbol);
+  });
+
   /**
    * The `state.ts` export a type names, if any: `X` through a named import,
    * `ns.X` through a namespace import, or `import("../state.js").X` inline;
@@ -1040,15 +1062,24 @@ function scanModule(
           `${where} exports \`${name}\`, which stands for or holds ${STATE_TYPE}: a module importing it would reach the state unseen by this guard. Keep such a type module-local, and import ${STATE_TYPE} from state.ts where it is needed.`,
       );
 
-    for (const statement of file.statements) {
+    // Exported aliases, interfaces and `import X = …` aliases, at the top
+    // level or in an exported namespace.
+    for (const declaration of exportedDeclarations(file, checker)) {
       if (
-        (ts.isTypeAliasDeclaration(statement) || ts.isInterfaceDeclaration(statement)) &&
-        hasExportModifier(statement) &&
-        reachesState(declaredShape(symbolOf(statement.name), 0) ?? null)
+        (ts.isTypeAliasDeclaration(declaration) || ts.isInterfaceDeclaration(declaration)) &&
+        reachesState(declaredShape(symbolOf(declaration.name), 0) ?? null)
       ) {
-        exportedStandIn(statement.name.text, statement.name);
+        exportedStandIn(declaration.name.text, declaration.name);
       }
 
+      const alias = ts.isImportEqualsDeclaration(declaration) ? symbolOf(declaration.name) : undefined;
+
+      if (ts.isImportEqualsDeclaration(declaration) && alias !== undefined && stateImports.has(alias)) {
+        exportedStandIn(declaration.name.text, declaration.name);
+      }
+    }
+
+    for (const statement of file.statements) {
       // `export * from "../state.js"` re-exports `TranslatorState` under its
       // own name, `export * as ns from "../state.js"` as `ns.TranslatorState`.
       if (isStateReExport(statement) && statement.exportClause === undefined) {
@@ -1343,6 +1374,65 @@ function isRelativeReExport(
   );
 }
 
+/**
+ * The declarations `file` exports, in source order: its top-level statements
+ * with an `export` modifier (`export { … }` and `export … from` aside), and,
+ * at any depth, the members of a namespace it exports (`export namespace
+ * model { … }`, dotted ones included, or a local namespace a top-level
+ * `export { model }` names). A member counts when it carries `export`, or
+ * sits in an ambient (`declare`) namespace, where every member is exported.
+ */
+function exportedDeclarations(file: ts.SourceFile, checker: ts.TypeChecker): ts.Statement[] {
+  const found: ts.Statement[] = [];
+  const seen = new Set<ts.ModuleDeclaration>();
+  /** Visits a namespace's members; `ambient` when it or an enclosing namespace is `declare`d. */
+  const visit = (declaration: ts.ModuleDeclaration, enclosingAmbient = false): void => {
+    if (seen.has(declaration) || !ts.isIdentifier(declaration.name)) return;
+
+    seen.add(declaration);
+
+    const ambient = enclosingAmbient || (ts.getCombinedModifierFlags(declaration) & ts.ModifierFlags.Ambient) !== 0;
+    let body = declaration.body;
+
+    while (body !== undefined && ts.isModuleDeclaration(body)) body = body.body;
+
+    if (body === undefined || !ts.isModuleBlock(body)) return;
+
+    for (const member of body.statements) {
+      if (!hasExportModifier(member) && !ambient) continue;
+
+      found.push(member);
+
+      if (ts.isModuleDeclaration(member)) visit(member, ambient);
+    }
+  };
+
+  for (const statement of file.statements) {
+    if (hasExportModifier(statement) && !ts.isExportDeclaration(statement)) {
+      found.push(statement);
+
+      if (ts.isModuleDeclaration(statement)) visit(statement);
+    }
+
+    if (
+      !ts.isExportDeclaration(statement) ||
+      statement.moduleSpecifier !== undefined ||
+      statement.exportClause === undefined ||
+      !ts.isNamedExports(statement.exportClause)
+    ) {
+      continue;
+    }
+
+    for (const element of statement.exportClause.elements) {
+      for (const declaration of checker.getExportSpecifierLocalTargetSymbol(element)?.declarations ?? []) {
+        if (ts.isModuleDeclaration(declaration) && declaration.getSourceFile() === file) visit(declaration);
+      }
+    }
+  }
+
+  return found.sort((a, b) => a.pos - b.pos);
+}
+
 /** Whether `node` carries an `export` modifier. */
 function hasExportModifier(node: ts.Node): boolean {
   return (
@@ -1391,16 +1481,30 @@ function scanSourceModule(
     });
   };
 
-  for (const statement of file.statements) {
+  // Exported aliases, interfaces and `import X = …` aliases, at the top level
+  // or in an exported namespace, that are the state under another name.
+  for (const declaration of exportedDeclarations(file, checker)) {
     if (
-      (ts.isTypeAliasDeclaration(statement) || ts.isInterfaceDeclaration(statement)) &&
-      hasExportModifier(statement) &&
-      statement.name.text !== STATE_TYPE &&
-      declaredShape(symbolOf(statement.name), 0)?.kind === "state"
+      (ts.isTypeAliasDeclaration(declaration) || ts.isInterfaceDeclaration(declaration)) &&
+      declaration.name.text !== STATE_TYPE &&
+      declaredShape(symbolOf(declaration.name), 0)?.kind === "state"
     ) {
-      pushF(statement.name.text, statement.name, `a type that is ${STATE_TYPE} under another name`);
+      pushF(declaration.name.text, declaration.name, `a type that is ${STATE_TYPE} under another name`);
     }
 
+    const alias = ts.isImportEqualsDeclaration(declaration) ? symbolOf(declaration.name) : undefined;
+
+    if (
+      ts.isImportEqualsDeclaration(declaration) &&
+      declaration.name.text !== STATE_TYPE &&
+      alias !== undefined &&
+      stateImports.has(alias)
+    ) {
+      pushF(declaration.name.text, declaration.name, `an \`import … =\` alias of ${STATE_TYPE} under another name`);
+    }
+  }
+
+  for (const statement of file.statements) {
     if (!ts.isExportDeclaration(statement)) continue;
 
     const clause = statement.exportClause;
