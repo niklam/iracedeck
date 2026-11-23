@@ -1,6 +1,6 @@
 {
   "name": "@iracedeck/track-store",
-  "version": "3.10.0-dev.0",
+  "version": "3.10.0-dev.1",
   "description": "The per-track store: pit-lane landmarks learned from live telemetry, one file per TrackID shared by every deck host, merged on every debounced atomic write.",
   "type": "module",
   "main": "dist/index.js",
