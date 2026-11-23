@@ -54,7 +54,15 @@
  *   `runs.steps[*]`) and job `uses` (a reusable workflow, where
  *   `owner/repo/.github/workflows/x.yml@ref` is third-party and
  *   `./.github/workflows/x.yml` is local). A local step action is followed to
- *   its `action.yml`, so one kept outside `.github/actions/` is read too.
+ *   its `action.yml`, so one kept outside `.github/actions/` is read too, and
+ *   a root `action.yml` / `action.yaml` is scanned whether or not a step uses it.
+ * - **`$/` is this repository at the running commit.** GitHub's self repository
+ *   reference (`$/.github/actions/x` for a step, `$/.github/workflows/x.yml`
+ *   for a job; its recommended form, needing no checkout) resolves to the
+ *   repository of the file it appears in, at the commit being run, so it is
+ *   neither third-party nor unpinned. A step's `$/path` is followed to its
+ *   `action.yml` like a `./` one, and refused when there is none in the tree;
+ *   one carrying an `@ref` is refused, as GitHub refuses it.
  * - **A local action must be in the repository.** A step `uses: ./tools/x` with
  *   no `tools/x/action.yml` or `action.yaml` in the tree is code fetched at run
  *   time, typically an `actions/checkout` of another repository into the
@@ -68,25 +76,38 @@
  *   third-party step would be frozen on its hash: forced there by this test and
  *   never bumped. Every scanned file holding a third-party use must therefore
  *   sit in a directory the entry's `directory` or `directories` names (`/` or
- *   `/.github/workflows` for a workflow; the action's own directory otherwise),
- *   matched exactly or by Dependabot's `*` (one path segment) and `**` (any
- *   depth) globs. A file whose uses are all first-party needs no listing.
+ *   `/.github/workflows` for a workflow; the action's own directory otherwise,
+ *   `/` for a root `action.yml`). A singular `directory` is matched literally,
+ *   as Dependabot reads it; a `directories` entry also by its `*` (one path
+ *   segment) and `**` (any depth) globs. A file whose uses are all first-party
+ *   needs no listing.
  *
  * It is proven by positive controls (planted documents that must each be
  * reported) and by coverage floors, so a discovery or parser change that finds
  * nothing cannot stay green.
  */
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { isAlias, isMap, isScalar, isSeq, LineCounter, parseDocument } from "yaml";
 
 const REPO = path.join(import.meta.dirname, "..");
-const GITHUB = path.join(REPO, ".github");
 /** The real tree on 2026-11-23: 7× pnpm/action-setup, one Firebase deploy, one release upload. */
 const MIN_THIRD_PARTY_USES = 9;
 /** The real tree on 2026-11-23: ten workflows, no composite actions. */
 const MIN_FILES = 10;
+/** The real tree on 2026-11-23: the seven workflows holding those nine uses. */
+const MIN_FILES_WITH_PINS = 7;
 
 const FULL_SHA = /^[0-9a-f]{40}$/;
 /** Applied to the trimmed rest of the line: `# [v]<major>.<minor>[.<patch>…][-<prerelease>]`, nothing else. */
@@ -94,13 +115,22 @@ const RELEASE_COMMENT = /^#\s*v?\d+\.\d+(?:\.\d+)*(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za
 /** More alias hops than any real document needs; past it the alias is reported as unresolved. */
 const MAX_ALIAS_HOPS = 8;
 
-/** Workflow files plus composite-action files, as repo-relative names. */
-function discoverFiles() {
+/**
+ * Workflow files, composite-action files under `.github/actions/` and a root
+ * `action.yml` / `action.yaml`, as names relative to `root` (the repository
+ * by default; a test hands in a temporary directory).
+ */
+function discoverFiles(root = REPO) {
   const files = [];
-  const workflows = path.join(GITHUB, "workflows");
+  const isFile = (rel) => {
+    const full = path.join(root, rel);
+    return existsSync(full) && statSync(full).isFile();
+  };
+  for (const manifest of ["action.yml", "action.yaml"]) if (isFile(manifest)) files.push(manifest);
+  const workflows = path.join(root, ".github", "workflows");
   if (existsSync(workflows)) {
     for (const f of readdirSync(workflows)) {
-      if (/\.ya?ml$/.test(f)) files.push(`.github/workflows/${f}`);
+      if (/\.ya?ml$/.test(f) && isFile(`.github/workflows/${f}`)) files.push(`.github/workflows/${f}`);
     }
   }
   const walk = (dir, rel) => {
@@ -111,7 +141,7 @@ function discoverFiles() {
       else if (/^action\.ya?ml$/.test(entry)) files.push(r);
     }
   };
-  const actions = path.join(GITHUB, "actions");
+  const actions = path.join(root, ".github", "actions");
   if (existsSync(actions)) walk(actions, ".github/actions");
   return files;
 }
@@ -207,9 +237,18 @@ function restOfLine(source, node) {
   return source.slice(end, nl === -1 ? source.length : nl).replace(/\r$/, "");
 }
 
-/** Whether a `uses:` value names this repository's own code. */
+/**
+ * Whether a `uses:` value names this repository's own code: a `./` path in the
+ * workspace, or a `$/` self repository reference, which GitHub resolves to
+ * this repository at the running commit.
+ */
 function isLocal(uses) {
-  return uses.startsWith("./");
+  return uses.startsWith("./") || isSelfRef(uses);
+}
+
+/** Whether a `uses:` value is a `$/` self repository reference. */
+function isSelfRef(uses) {
+  return uses.startsWith("$/");
 }
 
 /** Whether a non-local `uses:` value names GitHub's first-party `actions` org. */
@@ -240,6 +279,12 @@ function pinViolations(fileName, source) {
       continue;
     }
     const uses = node.value;
+    if (isSelfRef(uses) && uses.includes("@")) {
+      violations.push(
+        `${label} uses ${uses}: a $/ reference must not carry an @ref, since it always resolves to the running commit (GitHub refuses one)`,
+      );
+      continue;
+    }
     if (isLocal(uses)) {
       if (level === "step") localSteps.push({ uses, label });
       continue;
@@ -278,9 +323,10 @@ function pinViolations(fileName, source) {
 const DEPENDABOT = ".github/dependabot.yml";
 
 /**
- * The directories Dependabot's github-actions entries name, as written.
+ * The directories Dependabot's github-actions entries name: a singular
+ * `directory` is literal, and only a `directories` entry may be a glob.
  *
- * @returns {{ entries: number, directories: string[], violations: string[] }}
+ * @returns {{ entries: number, directories: { value: string, glob: boolean }[], violations: string[] }}
  */
 function dependabotActionDirectories(source) {
   if (source === undefined) return { entries: 0, directories: [], violations: [`${DEPENDABOT} does not exist`] };
@@ -290,23 +336,29 @@ function dependabotActionDirectories(source) {
   const entries = Array.isArray(updates) ? updates.filter((u) => u?.["package-ecosystem"] === "github-actions") : [];
   const directories = [];
   for (const entry of entries) {
-    if (typeof entry.directory === "string") directories.push(entry.directory);
-    if (Array.isArray(entry.directories)) directories.push(...entry.directories.filter((d) => typeof d === "string"));
+    if (typeof entry.directory === "string") directories.push({ value: entry.directory, glob: false });
+    if (Array.isArray(entry.directories)) {
+      for (const d of entry.directories) if (typeof d === "string") directories.push({ value: d, glob: true });
+    }
   }
   if (entries.length === 0) violations.push(`${DEPENDABOT} has no github-actions entry, so no pin is ever bumped`);
   return { entries: entries.length, directories, violations };
 }
 
-/** `/a/b/` and `a/b` both as `/a/b`; the root as `/`. */
+/** `/a/b/`, `a/b` and `./a/b` all as `/a/b`; the root (`.`, `/`, ``) as `/`. */
 function normalizeDir(dir) {
-  const trimmed = `/${dir}`.replace(/\/+/g, "/").replace(/\/$/, "");
-  return trimmed === "" ? "/" : trimmed;
+  const normal = path.posix.normalize(`/${dir}`);
+  return normal.length > 1 ? normal.replace(/\/+$/, "") : "/";
 }
 
-/** Whether a Dependabot `directory`/`directories` value names `dir`: exact, or by its `*` / `**` globs. */
-function dirMatches(pattern, dir) {
-  const glob = normalizeDir(pattern);
-  const regex = glob
+/**
+ * Whether a Dependabot directory names `dir`: a literal one (`directory`)
+ * exactly, a `directories` entry also by its `*` (one segment) and `**` (any
+ * depth) globs.
+ */
+function dirMatches({ value, glob }, dir) {
+  if (!glob) return normalizeDir(value) === dir;
+  const regex = normalizeDir(value)
     .split(/(\*\*|\*)/)
     .map((part) => (part === "**" ? ".*" : part === "*" ? "[^/]*" : part.replace(/[.+?^${}()|[\]\\]/g, "\\$&")))
     .join("");
@@ -329,8 +381,10 @@ function scan(seeds, read) {
   const violations = [];
   const visited = new Set();
   let thirdParty = 0;
+  let coverageChecked = 0;
   const dependabot = dependabotActionDirectories(read(DEPENDABOT));
   violations.push(...dependabot.violations);
+  const listed = JSON.stringify(dependabot.directories.map((d) => d.value));
   const queue = [...seeds];
   while (queue.length > 0) {
     const file = queue.shift();
@@ -342,25 +396,33 @@ function scan(seeds, read) {
     violations.push(...r.violations);
     thirdParty += r.thirdParty;
     const wanted = dependabotDirsFor(file);
-    if (r.thirdParty > 0 && !dependabot.directories.some((d) => wanted.some((w) => dirMatches(d, w)))) {
-      violations.push(
-        `${file} holds ${r.thirdParty} third-party uses, but ${DEPENDABOT}'s github-actions entry does not cover ${wanted[0]} (it lists ${JSON.stringify(dependabot.directories)}), so their hashes would never be bumped; add "${wanted[0]}" to that entry's directories`,
-      );
+    if (r.thirdParty > 0) {
+      coverageChecked++;
+      if (!dependabot.directories.some((d) => wanted.some((w) => dirMatches(d, w)))) {
+        violations.push(
+          `${file} holds ${r.thirdParty} third-party uses, but ${DEPENDABOT}'s github-actions entry does not cover ${wanted[0]} (it lists ${listed}), so their hashes would never be bumped; add "${wanted[0]}" to that entry's directories`,
+        );
+      }
     }
     for (const { uses, label } of r.localSteps) {
-      const dir = path.posix.normalize(uses).replace(/\/+$/, "");
+      const self = isSelfRef(uses);
+      const dir = path.posix.normalize(self ? `./${uses.slice(2)}` : uses).replace(/\/+$/, "");
       const candidates = dir === "." ? ["action.yml", "action.yaml"] : [`${dir}/action.yml`, `${dir}/action.yaml`];
       const target = dir.startsWith("..") ? undefined : candidates.find((f) => read(f) !== undefined);
-      if (target === undefined) {
+      if (target !== undefined) {
+        queue.push(target);
+      } else if (self) {
+        violations.push(
+          `${label} uses ${uses}, which is not an action in this repository (no ${candidates.join(" or ")}); a $/ reference resolves to this repository at the running commit, so the action must be committed here`,
+        );
+      } else {
         violations.push(
           `${label} uses ${uses}, which is not an action in this repository (no ${candidates.join(" or ")}), so it is code fetched at run time that nothing here pins or bumps; name it as owner/repo[/path]@<40-hex commit> # <release>, or commit it here`,
         );
-      } else {
-        queue.push(target);
       }
     }
   }
-  return { violations, thirdParty, visited, dependabotEntries: dependabot.entries };
+  return { violations, thirdParty, visited, coverageChecked, dependabotEntries: dependabot.entries };
 }
 
 /** Reads a repo-relative file from disk, or undefined when it is not a file. */
@@ -382,10 +444,10 @@ describe("every third-party action in .github is pinned to a commit hash", () =>
     expect(result.thirdParty).toBeGreaterThanOrEqual(MIN_THIRD_PARTY_USES);
   });
 
-  it("reads a github-actions entry in .github/dependabot.yml that covers the workflows", () => {
+  it("reads a github-actions entry in .github/dependabot.yml and checks it covers every file with a pin", () => {
     expect(result.dependabotEntries).toBeGreaterThanOrEqual(1);
-    const { directories } = dependabotActionDirectories(readRepoFile(DEPENDABOT));
-    expect(directories.some((d) => dirMatches(d, "/"))).toBe(true);
+    expect(result.coverageChecked).toBeGreaterThanOrEqual(MIN_FILES_WITH_PINS);
+    expect(result.violations.filter((v) => v.includes("would never be bumped"))).toEqual([]);
   });
 
   it("has no unpinned third-party action", () => {
@@ -487,6 +549,20 @@ describe("pinViolations (positive controls)", () => {
     expect(check(step(digest)).violations).toHaveLength(1);
   });
 
+  it("reports a $/ reference carrying an @ref, at step and job level", () => {
+    const doc =
+      "jobs:\n  call:\n    uses: $/.github/workflows/x.yml@v1\n  b:\n    steps:\n      - uses: $/.github/actions/x@main\n";
+    const r = check(doc);
+    expect(r.thirdParty).toBe(0);
+    expect(r.localSteps).toEqual([]);
+    expect(r.violations).toEqual([
+      expect.stringMatching(
+        /^w\.yml:3: job "call" uses \$\/\.github\/workflows\/x\.yml@v1: a \$\/ reference must not carry an @ref/,
+      ),
+      expect.stringMatching(/^w\.yml:6: job "b" step 1 uses \$\/\.github\/actions\/x@main: a \$\/ reference must not/),
+    ]);
+  });
+
   it("reports a non-string uses and a document that does not parse", () => {
     expect(check(step("[a, b]")).violations[0]).toMatch(/is not a string/);
     expect(check("jobs:\n  a: [\n").violations[0]).toMatch(/does not parse as YAML/);
@@ -584,6 +660,16 @@ describe("pinViolations (negative controls)", () => {
     });
   });
 
+  it("accepts $/ self repository references at step and job level, and hands the step ones back", () => {
+    const doc =
+      "jobs:\n  call:\n    uses: $/.github/workflows/x.yml\n  b:\n    steps:\n      - uses: $/.github/actions/x\n";
+    expect(check(doc)).toEqual({
+      violations: [],
+      thirdParty: 0,
+      localSteps: [{ uses: "$/.github/actions/x", label: 'w.yml:6: job "b" step 1' }],
+    });
+  });
+
   it("accepts a correctly pinned third-party step, job and quoted value", () => {
     const doc = [
       "jobs:",
@@ -671,6 +757,39 @@ describe("scan (local actions, in-memory tree)", () => {
     expect(r.violations[0]).toMatch(/name it as owner\/repo\[\/path\]@<40-hex commit> # <release>/);
   });
 
+  it("follows a $/ step action and reports its tag-pinned step", () => {
+    const action = ".github/actions/hello/action.yml";
+    const r = scan(
+      [WF],
+      tree(
+        { [WF]: step("$/.github/actions/hello"), [action]: composite("owner/tool@v1") },
+        dependabotYml(actionsEntry(["/", "/.github/actions/hello"])),
+      ),
+    );
+    expect([...r.visited].sort()).toEqual([action, WF]);
+    expect(r.violations).toEqual([
+      expect.stringMatching(/^\.github\/actions\/hello\/action\.yml:4: composite step 1 uses owner\/tool@v1/),
+    ]);
+  });
+
+  it("reports a $/ step action with no manifest, without calling it a run-time checkout", () => {
+    const r = scan([WF], tree({ [WF]: step("$/.github/actions/missing") }));
+    expect(r.violations).toHaveLength(1);
+    expect(r.violations[0]).toMatch(
+      /^\.github\/workflows\/w\.yml:5: job "build" step 2 uses \$\/\.github\/actions\/missing, which is not an action in this repository \(no \.github\/actions\/missing\/action\.yml or \.github\/actions\/missing\/action\.yaml\); a \$\/ reference resolves to this repository at the running commit/,
+    );
+    expect(r.violations[0]).not.toMatch(/fetched at run time/);
+    const outside = scan([WF], tree({ [WF]: step("$/../elsewhere") }));
+    expect(outside.violations).toEqual([expect.stringMatching(/uses \$\/\.\.\/elsewhere, which is not an action/)]);
+  });
+
+  it("does not follow a job-level $/ reusable workflow", () => {
+    const doc = "jobs:\n  call:\n    uses: $/.github/workflows/other.yml\n";
+    const r = scan([WF], tree({ [WF]: doc }));
+    expect(r.violations).toEqual([]);
+    expect([...r.visited]).toEqual([WF]);
+  });
+
   it("reports a local path that leaves the repository, and finds a root action.yml", () => {
     const outside = scan([WF], tree({ [WF]: step("./../elsewhere"), "../elsewhere/action.yml": composite("./x") }));
     expect(outside.violations).toEqual([
@@ -730,11 +849,62 @@ describe("scan (Dependabot sees every pin)", () => {
     expect(scan([WF], tree({ [WF]: step(`owner/tool@${SHA} # v1.2.3`) }, listed)).violations).toEqual([]);
   });
 
+  it("reads a singular directory literally, as Dependabot does", () => {
+    const files = { [WF]: step(`owner/tool@${SHA} # v1.2.3`), [ACTION]: pinned };
+    const star = scan([WF], tree(files, dependabotYml(actionsEntry("/*"))));
+    expect(star.violations).toEqual([
+      expect.stringMatching(/w\.yml holds 1 third-party uses, .*does not cover \/ \(it lists \["\/\*"\]\)/),
+    ]);
+    const actionsStar = scan([ACTION], tree(files, dependabotYml(actionsEntry("/.github/actions/*"))));
+    expect(actionsStar.violations).toEqual([expect.stringMatching(/does not cover \/\.github\/actions\/setup/)]);
+    const exact = scan([ACTION], tree(files, dependabotYml(actionsEntry(".github/actions/setup/"))));
+    expect(exact.violations).toEqual([]);
+  });
+
+  it("needs / listed for a root action.yml holding a third-party pin", () => {
+    const files = { "action.yml": pinned };
+    expect(scan(["action.yml"], tree(files)).violations).toEqual([]);
+    const r = scan(["action.yml"], tree(files, dependabotYml(actionsEntry(["/.github/workflows"]))));
+    expect(r.violations).toEqual([
+      expect.stringMatching(/^action\.yml holds 1 third-party uses, .*does not cover \/ .*add "\/" to/),
+    ]);
+  });
+
   it("reports a missing dependabot.yml or one without a github-actions entry", () => {
     const files = { [WF]: step("actions/checkout@v7") };
     expect(scan([WF], tree(files, null)).violations).toEqual([".github/dependabot.yml does not exist"]);
     const npmOnly = scan([WF], tree(files, dependabotYml()));
     expect(npmOnly.dependabotEntries).toBe(0);
     expect(npmOnly.violations).toEqual([expect.stringMatching(/has no github-actions entry/)]);
+  });
+});
+
+describe("discoverFiles (a temporary repository on disk)", () => {
+  it("seeds a root action.yml or action.yaml that no step uses, and scan reports its pins", () => {
+    for (const manifest of ["action.yml", "action.yaml"]) {
+      const root = mkdtempSync(path.join(tmpdir(), "action-pins-"));
+      try {
+        mkdirSync(path.join(root, ".github", "workflows"), { recursive: true });
+        mkdirSync(path.join(root, ".github", "actions", "setup"), { recursive: true });
+        writeFileSync(path.join(root, ".github", "workflows", "w.yml"), step("actions/checkout@v7"));
+        writeFileSync(
+          path.join(root, ".github", "actions", "setup", "action.yaml"),
+          composite("actions/setup-node@v6"),
+        );
+        writeFileSync(path.join(root, ".github", "dependabot.yml"), dependabotYml(actionsEntry("/")));
+        writeFileSync(path.join(root, manifest), composite("owner/tool@v1"));
+        const files = discoverFiles(root);
+        expect(files.sort(), manifest).toEqual([".github/actions/setup/action.yaml", WF, manifest].sort());
+        const read = (rel) => {
+          const full = path.join(root, rel);
+          return existsSync(full) && statSync(full).isFile() ? readFileSync(full, "utf8") : undefined;
+        };
+        expect(scan(files, read).violations, manifest).toEqual([
+          expect.stringMatching(new RegExp(`^${manifest.replace(".", "\\.")}:4: composite step 1 uses owner/tool@v1`)),
+        ]);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    }
   });
 });
