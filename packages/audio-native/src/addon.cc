@@ -2,7 +2,7 @@
  * @iracedeck/audio-native
  *
  * Native Node.js addon wrapping the miniaudio single-header library.
- * Provides a 5-channel mixer (IRD_MAX_CHANNELS) used by the Race Engineer, the
+ * Provides a 6-channel mixer (IRD_MAX_CHANNELS) used by the Race Engineer, the
  * radar and other audio actions.
  */
 

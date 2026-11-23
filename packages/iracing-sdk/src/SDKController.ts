@@ -397,10 +397,16 @@ export class SDKController {
   /**
    * Notify every subscriber, in subscription order, each inside the error
    * boundary (#1558). This is the only place the subscriber map is iterated,
-   * and the order is load-bearing: the Elgato extension relies on the
-   * translator subscribing first. A throwing subscriber does not stop the ones
-   * after it, and is reported under its own id, so the controller work this
-   * runs inside never reports it again under a `controller:` id; under
+   * and the order is load-bearing for the replay recorder (#1468):
+   * `initializeSimEventsIracing` subscribes the translator before it, so every
+   * event the recorder publishes on a tick comes after the translator's, the
+   * order `sim-events-iracing`'s `tick-order.ts` checks the Race Engineer's
+   * `endsOn` contracts against, and the recorder reads the replay state once
+   * the translator's tick has run (`replay-recorder.ts`). The Elgato extension
+   * does not depend on it: it ticks on `sim.onTick` (#1500). A throwing
+   * subscriber does not stop the ones after it, and is reported under its own
+   * id, so the controller work this runs inside never reports it again under a
+   * `controller:` id; under
    * `"rethrow"` the first error is returned, to be thrown once the entry
    * point's work is done.
    */
