@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import { FROZEN_FLAT_MEMBERS, FROZEN_WHOLE_STATE_DIFF_MODULES } from "./state-slices.baseline.test-support.js";
 import {
   checkFlatPinFrozen,
   checkStateImporters,
-  compareFrozen,
   type FlatMemberPin,
-  freezeNames,
-  type FrozenNames,
   readSliceSources,
   scanStateSlices,
   type SliceReadAllowList,
@@ -30,9 +28,10 @@ import {
  * of them (`CLAUDE.md` points here). It only shrinks: a name is never added,
  * and moving a cluster into a slice deletes its entry in the same change.
  * Rule B checks both halves: every pinned name is a member under its heading,
- * and the pin's names hold to `LEGACY_FLAT_MEMBERS_FROZEN`, so a name added
- * (or swapped in for one that left) fails, and a name removed fails until the
- * record is re-frozen with the values the failure prints. The comment on an
+ * and every pinned name is in `FROZEN_FLAT_MEMBERS`
+ * (`state-slices.baseline.test-support.ts`), whose lines are only ever
+ * deleted, so a name added fails by name whatever else the change removes,
+ * and a name removed fails until its line is deleted there. The comment on an
  * entry is what its move must settle first; an entry without one
  * has not been assessed yet, so its move starts by reading how the replay wipe
  * (`wipeStateForReplay`) treats its fields and which other diffs read them.
@@ -338,23 +337,13 @@ const LEGACY_FLAT_MEMBERS: FlatMemberPin = {
 };
 
 /**
- * `LEGACY_FLAT_MEMBERS` frozen (rule B): how many distinct names it pins and a
- * sha256 over them sorted (`freezeNames`; headings are rule B's other half).
- * Edited only when a cluster moves into a slice, with the record the failing
- * run prints; never to let a name in.
- */
-const LEGACY_FLAT_MEMBERS_FROZEN: FrozenNames = {
-  count: 229,
-  sha256: "2d020b75567c908f6a68cceeff66f502737c8e52d23a84c0e87c941f9e208d49",
-};
-
-/**
  * The `diff/` modules that import `TranslatorState` (rule E), relative to
  * `diff/`: the ones that took the whole state when the list was frozen
  * (#1661, 2026-11-23). It only shrinks: a new diff module takes its slice as
  * its first parameter and gets another family's fact as a value, so it never
- * joins this list; a module that moves onto its slice leaves it, re-freezing
- * `WHOLE_STATE_DIFF_MODULES_FROZEN` in the same change.
+ * joins this list. Every name here must be in `FROZEN_WHOLE_STATE_DIFF_MODULES`
+ * (`state-slices.baseline.test-support.ts`), whose lines are only ever deleted;
+ * a module that moves onto its slice leaves both in the same change.
  */
 const WHOLE_STATE_DIFF_MODULES: readonly string[] = [
   "caution.ts",
@@ -387,12 +376,6 @@ const WHOLE_STATE_DIFF_MODULES: readonly string[] = [
   "track-wetness.ts",
 ];
 
-/** `WHOLE_STATE_DIFF_MODULES` frozen (rule E), as `LEGACY_FLAT_MEMBERS_FROZEN` is. */
-const WHOLE_STATE_DIFF_MODULES_FROZEN: FrozenNames = {
-  count: 28,
-  sha256: "c608e3fa724cdea203db410e7da9a4936c0fb637734cb2ffa9ada65970e00b0f",
-};
-
 /** Rule C's exceptions: `<module under diff/>:<slice key>` → why that module still reads the slice through `TranslatorState`. */
 const SLICE_READS_ALLOWED: SliceReadAllowList = {
   "laps.ts:lapCrossing":
@@ -422,15 +405,17 @@ const violationNames = (scan: SliceScan): string[] => scan.violations.map((v) =>
 const violationKeys = (violations: readonly SliceViolation[]): string[] =>
   violations.map((v) => (v.module === undefined ? `${v.rule}:${v.name}` : `${v.rule}:${v.module}:${v.name}`));
 
-/** Every finding over a real-tree scan: the scan's own, and the frozen pins' (rules B and E). */
+/** Every finding over a real-tree scan: the scan's own, and the pins' against their frozen baselines (rules B and E). */
 const realFindings = (
   scan: SliceScan,
   pin: FlatMemberPin = LEGACY_FLAT_MEMBERS,
   importers: readonly string[] = WHOLE_STATE_DIFF_MODULES,
+  frozenFlat: readonly string[] = FROZEN_FLAT_MEMBERS,
+  frozenImporters: readonly string[] = FROZEN_WHOLE_STATE_DIFF_MODULES,
 ): SliceViolation[] => [
   ...scan.violations,
-  ...checkFlatPinFrozen(pin, LEGACY_FLAT_MEMBERS_FROZEN),
-  ...checkStateImporters(scan, importers, WHOLE_STATE_DIFF_MODULES_FROZEN),
+  ...checkFlatPinFrozen(pin, frozenFlat),
+  ...checkStateImporters(scan, importers, frozenImporters),
 ];
 
 /** The findings `planted` has that `baseline` does not, so a real-tree control fails only for what it plants. */
@@ -456,9 +441,9 @@ describe("TranslatorState keeps to the slice convention (#1588)", () => {
     expect(scan.stateImporters).toEqual([...WHOLE_STATE_DIFF_MODULES].sort());
   });
 
-  it("holds both pins to their frozen records", () => {
-    expect(freezeNames(Object.values(LEGACY_FLAT_MEMBERS).flat())).toEqual(LEGACY_FLAT_MEMBERS_FROZEN);
-    expect(freezeNames(WHOLE_STATE_DIFF_MODULES)).toEqual(WHOLE_STATE_DIFF_MODULES_FROZEN);
+  it("holds both pins to their frozen baselines", () => {
+    expect([...new Set(Object.values(LEGACY_FLAT_MEMBERS).flat())].sort()).toEqual(FROZEN_FLAT_MEMBERS);
+    expect([...WHOLE_STATE_DIFF_MODULES].sort()).toEqual(FROZEN_WHOLE_STATE_DIFF_MODULES);
   });
 
   it("finds every slice the tree has as a slice", () => {
@@ -508,53 +493,76 @@ describe("TranslatorState keeps to the slice convention (#1588)", () => {
     expect(added(findings, realFindings(result))).toEqual(["A:plantedFlatMember"]);
   });
 
-  it("reports a flat member added to the real state.ts and pinned, printing no record to copy", () => {
+  it("reports a flat member added to the real state.ts and pinned, by name, printing nothing to copy", () => {
     const sourcesWith = withState((state) =>
       state.replace("  radarState: RadarState;", "  radarState: RadarState;\n  plantedFlatMember: number;"),
     );
     const pin = withRadarPinned(["radarState", "plantedFlatMember"]);
     const result = realFindings(scanStateSlices(sourcesWith, pin, SLICE_READS_ALLOWED), pin);
-    const grownRecord = freezeNames(Object.values(pin).flat());
 
-    expect(added(findings, result)).toEqual(["B:LEGACY_FLAT_MEMBERS"]);
+    expect(added(findings, result)).toEqual(["B:plantedFlatMember"]);
 
-    const message = result.find((v) => v.name === "LEGACY_FLAT_MEMBERS")?.message ?? "";
+    const message = result.find((v) => v.name === "plantedFlatMember")?.message ?? "";
 
-    expect(message).toContain("pins 230 names, more than the 229");
-    expect(message).toContain("The pin only shrinks");
+    expect(message).toContain('LEGACY_FLAT_MEMBERS["Radar"] names `plantedFlatMember`, which FROZEN_FLAT_MEMBERS');
     expect(message).toContain('"Translator state slices (#1588)"');
-    expect(message).not.toContain(grownRecord.sha256);
-    expect(message).not.toContain("count:");
+    expect(message).not.toMatch(/count:|sha256/);
   });
 
-  it("reports a real flat member renamed in state.ts and the pin, printing no record to copy", () => {
+  it("reports a real flat member renamed in state.ts and the pin: the new name, and the old name's line", () => {
     const sourcesWith = withState((state) =>
       state.replace("  radarState: RadarState;", "  plantedRadarState: RadarState;"),
     );
     const pin = withRadarPinned(["plantedRadarState"]);
     const result = realFindings(scanStateSlices(sourcesWith, pin, SLICE_READS_ALLOWED), pin);
 
-    expect(added(findings, result)).toEqual(["B:LEGACY_FLAT_MEMBERS"]);
-
-    const message = result.find((v) => v.name === "LEGACY_FLAT_MEMBERS")?.message ?? "";
-
-    expect(message).toContain("as many as LEGACY_FLAT_MEMBERS_FROZEN records, but not the same ones");
-    expect(message).not.toContain(freezeNames(Object.values(pin).flat()).sha256);
-    expect(message).not.toContain("count:");
+    expect(added(findings, result)).toEqual(["B:plantedRadarState", "B:radarState"]);
   });
 
-  it("reports the real pin shrunk without a re-freeze, printing the record that then passes", () => {
+  it("reports the name added by a real change that moves a two-name cluster out and pins one new name", () => {
+    expect(LEGACY_FLAT_MEMBERS["Pit window open/closed (issue #655)"]).toEqual(["pitsOpenInitialized", "lastPitsOpen"]);
+
+    const sourcesWith = withState((state) =>
+      state
+        .replace("  pitsOpenInitialized: boolean;\n", "")
+        .replace("  lastPitsOpen: boolean;\n", "")
+        .replace("  radarState: RadarState;", "  radarState: RadarState;\n  plantedFlatMember: number;"),
+    );
+    const { "Pit window open/closed (issue #655)": _moved, ...pin } = withRadarPinned([
+      "radarState",
+      "plantedFlatMember",
+    ]);
+    const scanned = scanStateSlices(sourcesWith, pin, SLICE_READS_ALLOWED);
+
+    expect(added(findings, realFindings(scanned, pin))).toEqual([
+      "B:plantedFlatMember",
+      "B:lastPitsOpen",
+      "B:pitsOpenInitialized",
+    ]);
+
+    const baselineDeleted = FROZEN_FLAT_MEMBERS.filter(
+      (name) => name !== "pitsOpenInitialized" && name !== "lastPitsOpen",
+    );
+
+    expect(added(findings, realFindings(scanned, pin, WHOLE_STATE_DIFF_MODULES, baselineDeleted))).toEqual([
+      "B:plantedFlatMember",
+    ]);
+  });
+
+  it("reports the real pin shrunk with the baseline line kept, naming the line, and passes once it is deleted", () => {
     const sourcesWith = withState((state) => state.replace("  radarState: RadarState;\n", ""));
     const pin = withRadarPinned(null);
-    const result = realFindings(scanStateSlices(sourcesWith, pin, SLICE_READS_ALLOWED), pin);
-    const record = freezeNames(Object.values(pin).flat());
+    const scanned = scanStateSlices(sourcesWith, pin, SLICE_READS_ALLOWED);
+    const result = realFindings(scanned, pin);
 
-    expect(added(findings, result)).toEqual(["B:LEGACY_FLAT_MEMBERS"]);
-    expect(record.count).toBe(228);
-    expect(result.find((v) => v.name === "LEGACY_FLAT_MEMBERS")?.message).toContain(
-      `LEGACY_FLAT_MEMBERS_FROZEN = { count: 228, sha256: "${record.sha256}" }`,
+    expect(added(findings, result)).toEqual(["B:radarState"]);
+    expect(result.find((v) => v.name === "radarState")?.message).toContain(
+      'delete the line `"radarState",` from FROZEN_FLAT_MEMBERS',
     );
-    expect(checkFlatPinFrozen(pin, record)).toEqual([]);
+
+    const baselineDeleted = FROZEN_FLAT_MEMBERS.filter((name) => name !== "radarState");
+
+    expect(added(findings, realFindings(scanned, pin, WHOLE_STATE_DIFF_MODULES, baselineDeleted))).toEqual([]);
   });
 
   it("reports a new diff module typed on the whole state planted into the real diff/", () => {
@@ -580,7 +588,7 @@ describe("TranslatorState keeps to the slice convention (#1588)", () => {
     );
   });
 
-  it("reports a real pinned importer that no longer imports the state, printing the record that then passes", () => {
+  it("reports a real pinned importer that no longer imports the state, and passes once its entry and line are gone", () => {
     expect(sources.diff.get("radar.ts")).toContain('import type { TranslatorState } from "../state.js";');
 
     const diff = new Map(sources.diff);
@@ -589,13 +597,16 @@ describe("TranslatorState keeps to the slice convention (#1588)", () => {
 
     const result = scanStateSlices({ ...sources, diff }, LEGACY_FLAT_MEMBERS, SLICE_READS_ALLOWED);
     const remaining = WHOLE_STATE_DIFF_MODULES.filter((module) => module !== "radar.ts");
-    const record = freezeNames(remaining);
+    const baselineDeleted = FROZEN_WHOLE_STATE_DIFF_MODULES.filter((module) => module !== "radar.ts");
 
     expect(added(findings, realFindings(result))).toEqual(["E:radar.ts:radar.ts"]);
     expect(realFindings(result).find((v) => v.name === "radar.ts")?.message).toContain(
-      `no longer imports TranslatorState: delete the entry and re-freeze in the same change, \`WHOLE_STATE_DIFF_MODULES_FROZEN = { count: 27, sha256: "${record.sha256}" }\``,
+      'no longer imports TranslatorState: delete the entry, and the line `"radar.ts",` from FROZEN_WHOLE_STATE_DIFF_MODULES',
     );
-    expect(checkStateImporters(result, remaining, record)).toEqual([]);
+    expect(added(findings, realFindings(result, LEGACY_FLAT_MEMBERS, remaining))).toEqual(["E:radar.ts:radar.ts"]);
+    expect(
+      added(findings, realFindings(result, LEGACY_FLAT_MEMBERS, remaining, FROZEN_FLAT_MEMBERS, baselineDeleted)),
+    ).toEqual([]);
   });
 
   it("reports a real diff module that reads a slice through the whole state", () => {
@@ -1091,69 +1102,72 @@ describe("the state-slice scanner (positive controls)", () => {
     });
   });
 
-  describe("frozen records", () => {
-    it("freezes the distinct names, whatever their order and repeats", () => {
-      const record = freezeNames(["b", "a", "b"]);
+  describe("rule B, frozen baseline", () => {
+    const FROZEN = ["lastOnPitRoad", "pitLaneInitialized"];
 
-      expect(record).toEqual(freezeNames(["a", "b"]));
-      expect(record.count).toBe(2);
-      expect(record.sha256).toMatch(/^[0-9a-f]{64}$/);
-      expect(freezeNames(["a", "c"]).sha256).not.toEqual(record.sha256);
-    });
-
-    it("compares a list with its record as same, grown, swapped or shrunk", () => {
-      const frozen = freezeNames(["a", "b"]);
-
-      expect(compareFrozen(["b", "a"], frozen)).toEqual({ kind: "same" });
-      expect(compareFrozen(["a", "b", "c"], frozen)).toEqual({ kind: "grown", now: freezeNames(["a", "b", "c"]) });
-      expect(compareFrozen(["a", "c"], frozen)).toEqual({ kind: "swapped", now: freezeNames(["a", "c"]) });
-      expect(compareFrozen(["a"], frozen)).toEqual({ kind: "shrunk", now: freezeNames(["a"]) });
-    });
-  });
-
-  describe("rule B, frozen", () => {
-    const FROZEN = freezeNames(Object.values(PLANTED_PIN).flat());
-
-    it("passes the pin its record was frozen from, whatever the headings", () => {
+    it("passes the pin its baseline holds, whatever the headings", () => {
       expect(checkFlatPinFrozen(PLANTED_PIN, FROZEN)).toEqual([]);
       expect(checkFlatPinFrozen({ Renamed: ["lastOnPitRoad"], Other: ["pitLaneInitialized"] }, FROZEN)).toEqual([]);
     });
 
-    it("reports a grown pin, pointing at the slice convention and printing no record to copy", () => {
-      const pin = { "Pit lane / stall": ["pitLaneInitialized", "lastOnPitRoad", "fastestLapClaim"] };
-      const findings = checkFlatPinFrozen(pin, FROZEN);
+    it("reports a name added to the pin by name, pointing at the slice convention and printing nothing to copy", () => {
+      const findings = checkFlatPinFrozen(
+        { "Pit lane / stall": ["pitLaneInitialized", "lastOnPitRoad", "fastestLapClaim"] },
+        FROZEN,
+      );
 
-      expect(violationKeys(findings)).toEqual(["B:LEGACY_FLAT_MEMBERS"]);
-      expect(findings[0].message).toContain("pins 3 names, more than the 2 LEGACY_FLAT_MEMBERS_FROZEN records");
-      expect(findings[0].message).toContain("The pin only shrinks");
-      expect(findings[0].message).toContain("New state goes into a slice");
+      expect(violationKeys(findings)).toEqual(["B:fastestLapClaim"]);
+      expect(findings[0].message).toContain(
+        'LEGACY_FLAT_MEMBERS["Pit lane / stall"] names `fastestLapClaim`, which FROZEN_FLAT_MEMBERS (src/state-slices.baseline.test-support.ts) does not hold',
+      );
+      expect(findings[0].message).toContain("the pin only shrinks. New state goes into a slice");
       expect(findings[0].message).toContain(
         '`packages/sim-events-iracing/CLAUDE.md`, "Translator state slices (#1588)"',
       );
-      expect(findings[0].message).not.toContain(freezeNames(Object.values(pin).flat()).sha256);
-      expect(findings[0].message).not.toContain("count:");
+      expect(findings[0].message).toContain("never add one to let a name in");
+      expect(findings[0].message).not.toMatch(/count:|sha256/);
     });
 
-    it("reports a name swapped for another the same way, printing no record to copy", () => {
+    it("reports a name swapped in for one that left: the added name, and the line to delete", () => {
+      const findings = checkFlatPinFrozen({ "Pit lane / stall": ["pitLaneInitialized", "fastestLapClaim"] }, FROZEN);
+
+      expect(violationKeys(findings)).toEqual(["B:fastestLapClaim", "B:lastOnPitRoad"]);
+      expect(findings[0].message).toContain("A flat member renamed is a name added");
+      expect(findings[1].message).toContain('delete the line `"lastOnPitRoad",` from FROZEN_FLAT_MEMBERS');
+    });
+
+    it("reports the name added by a change that removes two and adds one, before and after the two lines are deleted", () => {
+      const frozen = ["lastOnPitRoad", "pitBoxEntrySeeded", "pitLaneInitialized"];
       const pin = { "Pit lane / stall": ["pitLaneInitialized", "fastestLapClaim"] };
-      const findings = checkFlatPinFrozen(pin, FROZEN);
 
-      expect(violationKeys(findings)).toEqual(["B:LEGACY_FLAT_MEMBERS"]);
-      expect(findings[0].message).toContain("as many as LEGACY_FLAT_MEMBERS_FROZEN records, but not the same ones");
-      expect(findings[0].message).toContain("The pin only shrinks");
-      expect(findings[0].message).not.toContain(freezeNames(Object.values(pin).flat()).sha256);
-      expect(findings[0].message).not.toContain("count:");
+      expect(violationKeys(checkFlatPinFrozen(pin, frozen))).toEqual([
+        "B:fastestLapClaim",
+        "B:lastOnPitRoad",
+        "B:pitBoxEntrySeeded",
+      ]);
+      expect(violationKeys(checkFlatPinFrozen(pin, ["pitLaneInitialized"]))).toEqual(["B:fastestLapClaim"]);
     });
 
-    it("reports a shrunk pin not re-frozen, printing the record that then passes", () => {
+    it("reports a shrunk pin whose baseline still holds the name, naming the line to delete, and passes once it is deleted", () => {
       const pin = { "Pit lane / stall": ["pitLaneInitialized"] };
-      const record = freezeNames(["pitLaneInitialized"]);
       const findings = checkFlatPinFrozen(pin, FROZEN);
 
-      expect(violationKeys(findings)).toEqual(["B:LEGACY_FLAT_MEMBERS"]);
-      expect(findings[0].message).toContain("pins 1 names, fewer than the 2");
-      expect(findings[0].message).toContain(`LEGACY_FLAT_MEMBERS_FROZEN = { count: 1, sha256: "${record.sha256}" }`);
-      expect(checkFlatPinFrozen(pin, record)).toEqual([]);
+      expect(violationKeys(findings)).toEqual(["B:lastOnPitRoad"]);
+      expect(findings[0].message).toContain(
+        'FROZEN_FLAT_MEMBERS (src/state-slices.baseline.test-support.ts) holds `lastOnPitRoad`, which LEGACY_FLAT_MEMBERS no longer names: delete the line `"lastOnPitRoad",`',
+      );
+      expect(findings[0].message).not.toMatch(/count:|sha256/);
+      expect(checkFlatPinFrozen(pin, ["pitLaneInitialized"])).toEqual([]);
+    });
+
+    it("reports a baseline out of code-unit order, and one with a repeat", () => {
+      const unsorted = checkFlatPinFrozen(PLANTED_PIN, ["pitLaneInitialized", "lastOnPitRoad"]);
+
+      expect(violationKeys(unsorted)).toEqual(["B:lastOnPitRoad"]);
+      expect(unsorted[0].message).toContain("keep it sorted by code unit with each name once");
+      expect(
+        violationKeys(checkFlatPinFrozen(PLANTED_PIN, ["lastOnPitRoad", "lastOnPitRoad", "pitLaneInitialized"])),
+      ).toEqual(["B:lastOnPitRoad"]);
     });
   });
 
@@ -1162,9 +1176,9 @@ describe("the state-slice scanner (positive controls)", () => {
     const SLICED = `import type { FastestLapState } from "../state.js";\nexport function diff(slice: FastestLapState): unknown {\n  return slice.record;\n}\n`;
     const diff = { "flags.ts": WHOLE, "laps.ts": WHOLE, "fastest-lap.ts": SLICED };
     const PIN = ["flags.ts", "laps.ts"];
-    const FROZEN = freezeNames(PIN);
+    const FROZEN = ["flags.ts", "laps.ts"];
 
-    it("passes when the importers are the pinned modules and the pin its record", () => {
+    it("passes when the importers are the pinned modules and the baseline holds the pin", () => {
       const scan = planted(plantedState(), diff);
 
       expect(scan.violations).toEqual([]);
@@ -1183,51 +1197,61 @@ describe("the state-slice scanner (positive controls)", () => {
       expect(findings[0].message).not.toMatch(/add it/i);
     });
 
-    it("reports the new module added to the pin as a grown pin, printing no record to copy", () => {
+    it("reports the new module added to the pin by name, printing nothing to copy", () => {
       const scan = planted(plantedState(), { ...diff, "leader-white.ts": WHOLE });
-      const pin = [...PIN, "leader-white.ts"];
-      const findings = checkStateImporters(scan, pin, FROZEN);
+      const findings = checkStateImporters(scan, [...PIN, "leader-white.ts"], FROZEN);
 
-      expect(violationKeys(findings)).toEqual(["E:WHOLE_STATE_DIFF_MODULES"]);
-      expect(findings[0].message).toContain("names 3 modules, more than the 2 WHOLE_STATE_DIFF_MODULES_FROZEN records");
+      expect(violationKeys(findings)).toEqual(["E:leader-white.ts:leader-white.ts"]);
+      expect(findings[0].message).toContain(
+        "WHOLE_STATE_DIFF_MODULES names `leader-white.ts`, which FROZEN_WHOLE_STATE_DIFF_MODULES (src/state-slices.baseline.test-support.ts) does not hold",
+      );
       expect(findings[0].message).toContain("takes its slice as its first parameter");
-      expect(findings[0].message).not.toContain(freezeNames(pin).sha256);
-      expect(findings[0].message).not.toContain("count:");
+      expect(findings[0].message).not.toMatch(/count:|sha256/);
     });
 
-    it("reports a module swapped into the pin for one that left, printing no record to copy", () => {
+    it("reports a module swapped into the pin for one that left: the added module, and the line to delete", () => {
       const scan = planted(plantedState(), { "flags.ts": WHOLE, "leader-white.ts": WHOLE });
-      const pin = ["flags.ts", "leader-white.ts"];
-      const findings = checkStateImporters(scan, pin, FROZEN);
+      const findings = checkStateImporters(scan, ["flags.ts", "leader-white.ts"], FROZEN);
 
-      expect(violationKeys(findings)).toEqual(["E:WHOLE_STATE_DIFF_MODULES"]);
-      expect(findings[0].message).toContain(
-        "as many as WHOLE_STATE_DIFF_MODULES_FROZEN records, but not the same ones",
-      );
-      expect(findings[0].message).not.toContain(freezeNames(pin).sha256);
+      expect(violationKeys(findings)).toEqual(["E:leader-white.ts:leader-white.ts", "E:laps.ts:laps.ts"]);
+      expect(findings[1].message).toContain('delete the line `"laps.ts",` from FROZEN_WHOLE_STATE_DIFF_MODULES');
     });
 
-    it("reports a stale entry, printing the record to write once it is deleted, which then passes", () => {
-      const scan = planted(plantedState(), { ...diff, "laps.ts": SLICED, "fastest-lap.ts": SLICED });
-      const record = freezeNames(["flags.ts"]);
-      const findings = checkStateImporters(scan, PIN, FROZEN);
+    it("reports the module added by a change that moves two onto their slices and adds one, before and after the two lines are deleted", () => {
+      const scan = planted(plantedState(), {
+        "flags.ts": WHOLE,
+        "laps.ts": SLICED,
+        "radar.ts": SLICED,
+        "leader-white.ts": WHOLE,
+      });
+      const pin = ["flags.ts", "leader-white.ts"];
 
-      expect(violationKeys(findings)).toEqual(["E:laps.ts:laps.ts"]);
-      expect(findings[0].message).toContain(
-        "names `laps.ts`, which no longer imports TranslatorState: delete the entry",
-      );
-      expect(findings[0].message).toContain(
-        `WHOLE_STATE_DIFF_MODULES_FROZEN = { count: 1, sha256: "${record.sha256}" }`,
+      expect(violationKeys(checkStateImporters(scan, pin, ["flags.ts", "laps.ts", "radar.ts"]))).toEqual([
+        "E:leader-white.ts:leader-white.ts",
+        "E:laps.ts:laps.ts",
+        "E:radar.ts:radar.ts",
+      ]);
+      expect(violationKeys(checkStateImporters(scan, pin, ["flags.ts"]))).toEqual([
+        "E:leader-white.ts:leader-white.ts",
+      ]);
+    });
+
+    it("reports a stale entry with the pin entry and baseline line to delete, and passes once both are gone", () => {
+      const scan = planted(plantedState(), { ...diff, "laps.ts": SLICED });
+      const stale = checkStateImporters(scan, PIN, FROZEN);
+
+      expect(violationKeys(stale)).toEqual(["E:laps.ts:laps.ts"]);
+      expect(stale[0].message).toContain(
+        'names `laps.ts`, which no longer imports TranslatorState: delete the entry, and the line `"laps.ts",` from FROZEN_WHOLE_STATE_DIFF_MODULES',
       );
 
-      const deleted = checkStateImporters(scan, ["flags.ts"], FROZEN);
+      const pinOnly = checkStateImporters(scan, ["flags.ts"], FROZEN);
 
-      expect(violationKeys(deleted)).toEqual(["E:WHOLE_STATE_DIFF_MODULES"]);
-      expect(deleted[0].message).toContain("fewer than the 2");
-      expect(deleted[0].message).toContain(
-        `WHOLE_STATE_DIFF_MODULES_FROZEN = { count: 1, sha256: "${record.sha256}" }`,
+      expect(violationKeys(pinOnly)).toEqual(["E:laps.ts:laps.ts"]);
+      expect(pinOnly[0].message).toContain(
+        'holds `laps.ts`, which WHOLE_STATE_DIFF_MODULES no longer names: delete the line `"laps.ts",`',
       );
-      expect(checkStateImporters(scan, ["flags.ts"], record)).toEqual([]);
+      expect(checkStateImporters(scan, ["flags.ts"], ["flags.ts"])).toEqual([]);
     });
 
     it("reports an entry that is not a diff module at all", () => {
@@ -1238,24 +1262,20 @@ describe("the state-slice scanner (positive controls)", () => {
       expect(findings[0].message).toContain("which is not a diff module");
     });
 
-    it("prints no record for a stale entry while the pin also grew, so the record cannot carry the added module", () => {
-      const scan = planted(plantedState(), { "flags.ts": WHOLE, "laps.ts": SLICED, "leader-white.ts": WHOLE });
-      const pin = [...PIN, "leader-white.ts"];
-      const findings = checkStateImporters(scan, pin, FROZEN);
-
-      expect(violationKeys(findings)).toEqual(["E:laps.ts:laps.ts", "E:WHOLE_STATE_DIFF_MODULES"]);
-      expect(findings[0].message).toContain(
-        "once the list differs from WHOLE_STATE_DIFF_MODULES_FROZEN only by modules removed",
-      );
-      expect(findings.map((finding) => finding.message).join("\n")).not.toContain("count:");
-    });
-
     it("reports an entry named twice", () => {
       const scan = planted(plantedState(), diff);
       const findings = checkStateImporters(scan, [...PIN, "laps.ts"], FROZEN);
 
       expect(violationKeys(findings)).toEqual(["E:laps.ts:laps.ts"]);
       expect(findings[0].message).toContain("names `laps.ts` twice");
+    });
+
+    it("reports a baseline out of code-unit order", () => {
+      const scan = planted(plantedState(), diff);
+      const findings = checkStateImporters(scan, PIN, ["laps.ts", "flags.ts"]);
+
+      expect(violationKeys(findings)).toEqual(["E:flags.ts:flags.ts"]);
+      expect(findings[0].message).toContain("keep it sorted by code unit");
     });
   });
 });

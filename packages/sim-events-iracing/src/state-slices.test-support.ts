@@ -26,15 +26,14 @@
  *   heading other than the one it sits under, a name pinned twice, an empty
  *   entry, or an entry whose heading `state.ts` no longer has (by member name,
  *   or by heading for the last two). `checkFlatPinFrozen` holds the pin's
- *   distinct names against a frozen record (`freezeNames`: their count and a
- *   sha256 over them sorted, headings left out): more names than the record,
- *   or as many but not the same ones (one swapped for another, a rename
- *   included), is a name added, and fails without printing a record to copy;
- *   fewer is a cluster moved into a slice, and fails printing the record to
- *   write in the same change. Reported by the pin's name. What a count and a
- *   hash cannot tell is a change that removes names and adds fewer: its new
- *   record is printed like any shrink, so the record's edit in the diff is
- *   what a reviewer reads.
+ *   names, headings left out, against `FROZEN_FLAT_MEMBERS`, the names it
+ *   held when frozen (`state-slices.baseline.test-support.ts`, whose lines
+ *   are only ever deleted): a pinned name the baseline does not hold fails,
+ *   however many others the change removed, so neither a name added nor one
+ *   swapped in (a rename included) gets past a shrink; a baseline name the pin
+ *   no longer holds fails, naming the line to delete; and a baseline out of
+ *   code-unit order or with a repeat fails. No record or list is ever printed
+ *   to copy. Reported by the name.
  * - **C** — under `diff/`, a module that imports `TranslatorState`
  *   (`import type { … }`, `import { type … }`, plain, through a namespace
  *   import used as `ns.TranslatorState` in a type or an `extends` clause,
@@ -73,11 +72,10 @@
  *   when it was frozen, and the pin only shrinks. A module the pin does not
  *   name is a new diff module on the whole state; a pinned module that is no
  *   longer a diff module or no longer imports the state is a stale entry,
- *   reported with the record to write once it is deleted (only while the pin
- *   otherwise matches its record, so the printed record never carries an added
- *   module); an entry named twice is reported too; and the pin's distinct names
- *   are held against a frozen record as rule B's are, with the same blind spot.
- *   Reported by module, or by the pin's name for the frozen record. Like rules
+ *   reported with its pin entry and baseline line to delete; an entry named
+ *   twice is reported too; and the pin is held against
+ *   `FROZEN_WHOLE_STATE_DIFF_MODULES` as rule B's pin is against its
+ *   baseline. Reported by module. Like rules
  *   A–D it reads each module's syntax alone, so it sees the state only where a
  *   module names `TranslatorState` (in the forms rule C reads): a type derived
  *   without naming it, such as `Parameters<typeof diffFlags>[0]` or
@@ -88,7 +86,6 @@
  * `TranslatorState` type literal, no `createInitialState` returning an object
  * literal).
  */
-import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import ts from "typescript";
@@ -1270,99 +1267,121 @@ export function scanStateSlices(sources: SliceSources, pin: FlatMemberPin, allow
   };
 }
 
-// ── Frozen pins (rules B and E) ─────────────────────────────────────────
+// ── Frozen baselines (rules B and E) ────────────────────────────────────
 
-/** Where the slice convention is written down, for the messages of a pin that grew. */
+/** Where the slice convention is written down, for the messages of a list that grew. */
 const SLICE_SECTION = '`packages/sim-events-iracing/CLAUDE.md`, "Translator state slices (#1588)"';
 
-/** A list that may only shrink, frozen: how many distinct names it held, and a sha256 over them. */
-export interface FrozenNames {
-  readonly count: number;
-  readonly sha256: string;
+/** The file holding both frozen baselines, relative to the package. */
+const BASELINE_FILE = "src/state-slices.baseline.test-support.ts";
+
+/** One name a shrink-only list holds, and where it holds it (`LEGACY_FLAT_MEMBERS["Flags"]`). */
+interface ListedName {
+  readonly name: string;
+  readonly where: string;
 }
 
-/** The record of `names`: their distinct count, and the sha256 (hex) of the distinct names sorted by code unit, joined by `\n`. */
-export function freezeNames(names: Iterable<string>): FrozenNames {
-  const distinct = [...new Set(names)].sort();
-
-  return { count: distinct.length, sha256: createHash("sha256").update(distinct.join("\n")).digest("hex") };
+/** How one shrink-only list is held to its frozen baseline. */
+interface BaselineCheck {
+  readonly rule: SliceRule;
+  /** The list's name in `state-slices.test.ts`. */
+  readonly list: string;
+  /** The baseline's name in `BASELINE_FILE`. */
+  readonly baseline: string;
+  /** Why a name the baseline does not hold is refused, and what to do instead. */
+  readonly refuse: string;
+  /** Whether a finding names its entry as its `module` too (rule E's entries are diff modules). */
+  readonly entriesAreModules: boolean;
 }
 
 /**
- * How a list compares with its frozen record: the same names, more (`grown`),
- * as many but not the same ones (`swapped`), or fewer (`shrunk`). `now` is the
- * list's own record.
+ * The list against its frozen baseline, by name: the baseline is sorted by
+ * code unit with no repeats, every listed name is one the baseline holds
+ * (whatever else the change removed, so a name is never let in by a shrink),
+ * and every baseline name is still listed (else its line is deleted). Prints
+ * no record or list to copy: the only edit a failure asks of the baseline is
+ * the deletion of a line it names.
  */
-export type FrozenComparison =
-  { readonly kind: "same" } | { readonly kind: "grown" | "swapped" | "shrunk"; readonly now: FrozenNames };
+function checkAgainstBaseline(
+  listed: readonly ListedName[],
+  frozen: readonly string[],
+  check: BaselineCheck,
+): SliceViolation[] {
+  const violations: SliceViolation[] = [];
+  const push = (name: string, message: string): void => {
+    violations.push(
+      check.entriesAreModules ? { rule: check.rule, name, module: name, message } : { rule: check.rule, name, message },
+    );
+  };
 
-/** Compares `names` with `frozen`. Pure. */
-export function compareFrozen(names: Iterable<string>, frozen: FrozenNames): FrozenComparison {
-  const now = freezeNames(names);
+  for (let index = 1; index < frozen.length; index++) {
+    if (frozen[index - 1] < frozen[index]) continue;
 
-  if (now.count > frozen.count) return { kind: "grown", now };
-
-  if (now.count < frozen.count) return { kind: "shrunk", now };
-
-  return now.sha256 === frozen.sha256 ? { kind: "same" } : { kind: "swapped", now };
-}
-
-/** The literal to write into a frozen record. */
-function frozenLiteral(record: FrozenNames): string {
-  return `{ count: ${record.count}, sha256: "${record.sha256}" }`;
-}
-
-/** Rule B's freeze: the flat pin's distinct names against `frozen`. A pin that grew or swapped a name gets no record to copy. */
-export function checkFlatPinFrozen(pin: FlatMemberPin, frozen: FrozenNames): SliceViolation[] {
-  const comparison = compareFrozen(Object.values(pin).flat(), frozen);
-  const name = "LEGACY_FLAT_MEMBERS";
-  const refuse = `The pin only shrinks: a name is never added to it, and LEGACY_FLAT_MEMBERS_FROZEN is never re-frozen to let one in. New state goes into a slice, one member \`<family>: <Family>State\` with its \`create<Family>State()\` in state.ts (${SLICE_SECTION}); take the added name out of the pin and make its cluster a slice.`;
-
-  switch (comparison.kind) {
-    case "same":
-      return [];
-    case "grown":
-      return [
-        {
-          rule: "B",
-          name,
-          message: `LEGACY_FLAT_MEMBERS pins ${comparison.now.count} names, more than the ${frozen.count} LEGACY_FLAT_MEMBERS_FROZEN records. ${refuse}`,
-        },
-      ];
-    case "swapped":
-      return [
-        {
-          rule: "B",
-          name,
-          message: `LEGACY_FLAT_MEMBERS pins ${frozen.count} names, as many as LEGACY_FLAT_MEMBERS_FROZEN records, but not the same ones: a name was added in place of one that left (a flat member renamed counts: rename it when its cluster moves into a slice). ${refuse}`,
-        },
-      ];
-    case "shrunk":
-      return [
-        {
-          rule: "B",
-          name,
-          message: `LEGACY_FLAT_MEMBERS pins ${comparison.now.count} names, fewer than the ${frozen.count} LEGACY_FLAT_MEMBERS_FROZEN records: a cluster moved into a slice. Re-freeze in the same change, so the names that left cannot come back: \`LEGACY_FLAT_MEMBERS_FROZEN = ${frozenLiteral(comparison.now)}\`. Only names removed are re-frozen; none may be added.`,
-        },
-      ];
+    push(
+      frozen[index],
+      `${check.baseline} (${BASELINE_FILE}) has \`${frozen[index]}\` after \`${frozen[index - 1]}\`: keep it sorted by code unit with each name once, so a line has one place to be.`,
+    );
   }
+
+  const frozenSet = new Set(frozen);
+  const listedNames = new Set<string>();
+
+  for (const { name, where } of listed) {
+    if (listedNames.has(name)) continue;
+
+    listedNames.add(name);
+
+    if (frozenSet.has(name)) continue;
+
+    push(
+      name,
+      `${where} names \`${name}\`, which ${check.baseline} (${BASELINE_FILE}) does not hold: ${check.refuse} The baseline only ever loses lines; never add one to let a name in.`,
+    );
+  }
+
+  for (const name of frozenSet) {
+    if (listedNames.has(name)) continue;
+
+    push(
+      name,
+      `${check.baseline} (${BASELINE_FILE}) holds \`${name}\`, which ${check.list} no longer names: delete the line \`"${name}",\` from ${check.baseline} in the same change, so the name cannot come back.`,
+    );
+  }
+
+  return violations;
+}
+
+/** Rule B's baseline: every name the flat pin holds against `frozen`, the names it held when frozen. */
+export function checkFlatPinFrozen(pin: FlatMemberPin, frozen: readonly string[]): SliceViolation[] {
+  const listed = Object.entries(pin).flatMap(([heading, names]) =>
+    names.map((name) => ({ name, where: `LEGACY_FLAT_MEMBERS["${heading}"]` })),
+  );
+
+  return checkAgainstBaseline(listed, frozen, {
+    rule: "B",
+    list: "LEGACY_FLAT_MEMBERS",
+    baseline: "FROZEN_FLAT_MEMBERS",
+    refuse: `the pin only shrinks. New state goes into a slice, one member \`<family>: <Family>State\` with its \`create<Family>State()\` in state.ts (${SLICE_SECTION}); take the name out of the pin and make its cluster a slice. A flat member renamed is a name added: rename it when its cluster moves into a slice.`,
+    entriesAreModules: false,
+  });
 }
 
 /**
  * Rule E: every `diff/` module that imports `TranslatorState` is one the
- * importer pin names, every pinned module still is one, and the pin's distinct
- * names hold to `frozen`. Pure: reads the scan's `diffModules` and
- * `stateImporters` only.
+ * importer pin names, every pinned module still is one, and the pin holds to
+ * `frozen`, the modules it named when frozen. Pure: reads the scan's
+ * `diffModules` and `stateImporters` only.
  */
 export function checkStateImporters(
   scan: Pick<SliceScan, "diffModules" | "stateImporters">,
   pinned: readonly string[],
-  frozen: FrozenNames,
+  frozen: readonly string[],
 ): SliceViolation[] {
   const violations: SliceViolation[] = [];
   const pinnedSet = new Set(pinned);
   const importers = new Set(scan.stateImporters);
   const modules = new Set(scan.diffModules);
+  const takeSlice = `a new diff module takes its slice as its first parameter, never ${STATE_TYPE} whole, \`Readonly\` or narrowed with \`Pick<>\`, and another family's fact arrives as a value \`handleTick\` reads at the call (${SLICE_SECTION})`;
 
   for (const module of scan.stateImporters) {
     if (pinnedSet.has(module)) continue;
@@ -1371,12 +1390,11 @@ export function checkStateImporters(
       rule: "E",
       name: module,
       module,
-      message: `diff/${module} imports ${STATE_TYPE}, and WHOLE_STATE_DIFF_MODULES does not name it: a new diff module takes its slice as its first parameter, never ${STATE_TYPE} whole, \`Readonly\` or narrowed with \`Pick<>\`, and another family's fact arrives as a value \`handleTick\` reads at the call (${SLICE_SECTION}). Drop the ${STATE_TYPE} import. WHOLE_STATE_DIFF_MODULES names only the modules that took the whole state when it was frozen, and only shrinks.`,
+      message: `diff/${module} imports ${STATE_TYPE}, and WHOLE_STATE_DIFF_MODULES does not name it: ${takeSlice}. Drop the ${STATE_TYPE} import. WHOLE_STATE_DIFF_MODULES names only the modules that took the whole state when it was frozen, and only shrinks.`,
     });
   }
 
   const seen = new Set<string>();
-  const stale: string[] = [];
 
   for (const module of pinned) {
     if (seen.has(module)) {
@@ -1394,59 +1412,29 @@ export function checkStateImporters(
 
     if (importers.has(module)) continue;
 
-    stale.push(module);
+    const why = modules.has(module) ? `no longer imports ${STATE_TYPE}` : "is not a diff module";
+
+    violations.push({
+      rule: "E",
+      name: module,
+      module,
+      message: `WHOLE_STATE_DIFF_MODULES names \`${module}\`, which ${why}: delete the entry, and the line \`"${module}",\` from FROZEN_WHOLE_STATE_DIFF_MODULES (${BASELINE_FILE}), in the same change.`,
+    });
   }
 
-  const comparison = compareFrozen(pinned, frozen);
-
-  if (stale.length > 0) {
-    // Only a list that still matches its record is known to hold no added
-    // module, so only then is the record without the stale entries safe to print.
-    const refreeze =
-      comparison.kind === "same"
-        ? `re-freeze in the same change, \`WHOLE_STATE_DIFF_MODULES_FROZEN = ${frozenLiteral(freezeNames(pinned.filter((module) => !stale.includes(module))))}\` once every stale entry is gone`
-        : "re-freeze in the same change once the list differs from WHOLE_STATE_DIFF_MODULES_FROZEN only by modules removed (the run then prints the record)";
-
-    for (const module of stale) {
-      const why = modules.has(module) ? `no longer imports ${STATE_TYPE}` : "is not a diff module";
-
-      violations.push({
+  violations.push(
+    ...checkAgainstBaseline(
+      pinned.map((module) => ({ name: module, where: "WHOLE_STATE_DIFF_MODULES" })),
+      frozen,
+      {
         rule: "E",
-        name: module,
-        module,
-        message: `WHOLE_STATE_DIFF_MODULES names \`${module}\`, which ${why}: delete the entry and ${refreeze}.`,
-      });
-    }
-  }
-
-  const name = "WHOLE_STATE_DIFF_MODULES";
-  const refuse = `The list only shrinks: a module is never added to it, and WHOLE_STATE_DIFF_MODULES_FROZEN is never re-frozen to let one in. A new diff module takes its slice as its first parameter and gets another family's fact as a value (${SLICE_SECTION}).`;
-
-  switch (comparison.kind) {
-    case "same":
-      break;
-    case "grown":
-      violations.push({
-        rule: "E",
-        name,
-        message: `WHOLE_STATE_DIFF_MODULES names ${comparison.now.count} modules, more than the ${frozen.count} WHOLE_STATE_DIFF_MODULES_FROZEN records. ${refuse}`,
-      });
-      break;
-    case "swapped":
-      violations.push({
-        rule: "E",
-        name,
-        message: `WHOLE_STATE_DIFF_MODULES names ${frozen.count} modules, as many as WHOLE_STATE_DIFF_MODULES_FROZEN records, but not the same ones: a module was added in place of one that left (a renamed module counts: move it onto its slice instead). ${refuse}`,
-      });
-      break;
-    case "shrunk":
-      violations.push({
-        rule: "E",
-        name,
-        message: `WHOLE_STATE_DIFF_MODULES names ${comparison.now.count} modules, fewer than the ${frozen.count} WHOLE_STATE_DIFF_MODULES_FROZEN records: a module moved onto its slice. Re-freeze in the same change, so it cannot come back: \`WHOLE_STATE_DIFF_MODULES_FROZEN = ${frozenLiteral(comparison.now)}\`. Only modules removed are re-frozen; none may be added.`,
-      });
-      break;
-  }
+        list: "WHOLE_STATE_DIFF_MODULES",
+        baseline: "FROZEN_WHOLE_STATE_DIFF_MODULES",
+        refuse: `the list only shrinks: ${takeSlice}.`,
+        entriesAreModules: true,
+      },
+    ),
+  );
 
   return violations;
 }
