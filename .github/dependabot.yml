@@ -17,8 +17,10 @@ updates:
   # Third-party actions are pinned to full commit hashes with the release in a
   # trailing comment (`owner/action@<sha> # vX.Y.Z`); Dependabot moves the hash
   # and the comment together (#1663). The cooldown is the only age gate an
-  # action release passes before it runs here, so a compromised one has a week
-  # to be caught; security updates skip it.
+  # action release passes before it runs here, so a compromised one usually has
+  # a week to be caught. It counts from the tag's git creator date: the tagger
+  # date of an annotated tag, but the commit date of a lightweight one, so a new
+  # lightweight tag on an older commit is offered at once. Security updates skip it.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
