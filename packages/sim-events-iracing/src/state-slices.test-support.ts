@@ -38,7 +38,11 @@
  *   (`import type { … }`, `import { type … }`, plain, through a namespace
  *   import used as `ns.TranslatorState` in a type or an `extends` clause,
  *   inline as `import("../state.js").TranslatorState`, re-exported by name, or
- *   re-exported with `export * from` / `export * as ns from` the state module;
+ *   re-exported with `export *` / `export type *` / `export * as ns` /
+ *   `export type * as ns` from the state module or from a scanned module that
+ *   exports `TranslatorState` by name, resolved against the sources and
+ *   followed through its own star re-exports, a cycle ending the walk
+ *   (`resolveModule`, `exportsStateByName`);
  *   the named, namespace, inline and re-export forms count `TranslatorState`
  *   from any relative module, not only `state.ts`, since a module that
  *   re-exports it relays it, as in
@@ -124,7 +128,7 @@
  * literal).
  */
 import { readdirSync, readFileSync } from "node:fs";
-import { join, relative, sep } from "node:path";
+import { join, posix, relative, sep } from "node:path";
 import ts from "typescript";
 
 /** Which rule a violation breaks; `heading`, `allow` and `scan` are the scanner's own. */
@@ -974,6 +978,8 @@ function scanModule(
   checker: ts.TypeChecker,
   slices: readonly SliceMember[],
   violations: SliceViolation[],
+  /** Whether the relative specifier, from this module, names a scanned module that exports `TranslatorState` by name. */
+  relaysState: (specifier: string) => boolean,
 ): ModuleScan {
   const sliceKeys = new Map(slices.map((slice) => [slice.key, slice.type]));
   const sliceTypes = new Set(slices.map((slice) => slice.type));
@@ -990,15 +996,28 @@ function scanModule(
 
   let importsState = stateImports.size > 0;
 
-  // `export type { TranslatorState } from` any relative module, and `export *
-  // from "../state.js"` / `export * as ns from "../state.js"`, bring the state
-  // in as surely as an import does.
+  /**
+   * An `export *`, `export type *`, `export * as ns` or `export type * as ns`
+   * of state.ts or of a scanned module that relays `TranslatorState` by name,
+   * followed transitively: it re-exports the state, as `TranslatorState` or as
+   * `ns.TranslatorState`.
+   */
+  const isWholeStateReExport = (
+    statement: ts.Statement,
+  ): statement is ts.ExportDeclaration & { readonly moduleSpecifier: ts.StringLiteral } =>
+    isRelativeReExport(statement) &&
+    ts.isStringLiteral(statement.moduleSpecifier) &&
+    (statement.exportClause === undefined || ts.isNamespaceExport(statement.exportClause)) &&
+    (isStateModule(statement.moduleSpecifier) || relaysState(statement.moduleSpecifier.text));
+
+  // `export type { TranslatorState } from` any relative module, and a star
+  // re-export of a module that exports it, bring the state in as surely as an
+  // import does.
   for (const statement of file.statements) {
     if (!isRelativeReExport(statement)) continue;
 
     const clause = statement.exportClause;
-    const wholeState =
-      isStateModule(statement.moduleSpecifier) && (clause === undefined || ts.isNamespaceExport(clause));
+    const wholeState = isWholeStateReExport(statement);
     const namesState =
       clause !== undefined &&
       ts.isNamedExports(clause) &&
@@ -1080,16 +1099,15 @@ function scanModule(
     }
 
     for (const statement of file.statements) {
-      // `export * from "../state.js"` re-exports `TranslatorState` under its
-      // own name, `export * as ns from "../state.js"` as `ns.TranslatorState`.
-      if (isStateReExport(statement) && statement.exportClause === undefined) {
-        exportedStandIn(STATE_TYPE, statement);
-      } else if (
-        isStateReExport(statement) &&
-        statement.exportClause !== undefined &&
-        ts.isNamespaceExport(statement.exportClause)
-      ) {
-        exportedStandIn(statement.exportClause.name.text, statement);
+      // `export * from` state.ts or a relay re-exports `TranslatorState` under
+      // its own name, `export * as ns from` either as `ns.TranslatorState`.
+      if (isWholeStateReExport(statement)) {
+        const clause = statement.exportClause;
+
+        exportedStandIn(
+          clause !== undefined && ts.isNamespaceExport(clause) ? clause.name.text : STATE_TYPE,
+          statement,
+        );
       }
 
       if (!ts.isExportDeclaration(statement) || statement.exportClause === undefined) continue;
@@ -1352,15 +1370,75 @@ function scanModule(
   return { importsState, reads };
 }
 
-/** Whether `statement` is an `export … from` of the package's `state.ts`. */
-function isStateReExport(
-  statement: ts.Statement,
-): statement is ts.ExportDeclaration & { readonly moduleSpecifier: ts.Expression } {
-  return (
-    ts.isExportDeclaration(statement) &&
-    statement.moduleSpecifier !== undefined &&
-    isStateModule(statement.moduleSpecifier)
-  );
+/** Every scanned module's syntax, by its path relative to `src/` (`state.ts`, `diff/laps.ts`, `translator.ts`). */
+type ModuleFiles = ReadonlyMap<string, ts.SourceFile>;
+
+/**
+ * The scanned module a relative specifier names from the module `from`, as
+ * the sources' `.js` specifiers name their `.ts` files (`./relay.js` →
+ * `relay.ts`, `./dir` → `dir.ts` or `dir/index.ts`), or `undefined` when it
+ * is not one of them.
+ */
+function resolveModule(files: ModuleFiles, from: string, specifier: string): string | undefined {
+  const joined = posix.normalize(posix.join(posix.dirname(from), specifier));
+
+  if (joined.startsWith("../")) return undefined;
+
+  const base = joined.replace(/\.(js|ts)$/, "");
+
+  return [`${base}.ts`, `${base}/index.ts`].find((candidate) => files.has(candidate));
+}
+
+/**
+ * Whether the scanned module `key` exports `TranslatorState` by that name:
+ * `state.ts` itself, a named export of it (`export { TranslatorState }`,
+ * `export type { TranslatorState } from …`), an exported declaration of that
+ * name, or an `export *` / `export type *` of a scanned module that does,
+ * followed transitively. A module already walked ends that branch, so a
+ * cycle terminates; a module outside the sources is not known to export it.
+ */
+function exportsStateByName(files: ModuleFiles, key: string, walked = new Set<string>()): boolean {
+  if (key === "state.ts") return true;
+
+  if (walked.has(key)) return false;
+
+  walked.add(key);
+
+  const file = files.get(key);
+
+  if (file === undefined) return false;
+
+  for (const statement of file.statements) {
+    if (ts.isExportDeclaration(statement)) {
+      const clause = statement.exportClause;
+
+      if (clause !== undefined && ts.isNamedExports(clause)) {
+        if (clause.elements.some((element) => element.name.text === STATE_TYPE)) return true;
+
+        continue;
+      }
+
+      if (clause !== undefined || statement.moduleSpecifier === undefined) continue;
+
+      if (!isRelativeModule(statement.moduleSpecifier)) continue;
+
+      const target = resolveModule(files, key, statement.moduleSpecifier.text);
+
+      if (target !== undefined && exportsStateByName(files, target, walked)) return true;
+
+      continue;
+    }
+
+    if (
+      (ts.isTypeAliasDeclaration(statement) || ts.isInterfaceDeclaration(statement)) &&
+      hasExportModifier(statement) &&
+      statement.name.text === STATE_TYPE
+    ) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /** Whether `statement` is an `export … from` of any relative module, `state.ts` included. */
@@ -1565,13 +1643,36 @@ export function scanStateSlices(sources: SliceSources, pin: FlatMemberPin, allow
   const stateImporters: string[] = [];
   const sliceReads: SliceRead[] = [];
   const types = new Map(slices.map((slice) => [slice.key, slice.type]));
+  const otherSources = sources.other ?? new Map<string, string>();
+  const sourceModules = [...otherSources.keys()].sort();
+  const sourceProgram = createVirtualProgram(otherSources, VIRTUAL_SRC_ROOT);
+  // Every module's syntax by its path under src/, so a star re-export is
+  // followed to the module it names.
+  const files = new Map<string, ts.SourceFile>([["state.ts", state.file]]);
+
+  for (const module of diffModules) {
+    const file = program.getSourceFile(VIRTUAL_ROOT + module);
+
+    if (file !== undefined) files.set(`diff/${module}`, file);
+  }
+
+  for (const module of sourceModules) {
+    const file = sourceProgram.getSourceFile(VIRTUAL_SRC_ROOT + module);
+
+    if (file !== undefined) files.set(module, file);
+  }
 
   for (const module of diffModules) {
     const file = program.getSourceFile(VIRTUAL_ROOT + module);
 
     if (file === undefined) continue;
 
-    const { importsState, reads } = scanModule(module, file, checker, slices, violations);
+    const relaysState = (specifier: string): boolean => {
+      const target = resolveModule(files, `diff/${module}`, specifier);
+
+      return target !== undefined && exportsStateByName(files, target);
+    };
+    const { importsState, reads } = scanModule(module, file, checker, slices, violations, relaysState);
 
     if (importsState) stateImporters.push(module);
 
@@ -1611,8 +1712,6 @@ export function scanStateSlices(sources: SliceSources, pin: FlatMemberPin, allow
     }
   }
 
-  const sourceModules = [...(sources.other ?? new Map<string, string>()).keys()].sort();
-  const sourceProgram = createVirtualProgram(sources.other ?? new Map<string, string>(), VIRTUAL_SRC_ROOT);
   const sliceTypes = new Set(slices.map((slice) => slice.type));
 
   for (const module of sourceModules) {

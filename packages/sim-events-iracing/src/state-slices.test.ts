@@ -694,6 +694,21 @@ describe("TranslatorState keeps to the slice convention (#1588)", () => {
     expect(added(findings, result)).toEqual(["F:planted-namespace.ts:Whole"]);
   });
 
+  it("reports a new diff module star-re-exporting a relay in the real tree, and passes the relay", () => {
+    const other = new Map(sources.other);
+    const diff = new Map(sources.diff);
+
+    other.set("planted-relay.ts", `export type { TranslatorState } from "./state.js";\n`);
+    diff.set("planted-star.ts", `export type * from "../planted-relay.js";\n`);
+
+    const result = realFindings(scanStateSlices({ ...sources, diff, other }, LEGACY_FLAT_MEMBERS, SLICE_READS_ALLOWED));
+
+    expect(added(findings, result)).toEqual([
+      "C:planted-star.ts:TranslatorState",
+      "E:planted-star.ts:planted-star.ts",
+    ]);
+  });
+
   it("reports a real diff module that reads a slice through the whole state", () => {
     const flags = sources.diff.get("flags.ts") ?? "";
 
@@ -1155,6 +1170,74 @@ describe("the state-slice scanner (positive controls)", () => {
         "C:ns.ts:3:Whole",
         "C:ns.ts:4:Raw",
       ]);
+    });
+
+    /** The planted state and pin over `diff` and rule F's `other` modules. */
+    const scanWithOther = (diff: Record<string, string>, other: Record<string, string>): SliceScan =>
+      scanStateSlices(
+        { state: plantedState(), diff: new Map(Object.entries(diff)), other: new Map(Object.entries(other)) },
+        PLANTED_PIN,
+        {},
+      );
+
+    it("counts `export *`, `export type *`, `export * as ns` and `export type * as ns` of a relay, transitively, as importing the state and as a stand-in (rules C and E)", () => {
+      const other = {
+        "relay.ts": `export type { TranslatorState } from "./state.js";\n`,
+        "local-relay.ts": `import type { TranslatorState } from "./state.js";\nexport type { TranslatorState };\n`,
+        "facade.ts": `export * from "./relay.js";\n`,
+      };
+      const scan = scanWithOther(
+        {
+          "star.ts": `export * from "../relay.js";\n`,
+          "type-star.ts": `export type * from "../relay.js";\n`,
+          "star-ns.ts": `export * as ns from "../relay.js";\n`,
+          "type-star-ns.ts": `export type * as ns from "../relay.js";\n`,
+          "transitive.ts": `export type * from "../facade.js";\n`,
+          "local-relay-star.ts": `export * from "../local-relay.js";\n`,
+        },
+        other,
+      );
+      const modules = [
+        "local-relay-star.ts",
+        "star-ns.ts",
+        "star.ts",
+        "transitive.ts",
+        "type-star-ns.ts",
+        "type-star.ts",
+      ];
+
+      expect(scan.stateImporters).toEqual(modules);
+      // Rule F lets the relays through: each keeps the name TranslatorState.
+      expect(scan.violations.map((v) => `${v.rule}:${v.module}:${v.line}:${v.name}`)).toEqual([
+        "C:local-relay-star.ts:1:TranslatorState",
+        "C:star-ns.ts:1:ns",
+        "C:star.ts:1:TranslatorState",
+        "C:transitive.ts:1:TranslatorState",
+        "C:type-star-ns.ts:1:ns",
+        "C:type-star.ts:1:TranslatorState",
+      ]);
+      expect(violationKeys(checkStateImporters(scan, [], []))).toEqual(
+        modules.map((module) => `E:${module}:${module}`),
+      );
+    });
+
+    it("passes a star export of an unrelated module, of one outside the sources, and of a cycle that never reaches the state", () => {
+      const scan = scanWithOther(
+        {
+          "unrelated-star.ts": `export * from "../unrelated.js";\n`,
+          "unrelated-star-ns.ts": `export type * as ns from "../unrelated.js";\n`,
+          "missing-star.ts": `export * from "../missing.js";\n`,
+          "cycle-star.ts": `export * from "../a.js";\n`,
+        },
+        {
+          "unrelated.ts": `export type Reading = { gap: number };\n`,
+          "a.ts": `export * from "./b.js";\n`,
+          "b.ts": `export * from "./a.js";\n`,
+        },
+      );
+
+      expect(scan.stateImporters).toEqual([]);
+      expect(scan.violations).toEqual([]);
     });
 
     it("passes an exported type that neither is nor holds the state", () => {
