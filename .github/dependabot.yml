@@ -14,7 +14,14 @@ updates:
           - "minor"
           - "patch"
 
+  # Third-party actions are pinned to full commit hashes with the release in a
+  # trailing comment (`owner/action@<sha> # vX.Y.Z`); Dependabot moves the hash
+  # and the comment together (#1663). The cooldown is the only age gate an
+  # action release passes before it runs here, so a compromised one has a week
+  # to be caught; security updates skip it.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
