@@ -17,6 +17,7 @@ import {
   type DeckTriggerDescription,
   DEFAULT_KEY_IMAGE_SIZE,
   type DialCanvasProfile,
+  type HostApplication,
   type IDeckActionContext,
   type IDeckActionHandler,
   type IDeckDialRotateEvent,
@@ -266,6 +267,14 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
    * without one. See {@link IDeckPlatformAdapter.logLocation}.
    */
   readonly logLocation: LogLocation | undefined;
+
+  /**
+   * UlanziStudio, with no version (#1678): its launch arguments carry an
+   * address, a port and a language but no version, so the adapter names its
+   * host and leaves the version `null` rather than guess. See
+   * {@link IDeckPlatformAdapter.hostApplication}.
+   */
+  readonly hostApplication: HostApplication = { name: "UlanziStudio", version: null };
 
   constructor(logger?: ILogger, logDir?: string) {
     this.fileSink = logDir ? new FileSink(logDir, "Ulanzi") : null;

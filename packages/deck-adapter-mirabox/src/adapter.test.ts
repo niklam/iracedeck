@@ -22,7 +22,12 @@ const mockInstances: Array<Record<string, ReturnType<typeof vi.fn>>> = [];
 
 // Mock VSDClient — factory must not reference variables defined after vi.mock
 vi.mock("./vsd-client.js", () => ({
-  parseConnectionParams: () => ({ port: "12345", pluginUuid: "com.test", registerEvent: "register" }),
+  parseConnectionParams: () => ({
+    port: "12345",
+    pluginUuid: "com.test",
+    registerEvent: "register",
+    hostVersion: "3.2.1",
+  }),
   VSDClient: class {
     onActionEvent = vi.fn();
     onGlobalEvent = vi.fn();
@@ -163,6 +168,12 @@ describe("VSDPlatformAdapter", () => {
       await run(harness);
 
       expect(errors).toEqual([]);
+    });
+  });
+
+  describe("hostApplication (#1678)", () => {
+    it("names VSD Craft with the version parseConnectionParams read from the registration info", () => {
+      expect(adapter.hostApplication).toEqual({ name: "VSD Craft", version: "3.2.1" });
     });
   });
 

@@ -28,6 +28,7 @@ import {
   deviceProfileName,
   DIAL_CANVAS_KEY,
   type DialCanvasProfile,
+  type HostApplication,
   type IDeckActionContext,
   type IDeckActionHandler,
   type IDeckDialDownEvent,
@@ -333,6 +334,26 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
    * {@link IDeckPlatformAdapter.logLocation}.
    */
   readonly logLocation: LogLocation = { kind: "file", path: elgatoPluginLogFile() };
+
+  /**
+   * The Stream Deck app, with the version its registration info reported
+   * (`streamDeck.info.application.version`), for the `Build:` log line and the
+   * snapshot (#1678); see {@link IDeckPlatformAdapter.hostApplication}. Read
+   * on each access rather than in the constructor: the SDK parses the
+   * registration arguments on first read and throws when they are missing, so
+   * an unreadable or empty version is `null` — the host is still named.
+   */
+  get hostApplication(): HostApplication {
+    let version: unknown;
+
+    try {
+      version = this.sd.info?.application?.version;
+    } catch {
+      version = undefined;
+    }
+
+    return { name: "Stream Deck", version: typeof version === "string" && version !== "" ? version : null };
+  }
 
   constructor(private readonly sd: typeof StreamDeck) {
     // Route "Stream Deck Profiles" settings-accordion button presses — sent from

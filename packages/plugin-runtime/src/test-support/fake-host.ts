@@ -8,7 +8,7 @@
  * `afterAll(() => cleanupTempBinDirs())`.
  */
 import type { LogLocation } from "@iracedeck/app-constants";
-import type { IDeckPlatformAdapter } from "@iracedeck/deck-core";
+import type { HostApplication, IDeckPlatformAdapter } from "@iracedeck/deck-core";
 import { silentLogger } from "@iracedeck/logger";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,6 +18,9 @@ import type { Core, PluginExtension, PluginHost } from "../types.js";
 import { callLog, stub } from "./recorder.js";
 
 const tempBinDirs: string[] = [];
+
+/** The host the fake adapter reports (#1678); a test needing another spreads `{ ...createFakeAdapter(), hostApplication }`. */
+export const FAKE_HOST_APPLICATION: HostApplication = { name: "Fake Host", version: "1.2.3" };
 
 /** A `<plugin>/bin` with a minimal `config.json`, removed by `cleanupTempBinDirs`. */
 export function createTempBinDir(): string {
@@ -59,7 +62,8 @@ export interface FakeAdapter extends IDeckPlatformAdapter {
  * `switchToProfile` and `openUrl`. The five listener subscriptions also keep
  * their listener, to fire in a test. Passing `undefined` selects the default
  * location; for an adapter WITHOUT a log location build
- * `{ ...createFakeAdapter(), logLocation: undefined }`.
+ * `{ ...createFakeAdapter(), logLocation: undefined }`. It reports
+ * `FAKE_HOST_APPLICATION` as its host (#1678).
  */
 export function createFakeAdapter(
   logLocation: LogLocation | undefined = { kind: "daily", dir: tmpdir() },
@@ -90,6 +94,7 @@ export function createFakeAdapter(
     dialRotateListeners,
     propertyInspectorDidAppearListeners,
     logLocation,
+    hostApplication: FAKE_HOST_APPLICATION,
     onDidReceiveGlobalSettings: record("onDidReceiveGlobalSettings"),
     getGlobalSettings: record("getGlobalSettings"),
     setGlobalSettings: record("setGlobalSettings"),

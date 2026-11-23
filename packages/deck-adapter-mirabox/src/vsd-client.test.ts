@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { VSDClient, type VSDConnectionParams } from "./vsd-client.js";
+import { parseConnectionParams, parseHostVersion, VSDClient, type VSDConnectionParams } from "./vsd-client.js";
 
 /** WebSocket OPEN readyState constant (mirrors the client's WS_OPEN). */
 const WS_OPEN = 1;
@@ -43,6 +43,7 @@ const params: VSDConnectionParams = {
   port: "12345",
   pluginUuid: "com.iracedeck.sd.mirabox",
   registerEvent: "registerPlugin",
+  hostVersion: null,
 };
 
 /** Parse the captured outbound messages back into objects for assertion. */
@@ -304,5 +305,94 @@ describe("VSDClient.onHostReady (#1056)", () => {
 
     expect(second).toHaveBeenCalledOnce();
     expect(error).toHaveBeenCalledOnce();
+  });
+});
+
+/**
+ * A registration-info fixture in the Elgato-compatible shape VSD Craft passes
+ * as `argv[9]` (#1678). Its `application.version` has not been seen in a
+ * capture; the manual test on the host reads it.
+ */
+const REGISTRATION_INFO = {
+  application: { language: "en", platform: "windows", version: "3.10.188" },
+  plugin: { uuid: "com.iracedeck.sd.mirabox", version: "3.10.0" },
+  devices: [],
+};
+
+describe("parseHostVersion (#1678)", () => {
+  it("reads application.version from the registration info", () => {
+    expect(parseHostVersion(JSON.stringify(REGISTRATION_INFO))).toBe("3.10.188");
+  });
+
+  it.each([
+    ["info without application.version", JSON.stringify({ application: { language: "en" } })],
+    ["info without application", JSON.stringify({ plugin: { uuid: "com.iracedeck.sd.mirabox" } })],
+    ["an empty version", JSON.stringify({ application: { version: "" } })],
+    ["a non-string version", JSON.stringify({ application: { version: 3 } })],
+    ["a null application", JSON.stringify({ application: null })],
+    ["JSON that is not an object", "42"],
+    ["JSON null", "null"],
+    ["invalid JSON", "{application:"],
+    ["an empty argument", ""],
+    ["a missing argument", undefined],
+  ])("gives null, never throwing, for %s", (_label, info) => {
+    expect(parseHostVersion(info)).toBeNull();
+  });
+});
+
+describe("parseConnectionParams (#1678)", () => {
+  const savedArgv = process.argv;
+
+  afterEach(() => {
+    process.argv = savedArgv;
+  });
+
+  /** VSD Craft's launch line: `-port <p> -pluginUUID <uuid> -registerEvent <e> -info <json>`. */
+  function launchWith(info?: string): void {
+    const args = [
+      "node",
+      "plugin.js",
+      "-port",
+      "12345",
+      "-pluginUUID",
+      "com.iracedeck.sd.mirabox",
+      "-registerEvent",
+      "registerPlugin",
+    ];
+    process.argv = info === undefined ? args : [...args, "-info", info];
+  }
+
+  it("reads the host version from argv[9] beside the connection parameters", () => {
+    launchWith(JSON.stringify(REGISTRATION_INFO));
+
+    expect(parseConnectionParams()).toEqual({
+      port: "12345",
+      pluginUuid: "com.iracedeck.sd.mirabox",
+      registerEvent: "registerPlugin",
+      hostVersion: "3.10.188",
+    });
+  });
+
+  it("gives a null host version for info without application.version", () => {
+    launchWith(JSON.stringify({ application: { language: "en" } }));
+
+    expect(parseConnectionParams().hostVersion).toBeNull();
+  });
+
+  it("gives a null host version for invalid info JSON, keeping the connection parameters", () => {
+    launchWith("not json");
+
+    expect(parseConnectionParams()).toEqual({
+      port: "12345",
+      pluginUuid: "com.iracedeck.sd.mirabox",
+      registerEvent: "registerPlugin",
+      hostVersion: null,
+    });
+  });
+
+  it("gives a null host version when argv[9] is missing", () => {
+    launchWith();
+
+    expect(parseConnectionParams().hostVersion).toBeNull();
   });
 });

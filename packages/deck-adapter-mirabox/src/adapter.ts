@@ -13,6 +13,7 @@ import {
   DEFAULT_KEY_IMAGE_SIZE,
   type DeviceImageSize,
   type DialCanvasProfile,
+  type HostApplication,
   type IDeckActionContext,
   type IDeckActionHandler,
   type IDeckDialRotateEvent,
@@ -235,6 +236,13 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
    */
   readonly logLocation: LogLocation | undefined;
 
+  /**
+   * VSD Craft, with the version its registration info reported in `argv[9]`
+   * (`application.version`), or `null` when it reported none (#1678). See
+   * {@link IDeckPlatformAdapter.hostApplication}.
+   */
+  readonly hostApplication: HostApplication;
+
   /** Scope for the adapter's own protocol normalisation (the dropped host `dialUp`). */
   private readonly dialLogger: ILogger;
 
@@ -245,7 +253,9 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
     this.fileSink = logDir ? new FileSink(logDir, "VSD") : null;
     this.logLocation = logDir ? { kind: "daily", dir: logDir } : undefined;
     const log = logger ?? this.buildLogger("VSD");
-    this.client = new VSDClient(parseConnectionParams(), log.createScope("WebSocket"));
+    const params = parseConnectionParams();
+    this.hostApplication = { name: "VSD Craft", version: params.hostVersion };
+    this.client = new VSDClient(params, log.createScope("WebSocket"));
     this.dialLogger = log.createScope("Dial");
     this.lifecycleLogger = log.createScope("Lifecycle");
     this.order = new ContextEventOrder(log.createScope("EventOrder"));
