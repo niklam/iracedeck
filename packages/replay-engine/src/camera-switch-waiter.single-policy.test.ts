@@ -185,6 +185,7 @@ describe("camera switches go through the camera-switch waiter (#1502)", () => {
       expect(keystrokes.length).toBeGreaterThanOrEqual(4);
       expect(new Set(commands.map((send) => send.file))).toEqual(
         new Set([
+          "actions/camera-controls/auto-group.ts",
           "actions/camera-controls/camera-controls.ts",
           "actions/race-admin/race-admin.ts",
           "actions/replay-control/replay-control.ts",
