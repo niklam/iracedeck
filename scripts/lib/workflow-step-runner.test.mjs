@@ -52,15 +52,24 @@ describe.skipIf(BASH === undefined)("runStepAsync", { timeout: 20_000 }, () => {
 
   it("ends a step that hangs in a process it started, within the timeout, with status null", async () => {
     const pidFile = path.join(box.work, "hanging.pid").replaceAll("\\", "/");
+    const bashPidFile = path.join(box.work, "bash.pid").replaceAll("\\", "/");
     // node, not bash, holds the pipes: it inherits them and never exits on its own.
     // The echo after it runs only if node exits 0, which it does only if the hang
     // ends on its own. A plain next line would also run when the kill ends node
     // first: `taskkill /T` ends the tree leaf first (node, then the MSYS fork that
     // started it, then bash), and on a busy machine bash gets a time slice between
-    // those kills and goes on to its next line (#1647).
+    // those kills and goes on to its next line (#1647). So whether bash itself was
+    // ended is read from its pid, never from its output: the last line keeps a
+    // bash that outlived the kill alive for 5 s, which the pid check below sees,
+    // and costs nothing when the kill lands, since bash is in the tree taskkill
+    // walked whatever it ran in the gap. It runs from `/`, so a `sleep` started in
+    // that gap, which the walk missed, holds no handle on the sandbox. Git Bash's
+    // `$$` is not the pid Windows and `process.kill` use; `/proc/$$/winpid` is.
     const script = [
+      `if [ -r /proc/$$/winpid ]; then cat /proc/$$/winpid; else echo $$; fi > "${bashPidFile}"`,
       'echo "before the hang"',
       `node -e "require('fs').writeFileSync(process.argv[1], String(process.pid)); setInterval(() => {}, 1000)" "${pidFile}" && echo "the hang ended on its own"`,
+      "cd / && sleep 5",
       "",
     ].join("\n");
     const started = Date.now();
@@ -77,5 +86,8 @@ describe.skipIf(BASH === undefined)("runStepAsync", { timeout: 20_000 }, () => {
     expect(existsSync(pidFile), "the hanging node never started").toBe(true);
     const pid = Number(readFileSync(pidFile, "utf8"));
     expect(await aliveAfter(pid), `the step's node (pid ${pid}) outlived the timeout`).toBe(false);
+    const bashPid = Number(readFileSync(bashPidFile, "utf8"));
+    expect(bashPid, "the step's bash wrote no pid").toBeGreaterThan(0);
+    expect(await aliveAfter(bashPid), `the step's bash (pid ${bashPid}) outlived the timeout`).toBe(false);
   });
 });
