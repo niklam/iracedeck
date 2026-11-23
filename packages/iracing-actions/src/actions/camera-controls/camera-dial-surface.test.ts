@@ -2742,6 +2742,175 @@ describe("the Auto Group on/off gesture (#1656)", () => {
 
       expect(decodeLast(ctx)).toMatch(new RegExp(`${MARKER}[^>]*><rect[^>]*fill="${colours.value}"`));
     });
+
+    describe("a marker frame the host refuses", () => {
+      /** A dial on screen with no owner yet, its pushes cleared; `telemetry` null models iRacing closed. */
+      async function refusingDial(id: string, telemetry: unknown = TELEMETRY) {
+        const owner = { id: null as string | null };
+        const host = makeHost({
+          getTelemetry: vi.fn(() => telemetry as never),
+          isAutoGroupOwner: vi.fn((contextId: string) => contextId === owner.id),
+        });
+        const surface = new CameraDialSurface(host as never);
+        const ctx = dialContext(id);
+        await surface.willAppear(ctx as never, autoGroupDial("pressAction"));
+        ctx.setDialCanvas.mockClear();
+
+        return { surface, ctx, owner, host };
+      }
+
+      const refused = () => Promise.reject(new Error("host refused the frame"));
+
+      beforeEach(() => {
+        vi.useFakeTimers();
+      });
+
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      it("is pushed again by the next telemetry tick with the same readout", async () => {
+        const { surface, ctx, owner, host } = await refusingDial("ag-r1");
+        ctx.setDialCanvas.mockImplementationOnce(refused);
+
+        owner.id = "ag-r1";
+        surface.refreshAutoGroup();
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
+        expect(host.logger.debug).toHaveBeenCalledWith(expect.stringContaining("Dial auto group redraw failed"));
+
+        // Outside the change throttle, the same readout: the baseline went back, so it draws.
+        await vi.advanceTimersByTimeAsync(150);
+        surface.onTelemetry("ag-r1", TELEMETRY as never);
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(ctx.setDialCanvas).toHaveBeenCalledTimes(2);
+        expect(decodeLast(ctx)).toContain(MARKER);
+
+        // Drawn now: the retry timer stood down, and no tick pushes it again.
+        await vi.advanceTimersByTimeAsync(5000);
+        surface.onTelemetry("ag-r1", TELEMETRY as never);
+
+        expect(ctx.setDialCanvas).toHaveBeenCalledTimes(2);
+      });
+
+      it("is retried on its own a second later while no tick comes (iRacing closed)", async () => {
+        const { surface, ctx, owner } = await refusingDial("ag-r2", null);
+        ctx.setDialCanvas.mockImplementationOnce(refused);
+
+        owner.id = "ag-r2";
+        surface.refreshAutoGroup();
+        await vi.advanceTimersByTimeAsync(999);
+
+        expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
+
+        await vi.advanceTimersByTimeAsync(1);
+
+        expect(ctx.setDialCanvas).toHaveBeenCalledTimes(2);
+        expect(decodeLast(ctx)).toContain(MARKER);
+
+        // It landed: no further retry.
+        await vi.advanceTimersByTimeAsync(10_000);
+
+        expect(ctx.setDialCanvas).toHaveBeenCalledTimes(2);
+      });
+
+      it("is retried a bounded number of times when the host keeps refusing", async () => {
+        const { surface, ctx, owner } = await refusingDial("ag-r3", null);
+        ctx.setDialCanvas.mockImplementation(refused);
+
+        owner.id = "ag-r3";
+        surface.refreshAutoGroup();
+        await vi.advanceTimersByTimeAsync(60_000);
+
+        // The first push and three retries.
+        expect(ctx.setDialCanvas).toHaveBeenCalledTimes(4);
+      });
+
+      it("stops retrying once the dial leaves the screen", async () => {
+        const { surface, ctx, owner } = await refusingDial("ag-r4", null);
+        ctx.setDialCanvas.mockImplementation(refused);
+
+        owner.id = "ag-r4";
+        surface.refreshAutoGroup();
+        await vi.advanceTimersByTimeAsync(0);
+        surface.willDisappear("ag-r4");
+
+        expect(vi.getTimerCount()).toBe(0);
+
+        await vi.advanceTimersByTimeAsync(10_000);
+
+        expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
+      });
+
+      it("is superseded by a later render of the current frame", async () => {
+        const { surface, ctx, owner } = await refusingDial("ag-r5", null);
+        ctx.setDialCanvas.mockImplementationOnce(refused);
+
+        owner.id = "ag-r5";
+        surface.refreshAutoGroup();
+        await vi.advanceTimersByTimeAsync(0);
+
+        // A settings re-render draws the current frame, marker included.
+        surface.refreshAll();
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(vi.getTimerCount()).toBe(0);
+
+        await vi.advanceTimersByTimeAsync(10_000);
+
+        expect(ctx.setDialCanvas).toHaveBeenCalledTimes(2);
+        expect(decodeLast(ctx)).toContain(MARKER);
+      });
+
+      it("starts its retries over on the next owner change, for the frame that change asks for", async () => {
+        const { surface, ctx, owner } = await refusingDial("ag-r6", null);
+        ctx.setDialCanvas.mockImplementationOnce(refused);
+
+        owner.id = "ag-r6";
+        surface.refreshAutoGroup();
+        await vi.advanceTimersByTimeAsync(500);
+
+        // Handed away before the retry: the off frame goes out, and the old retry is gone.
+        owner.id = "someone-else";
+        surface.refreshAutoGroup();
+
+        expect(vi.getTimerCount()).toBe(0);
+
+        await vi.advanceTimersByTimeAsync(10_000);
+
+        expect(ctx.setDialCanvas).toHaveBeenCalledTimes(2);
+        expect(decodeLast(ctx)).not.toContain(MARKER);
+      });
+    });
+  });
+
+  describe("a telemetry frame the host refuses", () => {
+    it("is pushed again by the next tick with the same readout, as the marker frame is", async () => {
+      vi.useFakeTimers();
+      const host = makeHost();
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("ag-t1");
+      await surface.willAppear(ctx as never, dial({ mode: "car-number" }));
+      ctx.setDialCanvas.mockClear();
+      ctx.setDialCanvas.mockImplementationOnce(() => Promise.reject(new Error("host refused the frame")));
+
+      await vi.advanceTimersByTimeAsync(150);
+      mockCarNumber.value = "7";
+      surface.onTelemetry("ag-t1", TELEMETRY as never);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(150);
+      surface.onTelemetry("ag-t1", TELEMETRY as never);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(ctx.setDialCanvas).toHaveBeenCalledTimes(2);
+      expect(decodeLast(ctx)).toContain(">#7<");
+      vi.useRealTimers();
+    });
   });
 
   describe("the hold preview", () => {

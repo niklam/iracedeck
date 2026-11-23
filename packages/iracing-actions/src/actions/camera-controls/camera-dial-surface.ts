@@ -159,6 +159,15 @@ import { SUB_CAMERA_BINDING_KEY_LIST } from "./sub-camera-bindings.js";
  */
 const CHANGE_RENDER_MIN_INTERVAL_MS = 100;
 
+/**
+ * How long after a refused Auto Group redraw (#1656) the dial tries again,
+ * and how many times. A telemetry tick also retries one (the baseline goes
+ * back), but none arrives while iRacing is closed, which is when the marker
+ * may change with nothing else to redraw it.
+ */
+const AUTO_GROUP_REDRAW_RETRY_MS = 1000;
+const AUTO_GROUP_REDRAW_RETRIES = 3;
+
 /** The cycle target the dial rotates through. */
 export const DIAL_MODES = ["camera", "sub-camera", "car-number", "race-position", "track-order", "driving"] as const;
 export type DialMode = (typeof DIAL_MODES)[number];
@@ -480,6 +489,8 @@ interface CameraDialContext {
   preview: DialPendingPreview | null;
   /** The display-only hold timer for this context; a no-op where there is no touch strip. */
   holdPreview: HoldPreview;
+  /** The pending retry of a refused Auto Group redraw (#1656), or null. */
+  autoGroupRetry: ReturnType<typeof setTimeout> | null;
 }
 
 /**
@@ -576,9 +587,15 @@ export class CameraDialSurface extends ReleaseDialSurfaceBase<CameraDialContext,
   }
 
   willDisappear(actionId: string): void {
-    // Tear the hold timer down without a revert frame: the context is gone,
-    // so a push at it would be wasted.
-    this.contextsState.get(actionId)?.holdPreview.dispose();
+    const ctx = this.contextsState.get(actionId);
+
+    // Tear the hold timer and any redraw retry down without a frame: the
+    // context is gone, so a push at it would be wasted.
+    if (ctx) {
+      ctx.holdPreview.dispose();
+      this.cancelAutoGroupRetry(ctx);
+    }
+
     this.forgetContext(actionId);
   }
 
@@ -712,6 +729,9 @@ export class CameraDialSurface extends ReleaseDialSurfaceBase<CameraDialContext,
     ctx.lastChangeRenderAt = Date.now();
     this.renderFeedback(ctx).catch((err) => {
       this.host.logger.debug(`Dial feedback render failed: ${String(err)}`);
+      // The frame never landed: the baseline goes back, so the next tick
+      // with the same readout pushes it again.
+      this.forgetFailedRender(ctx, sig);
     });
   }
 
@@ -720,24 +740,70 @@ export class CameraDialSurface extends ReleaseDialSurfaceBase<CameraDialContext,
    * marker appears or goes redraws at once, bypassing the change throttle,
    * since no telemetry tick may follow (iRacing closed). A hold preview of the
    * Auto Group gesture up meanwhile is worked out again, so it never promises
-   * the outcome the old owner would have had.
+   * the outcome the old owner would have had. A redraw the host refuses is
+   * tried again ({@link pushAutoGroupRedraw}), so the dial does not keep the
+   * look of the old owner.
    */
   refreshAutoGroup(): void {
     for (const ctx of this.contextsState.values()) {
       if (ctx.preview && ctx.dial.longPressAction === "auto-group") ctx.preview = this.pendingPreviewFor(ctx);
 
-      const sig = this.displayedSignature(ctx);
-
-      if (sig === ctx.lastRenderSig) continue;
-
-      // The baseline moves before the push, as on a telemetry tick, so a tick
-      // arriving while it is in flight does not push the same frame again.
-      ctx.lastRenderSig = sig;
-      ctx.lastChangeRenderAt = Date.now();
-      this.renderFeedback(ctx).catch((err) => {
-        this.host.logger.debug(`Dial auto group redraw failed: ${String(err)}`);
-      });
+      // A new change starts its own retries.
+      this.cancelAutoGroupRetry(ctx);
+      this.pushAutoGroupRedraw(ctx, AUTO_GROUP_REDRAW_RETRIES);
     }
+  }
+
+  /**
+   * Pushes the dial's frame when it differs from the one last drawn. A push
+   * the host refuses puts the baseline back, so the next telemetry tick
+   * retries it, and arms one retry timer while `retriesLeft` lasts, since no
+   * tick comes while iRacing is closed.
+   */
+  private pushAutoGroupRedraw(ctx: CameraDialContext, retriesLeft: number): void {
+    const sig = this.displayedSignature(ctx);
+
+    if (sig === ctx.lastRenderSig) return;
+
+    // The baseline moves before the push, as on a telemetry tick, so a tick
+    // arriving while it is in flight does not push the same frame again.
+    ctx.lastRenderSig = sig;
+    ctx.lastChangeRenderAt = Date.now();
+    this.renderFeedback(ctx).catch((err) => {
+      this.host.logger.debug(`Dial auto group redraw failed: ${String(err)}`);
+      this.forgetFailedRender(ctx, sig);
+
+      if (retriesLeft > 0 && this.contextsState.get(ctx.action.id) === ctx) {
+        this.scheduleAutoGroupRetry(ctx, retriesLeft - 1);
+      }
+    });
+  }
+
+  private scheduleAutoGroupRetry(ctx: CameraDialContext, retriesLeft: number): void {
+    this.cancelAutoGroupRetry(ctx);
+    ctx.autoGroupRetry = setTimeout(() => {
+      ctx.autoGroupRetry = null;
+
+      // Gone from the screen meanwhile: nothing to draw on.
+      if (this.contextsState.get(ctx.action.id) !== ctx) return;
+
+      // A later render that drew the current frame leaves nothing to retry.
+      this.pushAutoGroupRedraw(ctx, retriesLeft);
+    }, AUTO_GROUP_REDRAW_RETRY_MS);
+  }
+
+  private cancelAutoGroupRetry(ctx: CameraDialContext): void {
+    if (ctx.autoGroupRetry !== null) clearTimeout(ctx.autoGroupRetry);
+
+    ctx.autoGroupRetry = null;
+  }
+
+  /**
+   * A push of the frame `sig` describes failed: the baseline goes back unless
+   * a later render has moved it since, so the same readout is pushed again.
+   */
+  private forgetFailedRender(ctx: CameraDialContext, sig: string): void {
+    if (ctx.lastRenderSig === sig) ctx.lastRenderSig = null;
   }
 
   /**
@@ -765,6 +831,7 @@ export class CameraDialSurface extends ReleaseDialSurfaceBase<CameraDialContext,
       lastChangeRenderAt: 0,
       preview: null,
       holdPreview: NOOP_HOLD_PREVIEW,
+      autoGroupRetry: null,
     };
     // The real helper only where there is a strip to draw on; the constant
     // folds at build time, so the other bundles never carry the timer.
@@ -1383,5 +1450,10 @@ export class CameraDialSurface extends ReleaseDialSurfaceBase<CameraDialContext,
     // immediately re-fire the render-on-change path on the next telemetry tick.
     ctx.lastRenderSig = renderedSignature;
     ctx.lastChangeRenderAt = Date.now();
+
+    // A frame of the current state supersedes a pending Auto Group redraw retry.
+    if (ctx.autoGroupRetry !== null && renderedSignature === this.displayedSignature(ctx)) {
+      this.cancelAutoGroupRetry(ctx);
+    }
   }
 }
