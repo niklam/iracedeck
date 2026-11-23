@@ -4,10 +4,10 @@
 // re-pack — and, under a released version, a bump — with nothing red until a
 // release is tagged (#1582, #1665). Runs offline, with no ffmpeg and no git
 // history: it reads the real source tree (about 175 MB) and hashes it ONCE, in
-// `checkPackRecords`, under a second on a warm checkout; the floor below walks
-// the tree again but hashes nothing. The rules themselves are tested over a
-// temporary tree in `src/build/pack-record.test.ts`; this file holds the REAL
-// tree to them.
+// `checkPackRecords`: 0.7 to 1.7 s alone, 2 to 4.2 s inside a full `pnpm test`,
+// and 7 s once in a loaded gate run (#1647); the floor below walks the tree
+// again but hashes nothing. The rules themselves are tested over a temporary
+// tree in `src/build/pack-record.test.ts`; this file holds the REAL tree to them.
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -24,6 +24,12 @@ import { VOICE_PACKS } from "./build/voice-packs.mjs";
  */
 const CLIP_FLOOR_PER_VOICE = 4_000;
 
+/**
+ * The one hash of the real tree, over vitest's 5 s default once under load
+ * (#1647): about four times the slowest measured, so only a hang fails.
+ */
+const HASH_TIMEOUT_MS = 30_000;
+
 describe("pack records — every published pack's archive is what the tree says it is", () => {
   it("has a record for every pack in VOICE_PACKS, and VOICE_PACKS has a pack to check", () => {
     // The guard is vacuous over an empty registry; today it holds two packs.
@@ -36,16 +42,20 @@ describe("pack records — every published pack's archive is what the tree says 
     }
   });
 
-  it("holds every pack to rules 1 to 4: coverage, consistency, freshness, and a frozen released version", () => {
-    // The one hash of the tree in this file: rule 3 recomputes every voice's
-    // clip digest and count and compares them with the committed record's.
-    const problems = checkPackRecords();
+  it(
+    "holds every pack to rules 1 to 4: coverage, consistency, freshness, and a frozen released version",
+    () => {
+      // The one hash of the tree in this file: rule 3 recomputes every voice's
+      // clip digest and count and compares them with the committed record's.
+      const problems = checkPackRecords();
 
-    expect(
-      problems,
-      `the committed pack records disagree with the tree:\n${formatPackRecordProblems(problems)}`,
-    ).toEqual([]);
-  });
+      expect(
+        problems,
+        `the committed pack records disagree with the tree:\n${formatPackRecordProblems(problems)}`,
+      ).toEqual([]);
+    },
+    HASH_TIMEOUT_MS,
+  );
 
   it("did real work: each voice's clip count on disk is the committed record's and at least the floor", () => {
     // A guard that hashed an empty tree would agree with any record it wrote
