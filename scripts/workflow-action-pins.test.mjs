@@ -414,10 +414,16 @@ function normalizeDir(dir) {
  */
 function dirMatches({ value, glob }, dir) {
   if (!glob) return normalizeDir(value) === dir;
-  const GLOB_PARTS = { "/**": "(?:/.*)?", "**": ".*", "*": "[^/]*" };
+  // A Map, not an object literal: a literal segment such as `__proto__` must
+  // never read an inherited property in place of its own escaped text.
+  const GLOB_PARTS = new Map([
+    ["/**", "(?:/.*)?"],
+    ["**", ".*"],
+    ["*", "[^/]*"],
+  ]);
   const regex = normalizeDir(value)
     .split(/(\/\*\*(?=\/|$)|\*\*|\*)/)
-    .map((part) => GLOB_PARTS[part] ?? part.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
+    .map((part) => GLOB_PARTS.get(part) ?? part.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
     .join("");
   return new RegExp(`^${regex}$`).test(dir);
 }
@@ -951,6 +957,14 @@ describe("scan (Dependabot sees every pin)", () => {
     expect(covers("/**", "/")).toBe(true);
     expect(covers("/ci/*/setup", "/ci/setup")).toBe(false);
     expect(dirMatches({ value: "/ci/**", glob: false }, "/ci")).toBe(false);
+  });
+
+  it("treats a literal segment named like an Object property as text", () => {
+    const covers = (value, dir) => dirMatches({ value, glob: true }, dir);
+    expect(covers("/ci/*__proto__", "/ci/test")).toBe(false);
+    expect(covers("/ci/*__proto__", "/ci/x__proto__")).toBe(true);
+    expect(covers("/ci/constructor", "/ci/x")).toBe(false);
+    expect(covers("/ci/toString/*", "/ci/toString/a")).toBe(true);
   });
 
   it("needs no listing for a composite action with only first-party steps", () => {
