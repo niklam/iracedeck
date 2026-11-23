@@ -3,8 +3,9 @@
  * production code. Reached as `@iracedeck/audio-service/testing`.
  *
  * It imports `vitest`, which is why a production source must not import it: it
- * would pull the test runner into the plugin bundle. `testing.test.ts` fails on
- * any production source in `packages/` that does.
+ * would pull the test runner into the plugin bundle.
+ * `scripts/testing-entries-test-only.test.mjs` fails on any production source
+ * in `packages/` that does (#1375).
  */
 import { type Mock, vi } from "vitest";
 
