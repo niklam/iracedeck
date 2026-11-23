@@ -41,6 +41,7 @@ Toggle actions that support automatic border colors:
 - **Pit Speed Limiter**, **Push to Pass**, **DRS**, **Ignition**, and **Starter** (Car Control)
 - **Toggle Fuel Fill** (Fuel Service)
 - **Windshield Tearoff** and **Fast Repair** (Pit Quick Actions)
+- **Auto Group on Car Change** (Camera Controls) — green while it is on, gray while it is off
 
 For these actions, the color picker in the Border section is ignored — the border color is determined by the current state. The width setting still applies.
 

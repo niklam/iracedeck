@@ -3,13 +3,13 @@ title: Camera Controls
 description: Cycle cameras, change camera groups, and focus on specific targets with a single button.
 sidebar:
   badge:
-    text: "14 modes"
+    text: "15 modes"
     variant: tip
 ---
 
-Camera Controls combines camera group selection, camera cycling, and focus targeting into one action. Most modes are driven by the iRacing SDK camera commands and need no configuration. Two use iRacing's own key bindings instead: **Cycle Sub-Camera** triggers Next / Previous Sub Camera, because the sim's camera commands cannot step a sub-camera (see [that mode](#cycle-sub-camera)), and **Cycle by Track Order** triggers Next / Previous Car, so iRacing itself picks the car ahead or behind, live and in a replay (see [that mode](#cycle-by-track-order)). Both come preconfigured with iRacing's default keys, so they work out of the box. Change Camera and Cycle Camera reach any camera group a custom camera file defines, not only iRacing's standard ones, and remember them for setting up keys away from the track ([Custom camera files](#custom-camera-files)). Placed on a Stream Deck+ dial the action becomes a camera dial — turn to flip through cameras or cars with the live focus on the touch strip ([On a dial](#on-a-dial)).
+Camera Controls combines camera group selection, camera cycling, and focus targeting into one action. Most modes are driven by the iRacing SDK camera commands and need no configuration. Two use iRacing's own key bindings instead: **Cycle Sub-Camera** triggers Next / Previous Sub Camera, because the sim's camera commands cannot step a sub-camera (see [that mode](#cycle-sub-camera)), and **Cycle by Track Order** triggers Next / Previous Car, so iRacing itself picks the car ahead or behind, live and in a replay (see [that mode](#cycle-by-track-order)). Both come preconfigured with iRacing's default keys, so they work out of the box. Change Camera and Cycle Camera reach any camera group a custom camera file defines, not only iRacing's standard ones, and remember them for setting up keys away from the track ([Custom camera files](#custom-camera-files)). **Auto Group on Car Change** lets the cameras run by themselves, switching to a new camera group each time the camera moves to another car ([that mode](#auto-group-on-car-change)). Placed on a Stream Deck+ dial the action becomes a camera dial — turn to flip through cameras or cars with the live focus on the touch strip ([On a dial](#on-a-dial)).
 
-In a replay, a camera switch made while the replay is jumping — a Replay Markers jump, a Replay Control Jump to Fastest Lap landing, a fast Frame Jog spin — goes out once the jump has landed, because iRacing ignores a camera change during a jump; a further camera press meanwhile, here or on Replay Control, key or dial, replaces it, so the camera moves once. A mode that changes the car, a car key on the [Car Selector](#focus-car-pick-from-grid) grid included, stops a Replay Control [Jump to Fastest Lap](/docs/actions/view-camera/replay-control/#jump-to-fastest-lap) or [Jump to Race Start](/docs/actions/view-camera/replay-control/#jump-to-race-start) search instead: the replay goes back to where it was when that search began, and then the camera switches. Cycle Camera, Cycle Driving Camera, Change Camera and Cycle Sub-Camera change only the angle, so they wait for a jump but leave a search running. Set Camera State always acts at once.
+In a replay, a camera switch made while the replay is jumping — a Replay Markers jump, a Replay Control Jump to Fastest Lap landing, a fast Frame Jog spin — goes out once the jump has landed, because iRacing ignores a camera change during a jump; a further camera press meanwhile, here or on Replay Control, key or dial, replaces it, so the camera moves once. A mode that changes the car, a car key on the [Car Selector](#focus-car-pick-from-grid) grid included, stops a Replay Control [Jump to Fastest Lap](/docs/actions/view-camera/replay-control/#jump-to-fastest-lap) or [Jump to Race Start](/docs/actions/view-camera/replay-control/#jump-to-race-start) search instead: the replay goes back to where it was when that search began, and then the camera switches. Cycle Camera, Cycle Driving Camera, Change Camera and Cycle Sub-Camera change only the angle, so they wait for a jump but leave a search running. [Auto Group on Car Change](#auto-group-on-car-change) changes only the angle too, and it also lets your own camera switch and a running search go first. Set Camera State always acts at once.
 
 ## Modes
 
@@ -341,6 +341,44 @@ Apply a predefined iRacing camera state bit flag. Useful for scripting camera se
 
 The numeric camera state value passed to the iRacing SDK. Integer. Defaults to `0`.
 
+---
+
+### Auto Group on Car Change
+
+Let the cameras run by themselves. A press turns the automation on or off. While it is on, every time the camera moves to another car, the camera switches that car to the next camera group from the button's list, so each car you or iRacing cut to gets a fresh shot. It follows the car however it changed: a Camera Controls or Replay Control key, a dial, iRacing's own UI, iRacing's director, or a car change in a replay. The switch keeps the car and changes only the camera group.
+
+The switch goes out once the camera has stayed on the new car for a quarter of a second, so a dial spun through the field, or a key held to repeat, ends in one group change on the car it lands on rather than one per car on the way. Turning the automation on never switches the camera by itself: it waits for the next car change.
+
+One automation runs at a time, for the whole deck. Pressing another Auto Group button, or a dial's [Auto Group on/off](#on-a-dial) gesture, takes it over with that button's or dial's own list, and only the one running it shows as on; pressing the one that runs it turns it off. Each button keeps its own list, so two buttons can hold two styles, such as a TV set and an onboard set, and a press chooses between them. Changing the list or **Pick** on the button that runs it applies at once; changing them on any other button takes effect when you press that one. It stops if you change the running button's Mode to something else.
+
+The automation is always off when the plugin starts, so the cameras never start moving by themselves in the middle of a stream. It keeps running when you switch to another Stream Deck profile and the button leaves the screen, and it carries on into the next session if iRacing closes while it is on.
+
+In a replay, the group switch waits for a replay jump to land like any other camera switch, and it never pushes your own camera switch aside: while a switch you made is waiting for a jump, or a Replay Control [Jump to Fastest Lap](/docs/actions/view-camera/replay-control/#jump-to-fastest-lap) or [Jump to Race Start](/docs/actions/view-camera/replay-control/#jump-to-race-start) is under way, the automation waits until it has finished.
+
+The button shows whether the automation is on: the on icon is solid with a filled **A** badge, the off icon outlined. With a [border](/docs/features/border-indicator/) enabled, the border is green while it is on and grey while it is off.
+
+#### Details
+
+- **Method:** iRacing API — no key binding needed
+- **Dial:** No rotation support — on a dial it is the Auto Group on/off gesture ([On a dial](#on-a-dial))
+- **Default binding:** No keyboard binding
+- **Telemetry-aware icon:** Yes — shows whether the automation is on, and is drawn greyed while the session you are in has none of the button's groups
+
+#### Setting: Pick
+
+How the next group is chosen from the list. Defaults to **In order**.
+
+- **In order** (default) — steps through the list in iRacing's camera-group order, from where it left off, and starts over at the end. If the camera is already in the next group, it takes the one after, so with two or more groups every car change is a new shot
+- **Random** — picks any group from the list other than the one the camera is in now
+
+With only one group available, the automation switches to it when the camera is in another group and sends nothing when the camera is already there.
+
+#### Setting: Camera Groups
+
+A checkbox grid of the groups the automation picks from, the same grid as [Cycle Camera](#cycle-camera)'s, with its **Remembered groups** section of custom camera groups (see [Custom camera files](#custom-camera-files)). TV1, TV2 and TV3 are ticked by default, the three groups every track has, so a new button works straight away; every other group starts unticked. Use **Select All** / **Clear Selection** to manage the list quickly.
+
+Groups the session you are in does not have are skipped. If none of the ticked groups is in the session, or none is ticked, nothing is switched and the button is drawn greyed until a session that has one of them is loaded.
+
 ## On a dial
 
 Placed on a Stream Deck+ dial or a Mirabox knob, Camera Controls becomes a camera dial for spectating and broadcasting. Turn the dial to flip through cameras or cars — the dial's own **Mode** setting picks the target, and the turn direction replaces the keypad cycle modes' Next / Previous setting. One rule covers every car mode: **where the cycling order _is_ a number, clockwise makes that number go down** — `P4 → P3` in **Cycle by Race Position**, `#94 → #77` in **Cycle by Car #**. **Cycle by Track Order** is ordered by the road rather than by a number (it still shows the focused car's number, it just never sorts by it), and follows the same instinct: clockwise takes you to the car ahead on track. The camera modes are plain lists, so there clockwise simply steps to the next one. A **Reverse rotation** checkbox flips the direction of whichever mode is selected. The touch strip's top line always names the current mode; below it the main content is whatever that mode acts on — the current camera, sub-camera, or car — flanked by what a turn in each direction would switch to, where it can be previewed. Every mode is an iRacing SDK camera command except two: **Cycle Sub-Camera** triggers iRacing's Next / Previous Sub Camera bindings (preconfigured to `B` / `Shift+B` — see the [keypad mode](#cycle-sub-camera)), and **Cycle by Track Order** triggers iRacing's Next / Previous Car bindings (preconfigured to `V` / `Shift+V`, shared with Replay Control — see the [keypad mode](#cycle-by-track-order)). The Property Inspector automatically shows the dial settings (instead of the keypad Mode) when the instance sits on a dial. See [Dials](/docs/features/dials/) for how the shared dial gestures work.
@@ -396,12 +434,19 @@ What a short or long press of the dial button does, chosen from:
 - **Focus on Leader** — focuses the current race leader
 - **Focus on Incident** — focuses the latest incident reported by iRacing
 - **Focus on Most Exciting** — focuses the car the iRacing director rates most exciting
+- **Auto Group on/off** — turns [Auto Group on Car Change](#auto-group-on-car-change) on or off, with this dial's own list (see [Auto Group Camera Groups](#setting-auto-group-camera-groups--pick) below)
 - **None** (default) — does nothing
 
-Both default to **None** (blind-safe). A press is classified when you release the dial — a hold past the [Long-press threshold](/docs/features/dials/#the-long-press-threshold) fires the Long Press action. Turning the dial while pressed cycles the target (a "push + turn") and never fires the press action.
+Both default to **None** (blind-safe). A press is classified when you release the dial — a hold past the [Long-press threshold](/docs/features/dials/#the-long-press-threshold) fires the Long Press action. Turning the dial while pressed cycles the target (a "push + turn") and never fires the press action. On a Mirabox knob, the same choices are offered on Push.
 
-With Long Press set to **Focus My Car**, holding past the threshold shows the car number the release will jump to, so you can let go on the change — see [Seeing the outcome before you let go](/docs/features/dials/#seeing-the-outcome-before-you-let-go). The other gestures show nothing while held: iRacing picks the car for Focus on Leader, Focus on Incident and Focus on Most Exciting itself, so the plugin cannot say in advance which one you will get.
+With Long Press set to **Focus My Car**, holding past the threshold shows the car number the release will jump to, so you can let go on the change — see [Seeing the outcome before you let go](/docs/features/dials/#seeing-the-outcome-before-you-let-go). With Long Press set to **Auto Group on/off**, it shows `AUTO ON` or `AUTO OFF`, whichever the release will do. The other gestures show nothing while held: iRacing picks the car for Focus on Leader, Focus on Incident and Focus on Most Exciting itself, so the plugin cannot say in advance which one you will get.
 
 #### Setting: Tap Display / Long Touch
 
-Optional touch-strip gestures (Stream Deck+ only), each over the same set { Focus My Car, Change Camera, Focus on Leader, Focus on Incident, Focus on Most Exciting, None }. Both default to **None** for VR safety.
+Optional touch-strip gestures (Stream Deck+ only), each over the same set { Focus My Car, Change Camera, Focus on Leader, Focus on Incident, Focus on Most Exciting, Auto Group on/off, None }. Both default to **None** for VR safety. A Long Touch shows nothing while you hold it, since the Stream Deck app reports a touch only once it has ended.
+
+#### Setting: Auto Group Camera Groups / Pick
+
+Shown while any of the dial's gestures is set to **Auto Group on/off**. They are the dial's own list and pick order for [Auto Group on Car Change](#auto-group-on-car-change), apart from the dial's Camera Groups for Cycle Camera and from every button's, so a dial and a button can run different styles. **Pick** defaults to **In order**, and **Auto Group Camera Groups** has TV1, TV2 and TV3 ticked by default; both work as on the [button](#setting-pick).
+
+The automation the dial starts is the same single one a button starts: pressing the gesture again turns it off, and an Auto Group button or another dial takes it over. While this dial runs it, its touch strip (or the screen above a Mirabox knob) shows a small **A** badge in the top-right corner. Changing the dial's list or Pick applies at once while it runs, and setting every gesture on the dial to something other than Auto Group on/off turns it off.
