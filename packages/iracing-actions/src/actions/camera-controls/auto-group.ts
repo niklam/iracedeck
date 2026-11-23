@@ -325,11 +325,14 @@ function sendAuto(run: Run): void {
     return;
   }
 
-  run.lastPicked = target.groupName;
-
+  // In order moves on only once the switch went out: a send that failed
+  // (false) or threw (the waiter logs it) leaves the place in the list, so
+  // the next car change offers the same group again rather than skipping it.
   const success = getCommands().camera.switchNum(carNumberRaw, target.groupNum, 0);
 
-  run.logger.info("Camera group switched automatically");
+  if (success) run.lastPicked = target.groupName;
+
+  run.logger.info(success ? "Camera group switched automatically" : "Automatic camera group switch failed");
   run.logger.debug(
     `Result: ${success}, carNumberRaw: ${carNumberRaw}, group: ${target.groupNum} (${target.groupName}), pick: ${run.pick}`,
   );

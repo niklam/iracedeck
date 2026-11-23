@@ -338,6 +338,34 @@ describe("auto group picking", () => {
     expect(switchedGroups()).toEqual(["TV1", "TV2", "TV3", "TV1", "TV2"]);
   });
 
+  it("keeps its place in order when a switch fails: the next car change offers the same group again", () => {
+    start();
+    switchNum.mockImplementationOnce(() => false);
+    landOn(2);
+    landOn(3);
+    landOn(4);
+
+    expect(switchedGroups()).toEqual(["TV1", "TV1", "TV2"]);
+    expect(logger.info).toHaveBeenCalledWith("Automatic camera group switch failed");
+  });
+
+  it("keeps its place in order when a switch throws", () => {
+    engine.state.sendAtOnce = false;
+    start();
+    switchNum.mockImplementationOnce(() => {
+      throw new Error("broadcast failed");
+    });
+    landOn(2);
+
+    // The waiter catches and logs the throw; here the held send is called by hand.
+    expect(() => engine.state.held[0].send()).toThrow("broadcast failed");
+
+    landOn(3);
+    engine.state.held[1].send();
+
+    expect(switchedGroups()).toEqual(["TV1", "TV1"]);
+  });
+
   it("never repeats the camera's group in order: one step further when the camera is in the next", () => {
     start();
     landOn(2, G.TV1);
