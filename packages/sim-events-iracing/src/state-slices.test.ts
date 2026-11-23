@@ -576,12 +576,20 @@ describe("TranslatorState keeps to the slice convention (#1588)", () => {
       "nested/planted-heritage.ts",
       `import type * as S from "../../state.js";\ninterface Ctx extends S.TranslatorState {\n  now: number;\n}\nexport function diffPlanted(ctx: Ctx): number {\n  return ctx.now;\n}\n`,
     );
+    // Through a relay outside diff/ (`src/planted-types.ts` re-exporting the
+    // state), which the scan never reads: the diff module alone is reported.
+    diff.set(
+      "planted-relayed.ts",
+      `import type { TranslatorState } from "../planted-types.js";\nexport function diffPlanted(state: TranslatorState): unknown {\n  return state.fastestLap;\n}\n`,
+    );
 
     const result = realFindings(scanStateSlices({ ...sources, diff }, LEGACY_FLAT_MEMBERS, SLICE_READS_ALLOWED));
 
     expect(added(findings, result)).toEqual([
+      "C:planted-relayed.ts:fastestLap",
       "E:nested/planted-heritage.ts:nested/planted-heritage.ts",
       "E:planted-family.ts:planted-family.ts",
+      "E:planted-relayed.ts:planted-relayed.ts",
     ]);
     expect(result.find((v) => v.name === "planted-family.ts")?.message).toContain(
       "a new diff module takes its slice as its first parameter",
@@ -964,6 +972,53 @@ describe("the state-slice scanner (positive controls)", () => {
         "C:b.ts:1:S",
         "C:c.ts:1:TranslatorState",
       ]);
+    });
+
+    it("counts TranslatorState imported or re-exported through another relative module, and reads through it (rules C and E)", () => {
+      // The relay, `src/translator-types.ts` re-exporting TranslatorState from
+      // state.ts, sits outside diff/ and is never scanned: each diff module is
+      // read alone, so the name is what the scan keys on.
+      const RELAY = `"../translator-types.js"`;
+      const scan = planted(plantedState(), {
+        "named.ts": `import type { TranslatorState } from ${RELAY};\nexport function diff(state: TranslatorState): unknown {\n  return state.fastestLap;\n}\n`,
+        "inline-type.ts": `import { type TranslatorState as S } from ${RELAY};\nexport function diff(state: S): unknown {\n  return state.trackGaps;\n}\n`,
+        "namespace.ts": `import type * as T from ${RELAY};\nexport function diff(state: T.TranslatorState): unknown {\n  return state.fastestLap;\n}\n`,
+        "import-type.ts": `export function diff(state: import(${RELAY}).TranslatorState): unknown {\n  return state.trackGaps;\n}\n`,
+        "re-export.ts": `export type { TranslatorState } from ${RELAY};\n`,
+      });
+
+      expect(scan.stateImporters).toEqual([
+        "import-type.ts",
+        "inline-type.ts",
+        "named.ts",
+        "namespace.ts",
+        "re-export.ts",
+      ]);
+      expect(scan.violations.map((v) => `${v.rule}:${v.module}:${v.line}:${v.name}`)).toEqual([
+        "C:import-type.ts:2:trackGaps",
+        "C:inline-type.ts:3:trackGaps",
+        "C:named.ts:3:fastestLap",
+        "C:namespace.ts:3:fastestLap",
+        "C:re-export.ts:1:TranslatorState",
+      ]);
+      expect(violationKeys(checkStateImporters(scan, [], []))).toEqual([
+        "E:import-type.ts:import-type.ts",
+        "E:inline-type.ts:inline-type.ts",
+        "E:named.ts:named.ts",
+        "E:namespace.ts:namespace.ts",
+        "E:re-export.ts:re-export.ts",
+      ]);
+    });
+
+    it("passes another name from a relative module, TranslatorState from a package, and a slice type from a relay", () => {
+      const scan = planted(plantedState(), {
+        "other-name.ts": `import type { EmitFn } from "./types.js";\nimport type * as T from "../translator-types.js";\nexport function diff(emit: EmitFn, holder: T.Other): unknown {\n  return [emit, holder];\n}\n`,
+        "package.ts": `import type { TranslatorState } from "@iracedeck/other";\nexport function diff(state: TranslatorState): unknown {\n  return state.fastestLap;\n}\n`,
+        "relay-slice.ts": `import type { FastestLapState } from "../translator-types.js";\nexport function diff(slice: FastestLapState): unknown {\n  return slice.record;\n}\n`,
+      });
+
+      expect(scan.stateImporters).toEqual([]);
+      expect(scan.violations).toEqual([]);
     });
 
     it("passes an exported type that neither is nor holds the state", () => {

@@ -38,7 +38,11 @@
  *   (`import type { … }`, `import { type … }`, plain, through a namespace
  *   import used as `ns.TranslatorState` in a type or an `extends` clause,
  *   inline as `import("../state.js").TranslatorState`, re-exported by name, or
- *   re-exported with `export * from` / `export * as ns from` the state module):
+ *   re-exported with `export * from` / `export * as ns from` the state module;
+ *   the named, namespace, inline and re-export forms count `TranslatorState`
+ *   from any relative module, not only `state.ts`, since a module that
+ *   re-exports it relays it, as in
+ *   `import type { TranslatorState } from "../translator-types.js"`):
  *   - names no slice type;
  *   - exports no type alias or interface that is, or holds, the state (the
  *     scan reads each module alone, so a module importing such a type would
@@ -538,6 +542,11 @@ function createDiffProgram(sources: ReadonlyMap<string, string>): ts.Program {
   );
 }
 
+/** Whether `specifier` is a relative module specifier (`./x.js`, `../state.js`). */
+function isRelativeModule(specifier: ts.Expression): specifier is ts.StringLiteral {
+  return ts.isStringLiteral(specifier) && specifier.text.startsWith(".");
+}
+
 /** Whether `specifier` is a relative import of the package's `state.ts`. */
 function isStateModule(specifier: ts.Expression): boolean {
   return (
@@ -624,6 +633,8 @@ function scanModule(
   const stateImports = new Set<ts.Symbol>();
   /** Namespace imports of `state.ts`. */
   const stateNamespaces = new Set<ts.Symbol>();
+  /** Namespace imports of any other relative module, read for `ns.TranslatorState` only. */
+  const relayNamespaces = new Set<ts.Symbol>();
   /** Local names of slice types imported from `state.ts`, by alias symbol. */
   const sliceTypeAliases = new Map<ts.Symbol, string>();
   const symbolOf = (node: ts.Node): ts.Symbol | undefined => checker.getSymbolAtLocation(node);
@@ -633,9 +644,15 @@ function scanModule(
     violations.push({ rule: "C", name, module, line, message: message(`diff/${module}:${line}`) });
   };
 
+  // `TranslatorState` by name is the state from any relative module, not only
+  // from state.ts: a module that re-exports it (`export type {
+  // TranslatorState } from "./state.js"`) relays it as surely, and the scan
+  // reads each diff module alone, so it cannot follow the relay. Slice types
+  // are read from state.ts only.
   for (const statement of file.statements) {
-    if (!ts.isImportDeclaration(statement) || !isStateModule(statement.moduleSpecifier)) continue;
+    if (!ts.isImportDeclaration(statement) || !isRelativeModule(statement.moduleSpecifier)) continue;
 
+    const fromState = isStateModule(statement.moduleSpecifier);
     const bindings = statement.importClause?.namedBindings;
 
     if (bindings === undefined) continue;
@@ -643,7 +660,7 @@ function scanModule(
     if (ts.isNamespaceImport(bindings)) {
       const symbol = symbolOf(bindings.name);
 
-      if (symbol !== undefined) stateNamespaces.add(symbol);
+      if (symbol !== undefined) (fromState ? stateNamespaces : relayNamespaces).add(symbol);
 
       continue;
     }
@@ -656,21 +673,27 @@ function scanModule(
 
       if (imported === STATE_TYPE) stateImports.add(symbol);
 
-      if (sliceTypes.has(imported)) sliceTypeAliases.set(symbol, imported);
+      if (fromState && sliceTypes.has(imported)) sliceTypeAliases.set(symbol, imported);
     }
   }
 
   /**
    * The `state.ts` export a type names, if any: `X` through a named import,
-   * `ns.X` through a namespace import, or `import("../state.js").X` inline.
+   * `ns.X` through a namespace import, or `import("../state.js").X` inline;
+   * and `TranslatorState` through any other relative module the same three
+   * ways.
    */
   const stateExportOf = (node: ts.TypeReferenceNode | ts.ImportTypeNode): string | undefined => {
     if (ts.isImportTypeNode(node)) {
       const specifier = importTypeSpecifier(node);
 
-      return specifier !== undefined && isStateModule(specifier) && node.qualifier !== undefined
-        ? rightmostName(node.qualifier)
-        : undefined;
+      if (specifier === undefined || node.qualifier === undefined) return undefined;
+
+      const name = rightmostName(node.qualifier);
+
+      if (isStateModule(specifier)) return name;
+
+      return isRelativeModule(specifier) && name === STATE_TYPE ? STATE_TYPE : undefined;
     }
 
     const typeName = node.typeName;
@@ -687,7 +710,11 @@ function scanModule(
 
     const left = ts.isIdentifier(typeName.left) ? symbolOf(typeName.left) : undefined;
 
-    return left !== undefined && stateNamespaces.has(left) ? typeName.right.text : undefined;
+    if (left === undefined) return undefined;
+
+    if (stateNamespaces.has(left)) return typeName.right.text;
+
+    return relayNamespaces.has(left) && typeName.right.text === STATE_TYPE ? STATE_TYPE : undefined;
   };
 
   /** The module-local type alias or interface `symbol` names, if it is one. */
@@ -769,7 +796,11 @@ function scanModule(
     const right = ts.isQualifiedName(name) ? name.right : ts.isPropertyAccessExpression(name) ? name.name : undefined;
     const namespace = left !== undefined && ts.isIdentifier(left) ? symbolOf(left) : undefined;
 
-    return namespace !== undefined && stateNamespaces.has(namespace) && right?.text === STATE_TYPE ? STATE : null;
+    return namespace !== undefined &&
+      (stateNamespaces.has(namespace) || relayNamespaces.has(namespace)) &&
+      right?.text === STATE_TYPE
+      ? STATE
+      : null;
   };
 
   const heritageShape = (heritage: ts.ExpressionWithTypeArguments, depth: number): Shape =>
@@ -813,21 +844,21 @@ function scanModule(
 
   let importsState = stateImports.size > 0;
 
-  // `export type { TranslatorState } from "../state.js"`, `export * from
-  // "../state.js"` and `export * as ns from "../state.js"` bring the state in
-  // as surely as an import does.
+  // `export type { TranslatorState } from` any relative module, and `export *
+  // from "../state.js"` / `export * as ns from "../state.js"`, bring the state
+  // in as surely as an import does.
   for (const statement of file.statements) {
-    if (!isStateReExport(statement)) continue;
+    if (!isRelativeReExport(statement)) continue;
 
     const clause = statement.exportClause;
+    const wholeState =
+      isStateModule(statement.moduleSpecifier) && (clause === undefined || ts.isNamespaceExport(clause));
+    const namesState =
+      clause !== undefined &&
+      ts.isNamedExports(clause) &&
+      clause.elements.some((element) => (element.propertyName ?? element.name).text === STATE_TYPE);
 
-    if (
-      clause === undefined ||
-      ts.isNamespaceExport(clause) ||
-      clause.elements.some((element) => (element.propertyName ?? element.name).text === STATE_TYPE)
-    ) {
-      importsState = true;
-    }
+    if (wholeState || namesState) importsState = true;
   }
 
   eachNode(file, (node) => {
@@ -914,7 +945,7 @@ function scanModule(
         const local = (element.propertyName ?? element.name).text;
 
         if (statement.moduleSpecifier !== undefined) {
-          if (isStateModule(statement.moduleSpecifier) && local === STATE_TYPE)
+          if (isRelativeModule(statement.moduleSpecifier) && local === STATE_TYPE)
             exportedStandIn(element.name.text, element);
 
           continue;
@@ -1174,6 +1205,17 @@ function isStateReExport(
     ts.isExportDeclaration(statement) &&
     statement.moduleSpecifier !== undefined &&
     isStateModule(statement.moduleSpecifier)
+  );
+}
+
+/** Whether `statement` is an `export … from` of any relative module, `state.ts` included. */
+function isRelativeReExport(
+  statement: ts.Statement,
+): statement is ts.ExportDeclaration & { readonly moduleSpecifier: ts.Expression } {
+  return (
+    ts.isExportDeclaration(statement) &&
+    statement.moduleSpecifier !== undefined &&
+    isRelativeModule(statement.moduleSpecifier)
   );
 }
 
