@@ -618,6 +618,12 @@ describe("the program-word rewrite's second read (#1606)", () => {
     "bash -c 'a; b' && git push origin integration # x/'y",
     `sudo x "a;b"/gh pr merge 5; git.exe push --tags; echo "q/r"`,
     "sudo x `a; b`/c; gh pr merge 5 | echo 'd/e'",
+    // #1646: words read inside a string at the level its shell reads it.
+    `bash -c "X=\\"a; b\\" gh.exe pr merge 5"; git push origin integration; echo "a/b"`,
+    String.raw`bash -c 'X='\''a b'\'' /usr/bin/gh pr merge 5' && git.exe push --tags; echo 'c/d'`,
+    String.raw`bash -c $'ls\ngh.exe pr merge 5\x3bGIT push --tags'; echo "e/f"`,
+    `printf '%s\\n' 'gh.exe pr merge 5' | sh; git push origin integration; echo 'g/h'`,
+    `sudo -s env X="a b" gh.exe pr merge 5; echo "i/j"`,
   ];
   const SHAPES = [/git\s+push\b/, /gh\s+pr\s+merge\b/, /git\s+commit\b/, /gh\s+pr\s+create\b/].map((re) => cmd(re));
   // Since #1607 the raw text is read only over the element that feeds a shell;
@@ -634,6 +640,14 @@ describe("the program-word rewrite's second read (#1606)", () => {
     }
     for (const re of SHAPES) if (re.test(command)) expect(re.test(text), String(re)).toBe(true);
   });
+
+  it.each(UNTRUSTED.slice(-5))("finds the merge inside the string, read as its shell reads it (#1646): %s", (c) => {
+    expect(lexer.has(c, SHAPES[1])).toBe(true);
+    expect(view(c).unsettled).toBe(false);
+  });
+
+  it("finds a push a string's ANSI-C escape separates from the command before it (#1646)", () =>
+    expect(lexer.has(UNTRUSTED.at(-3), SHAPES[0])).toBe(true));
 
   it("still rewrites a plain program word in an untrusted view", () => {
     expect(trustedMask(`"bash" -c 'x' && gh.exe pr merge 5`)).toBe(`  bash -c 'x' &&     gh pr merge 5`);
@@ -1312,4 +1326,165 @@ describe("commandWordsRaw stops at a limit (#1634)", () => {
     expect(lexer.commandWordsRaw(c, 13, lexer.stringEnd(c, 12))).toEqual(["run", "y"]);
     expect(lexer.commandWordsRaw(c, 13)).toEqual(["run", "y' 'z"]);
   });
+});
+
+// #1646: inside a shell-fed string the raw text was read one level deep, so a
+// lead assignment whose quoted value holds a blank (`X="a b" gh …`) or a `;`
+// ended early, and the program after it was never recorded. The text a shell
+// runs is now read as that shell reads it.
+describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
+  const MERGE = cmd(/gh\s+pr\s+merge\b/);
+  const PUSH = cmd(/git\s+push\b/);
+  /** The kind of the program word `gh` or `git` at its last occurrence, as {@link lexer.programKind} reads it. */
+  const kindAt = (c, word) => lexer.programKind(c, c.lastIndexOf(`${word} `));
+
+  it.each([
+    ["bash -c 'X=\"a b\" gh pr merge 7'", { how: "shell", via: "bash" }],
+    ["bash -c 'env X=\"a b\" gh pr merge 7'", { how: "shell", via: "bash" }],
+    [`bash -c "env X='a b' gh pr merge 7"`, { how: "shell", via: "bash" }],
+    ["bash -c 'nice env GH_PAGER=\"less -R\" gh pr merge 7 --squash'", { how: "wrapper", via: "nice" }],
+    ["bash -c 'nice env X=\"a;b\" gh pr merge 7'", { how: "wrapper", via: "nice" }],
+  ])("records the program after the quoted value: %s", (c, kind) => {
+    expect(lexer.has(c, MERGE)).toBe(true);
+    expect(kindAt(c, "gh")).toEqual(kind);
+  });
+
+  it("records a tag push after a quoted value under a wrapper, and after a wrapper's quoted option value", () => {
+    const c = "bash -c 'nice env X=\"a b\" git push origin v1.2.3'";
+    expect(lexer.has(c, PUSH)).toBe(true);
+    expect(kindAt(c, "git")).toEqual({ how: "wrapper", via: "nice" });
+    expect(lexer.has("bash -c 'env -C \"a b\" git push origin v1.2.3'", PUSH)).toBe(true);
+  });
+
+  // sudo -s escapes every character of its words but a letter, a digit, `_`,
+  // `-` and `$` before its shell reads them: `X=a\ b` is then the program. The
+  // reader leaves `=` unescaped, so a leading assignment is stepped over and
+  // the word after it counts as a program: a false one here, the real one in
+  // `sudo -s env X=1 gh …`.
+  it("errs to a program after a leading assignment sudo -s escapes", () => {
+    expect(lexer.has('sudo -s X="a b" gh pr merge 7', MERGE)).toBe(true);
+    expect(lexer.has("sudo -s echo X=1 gh pr merge 7", MERGE)).toBe(false);
+  });
+
+  it("decodes every ANSI-C escape of a string a shell runs, as bash does", () => {
+    const text = (w) =>
+      lexer
+        .decodeWord(w, true)
+        .map((x) => x.c)
+        .join("");
+    expect(text(String.raw`$'a\nb\tc\x41\101\u00e9\cA\q\'\\'`)).toBe("a\nb\tcAA\u00e9\x01\\q'\\");
+    // Without `ansi` an escape it cannot read whole stays live, as a program name reads it (#1606).
+    expect(lexer.decodeWord(String.raw`$'\x41'`).some((x) => x.live)).toBe(true);
+    expect(lexer.decodeWord(String.raw`$'a\nb'`, true).map((x) => [x.at, x.end])).toEqual([
+      [2, 3],
+      [3, 5],
+      [5, 6],
+    ]);
+  });
+
+  // The raw text of a string a shell runs is not always the text it reads: an
+  // outer double-quoted string carries escaped quotes, a `'\''` splice joins
+  // pieces, `$'…'` decodes escapes. Each is read as the shell reads it.
+  it.each([
+    `bash -c "X=\\"a b\\" gh pr merge 7"`,
+    String.raw`bash -c 'X='\''a b'\'' gh pr merge 7'`,
+    "bash -c X=1' gh pr merge 7'",
+    `bash -c "ls; X=\\"a b\\" gh pr merge 7"`,
+    String.raw`bash -c $'ls\ngh pr merge 7'`,
+    String.raw`bash -c $'X=\'a b\' gh pr merge 7'`,
+    `bash -c "sh -c 'X=\\"a b\\" gh pr merge 7'"`,
+    `bash -c "nice env X=\\"a;b\\" gh pr merge 7"`,
+    "bash -c '2>\"a b\" gh pr merge 7'",
+    "bash -c 'X=${Y:-a b} gh pr merge 7'",
+    "bash -c 'X=$(echo a b)c gh pr merge 7'",
+    "echo 'X=\"a b\" gh pr merge 7' | bash",
+    "bash <<< 'X=\"a b\" gh pr merge 7'",
+    "eval 'X=\"a b\" gh pr merge 7'",
+    `eval "X=\\"a b\\"" gh pr merge 7`,
+    "watch 'X=\"a b\" gh pr merge 7'",
+    "trap 'X=\"a b\" gh pr merge 7' EXIT",
+    String.raw`find . -exec sh -c 'X="a b" gh pr merge 7' \;`,
+    `bash <<< "X=\\"a b\\" gh pr merge 7"`,
+    `bash -c "sh -c 'nice env X=\\"a;b\\" gh pr merge 7'"`,
+    "bash -c 'cd x && X=\"a b\" gh pr merge 7'",
+    "bash -c 'if true; then X=\"a b\" gh pr merge 7; fi'",
+    "bash -c 'X=\"a b\" 2>/dev/null gh pr merge 7'",
+    "bash -c 'X=ab 2>/dev/null gh pr merge 7'",
+    "bash -c 'exec -a \"my name\" gh pr merge 7'",
+    "printf 'X=\"a b\" gh pr merge 7\\n' | sh",
+    "sudo -s env X=1 gh pr merge 7",
+  ])("reads the string as the shell it is handed to reads it: %s", (c) => {
+    expect(lexer.has(c, MERGE)).toBe(true);
+    expect(view(c).unclosedLead).toBe(false);
+  });
+
+  // The same misreading outside any shell string: a `${…}` or `$(…)` value with a blank in it.
+  it.each(["X=${Y:-a b} gh pr merge 7", "X=$(echo a b)c gh pr merge 7"])(
+    "reads a value whose expansion holds a blank at command position: %s",
+    (c) => expect(lexer.has(c, MERGE)).toBe(true),
+  );
+
+  it.each([
+    "bash -c 'X=\"a b gh pr merge 7'",
+    `bash -c "X=\\"a b gh pr merge 7"`,
+    "bash -c '\"gh pr merge 7'",
+    "echo 'X=\"a gh pr merge 7' | bash",
+  ])("reports a lead whose quote never closes, which the hook cannot read: %s", (c) =>
+    expect(view(c).unclosedLead).toBe(true),
+  );
+
+  it.each([
+    "bash -c 'X=ab gh pr merge 7'",
+    String.raw`bash -c 'echo "it'\''s"; gh pr merge 7'`,
+    `bash -c 'echo "unclosed'`,
+    "gh pr merge 7",
+    `X="a b" gh pr merge 7`,
+  ])("reports nothing unread where every lead closes its quotes: %s", (c) => expect(view(c).unclosedLead).toBe(false));
+
+  it.each([
+    "bash -c 'X=ab gh pr merge 7'",
+    "bash -c 'env X=ab gh pr merge 7'",
+    "bash -c 'nice env X=ab gh pr merge 7'",
+    `X="a b" gh pr merge 7`,
+    `nice env X="a b" gh pr merge 7`,
+  ])("still reads the lead with no quoted value, and one outside a string: %s", (c) =>
+    expect(lexer.has(c, MERGE)).toBe(true),
+  );
+
+  it.each([
+    "bash -c 'echo \"gh pr merge 7\"'",
+    "bash -c 'X=\"a b\" echo gh pr merge 7'",
+    "bash -c 'X=\"gh pr merge 7\" true'",
+    `bash -c "X='gh pr merge 7' true"`,
+    `bash -c "X=\\"gh pr merge 7\\" true"`,
+    // echo joins its words: the shell reads `X=a b gh …`, which runs `b`.
+    'echo X="a b" gh pr merge 7 | bash',
+    // `-c` takes one word: `gh` is the shell's `$0`, never run.
+    "bash -c 'X=1' gh pr merge 7",
+    // An ANSI-C blank is a blank to the shell that reads the string: it runs `b`.
+    String.raw`bash -c $'X=a\x20b gh pr merge 7'`,
+  ])("finds no merge where it is a value or an argument: %s", (c) => {
+    expect(lexer.has(c, MERGE)).toBe(false);
+    expect(lexer.matchAt(c, MERGE)).toBeNull();
+  });
+
+  it("records each command a string runs after a separator, as the shell reads the string", () => {
+    const c = `bash -c "ls; X=\\"a b\\" gh pr merge 7"`;
+    expect(kindAt(c, "gh")).toEqual({ how: "command" });
+    expect(lexer.matchAt(c, MERGE)).not.toBeNull();
+  });
+
+  it(
+    "reads a long run of quoted values, wrappers and strings in time linear in their length",
+    { timeout: TIMING_TIMEOUT_MS },
+    () => {
+      readsLinearly((n) => `bash -c '${'X="a b" '.repeat(n)}gh pr merge 7'`, 2000, MERGE, true);
+      readsLinearly((n) => `bash -c "${'X=\\"a b\\" '.repeat(n)}gh pr merge 7"`, 2000, MERGE, true);
+      readsLinearly((n) => `bash -c 'nice env ${'X="a;b" '.repeat(n)}gh pr merge 7'`, 2000, MERGE, true);
+      readsLinearly((n) => `${"bash -c 'X=\"a b\" true'; ".repeat(n)}echo`, 500, MERGE, false);
+      // An unclosed quote in a lead: the value's pieces are each one parse, so
+      // a failed token backtracks once per piece, never exponentially.
+      readsLinearly((n) => `bash -c 'X=${'"a"'.repeat(n)}"b gh pr merge 7'`, 2000, MERGE, false);
+    },
+  );
 });

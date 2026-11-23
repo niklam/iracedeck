@@ -6174,3 +6174,89 @@ describe("a carried merge is refused before the PR is read (#1634)", () => {
     );
   });
 });
+
+// #1646: a merge or tag push carried in a shell-fed string behind a lead
+// assignment whose quoted value holds a blank or a `;` passed every gate, since
+// the lead was read one level deep in the raw text and ended inside the value.
+describe("a carried merge or tag push behind a quoted lead value (#1646)", () => {
+  const head = "1111111111111111111111111111111111111111";
+  const reads = [];
+  const green = (...args) => {
+    reads.push(args);
+    return {
+      number: 7,
+      url: "https://github.com/niklam/iracedeck/pull/7",
+      state: "OPEN",
+      headRefOid: head,
+      headRefName: "ir-7",
+      reviewDecision: "APPROVED",
+      mergeStateStatus: "CLEAN",
+      statusCheckRollup: [
+        { __typename: "CheckRun", name: "Tests", status: "COMPLETED", conclusion: "SUCCESS" },
+        { __typename: "StatusContext", context: "CodeRabbit", state: "SUCCESS" },
+      ],
+      reviews: [{ author: { login: "coderabbitai" }, state: "APPROVED", commit: { oid: head } }],
+    };
+  };
+  const refused = (c) => {
+    reads.length = 0;
+    const v = deny(c, ctx({ prView: green }));
+    expect(reads, c).toEqual([]);
+    return v;
+  };
+
+  it.each([
+    "bash -c 'X=\"a b\" gh pr merge 7'",
+    "bash -c 'env X=\"a b\" gh pr merge 7'",
+    `bash -c "env X='a b' gh pr merge 7"`,
+    "bash -c 'nice env GH_PAGER=\"less -R\" gh pr merge 7 --squash'",
+    "bash -c 'nice env X=\"a;b\" gh pr merge 7'",
+    `bash -c "X=\\"a b\\" gh pr merge 7"`,
+    String.raw`bash -c 'X='\''a b'\'' gh pr merge 7'`,
+    `bash -c "sh -c 'X=\\"a b\\" gh pr merge 7'"`,
+    "echo 'X=\"a b\" gh pr merge 7' | bash",
+    `eval "X=\\"a b\\"" gh pr merge 7`,
+  ])("refuses the merge as carried, before reading the PR: %s", (c) =>
+    expect(refused(c)).toMatch(/is not its own command/),
+  );
+
+  // The post-hook's merge trigger reads the same program positions (`matchesAt`),
+  // so it moves the card for a merge these strings run, and for none they mention.
+  it("gives the post-hook's trigger the same merges, and no mention", () => {
+    for (const c of [
+      "bash -c 'X=\"a b\" gh pr merge 7'",
+      `bash -c "X=\\"a b\\" gh pr merge 7"`,
+      "bash -c 'nice env X=\"a;b\" gh pr merge 7'",
+    ])
+      expect(firstMerge(c), c).toMatchObject({ ref: "7", readable: true });
+    expect(firstMerge("bash -c 'X=\"a b\" echo gh pr merge 7'")).toBeUndefined();
+  });
+
+  it("refuses a merge after a separator inside a double-quoted string", () => {
+    refused(`bash -c "ls; X=\\"a b\\" gh pr merge 7 --squash"`);
+    refused(String.raw`bash -c $'ls\ngh pr merge 7 --squash'`);
+  });
+
+  it("asks for a tag push behind a quoted value under a wrapper", () => {
+    expect(asks("bash -c 'nice env X=\"a b\" git push origin v1.2.3'")).toMatch(/Pushing a tag cuts a release/);
+    expect(asks(`bash -c "X=\\"a b\\" git push origin v1.2.3"`)).toMatch(/Pushing a tag cuts a release/);
+  });
+
+  it.each(["bash -c 'X=\"a b gh pr merge 7'", "bash -c 'X=\"a b git push origin v1.2.3'", `bash -c '"echo hi'`])(
+    "refuses a string whose lead opens a quote it never closes: %s",
+    (c) => expect(refused(c)).toMatch(/quote that never closes/),
+  );
+
+  it("refuses the same merge with no quoted value, as before", () => {
+    expect(refused("bash -c 'X=ab gh pr merge 7'")).toMatch(/is not its own command/);
+    expect(refused("bash -c 'nice env X=ab gh pr merge 7'")).toMatch(/is not its own command/);
+  });
+
+  it.each([
+    "bash -c 'echo \"gh pr merge 7\"'",
+    "bash -c 'X=\"a b\" echo gh pr merge 7'",
+    `bash -c "X='gh pr merge 7' true"`,
+    "bash -c 'nice env X=\"a b\" git push origin main'",
+    `bash -c 'echo "unclosed'`,
+  ])("passes a mention, an argument and a push of no tag: %s", (c) => passes(c));
+});

@@ -53,6 +53,7 @@ import {
   stringKind,
   trustedIn,
   trustedMask,
+  unclosedLead,
   unreadablePrograms,
   unsettled,
   view,
@@ -2099,6 +2100,11 @@ export function checkBash(command, ctx) {
   // on PR #1637: `nice` nested nine times let a merge through).
   if (unsettled(text))
     return "This command nests shells or wrappers (`bash -c`, `sudo`, `nice`, `env` …) deeper than the hook can read, so it cannot see what runs at the bottom. Run the inner command directly, or with fewer wrappers around it.";
+  // A lead in a string a shell runs that opens a quote it never closes: which
+  // word runs after it cannot be read, so the command is refused whole rather
+  // than passed on a guess (#1646).
+  if (unclosedLead(text))
+    return "A command this one hands to a shell (`bash -c`, `eval`, a piped script …) starts with a quote that never closes, so the hook cannot read which program it runs. Close the quote, or run the inner command directly.";
   const verdict = judge(text, ctx, powershell);
   if (typeof verdict === "string") return verdict;
   // An ask the command carries anyway, from another command of the chain, is

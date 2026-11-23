@@ -861,7 +861,9 @@ function deckReach(c, cwd, ctx, shell, trail) {
     if (how === "shell" && !stdin && isWrapper(via)) continue;
     const string = stringBounds(c, at - 1);
     if (string) {
-      const text = wordText(c.slice(string[0], string[1] + 1));
+      // An ANSI-C string is read from its `$`, so its escapes are decoded as the judged line has them (#1646).
+      const open = string[0] - (c[string[0] - 1] === "$" && c[string[0]] === "'" ? 1 : 0);
+      const text = wordText(c.slice(open, string[1] + 1));
       if (judged.some((line) => line === text || line.startsWith(`${text} `))) continue;
     }
     // A shell wrapper's name as the rewritten text spells it (#1606): `bash`
