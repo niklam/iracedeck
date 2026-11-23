@@ -188,7 +188,7 @@ export function updateAutoGroupSettings(owner: string, names: readonly string[],
   run.names = [...names];
   run.pick = pick;
   run.logger.info("Auto group settings updated");
-  run.logger.debug(`Auto group pick ${pick}, groups: ${names.join(", ") || "(none)"}`);
+  run.logger.debug(`Auto group settings updated: pick ${pick}, groups: ${names.join(", ") || "(none)"}`);
 
   return true;
 }

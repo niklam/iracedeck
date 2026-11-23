@@ -886,7 +886,7 @@ describe("auto group ownership", () => {
       updateAutoGroupSettings("key-a", ["Cockpit", "TV2"], "random");
 
       expect(logger.info).toHaveBeenCalledWith("Auto group settings updated");
-      expect(logger.debug).toHaveBeenCalledWith("Auto group pick random, groups: Cockpit, TV2");
+      expect(logger.debug).toHaveBeenCalledWith("Auto group settings updated: pick random, groups: Cockpit, TV2");
     });
 
     it("log nothing for an edit they ignore", () => {
