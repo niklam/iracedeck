@@ -21,15 +21,25 @@
  *   and `createInitialState`'s returned object initialises it with a
  *   no-argument call to it. Reported by member name, or `<Type>.<field>` for an
  *   optional field.
- * - **B** — the pin only shrinks, and each pinned name sits under its own
- *   heading: a pinned name that is no longer a member, a name pinned under a
+ * - **B** — the pin matches the file and only shrinks. `scanStateSlices`
+ *   reports a pinned name that is no longer a member, a name pinned under a
  *   heading other than the one it sits under, a name pinned twice, an empty
- *   entry, or an entry whose heading `state.ts` no longer has. Reported by
- *   member name, or by heading for the last two.
+ *   entry, or an entry whose heading `state.ts` no longer has (by member name,
+ *   or by heading for the last two). `checkFlatPinFrozen` holds the pin's
+ *   distinct names against a frozen record (`freezeNames`: their count and a
+ *   sha256 over them sorted, headings left out): more names than the record,
+ *   or as many but not the same ones (one swapped for another, a rename
+ *   included), is a name added, and fails without printing a record to copy;
+ *   fewer is a cluster moved into a slice, and fails printing the record to
+ *   write in the same change. Reported by the pin's name. What a count and a
+ *   hash cannot tell is a change that removes names and adds fewer: its new
+ *   record is printed like any shrink, so the record's edit in the diff is
+ *   what a reviewer reads.
  * - **C** — under `diff/`, a module that imports `TranslatorState`
  *   (`import type { … }`, `import { type … }`, plain, through a namespace
- *   import used as `ns.TranslatorState`, or inline as
- *   `import("../state.js").TranslatorState`):
+ *   import used as `ns.TranslatorState` in a type or an `extends` clause,
+ *   inline as `import("../state.js").TranslatorState`, re-exported by name, or
+ *   re-exported with `export * from` / `export * as ns from` the state module):
  *   - names no slice type;
  *   - exports no type alias or interface that is, or holds, the state (the
  *     scan reads each module alone, so a module importing such a type would
@@ -57,17 +67,29 @@
  *   `for … of` / `for … in` head, and no `Object.assign(<x>, { <sliceKey>: … })`
  *   (shorthand included). `Object.assign(<slice>, create<Type>())`, the in-place
  *   clear, passes. Reported by slice key.
+ * - **E** — `checkStateImporters`, over the scan's `stateImporters` (the
+ *   modules rule C treats as importing `TranslatorState`, exactly): every one
+ *   is named by the importer pin, the `diff/` modules that took the whole state
+ *   when it was frozen, and the pin only shrinks. A module the pin does not
+ *   name is a new diff module on the whole state; a pinned module that is no
+ *   longer a diff module or no longer imports the state is a stale entry,
+ *   reported with the record to write once it is deleted (only while the pin
+ *   otherwise matches its record, so the printed record never carries an added
+ *   module); an entry named twice is reported too; and the pin's distinct names
+ *   are held against a frozen record as rule B's are, with the same blind spot.
+ *   Reported by module, or by the pin's name for the frozen record.
  *
  * `scan` findings are a source the scanner cannot read at all (no
  * `TranslatorState` type literal, no `createInitialState` returning an object
  * literal).
  */
+import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import ts from "typescript";
 
 /** Which rule a violation breaks; `heading`, `allow` and `scan` are the scanner's own. */
-export type SliceRule = "A" | "B" | "C" | "D" | "heading" | "allow" | "scan";
+export type SliceRule = "A" | "B" | "C" | "D" | "E" | "heading" | "allow" | "scan";
 
 /** One broken rule, by the name it is about and what to do. */
 export interface SliceViolation {
@@ -112,7 +134,7 @@ export interface SliceScan {
   readonly slices: readonly SliceMember[];
   /** Every diff module scanned, relative to `diff/`. */
   readonly diffModules: readonly string[];
-  /** The diff modules that import `TranslatorState`, in either import form. */
+  /** The diff modules that import `TranslatorState`, in any form rule C reads (the header lists them), sorted. */
   readonly stateImporters: readonly string[];
   /** Every rule-C read of a slice key, allowed or not. */
   readonly sliceReads: readonly SliceRead[];
@@ -789,16 +811,18 @@ function scanModule(
 
   let importsState = stateImports.size > 0;
 
-  // `export type { TranslatorState } from "../state.js"` brings the state in
+  // `export type { TranslatorState } from "../state.js"`, `export * from
+  // "../state.js"` and `export * as ns from "../state.js"` bring the state in
   // as surely as an import does.
   for (const statement of file.statements) {
+    if (!isStateReExport(statement)) continue;
+
+    const clause = statement.exportClause;
+
     if (
-      ts.isExportDeclaration(statement) &&
-      statement.moduleSpecifier !== undefined &&
-      isStateModule(statement.moduleSpecifier) &&
-      statement.exportClause !== undefined &&
-      ts.isNamedExports(statement.exportClause) &&
-      statement.exportClause.elements.some((element) => (element.propertyName ?? element.name).text === STATE_TYPE)
+      clause === undefined ||
+      ts.isNamespaceExport(clause) ||
+      clause.elements.some((element) => (element.propertyName ?? element.name).text === STATE_TYPE)
     ) {
       importsState = true;
     }
@@ -806,6 +830,12 @@ function scanModule(
 
   eachNode(file, (node) => {
     if ((ts.isTypeReferenceNode(node) || ts.isImportTypeNode(node)) && stateExportOf(node) === STATE_TYPE) {
+      importsState = true;
+    }
+
+    // `interface Ctx extends ns.TranslatorState`, which `namedShape` reads as
+    // the state, is not a type reference node.
+    if (ts.isExpressionWithTypeArguments(node) && namedShape(node.expression, undefined, MAX_SHAPE_DEPTH) === STATE) {
       importsState = true;
     }
   });
@@ -860,6 +890,18 @@ function scanModule(
         reachesState(declaredShape(symbolOf(statement.name), 0) ?? null)
       ) {
         exportedStandIn(statement.name.text, statement.name);
+      }
+
+      // `export * from "../state.js"` re-exports `TranslatorState` under its
+      // own name, `export * as ns from "../state.js"` as `ns.TranslatorState`.
+      if (isStateReExport(statement) && statement.exportClause === undefined) {
+        exportedStandIn(STATE_TYPE, statement);
+      } else if (
+        isStateReExport(statement) &&
+        statement.exportClause !== undefined &&
+        ts.isNamespaceExport(statement.exportClause)
+      ) {
+        exportedStandIn(statement.exportClause.name.text, statement);
       }
 
       if (!ts.isExportDeclaration(statement) || statement.exportClause === undefined) continue;
@@ -1122,6 +1164,17 @@ function scanModule(
   return { importsState, reads };
 }
 
+/** Whether `statement` is an `export … from` of the package's `state.ts`. */
+function isStateReExport(
+  statement: ts.Statement,
+): statement is ts.ExportDeclaration & { readonly moduleSpecifier: ts.Expression } {
+  return (
+    ts.isExportDeclaration(statement) &&
+    statement.moduleSpecifier !== undefined &&
+    isStateModule(statement.moduleSpecifier)
+  );
+}
+
 /** Whether `node` carries an `export` modifier. */
 function hasExportModifier(node: ts.Node): boolean {
   return (
@@ -1210,4 +1263,185 @@ export function scanStateSlices(sources: SliceSources, pin: FlatMemberPin, allow
     sliceReads,
     violations,
   };
+}
+
+// ── Frozen pins (rules B and E) ─────────────────────────────────────────
+
+/** Where the slice convention is written down, for the messages of a pin that grew. */
+const SLICE_SECTION = '`packages/sim-events-iracing/CLAUDE.md`, "Translator state slices (#1588)"';
+
+/** A list that may only shrink, frozen: how many distinct names it held, and a sha256 over them. */
+export interface FrozenNames {
+  readonly count: number;
+  readonly sha256: string;
+}
+
+/** The record of `names`: their distinct count, and the sha256 (hex) of the distinct names sorted by code unit, joined by `\n`. */
+export function freezeNames(names: Iterable<string>): FrozenNames {
+  const distinct = [...new Set(names)].sort();
+
+  return { count: distinct.length, sha256: createHash("sha256").update(distinct.join("\n")).digest("hex") };
+}
+
+/**
+ * How a list compares with its frozen record: the same names, more (`grown`),
+ * as many but not the same ones (`swapped`), or fewer (`shrunk`). `now` is the
+ * list's own record.
+ */
+export type FrozenComparison =
+  { readonly kind: "same" } | { readonly kind: "grown" | "swapped" | "shrunk"; readonly now: FrozenNames };
+
+/** Compares `names` with `frozen`. Pure. */
+export function compareFrozen(names: Iterable<string>, frozen: FrozenNames): FrozenComparison {
+  const now = freezeNames(names);
+
+  if (now.count > frozen.count) return { kind: "grown", now };
+
+  if (now.count < frozen.count) return { kind: "shrunk", now };
+
+  return now.sha256 === frozen.sha256 ? { kind: "same" } : { kind: "swapped", now };
+}
+
+/** The literal to write into a frozen record. */
+function frozenLiteral(record: FrozenNames): string {
+  return `{ count: ${record.count}, sha256: "${record.sha256}" }`;
+}
+
+/** Rule B's freeze: the flat pin's distinct names against `frozen`. A pin that grew or swapped a name gets no record to copy. */
+export function checkFlatPinFrozen(pin: FlatMemberPin, frozen: FrozenNames): SliceViolation[] {
+  const comparison = compareFrozen(Object.values(pin).flat(), frozen);
+  const name = "LEGACY_FLAT_MEMBERS";
+  const refuse = `The pin only shrinks: a name is never added to it, and LEGACY_FLAT_MEMBERS_FROZEN is never re-frozen to let one in. New state goes into a slice, one member \`<family>: <Family>State\` with its \`create<Family>State()\` in state.ts (${SLICE_SECTION}); take the added name out of the pin and make its cluster a slice.`;
+
+  switch (comparison.kind) {
+    case "same":
+      return [];
+    case "grown":
+      return [
+        {
+          rule: "B",
+          name,
+          message: `LEGACY_FLAT_MEMBERS pins ${comparison.now.count} names, more than the ${frozen.count} LEGACY_FLAT_MEMBERS_FROZEN records. ${refuse}`,
+        },
+      ];
+    case "swapped":
+      return [
+        {
+          rule: "B",
+          name,
+          message: `LEGACY_FLAT_MEMBERS pins ${frozen.count} names, as many as LEGACY_FLAT_MEMBERS_FROZEN records, but not the same ones: a name was added in place of one that left (a flat member renamed counts: rename it when its cluster moves into a slice). ${refuse}`,
+        },
+      ];
+    case "shrunk":
+      return [
+        {
+          rule: "B",
+          name,
+          message: `LEGACY_FLAT_MEMBERS pins ${comparison.now.count} names, fewer than the ${frozen.count} LEGACY_FLAT_MEMBERS_FROZEN records: a cluster moved into a slice. Re-freeze in the same change, so the names that left cannot come back: \`LEGACY_FLAT_MEMBERS_FROZEN = ${frozenLiteral(comparison.now)}\`. Only names removed are re-frozen; none may be added.`,
+        },
+      ];
+  }
+}
+
+/**
+ * Rule E: every `diff/` module that imports `TranslatorState` is one the
+ * importer pin names, every pinned module still is one, and the pin's distinct
+ * names hold to `frozen`. Pure: reads the scan's `diffModules` and
+ * `stateImporters` only.
+ */
+export function checkStateImporters(
+  scan: Pick<SliceScan, "diffModules" | "stateImporters">,
+  pinned: readonly string[],
+  frozen: FrozenNames,
+): SliceViolation[] {
+  const violations: SliceViolation[] = [];
+  const pinnedSet = new Set(pinned);
+  const importers = new Set(scan.stateImporters);
+  const modules = new Set(scan.diffModules);
+
+  for (const module of scan.stateImporters) {
+    if (pinnedSet.has(module)) continue;
+
+    violations.push({
+      rule: "E",
+      name: module,
+      module,
+      message: `diff/${module} imports ${STATE_TYPE}, and WHOLE_STATE_DIFF_MODULES does not name it: a new diff module takes its slice as its first parameter, never ${STATE_TYPE} whole, \`Readonly\` or narrowed with \`Pick<>\`, and another family's fact arrives as a value \`handleTick\` reads at the call (${SLICE_SECTION}). Drop the ${STATE_TYPE} import. WHOLE_STATE_DIFF_MODULES names only the modules that took the whole state when it was frozen, and only shrinks.`,
+    });
+  }
+
+  const seen = new Set<string>();
+  const stale: string[] = [];
+
+  for (const module of pinned) {
+    if (seen.has(module)) {
+      violations.push({
+        rule: "E",
+        name: module,
+        module,
+        message: `WHOLE_STATE_DIFF_MODULES names \`${module}\` twice: delete one.`,
+      });
+
+      continue;
+    }
+
+    seen.add(module);
+
+    if (importers.has(module)) continue;
+
+    stale.push(module);
+  }
+
+  const comparison = compareFrozen(pinned, frozen);
+
+  if (stale.length > 0) {
+    // Only a list that still matches its record is known to hold no added
+    // module, so only then is the record without the stale entries safe to print.
+    const refreeze =
+      comparison.kind === "same"
+        ? `re-freeze in the same change, \`WHOLE_STATE_DIFF_MODULES_FROZEN = ${frozenLiteral(freezeNames(pinned.filter((module) => !stale.includes(module))))}\` once every stale entry is gone`
+        : "re-freeze in the same change once the list differs from WHOLE_STATE_DIFF_MODULES_FROZEN only by modules removed (the run then prints the record)";
+
+    for (const module of stale) {
+      const why = modules.has(module) ? `no longer imports ${STATE_TYPE}` : "is not a diff module";
+
+      violations.push({
+        rule: "E",
+        name: module,
+        module,
+        message: `WHOLE_STATE_DIFF_MODULES names \`${module}\`, which ${why}: delete the entry and ${refreeze}.`,
+      });
+    }
+  }
+
+  const name = "WHOLE_STATE_DIFF_MODULES";
+  const refuse = `The list only shrinks: a module is never added to it, and WHOLE_STATE_DIFF_MODULES_FROZEN is never re-frozen to let one in. A new diff module takes its slice as its first parameter and gets another family's fact as a value (${SLICE_SECTION}).`;
+
+  switch (comparison.kind) {
+    case "same":
+      break;
+    case "grown":
+      violations.push({
+        rule: "E",
+        name,
+        message: `WHOLE_STATE_DIFF_MODULES names ${comparison.now.count} modules, more than the ${frozen.count} WHOLE_STATE_DIFF_MODULES_FROZEN records. ${refuse}`,
+      });
+      break;
+    case "swapped":
+      violations.push({
+        rule: "E",
+        name,
+        message: `WHOLE_STATE_DIFF_MODULES names ${frozen.count} modules, as many as WHOLE_STATE_DIFF_MODULES_FROZEN records, but not the same ones: a module was added in place of one that left (a renamed module counts: move it onto its slice instead). ${refuse}`,
+      });
+      break;
+    case "shrunk":
+      violations.push({
+        rule: "E",
+        name,
+        message: `WHOLE_STATE_DIFF_MODULES names ${comparison.now.count} modules, fewer than the ${frozen.count} WHOLE_STATE_DIFF_MODULES_FROZEN records: a module moved onto its slice. Re-freeze in the same change, so it cannot come back: \`WHOLE_STATE_DIFF_MODULES_FROZEN = ${frozenLiteral(comparison.now)}\`. Only modules removed are re-frozen; none may be added.`,
+      });
+      break;
+  }
+
+  return violations;
 }
