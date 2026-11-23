@@ -2,7 +2,6 @@ import { getCommands } from "@iracedeck/deck-iracing";
 import { ReplayPosMode, replaySpeedToSdk, type TelemetryData } from "@iracedeck/iracing-sdk";
 import {
   beginReplayJump,
-  currentReplayCursorOwner,
   describeReplayJump,
   pressReplayCommand,
   type ReplayJumpOutcome,
@@ -12,6 +11,7 @@ import {
   cancelReplayCursorOwner,
   capturedJumpSpeed,
   claimReplayCursor,
+  currentReplayCursorOwner,
   pendingReplayTarget,
   steppedReplayState,
   type SteppedReplayState,

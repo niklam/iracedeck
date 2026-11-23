@@ -14,14 +14,10 @@
  * the waiter itself is the engine's (`camera-switch-waiter.test.ts`).
  */
 import { getCarNumberRawFromSessionInfo, type SessionInfo, type TelemetryData } from "@iracedeck/iracing-sdk";
-import {
-  currentReplayCursorOwner,
-  pressReplayCommand,
-  type RecordStepSource,
-  type ReplayJumpOutcome,
-} from "@iracedeck/replay-engine";
+import { pressReplayCommand, type RecordStepSource, type ReplayJumpOutcome } from "@iracedeck/replay-engine";
 import {
   claimReplayCursor,
+  currentReplayCursorOwner,
   type FakeReplay,
   fakeReplay,
   FASTEST_LAP_WALK_OWNER,

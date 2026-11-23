@@ -11,10 +11,10 @@
  */
 export { configureReplayEngine } from "./replay-engine-configure.js";
 export type { ReplayEngineController, ReplayEngineEnv } from "./replay-engine-env.js";
-export { currentReplayCursorOwner, type ReplayCursorClaim } from "./replay-cursor.js";
+export type { ReplayCursorClaim } from "./replay-cursor.js";
 export { planFrameMove, type FrameMove } from "./replay-frame-move.js";
 export { isSameSpeed, PAUSED, type ReplaySpeed } from "./replay-jump-speed.js";
-export { REPLAY_TARGET_GIVE_UP_MS, type ReplayPosition } from "./replay-position-state.js";
+export type { ReplayPosition } from "./replay-position-state.js";
 export { isSeeking, type ReplaySeekSample } from "./replay-seek.js";
 export { REPLAY_JUMP_MAX_WAIT_MS } from "./replay-timing.js";
 export {
@@ -38,7 +38,6 @@ export {
   type ReplayGateRecord,
   getReplayGateView,
   type ReplayGateView,
-  isReplayMoveUnderWay,
   pressReplayCommand,
   readReplayPosition,
   type ReplayPressOptions,

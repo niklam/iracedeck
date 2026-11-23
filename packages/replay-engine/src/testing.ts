@@ -7,8 +7,19 @@
  * `_reset*` / `_configure*` hook is never callable from production code.
  */
 export { _configureReplayEngine } from "./replay-engine-env.js";
-export { _resetReplayCursor, cancelReplayCursorOwner, capturedJumpSpeed, claimReplayCursor } from "./replay-cursor.js";
-export { clearReplayTarget, pendingReplayTarget, replayTargetGiveUpMs } from "./replay-position-state.js";
+export {
+  _resetReplayCursor,
+  cancelReplayCursorOwner,
+  capturedJumpSpeed,
+  claimReplayCursor,
+  currentReplayCursorOwner,
+} from "./replay-cursor.js";
+export {
+  clearReplayTarget,
+  pendingReplayTarget,
+  REPLAY_TARGET_GIVE_UP_MS,
+  replayTargetGiveUpMs,
+} from "./replay-position-state.js";
 export { _resetReplaySpeedState, noteTelemetrySpeed, resolveLiveSpeed } from "./replay-speed-state.js";
 export { noteReplaySpeedSent } from "./replay-speed-state.test-support.js";
 export { _resetCameraSwitchWaiter, isCameraSwitchWaiting } from "./camera-switch-waiter.js";
