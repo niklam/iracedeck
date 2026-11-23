@@ -974,6 +974,152 @@ describe("requestCameraSwitch", () => {
       );
     });
 
+    describe("a user's switch that went out after its trigger (triggeredMsAgo, second read)", () => {
+      /** A user's angle switch, sent at once on a quiet replay: Cycle Camera's. */
+      async function userSwitch(): Promise<Mock<() => void>> {
+        const user = vi.fn();
+
+        await requestCameraSwitch(user, options({ by: "cycle-camera", name: "cycle camera", jumps: quiet() }));
+        expect(user).toHaveBeenCalledOnce();
+
+        return user;
+      }
+
+      it("drops it at the request: a switch sent at the trigger's moment or after it", async () => {
+        // The car changes at 1_000_000; the user cycles the camera at once, at the same moment.
+        await userSwitch();
+        await vi.advanceTimersByTimeAsync(250);
+
+        const auto = vi.fn();
+
+        await requestCameraSwitch(auto, automatic({ jumps: quiet(), triggeredMsAgo: 250 }));
+
+        expect(auto).not.toHaveBeenCalled();
+        expect(isCameraSwitchWaiting()).toBe(false);
+        expect(debug).toHaveBeenCalledWith(
+          "Camera controls: automatic switch dropped (auto group), the cycle camera switch went out after what asked for it",
+        );
+      });
+
+      it("drops it at the request without touching the switch waiting in the slot", async () => {
+        await userSwitch();
+        await vi.advanceTimersByTimeAsync(100);
+
+        // A yielding switch that gave no trigger waits behind a jump.
+        const jump = jumpUnderWay();
+        const first = vi.fn();
+        const a = requestCameraSwitch(first, automatic({ jumps: jump.jumps }));
+
+        await vi.advanceTimersByTimeAsync(150);
+
+        const second = vi.fn();
+
+        await requestCameraSwitch(second, automatic({ jumps: jump.jumps, triggeredMsAgo: 250 }));
+
+        expect(second).not.toHaveBeenCalled();
+        expect(debug).not.toHaveBeenCalledWith(expect.stringContaining("now goes to"));
+
+        jump.land();
+        await a;
+
+        expect(first).toHaveBeenCalledOnce();
+        expect(second).not.toHaveBeenCalled();
+      });
+
+      it("sends it when the user's switch went out before its trigger", async () => {
+        await userSwitch();
+        await vi.advanceTimersByTimeAsync(251);
+
+        const auto = vi.fn();
+
+        await requestCameraSwitch(auto, automatic({ jumps: quiet(), triggeredMsAgo: 250 }));
+
+        expect(auto).toHaveBeenCalledOnce();
+      });
+
+      it("sends it when it gives no trigger, or one that is not a finite number", async () => {
+        await userSwitch();
+        await vi.advanceTimersByTimeAsync(100);
+
+        const sent: number[] = [];
+
+        for (const [i, triggeredMsAgo] of [undefined, Number.NaN, Number.POSITIVE_INFINITY].entries()) {
+          await requestCameraSwitch(() => sent.push(i), automatic({ jumps: quiet(), triggeredMsAgo }));
+        }
+
+        expect(sent).toEqual([0, 1, 2]);
+      });
+
+      it("never drops a switch that does not yield, whatever it says", async () => {
+        await userSwitch();
+
+        const later = vi.fn();
+
+        await requestCameraSwitch(later, options({ jumps: quiet(), triggeredMsAgo: 10_000 }));
+
+        expect(later).toHaveBeenCalledOnce();
+      });
+
+      it("drops one that waited once a user's switch has gone out since its trigger, and sends nothing for it", async () => {
+        const jump = jumpUnderWay();
+        const auto = vi.fn();
+        const request = requestCameraSwitch(auto, automatic({ jumps: jump.jumps, triggeredMsAgo: 250 }));
+
+        expect(isCameraSwitchWaiting()).toBe(true);
+        await vi.advanceTimersByTimeAsync(400);
+
+        // The user's switch ends this one's wait as it goes out; the waiter's
+        // send-time check of the trigger is the second line behind that.
+        const user = await userSwitch();
+
+        jump.land();
+        await request;
+
+        expect(auto).not.toHaveBeenCalled();
+        expect(user).toHaveBeenCalledOnce();
+        expect(isCameraSwitchWaiting()).toBe(false);
+      });
+
+      it("sends one that waited when the only user's switch went out before its trigger", async () => {
+        await userSwitch();
+        await vi.advanceTimersByTimeAsync(300);
+
+        const jump = jumpUnderWay();
+        const auto = vi.fn();
+        const request = requestCameraSwitch(auto, automatic({ jumps: jump.jumps, triggeredMsAgo: 250 }));
+
+        expect(isCameraSwitchWaiting()).toBe(true);
+        await vi.advanceTimersByTimeAsync(5_000);
+        jump.land();
+        await request;
+
+        expect(auto).toHaveBeenCalledOnce();
+      });
+
+      it("counts a switch only once it went out: one still waiting, or dropped, does not drop it", async () => {
+        const jump = jumpUnderWay();
+        const user = vi.fn();
+        const a = requestCameraSwitch(user, options({ jumps: jump.jumps, stillValid: () => false }));
+
+        // The user's switch waits, so this one is dropped by the slot rule, not by a send.
+        await requestCameraSwitch(vi.fn(), automatic({ jumps: jump.jumps, triggeredMsAgo: 250 }));
+        expect(debug).toHaveBeenCalledWith(
+          "Camera controls: automatic switch dropped (auto group), the next car switch waiting for a jump goes first",
+        );
+
+        // The user's switch is dropped at its send (its key left): it never went out.
+        jump.land();
+        await a;
+        expect(user).not.toHaveBeenCalled();
+
+        const auto = vi.fn();
+
+        await requestCameraSwitch(auto, automatic({ jumps: quiet(), triggeredMsAgo: 250 }));
+
+        expect(auto).toHaveBeenCalledOnce();
+      });
+    });
+
     it("goes out at once on a quiet replay", async () => {
       const auto = vi.fn();
 

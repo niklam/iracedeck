@@ -57,8 +57,12 @@
  *   Fastest Lap or Jump to Race Start press and for a paced search's run,
  *   interrupts no walk, outlives a lap press that starts while it waits (it
  *   waits for that press anyway), and has its own ceiling
- *   ({@link YIELDING_SWITCH_MAX_WAIT_MS}). So the automation keeps no replay
- *   state of its own, and the one-slot rule stays here.
+ *   ({@link YIELDING_SWITCH_MAX_WAIT_MS}). One that says when what asked
+ *   for it happened (`triggeredMsAgo`) is dropped, at the request and again
+ *   when it would go out after a wait, once a switch that does not yield
+ *   has gone out since that moment: the user answered the trigger first,
+ *   and the automation must not overwrite their pick. So the automation
+ *   keeps no replay state of its own, and the one-slot rule stays here.
  *
  * Not a lane in the replay command gate: the gate's one newest-wins slot
  * holds a speed, search or pause, and the keypad's Next / Prev Car are
@@ -127,6 +131,19 @@ export interface CameraSwitchOptions {
    */
   readonly yields?: boolean;
   /**
+   * With `yields` only: how long before this request what asked for it
+   * happened, in ms (Auto Group's: the camera's car changing, the settle time
+   * before its request). A switch that does not yield and has gone out (its
+   * `send` called) at or after that moment is the user's own answer to it, so
+   * the yielding switch is dropped: at the request, and again when it would
+   * go out after a wait. A duration, not a time, so the caller needs no
+   * reading of the engine clock; the waiter turns it into an engine time at
+   * the request. Left out, or not a finite number, nothing already sent drops
+   * the switch; ignored on a switch that does not yield, which is never
+   * dropped this way.
+   */
+  readonly triggeredMsAgo?: number;
+  /**
    * The jump reads; the gate's own ({@link isReplayJumpUnderWay}, {@link waitForReplayJumpsToLand}) by default.
    * The plugin's holds ({@link isHeldByPlugin}) are added to whichever reads are used.
    */
@@ -139,6 +156,8 @@ export interface CameraSwitchOptions {
 interface CameraSwitchRequest {
   readonly send: () => unknown;
   readonly options: CameraSwitchOptions;
+  /** A yielding switch's trigger, on the engine clock (`triggeredMsAgo` before the request); null when it gave none. */
+  readonly triggeredAt: number | null;
 }
 
 /**
@@ -163,6 +182,13 @@ let waiter: Promise<void> | null = null;
 
 /** Which wait {@link waiter} is, so a wait that ended clears only itself. */
 let waitGeneration = 0;
+
+/**
+ * The last switch that does not yield to go out, its `send` called: when, on
+ * the engine clock, and its name for the drop line. A yielding switch whose
+ * trigger is no later than this is dropped (`triggeredMsAgo`, #1656).
+ */
+let lastUserSend: { readonly at: number; readonly name: string } | null = null;
 
 /** The gate's jump reads: the default for a switch that injects none. */
 const GATE_JUMPS: CameraSwitchJumps = {
@@ -227,6 +253,26 @@ function yieldsOf(options: CameraSwitchOptions): boolean {
 /** How the failed-wait line names a dropped switch: a user's is a tap, an automation's is not. */
 function droppedOf(options: CameraSwitchOptions): string {
   return yieldsOf(options) ? "automatic switch dropped" : "tap dropped";
+}
+
+/** Where on the engine clock a yielding switch's trigger was, from its `triggeredMsAgo`; null when it gave none. */
+function triggeredAtOf(options: CameraSwitchOptions): number | null {
+  const ago = options.triggeredMsAgo;
+
+  if (!yieldsOf(options) || typeof ago !== "number" || !Number.isFinite(ago)) return null;
+
+  return now() - Math.max(0, ago);
+}
+
+/**
+ * The switch that does not yield and went out at or after a yielding switch's
+ * trigger, so the user answered it first and the yielding switch is dropped;
+ * null when none did, or the switch gave no trigger.
+ */
+function answeredBy(request: CameraSwitchRequest): string | null {
+  if (request.triggeredAt === null || lastUserSend === null) return null;
+
+  return lastUserSend.at >= request.triggeredAt ? lastUserSend.name : null;
 }
 
 function jumpsOf(options: CameraSwitchOptions): CameraSwitchJumps {
@@ -342,6 +388,10 @@ async function send(request: CameraSwitchRequest): Promise<void> {
 
   if (interruptWalks(options) !== null) return requestCameraSwitch(request.send, options);
 
+  // Recorded as it goes out, before any await: a yielding switch asked for
+  // while this send is still under way already sees it.
+  if (!yieldsOf(options)) lastUserSend = { at: now(), name: options.name };
+
   try {
     await request.send();
   } catch (error) {
@@ -404,6 +454,19 @@ async function switchWhenJumpsSettle(starter: CameraSwitchOptions, generation: n
     return;
   }
 
+  // Today a switch that does not yield ends a waiting yielding one's wait
+  // before it goes out (endYieldingWait), so this drop is the second line:
+  // it keeps the rule whole for any path that sends one while this waited.
+  const answered = answeredBy(turn);
+
+  if (answered !== null) {
+    loggerOf(options).debug(
+      `${options.label}: automatic switch dropped (${options.name}), the ${answered} switch went out after what asked for it`,
+    );
+
+    return;
+  }
+
   await send(turn);
 }
 
@@ -415,11 +478,22 @@ async function switchWhenJumpsSettle(starter: CameraSwitchOptions, generation: n
  * and the switch then waits for it to put the replay back. A yielding switch
  * (`yields`, #1656) is dropped while a switch that does not yield waits, and
  * a switch that does not yield ends a yielding one's wait and then goes on as
- * if nothing had waited. Resolves when the switch has gone out, failed
- * (logged) or been dropped; never rejects for a failed send.
+ * if nothing had waited. A yielding switch with a `triggeredMsAgo` is
+ * dropped once a switch that does not yield has gone out since its trigger.
+ * Resolves when the switch has gone out, failed (logged) or been dropped;
+ * never rejects for a failed send.
  */
 export function requestCameraSwitch(sendSwitch: () => unknown, options: CameraSwitchOptions): Promise<void> {
-  const request: CameraSwitchRequest = { send: sendSwitch, options };
+  const request: CameraSwitchRequest = { send: sendSwitch, options, triggeredAt: triggeredAtOf(options) };
+  const answered = answeredBy(request);
+
+  if (answered !== null) {
+    loggerOf(options).debug(
+      `${options.label}: automatic switch dropped (${options.name}), the ${answered} switch went out after what asked for it`,
+    );
+
+    return Promise.resolve();
+  }
 
   if (yieldsOf(options) && waiting !== null && !yieldsOf(waiting.options)) {
     loggerOf(options).debug(
@@ -545,4 +619,5 @@ export function _resetCameraSwitchWaiter(): void {
   waiter = null;
   waitGeneration++;
   replayDeparted = false;
+  lastUserSend = null;
 }
