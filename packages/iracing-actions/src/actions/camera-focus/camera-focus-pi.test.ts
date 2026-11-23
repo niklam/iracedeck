@@ -1177,25 +1177,27 @@ describe("the compiled Camera Controls PI per host (#1656)", () => {
   async function compile(dialExtendedGestures: boolean): Promise<string> {
     const dir = mkdtempSync(join(tmpdir(), "camera-focus-pi-"));
 
-    const plugin = piTemplatePlugin({
-      templatesDir: join(import.meta.dirname, ".."),
-      outputDir: dir,
-      partialsDir,
-      version: "0.0.0-test",
-      platformFeatures: { features: { dialExtendedGestures } },
-    });
-    const context = {
-      addWatchFile: vi.fn(),
-      warn: vi.fn(),
-      info: vi.fn(),
-      error: (message: string) => {
-        throw new Error(message);
-      },
-    };
-
-    await (plugin.generateBundle as (this: unknown) => unknown).call(context);
-
+    // The cleanup covers the plugin setup and the generation too: a build that
+    // throws after writing some pages leaves no temp folder behind.
     try {
+      const plugin = piTemplatePlugin({
+        templatesDir: join(import.meta.dirname, ".."),
+        outputDir: dir,
+        partialsDir,
+        version: "0.0.0-test",
+        platformFeatures: { features: { dialExtendedGestures } },
+      });
+      const context = {
+        addWatchFile: vi.fn(),
+        warn: vi.fn(),
+        info: vi.fn(),
+        error: (message: string) => {
+          throw new Error(message);
+        },
+      };
+
+      await (plugin.generateBundle as (this: unknown) => unknown).call(context);
+
       return readFileSync(join(dir, "camera-focus.html"), "utf-8");
     } finally {
       rmSync(dir, { recursive: true, force: true });
