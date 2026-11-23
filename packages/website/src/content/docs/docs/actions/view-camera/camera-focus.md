@@ -353,7 +353,7 @@ One automation runs at a time, for the whole deck. Pressing another Auto Group b
 
 The automation is always off when the plugin starts, so the cameras never start moving by themselves in the middle of a stream. It keeps running when you switch to another Stream Deck profile and the button leaves the screen, and it carries on into the next session if iRacing closes while it is on.
 
-In a replay, the group switch waits for a replay jump to land like any other camera switch, and it never pushes your own camera switch aside: while a switch you made is waiting for a jump, or a Replay Control [Jump to Fastest Lap](/docs/actions/view-camera/replay-control/#jump-to-fastest-lap) or [Jump to Race Start](/docs/actions/view-camera/replay-control/#jump-to-race-start) is under way, the automation waits until it has finished.
+In a replay, the group switch waits for a replay jump to land like any other camera switch, and it never pushes your own camera switch aside: if a switch you made is already waiting for a jump, the automation leaves that car's group to you and skips its switch, and while a Replay Control [Jump to Fastest Lap](/docs/actions/view-camera/replay-control/#jump-to-fastest-lap) or [Jump to Race Start](/docs/actions/view-camera/replay-control/#jump-to-race-start) is under way, it waits until that has finished.
 
 The button shows whether the automation is on: the on icon is solid with a filled **A** badge, the off icon outlined. With a [border](/docs/features/border-indicator/) enabled, the border is green while it is on and grey while it is off.
 
