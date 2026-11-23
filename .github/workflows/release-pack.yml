@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
           version: 12.6.0
 
@@ -183,7 +183,7 @@ jobs:
 
       - name: Attach plugins to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v') && !startsWith(github.ref, 'refs/tags/voices-')
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           files: |
             packed/com.iracedeck.sd.core.streamDeckPlugin
