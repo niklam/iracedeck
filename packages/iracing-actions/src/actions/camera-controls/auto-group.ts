@@ -20,7 +20,8 @@
  *   out when it goes out, from the car the camera is on then, and it keeps
  *   that car (`switchNum` with its `CarNumberRaw`), so it cannot trigger the
  *   run again. It is dropped if the run was stopped or replaced while it
- *   waited.
+ *   waited, or if a later car change arrived meanwhile: that change has its
+ *   own timer and its own send, so each change ends in at most one switch.
  * - **A user's switch comes first** (decision 4): the send is a yielding one
  *   (`yields: true`), and the engine's camera-switch waiter keeps the rule:
  *   it never takes the waiting slot from a user's switch, gives it up to any
@@ -80,6 +81,11 @@ interface Run {
   lastPicked: string | null;
   /** When (`Date.now()`) the car change that armed the timer last was seen; null before the first. */
   changedAt: number | null;
+  /**
+   * Counts the car changes seen: a switch asked for at one count is the
+   * answer to that change only, and is dropped once a later one arrives.
+   */
+  trigger: number;
   timer: ReturnType<typeof setTimeout> | null;
 }
 
@@ -111,6 +117,7 @@ export function toggleAutoGroup(start: AutoGroupStart): AutoGroupToggleResult {
     lastCar: null,
     lastPicked: null,
     changedAt: null,
+    trigger: 0,
     timer: null,
   };
 
@@ -248,6 +255,7 @@ function onTick(telemetry: TelemetryData | null): void {
 
   run.lastCar = car;
   run.changedAt = Date.now();
+  run.trigger++;
   arm(run);
 }
 
@@ -257,7 +265,10 @@ function onTick(telemetry: TelemetryData | null): void {
  * first and holds this one through a lap press or a paced search. It says how
  * long ago the car change was, measured rather than taken as the settle time,
  * since a timer can fire late: a user's switch that went out since then
- * drops it.
+ * drops it. It answers this car change only: a later one while it waits
+ * (behind a replay hold, say) drops it, since that change arms a timer of
+ * its own and this one would otherwise switch the new car's group before
+ * the new car settled, and then again.
  */
 function settle(run: Run): void {
   run.timer = null;
@@ -266,7 +277,9 @@ function settle(run: Run): void {
 
   if (autoGroupTargets(run, true).length === 0) return;
 
-  void requestCameraSwitch(() => sendAuto(run), {
+  const trigger = run.trigger;
+
+  void requestCameraSwitch(() => sendAuto(run, trigger), {
     by: "camera-controls auto-group",
     yields: true,
     triggeredMsAgo: run.changedAt === null ? undefined : Math.max(0, Date.now() - run.changedAt),
@@ -275,7 +288,7 @@ function settle(run: Run): void {
     name: "auto group",
     asked: "camera moved to another car",
     surface: "the auto group",
-    stillValid: () => run === active,
+    stillValid: () => answersCurrent(run, trigger),
     logger: run.logger,
   });
 }
@@ -305,9 +318,14 @@ function autoGroupTargets(run: Run, log: boolean): CameraGroup[] {
   return groups;
 }
 
+/** Whether a switch asked for at `trigger` still answers the run's latest car change. */
+function answersCurrent(run: Run, trigger: number): boolean {
+  return run === active && run.trigger === trigger;
+}
+
 /** The switch, worked out from the camera as it is when it goes out. */
-function sendAuto(run: Run): void {
-  if (run !== active) return;
+function sendAuto(run: Run, trigger: number): void {
+  if (!answersCurrent(run, trigger)) return;
 
   const controller = getController();
   const telemetry = controller.getCurrentTelemetry();

@@ -595,6 +595,71 @@ describe("auto group ownership", () => {
     expect(switchNum).not.toHaveBeenCalled();
   });
 
+  describe("a switch waiting behind a hold answers its own car change only", () => {
+    /** Ends the hold on request `index` as the engine's waiter does: asks `stillValid()`, then sends or drops. */
+    function endHold(index: number): void {
+      const { send, options } = engine.state.held[index];
+
+      if (options.stillValid()) send();
+    }
+
+    it("is dropped when a newer car change arrives before it goes out, and that car gets one switch from its own timer", () => {
+      engine.state.sendAtOnce = false;
+      applySwitches();
+      start("key-a");
+      // Car 4 settled: its switch waits behind a replay hold.
+      landOn(4);
+      expect(engine.state.held).toHaveLength(1);
+
+      // The camera moves to car 5 natively, arming car 5's own timer.
+      fake.controller.camera(5, G.Nose);
+      vi.advanceTimersByTime(50);
+
+      // The hold ends inside car 5's window: car 4's request no longer answers.
+      expect(engine.state.held[0].options.stillValid()).toBe(false);
+      endHold(0);
+      expect(switchNum).not.toHaveBeenCalled();
+
+      // Even sent anyway, it sends nothing.
+      engine.state.held[0].send();
+      expect(switchNum).not.toHaveBeenCalled();
+
+      // Car 5's timer runs out: its own request, sent once.
+      vi.advanceTimersByTime(AUTO_GROUP_SETTLE_MS - 50);
+      expect(engine.state.held).toHaveLength(2);
+      endHold(1);
+
+      expect(switchNum).toHaveBeenCalledExactlyOnceWith(105, G.TV1, 0);
+    });
+
+    it("is dropped by a car change back to the car it was asked for", () => {
+      engine.state.sendAtOnce = false;
+      start("key-a");
+      landOn(4);
+      fake.controller.camera(5, G.Nose);
+      fake.controller.camera(4, G.Nose);
+
+      expect(engine.state.held[0].options.stillValid()).toBe(false);
+    });
+
+    it("still goes out when the hold ends with the trigger unchanged", () => {
+      engine.state.sendAtOnce = false;
+      start("key-a");
+      landOn(4);
+
+      // Ticks on the same car while it waits are no new trigger.
+      for (let i = 0; i < 5; i++) {
+        fake.controller.tick();
+        vi.advanceTimersByTime(AUTO_GROUP_SETTLE_MS);
+      }
+
+      endHold(0);
+
+      expect(engine.state.held).toHaveLength(1);
+      expect(switchNum).toHaveBeenCalledExactlyOnceWith(104, G.TV1, 0);
+    });
+  });
+
   it("tells the listeners every start, replace and stop", () => {
     const heard: Array<string | null> = [];
 
