@@ -55,6 +55,7 @@ import {
   chainCommands,
   cmd,
   commandWordsRaw,
+  excuseDecodedHit,
   matchesAt,
   POWERSHELL,
   powershellAsBash,
@@ -821,7 +822,7 @@ function deckReach(c, cwd, ctx, shell, trail) {
   const cli = [...matchesAt(c, STREAMDECK_CLI)].map((m) => ({ m, at: m.index + m[0].length, via: m.via }));
   const hosts = [...chainCommands(c, cwd, HOST_CONTROL, shell)];
   const matches = RUNNERS.flatMap(({ re, read, whole }) =>
-    [...chainCommands(c, cwd, re, shell)].map((m) => ({ ...m, read, whole })),
+    [...chainCommands(c, cwd, re, shell)].map((m) => ({ ...m, read, whole, re })),
   );
   const again = repeatsAt(c, shell);
   for (const { m, at, via } of cli) {
@@ -847,7 +848,10 @@ function deckReach(c, cwd, ctx, shell, trail) {
   const judged = [];
   const runs = new Map();
   for (const m of [...matches].sort((x, y) => x.start - y.start)) {
-    const { base, start, args, at, cut, how, via, stdin, read, whole } = m;
+    const { base, start, args, at, cut, how, via, stdin, read, whole, re, program } = m;
+    // A match this reader leaves to a wrapper's reader of the whole string is
+    // read as its shell reads it, so a decoded hit there is no mis-slice (#1646).
+    const leave = () => excuseDecodedHit(c, re, program);
     // A command inside a string a shell wrapper is handed (#1634) is read
     // through that wrapper's own string, as a command line with its own
     // `cd`s, with the same option spec the lexer found the string by ({@link
@@ -859,14 +863,20 @@ function deckReach(c, cwd, ctx, shell, trail) {
     // inside any string whose decoded text this reader has already judged as
     // a line is left to it. A string a shell reads on stdin, and what `sudo`,
     // `trap`, `watch` or `su` run, no wrapper reads, so those are judged here.
-    if (how === "shell" && !stdin && isWrapper(via)) continue;
+    if (how === "shell" && !stdin && isWrapper(via)) {
+      leave();
+      continue;
+    }
     const string = stringBounds(c, at - 1);
     if (string) {
       // An ANSI-C string is read from its `$`, so its escapes are decoded as the
       // judged line has them; an escaped `$` opens none (#1646).
       const open = string[0] - (ansiOpen(c, string[0]) ? 1 : 0);
       const text = wordText(c.slice(open, string[1] + 1));
-      if (judged.some((line) => line === text || line.startsWith(`${text} `))) continue;
+      if (judged.some((line) => line === text || line.startsWith(`${text} `))) {
+        leave();
+        continue;
+      }
     }
     // A shell wrapper's name as the rewritten text spells it (#1606): `bash`
     // for `"/usr/bin/bash"`, `pwsh` for `pwsh.exe`.

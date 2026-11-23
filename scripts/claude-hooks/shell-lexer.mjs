@@ -1528,6 +1528,8 @@ function fedStarts(command, text, fed, programs) {
   const byName = programsByName(text, programs);
   const starts = new Map();
   const words = new Map();
+  // Each position read in a string's level, as `[view index, level, index there, kind]` ({@link found}).
+  const decoded = [];
   const quotes = [];
   const quoteKinds = new Map();
   let unclosed = false;
@@ -1539,7 +1541,7 @@ function fedStarts(command, text, fed, programs) {
     return WRAPPER_NAMES.has(name) || name === "find";
   };
   if (!fed.length && ![...byName.keys()].some(named))
-    return { starts, words, quotes, quoteKinds, unclosed, unprintable };
+    return { starts, words, decoded, quotes, quoteKinds, unclosed, unprintable };
   const wordStarts = wordStartsOf(programs, text.length);
   // The view's text as the typed command's shell reads it, and each string a
   // shell is handed as that shell reads it, with the innermost one holding
@@ -1577,6 +1579,7 @@ function fedStarts(command, text, fed, programs) {
       const at = ws >= 0 && /^ *$/.test(text.slice(ws, p)) ? ws : p;
       if (!starts.has(at)) starts.set(at, kind);
       if (word && at === p && !words.has(p)) words.set(p, word);
+      if (L.at && d < L.text.length) decoded.push([L.at[d], L, d, kind]);
       const step = leadStep(L.text, d);
       if (!step || step.end > end) {
         if (L.at && L.via !== "cmd" && e < 0) unclosed = true;
@@ -1705,7 +1708,7 @@ function fedStarts(command, text, fed, programs) {
     }
   }
   for (const [L, d, kind] of jobs) leads(L, d, kind);
-  return { starts, words, quotes, quoteKinds, unclosed, unprintable };
+  return { starts, words, decoded, quotes, quoteKinds, unclosed, unprintable };
 }
 
 /**
@@ -2138,6 +2141,8 @@ export function view(command) {
       // The recorded positions whose word is no program word, once per view: every
       // rule reads them per chain segment ({@link knownPrograms}).
       loneStarts: [...starts].filter(([p]) => !byName.has(p)),
+      // The positions read in a string's level, by view index ({@link found}).
+      decoded: found.decoded.sort((x, y) => x[0] - y[0]),
       quotes: found.quotes,
       quoteKinds: found.quoteKinds,
     };
@@ -2802,7 +2807,10 @@ const COMMAND_END = /[()\x60]|(?<![<>])&(?!>)/;
  * whose program sits inside a string a shell is handed reads no further than
  * the string's close ({@link found}): `bash -c 'git worktree add ../ir-5'`
  * names `../ir-5`, not `../ir-5'`, and `echo 'pnpm test' | bash` holds no
- * piped `pnpm test`.
+ * piped `pnpm test`. A match whose command its shell reads differently from
+ * the text here (an escape, a join, #1646) carries `decoded`, that command as
+ * its shell reads it: its raw groups are mis-sliced, and `checkBash` lets no
+ * such command pass ({@link takeDecodedHits}).
  */
 export function* matchesAt(command, re) {
   const all = [...found(command, re, 0, trustedMask(command).length)].sort((x, y) => x.program - y.program);
@@ -2842,7 +2850,15 @@ function compiled(source, re, extra) {
  * knownPrograms}) the anchored matches did not take, confined the same way.
  * Tested where a program is, never scanned for: a scan's leftmost match at a
  * mention consumed the real occurrence after it (`sudo env X=gh gh pr comment
- * 5 --body @-`). Lazy, so {@link has} stops at the first.
+ * 5 --body @-`). Last, the shape tested sticky in the decoded text of each
+ * string a shell runs, at each position read there ({@link fedStarts}), where
+ * that text differs from the view's over the match (`bash -c $'gh\x20pr merge
+ * 7'`, `eval "gh pr" merge 7`, `printf '%s %s\n' gh 'pr merge 7' | bash`):
+ * the match mapped back to the view through the level's `at` and `end`, and
+ * recorded as a decoded hit ({@link takeDecodedHits}), since a rule reading
+ * its arguments from the raw text at those indices reads them mis-sliced
+ * (#1646; level-aware argument reading is #1783). Lazy, so {@link has} stops
+ * at the first.
  */
 function* found(command, re, a, b) {
   const text = trustedMask(command);
@@ -2852,13 +2868,25 @@ function* found(command, re, a, b) {
     const close = stringAround(v, a + p)?.[1];
     return close === undefined ? undefined : close - a;
   };
-  const record = (m, kind, program) => ({
-    at: a + m.index,
-    end: a + m.index + m[0].length,
-    indices: m.indices.map((r) => r && [a + r[0], a + r[1]]),
-    kind,
-    program: a + program,
-  });
+  // Every program position a match was yielded at, so the decoded pass adds none twice.
+  const yielded = new Set();
+  const record = (m, kind, program) => {
+    const f = {
+      at: a + m.index,
+      end: a + m.index + m[0].length,
+      indices: m.indices.map((r) => r && [a + r[0], a + r[1]]),
+      kind,
+      program: a + program,
+    };
+    yielded.add(f.program);
+    // A command its shell reads differently from the view: what it reads, and a decoded hit.
+    const read = levelCommand(v, f.program) ?? levelCommand(v, wordStartOf(v, f.program));
+    if (read?.divergent) {
+      f.decoded = read.text;
+      decodedHit(command, re, f.program);
+    }
+    return f;
+  };
   const taken = new Set();
   const anchored = compiled(re, re, "yd");
   for (let m of slice.matchAll(compiled(re, re, "gd"))) {
@@ -2876,6 +2904,106 @@ function* found(command, re, a, b) {
     const m = matchWithin(inner, slice, p - a, closeIn(p - a));
     if (m) yield record(m, kind, p - a);
   }
+  // The positions read in a level, from the first at `a` or later.
+  const { decoded } = v;
+  let lo = 0;
+  let hi = decoded.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (decoded[mid][0] < a) lo = mid + 1;
+    else hi = mid;
+  }
+  for (let k = lo; k < decoded.length && decoded[k][0] < b; k++) {
+    const [p, L, d, kind] = decoded[k];
+    if (yielded.has(p)) continue;
+    inner.lastIndex = d;
+    const m = inner.exec(L.text);
+    if (!m || m.index !== d || !m[0]) continue;
+    const viewOf = (s, e) => [L.at[s] ?? L.to, e > s ? L.end[e - 1] : (L.at[s] ?? L.to)];
+    const [at, end] = viewOf(d, d + m[0].length);
+    // Where the view reads the same text, the passes above read it as it is.
+    if (end > b || text.slice(at, end) === asWritten(text, L, d, d + m[0].length)) continue;
+    yielded.add(p);
+    decodedHit(command, re, p);
+    const indices = m.indices.map((r) => r && viewOf(r[0], r[1]));
+    yield { at, end, indices, kind, program: p, decoded: L.text.slice(d, L.ends[d]) };
+  }
+}
+
+/**
+ * The command at the view index `p` as the shell of the level it was read in
+ * reads it (#1646, {@link found}): `{ text, divergent }`, its text from its
+ * program word to its end there, and whether the view's text over the same
+ * span differs; `undefined` where no level position starts at `p`. Read once
+ * per position and view.
+ */
+function levelCommand(v, p) {
+  if (v.levelCommands?.has(p)) return v.levelCommands.get(p);
+  const { decoded } = v;
+  let lo = 0;
+  let hi = decoded.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (decoded[mid][0] < p) lo = mid + 1;
+    else hi = mid;
+  }
+  let out;
+  if (decoded[lo]?.[0] === p) {
+    const [, L, d] = decoded[lo];
+    const e = Math.max(L.ends[d], d + 1);
+    const text = L.text.slice(d, e);
+    out = { text, divergent: v.text.slice(L.at[d], L.end[e - 1]) !== asWritten(v.text, L, d, e) };
+  }
+  (v.levelCommands ??= new Map()).set(p, out);
+  return out;
+}
+
+/**
+ * The text `[d, e)` of the {@link level} `L`, each expansion an outer shell
+ * makes written as the view has it (`$ARGS`, not the `$` standing for it):
+ * the raw text holds an expansion as a rule always reads it, so only an
+ * escape, a quote or a join that the shell undoes makes the two differ.
+ */
+function asWritten(viewText, L, d, e) {
+  let out = "";
+  for (let k = d; k < e; k++)
+    if (L.live?.[k] === 1) {
+      out += viewText.slice(L.at[k], L.end[k]);
+      while (k + 1 < e && L.live[k + 1] === 1 && L.at[k + 1] === L.at[k]) k++;
+    } else out += L.text[k];
+  return out;
+}
+
+/** The decoded hits of each command read lately, by its text ({@link found}); kept small, as a hook process reads a few. */
+const DECODED_HITS = new Map();
+
+function decodedHit(command, re, program) {
+  if (DECODED_HITS.size > 64) DECODED_HITS.clear();
+  if (!DECODED_HITS.has(command)) DECODED_HITS.set(command, new Set());
+  DECODED_HITS.get(command).add(`${re.source}@${program}`);
+}
+
+/**
+ * Drops the decoded hit of `re` at `program` in `command` ({@link found}):
+ * for a consumer that judged that command as its shell reads it — from the
+ * match's `decoded`, or through a reader of the whole string, as the deck-host
+ * ask's `wrapperRuns` reads a wrapper's string (#1646).
+ */
+export function excuseDecodedHit(command, re, program) {
+  DECODED_HITS.get(command)?.delete(`${re.source}@${program}`);
+}
+
+/**
+ * The matches {@link found} has made, since the last call, which clears
+ * them, of a command its shell reads differently from the text of
+ * `command`, each as `<shape>@<program>` (#1646): a rule reading its
+ * arguments from that raw text reads them mis-sliced, so `checkBash` never
+ * lets a rule pass on one it did not excuse ({@link excuseDecodedHit}).
+ */
+export function takeDecodedHits(command) {
+  const hits = DECODED_HITS.get(command) ?? new Set();
+  DECODED_HITS.delete(command);
+  return hits;
 }
 
 /**
@@ -2931,10 +3059,11 @@ function innerStart(text, m, re, known = () => false) {
 }
 
 /** A {@link matchesAt} result: the groups read from the raw command, with the match's facts. */
-function rawMatch(command, { at, indices, kind, program }) {
+function rawMatch(command, { at, indices, kind, program, decoded }) {
   const raw = indices.map((r) => r && command.slice(r[0], r[1]));
   raw.index = at;
   raw.program = program;
+  if (decoded !== undefined) raw.decoded = decoded;
   raw.how = kind.how;
   if (kind.via) raw.via = kind.via;
   if (kind.stdin) raw.stdin = true;
@@ -3281,6 +3410,8 @@ export function* chainCommands(command, cwd, re, shell = BASH) {
         at: from,
         cut,
         how: f.kind.how,
+        program: f.program,
+        ...(f.decoded !== undefined ? { decoded: f.decoded } : {}),
         ...(f.kind.via ? { via: f.kind.via } : {}),
         ...(f.kind.stdin ? { stdin: true } : {}),
         ...(f.kind.piped ? { piped: true } : {}),

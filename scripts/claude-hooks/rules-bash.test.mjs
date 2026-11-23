@@ -6367,4 +6367,40 @@ describe("a carried merge or tag push behind a quoted lead value (#1646)", () =>
 
   it("refuses a heredoc with no delimiter in a string a shell runs", () =>
     expect(refused(String.raw`bash -c $'cat <<\ngh pr merge 7'`)).toMatch(/heredoc with no delimiter/));
+
+  // Round 3 (#1646): a command its shell reads only once it decodes or joins
+  // the words is found, and no rule passes it on mis-sliced raw arguments.
+  it.each([
+    String.raw`bash -c $'gh\x20pr merge 7'`,
+    `eval "gh pr" merge 7`,
+    `eval gh "pr merge" 7`,
+    String.raw`printf '%s %s\n' gh 'pr merge 7' | bash`,
+  ])("refuses a merge its shell joins or decodes, before reading the PR: %s", (c) =>
+    expect(refused(c)).toMatch(/is not its own command/),
+  );
+
+  it.each([String.raw`bash -c $'git\x20push origin v1.2.3'`, `eval "git push" origin v1.2.3`])(
+    "asks for the tag push its shell decodes or joins, judged as that shell reads it: %s",
+    (c) => expect(asks(c)).toMatch(/Pushing a tag cuts a release/),
+  );
+
+  it.each([`eval "git push" origin integration`, String.raw`bash -c $'git\x20push origin integration'`])(
+    "refuses an integration push its shell joins or decodes: %s",
+    (c) => expect(deny(c)).toMatch(/integration` branch is local/),
+  );
+
+  it.each([
+    String.raw`bash -c $'echo\x20hi'`,
+    `eval "echo hi"`,
+    String.raw`printf '%s %s\n' echo hi | bash`,
+    String.raw`bash -c $'echo gh\x20pr merge 7'`,
+    `eval "git push" origin main`,
+    String.raw`bash -c "pnpm \"restart:stream-deck\""`,
+  ])("passes a harmless command, a mention and a read a rule makes as the shell does: %s", (c) => passes(c));
+
+  // A rule that reads its arguments raw passes nothing it matched only in decoded text.
+  it.each([`eval "gh issue" create --title x`, String.raw`bash -c $'gh\x20issue create --title x'`])(
+    "refuses what a raw-argument rule would pass on mis-sliced arguments: %s",
+    (c) => expect(deny(c)).toMatch(/reads its words differently/),
+  );
 });

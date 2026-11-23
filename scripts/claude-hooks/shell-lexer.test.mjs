@@ -1684,4 +1684,49 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
     expect(lexer.ansiOpen("$'x'", 1)).toBe(true);
     expect(lexer.ansiOpen(String.raw`\\$'x'`, 3)).toBe(true);
   });
+
+  // Round 3 (#1646): a rule's shape is also tested in the decoded text of each
+  // string a shell runs, so a command its shell joins or decodes is found.
+  it.each([
+    String.raw`bash -c $'gh\x20pr merge 7'`,
+    `eval "gh pr" merge 7`,
+    `eval gh "pr merge" 7`,
+    String.raw`printf '%s %s\n' gh 'pr merge 7' | bash`,
+  ])("finds a merge its shell reads only once it decodes or joins the words: %s", (c) => {
+    expect(lexer.has(c, MERGE)).toBe(true);
+    const m = lexer.matchAt(c, MERGE);
+    expect(m.decoded).toMatch(/^gh pr merge 7/);
+    expect(lexer.takeDecodedHits(c).size).toBeGreaterThan(0);
+  });
+
+  it("finds a push the same way, with the push as its shell reads it", () => {
+    const c = String.raw`bash -c $'git\x20push origin v1.2.3'`;
+    expect(lexer.matchAt(c, PUSH).decoded).toBe("git push origin v1.2.3");
+  });
+
+  it.each([
+    String.raw`bash -c $'echo gh\x20pr merge 7'`,
+    `eval "echo gh pr" merge 7`,
+    String.raw`printf '%s %s\n' echo 'gh pr merge 7' | bash`,
+  ])("finds no merge where the decoded text only mentions it: %s", (c) => expect(lexer.has(c, MERGE)).toBe(false));
+
+  it("records no decoded hit where the string reads as it is written", () => {
+    const c = "bash -c 'gh pr merge 7'";
+    lexer.takeDecodedHits(c);
+    expect(lexer.has(c, MERGE)).toBe(true);
+    expect(lexer.matchAt(c, MERGE).decoded).toBeUndefined();
+    expect(lexer.takeDecodedHits(c).size).toBe(0);
+    // An outer expansion is read as written at top level too: no hit for it.
+    const d = `bash -c "pnpm test $FILE"`;
+    lexer.has(d, cmd(/pnpm\s+test\b/));
+    expect(lexer.takeDecodedHits(d).size).toBe(0);
+  });
+
+  it("drops a decoded hit a consumer excuses", () => {
+    const c = `eval "gh pr" merge 7`;
+    lexer.takeDecodedHits(c);
+    const m = lexer.matchAt(c, MERGE);
+    lexer.excuseDecodedHit(c, MERGE, m.program);
+    expect(lexer.takeDecodedHits(c).size).toBe(0);
+  });
 });

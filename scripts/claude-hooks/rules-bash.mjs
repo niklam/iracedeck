@@ -35,6 +35,7 @@ import {
   cmd,
   COMMAND_LEAD,
   commandEnd,
+  excuseDecodedHit,
   GIT_GLOBALS,
   gitCwd,
   gitPlace,
@@ -52,6 +53,7 @@ import {
   stringBounds,
   stringEnd,
   stringKind,
+  takeDecodedHits,
   trustedIn,
   trustedMask,
   unclosedLead,
@@ -1022,7 +1024,9 @@ export const rules = [
         // The segment holding the program word: an anchored match's `index` is its boundary.
         const [, b] = segments.find(([s, e]) => s <= m.program && m.program < e);
         // From the raw word's start, not its rewritten name's: `"git" push` begins at the quote (CodeRabbit on #1634).
-        const own = c.slice(programStart(c, m.program), Math.min(b, stringEnd(c, m.program) ?? b));
+        // A push its shell reads differently from the text here is judged as it reads it (#1646).
+        if (m.decoded !== undefined) excuseDecodedHit(c, GIT_PUSH, m.program);
+        const own = m.decoded ?? c.slice(programStart(c, m.program), Math.min(b, stringEnd(c, m.program) ?? b));
         // Its inert text blanked, a comment included, which the raw text of a fed span keeps.
         // The comment starts at the `#` the lexer's top-level text blanks to a space: a quoted
         // `#` is `_` there (`git -c 'user.name=CI #1' push …`), never a comment (CodeRabbit CLI on #1634).
@@ -1042,17 +1046,28 @@ export const rules = [
     // it runs in, so `cd ../ir-integration && git push` is caught.
     name: "git push: the integration branch is never pushed",
     test: (c, ctx) => {
-      for (const { base, start, args } of chainCommands(c, ctx.cwd, GIT_PUSH, ctx.shell)) {
+      for (const { base, start, args, program, decoded } of chainCommands(c, ctx.cwd, GIT_PUSH, ctx.shell)) {
         // Every `-C`, in order (#1606). The push reads the current branch only
         // when no refspec names one, and only then does a `--git-dir` or
         // `GIT_DIR`, which hides whose branch that is, refuse it.
         const { dir, movesRepo } = gitPlaceAt(c, start, base, ctx.shell);
+        // A push its shell reads differently from the text here is judged on
+        // what it reads (#1646): its refspecs from that text, and any git
+        // option ahead of `push` there as one that moves the repository.
+        let read = args;
+        let moved = movesRepo;
+        if (decoded !== undefined) {
+          const [head, ...rest] = decoded.split(/\bpush\b/);
+          read = rest.join("push");
+          moved ||= /\s-/.test(head);
+          excuseDecodedHit(c, GIT_PUSH, program);
+        }
         let unknown = false;
         const fromIntegration = () =>
-          movesRepo
+          moved
             ? (unknown = true)
             : ctx.branch(dir) === INTEGRATION_BRANCH || path.basename(ctx.toplevel?.(dir) ?? dir) === INTEGRATION_TREE;
-        if (pushReachesIntegration(words(args), fromIntegration))
+        if (pushReachesIntegration(words(read), fromIntegration))
           return unknown
             ? movedRepo("push")
             : `The \`${INTEGRATION_BRANCH}\` branch is local and never pushed: it is origin/${MAIN_BRANCH} plus the branches under manual test, rebuilt by scripts/integration-build.mjs (#1520). Push each issue branch from its own ../ir-<issue> tree.`;
@@ -2212,11 +2227,22 @@ const GUARDED_PROGRAM = /\b(?:gh|git)\b/i;
 const GUARDED_VERB = /^(?:pr|merge|create|push|commit|worktree|api|project|issue|add)$/;
 
 /** The rules' verdict on `text`, already read as bash ({@link checkBash}). */
+/** The refusal of a command a rule reads mis-sliced ({@link judge}, #1646). */
+const DECODED_REFUSAL =
+  "A command this one hands to a shell is spelled so that shell reads its words differently from how they are written here (an escape it decodes, words `eval` or `printf` join), and the hook cannot read its arguments as that shell does. Spell the command as plain words.";
+
 function judge(text, ctx, powershell) {
   const asks = [];
   for (const rule of rules) {
     if (powershell && rule.bashOnly) continue;
+    takeDecodedHits(text);
     const v = rule.test(text, ctx);
+    // A rule that found its command in what a shell reads from a string, but
+    // reads its arguments from raw text that differs (an escape it decodes,
+    // words `eval` or `printf` join), never passes on them (#1646; reading
+    // them as that shell does is #1783). A rule that read that command as
+    // its shell does excused its match (`excuseDecodedHit`).
+    if (!v && takeDecodedHits(text).size) return DECODED_REFUSAL;
     if (!v) continue;
     if (typeof v === "string") return v;
     asks.push(v.ask);
