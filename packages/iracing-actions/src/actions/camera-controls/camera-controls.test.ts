@@ -4670,8 +4670,8 @@ describe("Auto Group on Car Change key (#1656)", () => {
   /** A stand-in SDK controller for the automation's own telemetry subscription. */
   const controller = { subscribe: vi.fn(), unsubscribe: vi.fn() };
 
-  /** Every key that appeared in a test, so the test's end can take it off screen again. */
-  let shown: { action: CameraControls; ctx: ReturnType<typeof keyContext> }[];
+  /** Every key and dial that appeared in a test, so the test's end can take it off screen again. */
+  let shown: { action: CameraControls; ctx: { id: string } }[];
 
   function keyContext(id: string) {
     return {
@@ -4962,6 +4962,144 @@ describe("Auto Group on Car Change key (#1656)", () => {
 
       expect(autoGroupOwner()).toBe("ag-1");
       expect(action["logger"].debug).not.toHaveBeenCalledWith(expect.stringContaining("Auto group settings updated"));
+    });
+  });
+
+  describe("the dial gesture (spec decision 9)", () => {
+    const MARKER = 'data-auto-group-marker="on"';
+    const DIAL = {
+      mode: "camera",
+      pressAction: "auto-group",
+      autoGroupSubset: { groups: { Chase: true } },
+      autoGroupPick: "random",
+    };
+
+    function dialContext(id: string) {
+      return {
+        id,
+        deviceId: "dev-1",
+        deviceType: 7,
+        isKey: () => false,
+        isDial: () => true,
+        dialCanvas: () => ({ id: "sd-plus-strip", width: 200, height: 100 }) as const,
+        setDialCanvas: vi.fn(async (_dataUri: string) => {}),
+        setImage: vi.fn(async () => {}),
+        setTitle: vi.fn(async () => {}),
+        setSettings: vi.fn(async () => {}),
+        setFeedback: vi.fn(async () => {}),
+        setTriggerDescription: vi.fn(async () => {}),
+      };
+    }
+
+    async function appearDial(action: CameraControls, id: string, dial: Record<string, unknown> = DIAL) {
+      const ctx = dialContext(id);
+      shown.push({ action, ctx });
+      await action.onWillAppear({ action: ctx, payload: { settings: { dial } } } as never);
+
+      return ctx;
+    }
+
+    async function pressDial(action: CameraControls, ctx: ReturnType<typeof dialContext>, dial = DIAL) {
+      await action.onDialDown({ action: ctx, payload: { settings: { dial } } } as never);
+      await action.onDialUp({ action: ctx, payload: { settings: { dial } } } as never);
+      await flush();
+    }
+
+    const marked = (ctx: ReturnType<typeof dialContext>): boolean =>
+      decodeURIComponent(String(ctx.setDialCanvas.mock.calls.at(-1)?.[0])).includes(MARKER);
+
+    it("starts and stops the automation with the dial's own list, the dial as its owner", async () => {
+      const action = newAction();
+      const ctx = await appearDial(action, "dial-1");
+
+      expect(marked(ctx)).toBe(false);
+
+      await pressDial(action, ctx);
+
+      expect(autoGroupOwner()).toBe("dial-1");
+      expect(action["logger"].debug).toHaveBeenCalledWith("Auto group owner dial-1, pick random, groups: Chase");
+      expect(marked(ctx)).toBe(true);
+
+      await pressDial(action, ctx);
+
+      expect(autoGroupOwner()).toBeNull();
+      expect(marked(ctx)).toBe(false);
+    });
+
+    it("hands over between a dial and a key, each showing on only while it owns", async () => {
+      const action = newAction();
+      const dial = await appearDial(action, "dial-1");
+      const key = await appear(action, "ag-1");
+
+      await pressDial(action, dial);
+      await press(action, key);
+
+      expect(autoGroupOwner()).toBe("ag-1");
+      expect(isOn(action, "ag-1")).toBe(true);
+      expect(marked(dial)).toBe(false);
+
+      await pressDial(action, dial);
+
+      expect(autoGroupOwner()).toBe("dial-1");
+      expect(isOn(action, "ag-1")).toBe(false);
+      expect(marked(dial)).toBe(true);
+    });
+
+    it("moves the marker to a dial of the other Camera Controls action", async () => {
+      const focus = newAction();
+      const cycle = newAction();
+      const first = await appearDial(focus, "dial-focus");
+      const second = await appearDial(cycle, "dial-cycle");
+
+      await pressDial(focus, first);
+      await pressDial(cycle, second);
+
+      expect(marked(first)).toBe(false);
+      expect(marked(second)).toBe(true);
+    });
+
+    it("applies the owning dial's edited list at once, and ignores another dial's", async () => {
+      const action = newAction();
+      const owner = await appearDial(action, "dial-1");
+      const other = await appearDial(action, "dial-2");
+      await pressDial(action, owner);
+
+      await action.onDidReceiveSettings({
+        action: other,
+        payload: { settings: { dial: { ...DIAL, autoGroupSubset: { groups: { Nose: true } } } } },
+      } as never);
+
+      expect(action["logger"].debug).not.toHaveBeenCalledWith(expect.stringContaining("Auto group settings updated"));
+
+      await action.onDidReceiveSettings({
+        action: owner,
+        payload: {
+          settings: { dial: { ...DIAL, autoGroupSubset: { groups: { Nose: true } }, autoGroupPick: "in-order" } },
+        },
+      } as never);
+
+      expect(action["logger"].debug).toHaveBeenCalledWith("Auto group settings updated: pick in-order, groups: Nose");
+    });
+
+    it("keeps running when its dial leaves the screen", async () => {
+      const action = newAction();
+      const ctx = await appearDial(action, "dial-1");
+      await pressDial(action, ctx);
+
+      await action.onWillDisappear({ action: ctx } as never);
+
+      expect(autoGroupOwner()).toBe("dial-1");
+    });
+
+    it("keeps the dial's Mode and gestures when its two fields hold junk", () => {
+      const parsed = z.object(CameraControlsSettingsFields).parse({
+        dial: { mode: "race-position", pressAction: "auto-group", autoGroupSubset: 3, autoGroupPick: ["x"] },
+      });
+
+      expect(parsed.dial.mode).toBe("race-position");
+      expect(parsed.dial.pressAction).toBe("auto-group");
+      expect(parsed.dial.autoGroupPick).toBe("in-order");
+      expect(parsed.dial.autoGroupSubset).toBeUndefined();
     });
   });
 

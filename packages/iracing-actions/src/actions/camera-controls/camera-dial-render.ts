@@ -94,6 +94,9 @@ function panelFrame(w: number, h: number): { radius: number; inset: number; stro
   };
 }
 
+/** The strip's hold-preview centre size: the car number size every car strip uses. */
+const PENDING_CENTRE_FONT = 40;
+
 /**
  * The centre slot while a hold preview is pending (issue #1120): the outcome
  * in the big car-number typography every car strip already uses for its
@@ -105,7 +108,10 @@ function panelFrame(w: number, h: number): { radius: number; inset: number; stro
 function pendingCentre(w: number, h: number, pending: DialPendingPreview): string {
   const { inset, strokeWidth } = panelFrame(w, h);
   const valueY = Math.round(h * 0.72);
-  const text = `<text x="${w / 2}" y="${valueY}" text-anchor="middle" fill="${pending.color}" font-family="Arial, sans-serif" font-size="40" font-weight="bold">${escapeXml(pending.text)}</text>`;
+  // Fitted inside the panel, so a word preview (#1656's AUTO OFF) shrinks
+  // where a car number keeps the full 40 px.
+  const size = fitValueFontSize(pending.text, w - 2 * (inset + strokeWidth + 8), PENDING_CENTRE_FONT);
+  const text = `<text x="${w / 2}" y="${valueY}" text-anchor="middle" fill="${pending.color}" font-family="Arial, sans-serif" font-size="${size}" font-weight="bold">${escapeXml(pending.text)}</text>`;
   // Just under the value's baseline, clamped inside the panel — the border
   // strokes ON the inset rect, so half of it eats inward (as `renderDialBox`).
   const barTop = Math.min(valueY + 6, h - inset - Math.round(strokeWidth / 2) - PENDING_BAR_HEIGHT);

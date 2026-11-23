@@ -1142,6 +1142,10 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     focusOnIncident: (contextId) => this.focusOn("focus-on-incident", this.dialAsk(contextId, "focus on incident")),
     focusOnMostExciting: (contextId) =>
       this.focusOn("focus-on-most-exciting", this.dialAsk(contextId, "focus on most exciting")),
+    // Auto Group on/off (#1656, spec decision 9): the key's press, with the
+    // dial as the owner and its own list and pick order.
+    toggleAutoGroup: (contextId, dial) => this.toggleAutoGroupFor(contextId, dial.autoGroupSubset, dial.autoGroupPick),
+    isAutoGroupOwner: (contextId) => isAutoGroupOwner(contextId),
   });
 
   /**
@@ -1214,6 +1218,9 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
 
     if (ev.action.isDial()) {
       const settings = this.parseSettings(ev.payload.settings);
+      // The running automation's own dial: its edited list and pick order
+      // apply at once (spec decision 2); any other dial's edit is ignored.
+      updateAutoGroupSettings(ev.action.id, autoGroupNames(settings.dial.autoGroupSubset), settings.dial.autoGroupPick);
       await this.dialSurface.didReceiveSettings(ev.action, settings.dial);
 
       return;
@@ -1356,11 +1363,16 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     }
   }
 
-  /** The automation's owner changed: every Auto Group key of this instance redraws its on or off look. */
+  /**
+   * The automation's owner changed: every Auto Group key of this instance
+   * redraws its on or off look, and every dial its on marker.
+   */
   private onAutoGroupOwnerChange(): void {
     for (const [contextId, settings] of this.activeContexts) {
       if (settings.target === "auto-group") this.requestRender(contextId);
     }
+
+    this.dialSurface.refreshAutoGroup();
   }
 
   /** Whether a key or dial context of this action is still on screen. */

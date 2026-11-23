@@ -8,6 +8,7 @@ import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { resolveDialBoxColors } from "../../shared/dial-box.js";
 import { describeLateInput } from "../../shared/dial-late-input.test-support.js";
 import { describePressShapes } from "../../shared/press-shape.test-support.js";
+import { renderAutoGroupMarker } from "./auto-group-marker.js";
 import {
   renderCameraCarousel,
   renderCarCarousel,
@@ -16,11 +17,14 @@ import {
   renderSubCameraCarousel,
 } from "./camera-dial-render.js";
 import {
+  AUTO_GROUP_GESTURE_LABEL,
+  AUTO_GROUP_PREVIEW_TEXT,
   buildTriggerDescription,
   CameraDialSurface,
   clockwiseDirection,
   DIAL_MODES,
   DialSettings,
+  GESTURE_ACTIONS,
 } from "./camera-dial-surface.js";
 import { SUB_CAMERA_BINDING_KEY_LIST, SUB_CAMERA_BINDING_KEYS } from "./sub-camera-bindings.js";
 
@@ -188,6 +192,9 @@ function makeHost(over: Partial<Record<string, unknown>> = {}) {
     focusOnLeader: vi.fn(),
     focusOnIncident: vi.fn(),
     focusOnMostExciting: vi.fn(),
+    // Auto Group on/off (#1656): the gesture's toggle, and whether this dial owns the run (none by default).
+    toggleAutoGroup: vi.fn(),
+    isAutoGroupOwner: vi.fn((_contextId: string) => false),
     ...over,
   };
 }
@@ -1338,6 +1345,7 @@ describe("CameraDialSurface", () => {
         focusOnLeader: host.focusOnLeader,
         focusOnIncident: host.focusOnIncident,
         focusOnMostExciting: host.focusOnMostExciting,
+        toggleAutoGroup: host.toggleAutoGroup,
         setDialCanvas: ctx.setDialCanvas,
         setFeedback: ctx.setFeedback,
         setImage: ctx.setImage,
@@ -2453,6 +2461,399 @@ describe("CameraDialSurface", () => {
       await surface.up("l1");
 
       expect(host.focusMyCar).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe("the Auto Group on/off gesture (#1656)", () => {
+  const MARKER = 'data-auto-group-marker="on"';
+
+  /** The dial's settings with Auto Group on/off on `slot`, its own list and Random. */
+  function autoGroupDial(slot: "pressAction" | "longPressAction" | "tapAction" | "longTouchAction") {
+    return dial({
+      mode: "camera",
+      [slot]: "auto-group",
+      autoGroupSubset: { groups: { Chase: true } },
+      autoGroupPick: "random",
+    });
+  }
+
+  function decodeLast(ctx: ReturnType<typeof dialContext>): string {
+    return decodeURIComponent(ctx.setDialCanvas.mock.calls.at(-1)?.[0] as string);
+  }
+
+  /** A host whose Auto Group owner is whatever `owner.id` says. */
+  function ownedHost(owner: { id: string | null }) {
+    return makeHost({ isAutoGroupOwner: vi.fn((contextId: string) => contextId === owner.id) });
+  }
+
+  describe("settings", () => {
+    it("is offered on every gesture slot, last in the list", () => {
+      expect(GESTURE_ACTIONS.at(-1)).toBe("auto-group");
+
+      for (const slot of ["pressAction", "longPressAction", "tapAction", "longTouchAction"] as const) {
+        expect(dial({ [slot]: "auto-group" })[slot]).toBe("auto-group");
+      }
+    });
+
+    it("defaults the dial's own list to nothing stored (TV1, TV2 and TV3) and its pick to In order", () => {
+      const parsed = dial();
+
+      expect(parsed.autoGroupSubset).toBeUndefined();
+      expect(parsed.autoGroupPick).toBe("in-order");
+    });
+
+    it("keeps the dial's Mode and gestures when either field holds junk", () => {
+      const parsed = dial({
+        mode: "race-position",
+        pressAction: "auto-group",
+        longPressAction: "focus-my-car",
+        autoGroupSubset: 7,
+        autoGroupPick: "sideways",
+      });
+
+      expect(parsed.mode).toBe("race-position");
+      expect(parsed.pressAction).toBe("auto-group");
+      expect(parsed.longPressAction).toBe("focus-my-car");
+      expect(parsed.autoGroupSubset).toBeUndefined();
+      expect(parsed.autoGroupPick).toBe("in-order");
+    });
+
+    it("names the gesture Auto Group on/off in the trigger description, on every slot", () => {
+      expect(AUTO_GROUP_GESTURE_LABEL).toBe("Auto Group on/off");
+      expect(buildTriggerDescription(dial({ pressAction: "auto-group" })).push).toBe("Auto Group on/off");
+      expect(buildTriggerDescription(dial({ longPressAction: "auto-group" })).push).toBe("Hold: Auto Group on/off");
+      expect(buildTriggerDescription(dial({ pressAction: "focus-my-car", longPressAction: "auto-group" })).push).toBe(
+        "Focus My Car (hold: Auto Group on/off)",
+      );
+      expect(buildTriggerDescription(dial({ tapAction: "auto-group" })).touch).toBe("Auto Group on/off");
+      expect(buildTriggerDescription(dial({ longTouchAction: "auto-group" })).longTouch).toBe("Auto Group on/off");
+    });
+  });
+
+  describe("firing", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("toggles with the dial's own settings on Press", async () => {
+      const host = makeHost();
+      const surface = new CameraDialSurface(host as never);
+      const settings = autoGroupDial("pressAction");
+      await surface.willAppear(dialContext("ag-p") as never, settings);
+
+      surface.down(dialContext("ag-p") as never, settings);
+      await surface.up("ag-p");
+
+      expect(host.toggleAutoGroup).toHaveBeenCalledExactlyOnceWith("ag-p", settings);
+    });
+
+    it("toggles on Long Press past the threshold", async () => {
+      vi.useFakeTimers();
+      const host = makeHost();
+      const surface = new CameraDialSurface(host as never);
+      const settings = autoGroupDial("longPressAction");
+      await surface.willAppear(dialContext("ag-lp") as never, settings);
+
+      surface.down(dialContext("ag-lp") as never, settings);
+      vi.advanceTimersByTime(600);
+      await surface.up("ag-lp");
+
+      expect(host.toggleAutoGroup).toHaveBeenCalledExactlyOnceWith("ag-lp", settings);
+    });
+
+    it("toggles on Tap Display", async () => {
+      const host = makeHost();
+      const surface = new CameraDialSurface(host as never);
+      const settings = autoGroupDial("tapAction");
+      await surface.willAppear(dialContext("ag-t") as never, settings);
+
+      await surface.touchTap(dialContext("ag-t") as never, settings, false);
+
+      expect(host.toggleAutoGroup).toHaveBeenCalledExactlyOnceWith("ag-t", settings);
+    });
+
+    it("toggles on Long Touch", async () => {
+      const host = makeHost();
+      const surface = new CameraDialSurface(host as never);
+      const settings = autoGroupDial("longTouchAction");
+      await surface.willAppear(dialContext("ag-lt") as never, settings);
+
+      await surface.touchTap(dialContext("ag-lt") as never, settings, true);
+
+      expect(host.toggleAutoGroup).toHaveBeenCalledExactlyOnceWith("ag-lt", settings);
+    });
+
+    it("fires Press on a Mirabox-style knob push, extended gestures off, however long it is held", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      vi.useFakeTimers();
+      const host = makeHost();
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("ag-knob", KNOB);
+      const settings = autoGroupDial("pressAction");
+      await surface.willAppear(ctx as never, settings);
+
+      // The adapter completes a knob push at its dialDown; a held one is still one Press.
+      surface.down(ctx as never, settings);
+      await surface.up("ag-knob");
+      surface.down(ctx as never, settings);
+      vi.advanceTimersByTime(2000);
+      await surface.up("ag-knob");
+
+      expect(host.toggleAutoGroup).toHaveBeenCalledTimes(2);
+      expect(host.toggleAutoGroup).toHaveBeenNthCalledWith(1, "ag-knob", settings);
+    });
+
+    it("fires nothing on a push+turn", async () => {
+      const host = makeHost();
+      const surface = new CameraDialSurface(host as never);
+      const settings = autoGroupDial("pressAction");
+      await surface.willAppear(dialContext("ag-pt") as never, settings);
+
+      surface.down(dialContext("ag-pt") as never, settings);
+      surface.rotate(dialContext("ag-pt") as never, settings, 1, true);
+      await surface.up("ag-pt");
+
+      expect(host.toggleAutoGroup).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("press shapes", () => {
+    let surface: CameraDialSurface;
+
+    beforeEach(() => {
+      surface = new CameraDialSurface(makeHost() as never);
+    });
+
+    describePressShapes({
+      dialContext: (id) => dialContext(id),
+      appear: (ctx, d) => surface.willAppear(ctx as never, dial(d)),
+      dialShape: (ctx, d) => surface.pressShape(ctx as never, dial(d)),
+      touchShape: (ctx, d, hold) => surface.touchShape(ctx as never, dial(d), hold),
+      gesture: "auto-group",
+      readsStoredSettings: false,
+    });
+  });
+
+  describe("the on marker", () => {
+    it.each([
+      ["the Stream Deck+ strip", STRIP],
+      ["the Mirabox knob screen", KNOB],
+    ] as const)("is drawn on %s only while that dial owns the automation", async (_name, canvas) => {
+      const owner = { id: null as string | null };
+      const host = ownedHost(owner);
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("ag-m", canvas);
+      await surface.willAppear(ctx as never, autoGroupDial("pressAction"));
+
+      expect(decodeLast(ctx)).not.toContain(MARKER);
+
+      owner.id = "ag-m";
+      surface.refreshAutoGroup();
+
+      const marked = decodeLast(ctx);
+      expect(marked).toContain(MARKER);
+      expect(marked).toContain(`viewBox="0 0 ${canvas.width} ${canvas.height}"`);
+      // On top of the mode's drawing: the last thing before the closing tag, in the camera mode's colours.
+      const marker = renderAutoGroupMarker(canvas, resolveDialBoxColors(undefined, "#3498db"));
+      expect(marked.endsWith(`${marker}</svg>`)).toBe(true);
+      expect(marked.indexOf(MARKER)).toBe(marked.length - `${marker}</svg>`.length + marker.indexOf(MARKER));
+
+      owner.id = "someone-else";
+      surface.refreshAutoGroup();
+
+      expect(decodeLast(ctx)).not.toContain(MARKER);
+    });
+
+    it("is drawn on the identity box too, out of a session", async () => {
+      const owner = { id: "ag-id" as string | null };
+      const host = makeHost({
+        getTelemetry: vi.fn(() => null),
+        isAutoGroupOwner: vi.fn((contextId: string) => contextId === owner.id),
+      });
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("ag-id");
+      await surface.willAppear(ctx as never, dial({ mode: "car-number", pressAction: "auto-group" }));
+
+      expect(decodeLast(ctx)).toContain(MARKER);
+    });
+
+    it("redraws only the dials whose marker changed, and its ownership is part of the signature", async () => {
+      const owner = { id: null as string | null };
+      const host = ownedHost(owner);
+      const surface = new CameraDialSurface(host as never);
+      const mine = dialContext("ag-a");
+      const other = dialContext("ag-b");
+      await surface.willAppear(mine as never, autoGroupDial("pressAction"));
+      await surface.willAppear(other as never, autoGroupDial("pressAction"));
+      mine.setDialCanvas.mockClear();
+      other.setDialCanvas.mockClear();
+
+      owner.id = "ag-a";
+      surface.refreshAutoGroup();
+
+      expect(mine.setDialCanvas).toHaveBeenCalledTimes(1);
+      expect(other.setDialCanvas).not.toHaveBeenCalled();
+
+      // Nothing changed: no frame. Then a telemetry tick: no frame either, since the marker is in the signature.
+      surface.refreshAutoGroup();
+      surface.onTelemetry("ag-a", TELEMETRY as never);
+
+      expect(mine.setDialCanvas).toHaveBeenCalledTimes(1);
+
+      // A tick picks an owner change up too, outside the throttle window.
+      owner.id = null;
+      vi.useFakeTimers();
+      vi.setSystemTime(Date.now() + 1000);
+      surface.onTelemetry("ag-a", TELEMETRY as never);
+      vi.useRealTimers();
+
+      expect(mine.setDialCanvas).toHaveBeenCalledTimes(2);
+      expect(decodeLast(mine)).not.toContain(MARKER);
+    });
+
+    it("draws the dial's own colours", async () => {
+      const host = makeHost({ isAutoGroupOwner: vi.fn(() => true) });
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("ag-c");
+      const settings = dial({ mode: "camera", pressAction: "auto-group", colors: { valueColor: "#123456" } });
+      await surface.willAppear(ctx as never, settings);
+
+      const colours = resolveDialBoxColors(settings.colors, "#3498db");
+
+      expect(decodeLast(ctx)).toMatch(new RegExp(`${MARKER}[^>]*><rect[^>]*fill="${colours.value}"`));
+    });
+  });
+
+  describe("the hold preview", () => {
+    async function heldDial(id: string, owner: { id: string | null }) {
+      const host = ownedHost(owner);
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext(id);
+      const settings = autoGroupDial("longPressAction");
+      await surface.willAppear(ctx as never, settings);
+      ctx.setDialCanvas.mockClear();
+
+      return { surface, ctx, settings, host };
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("keeps both texts in one place", () => {
+      expect(AUTO_GROUP_PREVIEW_TEXT).toEqual({ on: "AUTO ON", off: "AUTO OFF" });
+    });
+
+    it("previews AUTO ON mid-hold when the release would start it, and reverts at release", async () => {
+      const { surface, ctx, settings, host } = await heldDial("ag-h1", { id: null });
+
+      surface.down(ctx as never, settings);
+      vi.advanceTimersByTime(499);
+
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(1);
+      const preview = decodeLast(ctx);
+
+      expect(preview).toContain(`>${AUTO_GROUP_PREVIEW_TEXT.on}<`);
+      expect(preview).toContain('data-pending-bar="true"');
+
+      await surface.up("ag-h1");
+
+      expect(host.toggleAutoGroup).toHaveBeenCalledTimes(1);
+      expect(decodeLast(ctx)).not.toContain("data-pending-bar");
+    });
+
+    it("previews AUTO OFF when this dial runs the automation", async () => {
+      const { surface, ctx, settings } = await heldDial("ag-h2", { id: "ag-h2" });
+
+      surface.down(ctx as never, settings);
+      vi.advanceTimersByTime(500);
+
+      expect(decodeLast(ctx)).toContain(`>${AUTO_GROUP_PREVIEW_TEXT.off}<`);
+    });
+
+    it("previews AUTO ON when another key or dial runs it, since the release takes it over", async () => {
+      const { surface, ctx, settings } = await heldDial("ag-h3", { id: "a-key" });
+
+      surface.down(ctx as never, settings);
+      vi.advanceTimersByTime(500);
+
+      expect(decodeLast(ctx)).toContain(`>${AUTO_GROUP_PREVIEW_TEXT.on}<`);
+    });
+
+    it("needs no telemetry, since the outcome is the plugin's own state", async () => {
+      const owner = { id: null as string | null };
+      const host = makeHost({
+        getTelemetry: vi.fn(() => null),
+        isAutoGroupOwner: vi.fn((contextId: string) => contextId === owner.id),
+      });
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("ag-h4");
+      const settings = autoGroupDial("longPressAction");
+      await surface.willAppear(ctx as never, settings);
+
+      surface.down(ctx as never, settings);
+      vi.advanceTimersByTime(500);
+
+      expect(decodeLast(ctx)).toContain(`>${AUTO_GROUP_PREVIEW_TEXT.on}<`);
+    });
+
+    it("follows an owner change mid-hold", async () => {
+      const owner = { id: "ag-h5" as string | null };
+      const { surface, ctx, settings } = await heldDial("ag-h5", owner);
+
+      surface.down(ctx as never, settings);
+      vi.advanceTimersByTime(500);
+
+      expect(decodeLast(ctx)).toContain(`>${AUTO_GROUP_PREVIEW_TEXT.off}<`);
+
+      // A key took it over: the release would now take it back.
+      owner.id = "a-key";
+      surface.refreshAutoGroup();
+
+      expect(decodeLast(ctx)).toContain(`>${AUTO_GROUP_PREVIEW_TEXT.on}<`);
+    });
+
+    it("fits the word inside the strip, where a car number keeps the full size", async () => {
+      const { surface, ctx, settings } = await heldDial("ag-h6", { id: "ag-h6" });
+
+      surface.down(ctx as never, settings);
+      vi.advanceTimersByTime(500);
+
+      const size = Number(decodeLast(ctx).match(/font-size="(\d+)"[^>]*>AUTO OFF</)?.[1]);
+
+      expect(size).toBeGreaterThan(20);
+      expect(size).toBeLessThan(40);
+    });
+
+    it("previews nothing on a Long Touch, which the host reports only once it has ended", async () => {
+      const host = makeHost();
+      const surface = new CameraDialSurface(host as never);
+      const ctx = dialContext("ag-h7");
+      const settings = autoGroupDial("longTouchAction");
+      await surface.willAppear(ctx as never, settings);
+      ctx.setDialCanvas.mockClear();
+
+      surface.down(ctx as never, settings);
+      vi.advanceTimersByTime(600);
+
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
+    });
+
+    it("previews nothing with the extended gestures off (a Mirabox knob reports no release)", async () => {
+      vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+      const { surface, ctx, settings } = await heldDial("ag-h8", { id: null });
+
+      surface.down(ctx as never, settings);
+      vi.advanceTimersByTime(600);
+
+      expect(ctx.setDialCanvas).not.toHaveBeenCalled();
     });
   });
 });

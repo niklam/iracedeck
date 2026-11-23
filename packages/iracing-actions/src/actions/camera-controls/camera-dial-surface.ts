@@ -129,6 +129,8 @@ import {
   computeRacePositionTarget,
   resolveRaceOrder,
 } from "../../shared/race-position-cycling.js";
+import { renderAutoGroupMarker } from "./auto-group-marker.js";
+import { AutoGroupPickField, AutoGroupSubsetField } from "./auto-group-pick.js";
 import {
   type CarCarouselView,
   type CarouselGlyph,
@@ -253,7 +255,9 @@ function orientSides<T>(clockwise: Direction, prev: T, next: T): { left: T; righ
  * keypad's own iRacing API dispatch: `focus-my-car` centres on the player's car
  * (keypad Focus Your Car); `change-camera` switches to the next camera angle
  * (keypad Cycle Camera); `focus-on-leader` / `focus-on-incident` /
- * `focus-on-most-exciting` are the keypad's parameterless focus one-shots.
+ * `focus-on-most-exciting` are the keypad's parameterless focus one-shots;
+ * `auto-group` turns Auto Group on Car Change on or off with the dial's own
+ * list (#1656, spec decision 9), as the keypad's Auto Group key does.
  */
 export const GESTURE_ACTIONS = [
   "none",
@@ -262,6 +266,7 @@ export const GESTURE_ACTIONS = [
   "focus-on-leader",
   "focus-on-incident",
   "focus-on-most-exciting",
+  "auto-group",
 ] as const;
 export type GestureSlot = (typeof GESTURE_ACTIONS)[number];
 
@@ -344,6 +349,12 @@ export const DialSettings = z
     tapAction: z.enum(GESTURE_ACTIONS).default("none"),
     // Long Touch (touch-strip tap, hold === true). Default None for VR safety.
     longTouchAction: z.enum(GESTURE_ACTIONS).default("none"),
+    // The Auto Group gesture's own list and pick order (#1656, spec decision
+    // 9): the key's fields, with the same defaults and `.catch`, so junk in
+    // either degrades that field alone and never resets the dial's Mode and
+    // gestures through the `dial` root's catch.
+    autoGroupSubset: AutoGroupSubsetField,
+    autoGroupPick: AutoGroupPickField,
     // Dash-box appearance overrides (colors, issue #811).
     ...dialAppearanceFields,
   })
@@ -366,10 +377,29 @@ function gestureLabel(action: GestureSlot): string | undefined {
       return "Focus on Incident";
     case "focus-on-most-exciting":
       return "Focus on Most Exciting";
+    case "auto-group":
+      return AUTO_GROUP_GESTURE_LABEL;
     case "none":
       return undefined;
   }
 }
+
+/**
+ * @internal Exported for testing
+ *
+ * The Auto Group gesture's name in the encoder trigger description (#1656).
+ */
+export const AUTO_GROUP_GESTURE_LABEL = "Auto Group on/off";
+
+/**
+ * What the strip previews mid-hold for a Long Press set to Auto Group on/off
+ * (#1656, spec decision 9; `encoders-and-touchscreen.md` rule 9): `on` when the
+ * release would start the automation or take it over from another key or
+ * dial, `off` when this dial runs it and the release would stop it. The
+ * outcome is the plugin's own state, so it is always knowable. User-facing:
+ * both strings live here so a change of wording is one edit.
+ */
+export const AUTO_GROUP_PREVIEW_TEXT = { on: "AUTO ON", off: "AUTO OFF" } as const;
 
 /**
  * @internal Exported for testing
@@ -495,6 +525,14 @@ export interface CameraDialHost {
   focusOnIncident(contextId: string): void;
   /** Focus the director's most-exciting car (the keypad Focus on Most Exciting mode). */
   focusOnMostExciting(contextId: string): void;
+  /**
+   * Turn Auto Group on Car Change on or off for this dial (#1656), with the
+   * dial's own list and pick order: the keypad Auto Group key's press, with
+   * the dial context as the owner.
+   */
+  toggleAutoGroup(contextId: string, dial: DialSettings): void;
+  /** Whether this dial context owns the running Auto Group automation: its screen then shows the on marker. */
+  isAutoGroupOwner(contextId: string): boolean;
 }
 
 /**
@@ -621,7 +659,7 @@ export class CameraDialSurface extends ReleaseDialSurfaceBase<CameraDialContext,
     if (gesture === "none") return;
 
     this.host.logger.info(kind === "long" ? "Camera dial long-pressed" : "Camera dial pressed");
-    this.doGesture(actionId, gesture);
+    this.doGesture(ctx, gesture);
   }
 
   async touchTap(action: IDeckActionContext, dial: DialSettings, hold: boolean): Promise<void> {
@@ -632,10 +670,12 @@ export class CameraDialSurface extends ReleaseDialSurfaceBase<CameraDialContext,
 
     if (gesture === "none") return;
 
-    if (!this.inputContext(action, dial, "touchTap")) return;
+    const ctx = this.inputContext(action, dial, "touchTap");
+
+    if (!ctx) return;
 
     this.host.logger.info(hold ? "Camera dial long touch" : "Camera dial tap");
-    this.doGesture(action.id, gesture);
+    this.doGesture(ctx, gesture);
   }
 
   onTelemetry(actionId: string, _telemetry: TelemetryData | null): void {
@@ -660,6 +700,31 @@ export class CameraDialSurface extends ReleaseDialSurfaceBase<CameraDialContext,
     this.renderFeedback(ctx).catch((err) => {
       this.host.logger.debug(`Dial feedback render failed: ${String(err)}`);
     });
+  }
+
+  /**
+   * The Auto Group automation changed owner (#1656): every dial whose on
+   * marker appears or goes redraws at once, bypassing the change throttle,
+   * since no telemetry tick may follow (iRacing closed). A hold preview of the
+   * Auto Group gesture up meanwhile is worked out again, so it never promises
+   * the outcome the old owner would have had.
+   */
+  refreshAutoGroup(): void {
+    for (const ctx of this.contextsState.values()) {
+      if (ctx.preview && ctx.dial.longPressAction === "auto-group") ctx.preview = this.pendingPreviewFor(ctx);
+
+      const sig = this.displayedSignature(ctx);
+
+      if (sig === ctx.lastRenderSig) continue;
+
+      // The baseline moves before the push, as on a telemetry tick, so a tick
+      // arriving while it is in flight does not push the same frame again.
+      ctx.lastRenderSig = sig;
+      ctx.lastChangeRenderAt = Date.now();
+      this.renderFeedback(ctx).catch((err) => {
+        this.host.logger.debug(`Dial auto group redraw failed: ${String(err)}`);
+      });
+    }
   }
 
   /**
@@ -716,7 +781,7 @@ export class CameraDialSurface extends ReleaseDialSurfaceBase<CameraDialContext,
    * — `false` keeps the release from pushing a pointless revert.
    */
   private showHoldPreview(ctx: CameraDialContext): boolean {
-    const preview = this.pendingPreviewFor(ctx.dial);
+    const preview = this.pendingPreviewFor(ctx);
 
     if (!preview) return false;
 
@@ -754,9 +819,26 @@ export class CameraDialSurface extends ReleaseDialSurfaceBase<CameraDialContext,
    *    wrong car for a whole lap after a mid-lap pass; nothing is shown.
    *  - `change-camera`, `focus-on-incident`, `focus-on-most-exciting` — the
    *    next angle and the director's picks; iRacing never reports them ahead.
+   *  - `auto-group` (#1656) — knowable, and from the plugin's own state with
+   *    no telemetry: the release stops the automation when this dial owns it
+   *    and starts or takes it over otherwise ({@link AUTO_GROUP_PREVIEW_TEXT}).
    *  - `none` — nothing to preview.
+   *
+   * Long Touch has no preview on any gesture: the host reports a touch only
+   * once it has ended, so there is no mid-hold moment to draw one in.
    */
-  private pendingPreviewFor(dial: DialSettings): DialPendingPreview | null {
+  private pendingPreviewFor(ctx: CameraDialContext): DialPendingPreview | null {
+    const dial = ctx.dial;
+
+    if (dial.longPressAction === "auto-group") {
+      const owner = this.host.isAutoGroupOwner(ctx.action.id);
+
+      return {
+        text: owner ? AUTO_GROUP_PREVIEW_TEXT.off : AUTO_GROUP_PREVIEW_TEXT.on,
+        color: resolveDialBoxColors(dial.colors, MODE_COLOR[dial.mode]).value,
+      };
+    }
+
     if (dial.longPressAction !== "focus-my-car") return null;
 
     const telemetry = this.host.getTelemetry();
@@ -832,7 +914,9 @@ export class CameraDialSurface extends ReleaseDialSurfaceBase<CameraDialContext,
   }
 
   /** Runs a configured press / touch gesture through the keypad's own dispatch. */
-  private doGesture(contextId: string, gesture: GestureSlot): void {
+  private doGesture(ctx: CameraDialContext, gesture: GestureSlot): void {
+    const contextId = ctx.action.id;
+
     switch (gesture) {
       case "focus-my-car":
         this.host.logger.info("Camera dial focus my car");
@@ -857,6 +941,11 @@ export class CameraDialSurface extends ReleaseDialSurfaceBase<CameraDialContext,
       case "focus-on-most-exciting":
         this.host.logger.info("Camera dial focus on most exciting");
         this.host.focusOnMostExciting(contextId);
+
+        return;
+      case "auto-group":
+        this.host.logger.info("Camera dial auto group");
+        this.host.toggleAutoGroup(contextId, ctx.dial);
 
         return;
       case "none":
@@ -1029,13 +1118,15 @@ export class CameraDialSurface extends ReleaseDialSurfaceBase<CameraDialContext,
 
   /**
    * A compact signature of the displayed strip; a feedback push is due when it
-   * changes. Carries the pending preview (issue #1120) as well as the readout,
-   * so the baseline describes what is actually on the strip.
+   * changes. Carries the pending preview (issue #1120) and the Auto Group on
+   * marker (#1656) as well as the readout, so the baseline describes what is
+   * actually on the strip.
    */
   private displayedSignature(ctx: CameraDialContext): string {
     const readout = this.readoutSignature(ctx);
+    const marked = this.host.isAutoGroupOwner(ctx.action.id) ? `${readout}|auto-group` : readout;
 
-    return ctx.preview ? `${readout}|pending:${ctx.preview.text}` : readout;
+    return ctx.preview ? `${marked}|pending:${ctx.preview.text}` : marked;
   }
 
   /** The readout part of the signature: the mode's centre and side values. */
@@ -1150,9 +1241,28 @@ export class CameraDialSurface extends ReleaseDialSurfaceBase<CameraDialContext,
 
   /**
    * Builds the drawing for the dial's own screen (#1013): the strip carousels,
-   * or the knob carousel over the same resolved view.
+   * or the knob carousel over the same resolved view, with the Auto Group on
+   * marker (#1656) on top of whatever the mode drew while this dial owns the
+   * running automation.
    */
-  private renderCanvas(canvas: DialCanvasProfile, dial: DialSettings, pending: DialPendingPreview | null): string {
+  private renderCanvas(
+    canvas: DialCanvasProfile,
+    dial: DialSettings,
+    pending: DialPendingPreview | null,
+    autoGroupOwner: boolean,
+  ): string {
+    const drawing = this.renderModeCanvas(canvas, dial, pending);
+
+    if (!autoGroupOwner) return drawing;
+
+    const marker = renderAutoGroupMarker(canvas, resolveDialBoxColors(dial.colors, MODE_COLOR[dial.mode]));
+    const end = drawing.lastIndexOf("</svg>");
+
+    return `${drawing.slice(0, end)}${marker}${drawing.slice(end)}`;
+  }
+
+  /** The mode's own drawing for the dial's screen. */
+  private renderModeCanvas(canvas: DialCanvasProfile, dial: DialSettings, pending: DialPendingPreview | null): string {
     switch (canvas.id) {
       case "sd-plus-strip":
         return this.renderStrip(dial, pending);
@@ -1253,7 +1363,8 @@ export class CameraDialSurface extends ReleaseDialSurfaceBase<CameraDialContext,
     // stale state A while the baseline says B — suppressing B's render until
     // yet another change.
     const renderedSignature = this.displayedSignature(ctx);
-    await ctx.action.setDialCanvas(svgToDataUri(this.renderCanvas(canvas, ctx.dial, ctx.preview)));
+    const autoGroupOwner = this.host.isAutoGroupOwner(ctx.action.id);
+    await ctx.action.setDialCanvas(svgToDataUri(this.renderCanvas(canvas, ctx.dial, ctx.preview, autoGroupOwner)));
 
     // Reset the change-detector baseline so this pushed feedback doesn't
     // immediately re-fire the render-on-change path on the next telemetry tick.
