@@ -59,7 +59,7 @@ The candidates are the ticked names the current session has, matched with #1653'
 - **In order** steps through the candidates from where it left off, wrapping at the end. If the camera is already in the next group, it steps once more, so a car change is always visibly a new shot when there are two or more candidates.
 - **Random** picks uniformly from the candidates other than the group the camera is in now.
 
-With exactly one candidate, both switch to it if the camera is elsewhere and send nothing if it is already there. With none (an empty list included), nothing is sent, and the key is drawn with the shared unavailable look while a session is loaded, as #1653 does for a missing group; an on key that is also unavailable keeps the unavailable look.
+With exactly one candidate, both switch to it if the camera is elsewhere and send nothing if it is already there. With none (an empty list included), nothing is sent, and the key shows **N/A** while a session is loaded, in place of #1653's unavailable look (decision 7); an owning key shows N/A too, and a press there still toggles the automation.
 
 Rejected: weights per group. Nothing asked for them, and a name ticked twice cannot express one.
 
@@ -69,7 +69,7 @@ Rejected: weights per group. Nothing asked for them, and a name ticked twice can
 
 ### 7. The key icon
 
-The mode gets an on/off icon pair in the Camera Controls style. Niklas approves both on a review page before they are committed. The default title is `AUTO\nGROUP`. On is drawn with the toggle actions' green state border (`borderStateColor`), off with the grey one, so the state reads the same way as every other toggle key.
+The key uses the tri-state toggle template of the Pit Crew toggles (Corner Names on/off, Race Engineer on/off), as Niklas asked on 2026-11-23: one artwork (a camera between rotation arrows, with the amber "A" auto badge) and the shared status bar. It shows **ON** (green) while this key runs the automation, **OFF** (red) when it is off or another key or dial runs it, and **N/A** (grey) when the session has none of the ticked groups or none is ticked. The border follows `borderColorForState` (green, red, grey) and shows only when key borders are on; the `AUTO\nGROUP` title is hidden by default, as on the Pit Crew keys. Niklas approves the icons on a review page before they are committed.
 
 ### 8. Communication method
 
