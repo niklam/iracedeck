@@ -33,11 +33,13 @@ const tree = (...parts) => path.join(REPO, ...parts);
  * is past 25 ms (the sizes the callers pick put each pass's known quadratic
  * well past it), and an exponential one thousands of times.
  *
- * A failed comparison is measured again, up to `ATTEMPTS` times in all, and
- * the check holds if any attempt does. Load only ever slows a run, so a busy
- * machine can push one attempt past the bound (87 ms against 84.9 ms in a full
- * `pnpm test`, #1647), while a super-linear read fails every attempt. Returns
- * the timings of the last attempt.
+ * A failed comparison takes three more runs at each size, up to `ATTEMPTS`
+ * rounds in all, and compares the fastest of every run so far. Load only ever
+ * slows a run, so a busy machine can push one round past the bound (87 ms
+ * against 84.9 ms in a full `pnpm test`, #1647); more runs can only lower
+ * each fastest time, and the one at `n` is what sets the bound, so a slowed
+ * round can never loosen it, while a super-linear read stays over it. Returns
+ * the two timings.
  */
 function readsLinearly(make, n, re, found, read = (c) => lexer.has(c, re)) {
   const time = (size) => {
@@ -48,22 +50,23 @@ function readsLinearly(make, n, re, found, read = (c) => lexer.has(c, re)) {
     expect(read(command), command.slice(0, 40)).toBe(found);
     return performance.now() - started;
   };
-  const measure = () => {
-    const runs = [[], []];
+  const runs = [[], []];
+  const fastest = () => runs.map((r) => Math.min(...r));
+  let rounds = 0;
+  do {
     for (let k = 0; k < 3; k++) {
       runs[0].push(time(n));
       runs[1].push(time(2 * n));
     }
-    return runs.map((r) => Math.min(...r));
-  };
-  let [t1, t2] = measure();
-  for (let attempt = 1; attempt < ATTEMPTS && t2 > 3 * t1 + 25; attempt++) [t1, t2] = measure();
-  const label = `${make(1).slice(0, 40)}: ${t1.toFixed(1)} ms at ${n}, ${t2.toFixed(1)} ms at ${2 * n}`;
-  expect(t2, `${label}, in each of ${ATTEMPTS} attempts`).toBeLessThanOrEqual(3 * t1 + 25);
+    rounds++;
+  } while (rounds < ATTEMPTS && fastest()[1] > 3 * fastest()[0] + 25);
+  const [t1, t2] = fastest();
+  const label = `${make(1).slice(0, 40)}: ${t1.toFixed(1)} ms at ${n}, ${t2.toFixed(1)} ms at ${2 * n}, fastest of ${3 * rounds} runs each`;
+  expect(t2, label).toBeLessThanOrEqual(3 * t1 + 25);
   return [t1, t2];
 }
 
-/** How many times `readsLinearly` measures before a comparison over its bound fails. */
+/** How many rounds of three runs per size `readsLinearly` takes before a comparison over its bound fails. */
 const ATTEMPTS = 3;
 
 describe("helpers", () => {
