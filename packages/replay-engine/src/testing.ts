@@ -2,13 +2,27 @@
  * Test helpers shared with `iracing-actions`' tests (#1467); never imported by
  * production code. Reached as `@iracedeck/replay-engine/testing`.
  *
- * Besides the helpers, the test hooks and the engine names only tests reach
- * (#1502): the main barrel carries what production imports and no more, so a
- * `_reset*` / `_configure*` hook is never callable from production code.
+ * Besides the helpers, the test hooks and the engine names only other
+ * packages' tests reach (#1502): the main barrel carries what production
+ * imports and no more, so a `_reset*` / `_configure*` hook is never callable
+ * from production code. `index.test.ts` fails on a barrel name no production
+ * source outside the engine imports (#1661), and names this entry as where it
+ * goes when another package's tests need it.
  */
 export { _configureReplayEngine } from "./replay-engine-env.js";
-export { _resetReplayCursor, cancelReplayCursorOwner, capturedJumpSpeed, claimReplayCursor } from "./replay-cursor.js";
-export { clearReplayTarget, pendingReplayTarget, replayTargetGiveUpMs } from "./replay-position-state.js";
+export {
+  _resetReplayCursor,
+  cancelReplayCursorOwner,
+  capturedJumpSpeed,
+  claimReplayCursor,
+  currentReplayCursorOwner,
+} from "./replay-cursor.js";
+export {
+  clearReplayTarget,
+  pendingReplayTarget,
+  REPLAY_TARGET_GIVE_UP_MS,
+  replayTargetGiveUpMs,
+} from "./replay-position-state.js";
 export { _resetReplaySpeedState, noteTelemetrySpeed, resolveLiveSpeed } from "./replay-speed-state.js";
 export { noteReplaySpeedSent } from "./replay-speed-state.test-support.js";
 export { _resetCameraSwitchWaiter, isCameraSwitchWaiting } from "./camera-switch-waiter.js";
@@ -16,7 +30,7 @@ export { cancelLapWalks, FASTEST_LAP_WALK_OWNER, RACE_START_WALK_OWNER } from ".
 export { _activeLapPress } from "./lap-press.js";
 export { _getFastestLapSessionCache } from "./lap-walk.js";
 export { jumpToRecordedLapStart } from "./fastest-lap-press.js";
-export { isReplayJumpSequenceOpen } from "./replay-command-gate.js";
+export { isReplayJumpSequenceOpen, isReplayMoveUnderWay } from "./replay-command-gate.js";
 export {
   type CursorTestEvent,
   cursorTestEvent,

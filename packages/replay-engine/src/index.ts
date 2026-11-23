@@ -3,18 +3,31 @@
  * by plugin-runtime's `initReplay` phase.
  *
  * The production surface (#1502): only what a production source outside the
- * engine imports, and the types those functions take or return. The test hooks (`_reset*`, `_configure*`) and the names only
- * tests reach are on `@iracedeck/replay-engine/testing`; the env itself
+ * engine imports, and the types those functions take or return. The test
+ * hooks (`_reset*`, `_configure*`) and the names only other packages' tests
+ * reach are on `@iracedeck/replay-engine/testing`; a name only the engine's
+ * own tests reach is on neither, imported by relative path. The env itself
  * (`engineEnv`, `engineReads`, `engineLogger`, `setReplayEngineEnv`) is on
  * neither, so only the engine's own modules can reach the injected replay
- * surface. `index.test.ts` keeps the hooks off this barrel.
+ * surface.
+ *
+ * `index.test.ts` holds this file to that, both ways (#1502, #1661): no name
+ * here is a `_` hook; every engine type an exported signature names is
+ * exported; every value is imported by name by a production source outside
+ * the engine (tests, test support, `./testing` entries and `__fixtures__` do
+ * not count); and every type is too, unless it is a contract type, one a
+ * signature names or a contract type's own declaration does. A production
+ * source imports this barrel by name only: a namespace import, `export *`, a
+ * default or side-effect import, an empty `import {}` or `export {}`, a
+ * dynamic `import(…)` or `require(…)` and a whole-module `import("…")` type
+ * are refused, since they name nothing to count.
  */
 export { configureReplayEngine } from "./replay-engine-configure.js";
 export type { ReplayEngineController, ReplayEngineEnv } from "./replay-engine-env.js";
-export { currentReplayCursorOwner, type ReplayCursorClaim } from "./replay-cursor.js";
+export type { ReplayCursorClaim } from "./replay-cursor.js";
 export { planFrameMove, type FrameMove } from "./replay-frame-move.js";
 export { isSameSpeed, PAUSED, type ReplaySpeed } from "./replay-jump-speed.js";
-export { REPLAY_TARGET_GIVE_UP_MS, type ReplayPosition } from "./replay-position-state.js";
+export type { ReplayPosition } from "./replay-position-state.js";
 export { isSeeking, type ReplaySeekSample } from "./replay-seek.js";
 export { REPLAY_JUMP_MAX_WAIT_MS } from "./replay-timing.js";
 export {
@@ -38,7 +51,6 @@ export {
   type ReplayGateRecord,
   getReplayGateView,
   type ReplayGateView,
-  isReplayMoveUnderWay,
   pressReplayCommand,
   readReplayPosition,
   type ReplayPressOptions,

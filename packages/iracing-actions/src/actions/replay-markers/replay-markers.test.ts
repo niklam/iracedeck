@@ -1,10 +1,10 @@
 import { ReplayPosMode, replaySpeedToSdk, type TelemetryData } from "@iracedeck/iracing-sdk";
-import { currentReplayCursorOwner } from "@iracedeck/replay-engine";
 import {
   _resetReplayCursor,
   cancelReplayCursorOwner,
   claimReplayCursor,
   clearReplayTarget,
+  currentReplayCursorOwner,
   pendingReplayTarget,
   withSteppedReplayState,
 } from "@iracedeck/replay-engine/testing";

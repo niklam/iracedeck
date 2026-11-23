@@ -21,19 +21,43 @@
  *   and `createInitialState`'s returned object initialises it with a
  *   no-argument call to it. Reported by member name, or `<Type>.<field>` for an
  *   optional field.
- * - **B** — the pin only shrinks, and each pinned name sits under its own
- *   heading: a pinned name that is no longer a member, a name pinned under a
+ * - **B** — the pin matches the file and only shrinks. `scanStateSlices`
+ *   reports a pinned name that is no longer a member, a name pinned under a
  *   heading other than the one it sits under, a name pinned twice, an empty
- *   entry, or an entry whose heading `state.ts` no longer has. Reported by
- *   member name, or by heading for the last two.
+ *   entry, or an entry whose heading `state.ts` no longer has (by member name,
+ *   or by heading for the last two). `checkFlatPinFrozen` holds the pin's
+ *   names, headings left out, against `FROZEN_FLAT_MEMBERS`, the names it
+ *   held when frozen (`state-slices.baseline.test-support.ts`, whose lines
+ *   are only ever deleted): a pinned name the baseline does not hold fails,
+ *   however many others the change removed, so neither a name added nor one
+ *   swapped in (a rename included) gets past a shrink; a baseline name the pin
+ *   no longer holds fails, naming the line to delete; and a baseline out of
+ *   code-unit order or with a repeat fails. No record or list is ever printed
+ *   to copy. Reported by the name.
  * - **C** — under `diff/`, a module that imports `TranslatorState`
  *   (`import type { … }`, `import { type … }`, plain, through a namespace
- *   import used as `ns.TranslatorState`, or inline as
- *   `import("../state.js").TranslatorState`):
+ *   import used as `ns.TranslatorState` in a type or an `extends` clause,
+ *   inline as `import("../state.js").TranslatorState`, re-exported by name, or
+ *   re-exported with `export *` / `export type *` / `export * as ns` /
+ *   `export type * as ns` from the state module or from a scanned module that
+ *   exports `TranslatorState` by name, resolved against the sources and
+ *   followed through its own star re-exports, a cycle ending the walk
+ *   (`resolveModule`, `exportsStateByName`);
+ *   the named, namespace, inline and re-export forms count `TranslatorState`
+ *   from any relative module, not only `state.ts`, since a module that
+ *   re-exports it relays it, as in
+ *   `import type { TranslatorState } from "../translator-types.js"`; and
+ *   a qualified name ending in `TranslatorState` counts at any depth
+ *   (`ns.TranslatorState`, `facade.model.TranslatorState`, in a type or an
+ *   `extends` clause) when its leftmost name is imported from a relative
+ *   module, named, namespace or default, since that may be a namespace a
+ *   facade re-exports):
  *   - names no slice type;
- *   - exports no type alias or interface that is, or holds, the state (the
- *     scan reads each module alone, so a module importing such a type would
- *     reach the state unseen);
+ *   - exports no type alias, interface or `import X = …` alias that is, or
+ *     holds, the state, at the top level or as a member of an exported
+ *     namespace at any depth (`exportedDeclarations`; the scan reads each
+ *     module alone, so a module importing such a type would reach the state
+ *     unseen);
  *   - reads no slice key off a value whose type IS the state.
  *
  *   A type is the state through parentheses, unions, intersections,
@@ -57,24 +81,65 @@
  *   `for … of` / `for … in` head, and no `Object.assign(<x>, { <sliceKey>: … })`
  *   (shorthand included). `Object.assign(<slice>, create<Type>())`, the in-place
  *   clear, passes. Reported by slice key.
+ * - **E** — `checkStateImporters`, over the scan's `stateImporters` (the
+ *   modules rule C treats as importing `TranslatorState`, exactly): every one
+ *   is named by the importer pin, the `diff/` modules that took the whole state
+ *   when it was frozen, and the pin only shrinks. A module the pin does not
+ *   name is a new diff module on the whole state; a pinned module that is no
+ *   longer a diff module or no longer imports the state is a stale entry,
+ *   reported with its pin entry and baseline line to delete; an entry named
+ *   twice is reported too; and the pin is held against
+ *   `FROZEN_WHOLE_STATE_DIFF_MODULES` as rule B's pin is against its
+ *   baseline. Reported by module. Like rules
+ *   A–D it reads each module's syntax alone, so it sees the state only where a
+ *   module names `TranslatorState` (in the forms rule C reads): a type derived
+ *   without naming it, such as `Parameters<typeof diffFlags>[0]` or
+ *   `SimRawState["state"]`, is not counted. Catching that needs the type
+ *   checker over the package; such a disguise is left to review.
+ * - **F** — `scanSourceModule`, over every other production module under
+ *   `src/` (`SliceSources.other`: neither `state.ts` nor `diff/`, no tests,
+ *   test support or declarations): `TranslatorState` is exported under no
+ *   other name. Rule E counts an import of the state by that name, so a relay
+ *   under another name would carry it into a diff module unseen (#1661 QA:
+ *   `export type { TranslatorState as WholeTranslatorState } from
+ *   "./state.js"`). Refused: `TranslatorState` re-exported `as` another name
+ *   from any relative module, or a local import of it exported under another
+ *   name; an exported alias or interface that IS the state in rule C's sense
+ *   (`type X = Readonly<TranslatorState>`, `interface X extends
+ *   TranslatorState`, `import("./state.js").TranslatorState`, a local alias
+ *   exported `as` another name, an `export import X = …` alias), at the top
+ *   level or as a member of an exported namespace at any depth
+ *   (`export namespace model { export type Whole = TranslatorState }`,
+ *   dotted, `declare`d or re-exported by `export { model }` included); and
+ *   `state.ts` exported as a namespace (`export * as ns from "./state.js"`,
+ *   a namespace import re-exported).
+ *   Passes: the state relayed as `TranslatorState` (`export *` included), a
+ *   type that only holds it (`{ state: TranslatorState }`), and any other
+ *   name renamed. A facade's `export * as ns from "./relay.js"` passes too:
+ *   a diff module can reach the state through it only by a qualified name
+ *   ending in `TranslatorState`, which rule C counts at any depth, so only a
+ *   rename loses the name and only a rename is refused. Reported by the
+ *   exported name, with the module relative to `src/`. A type derived without
+ *   naming the state is E's gap above, here
+ *   too.
  *
  * `scan` findings are a source the scanner cannot read at all (no
  * `TranslatorState` type literal, no `createInitialState` returning an object
  * literal).
  */
 import { readdirSync, readFileSync } from "node:fs";
-import { join, relative, sep } from "node:path";
+import { join, posix, relative, sep } from "node:path";
 import ts from "typescript";
 
 /** Which rule a violation breaks; `heading`, `allow` and `scan` are the scanner's own. */
-export type SliceRule = "A" | "B" | "C" | "D" | "heading" | "allow" | "scan";
+export type SliceRule = "A" | "B" | "C" | "D" | "E" | "F" | "heading" | "allow" | "scan";
 
 /** One broken rule, by the name it is about and what to do. */
 export interface SliceViolation {
   readonly rule: SliceRule;
   /** The member, slice key, slice type, `<Type>.<field>`, heading or allow-list key the finding is about. */
   readonly name: string;
-  /** The diff module, relative to `diff/` (`laps.ts`), for a C or D finding. */
+  /** The module a C, D or E finding is about, relative to `diff/` (`laps.ts`); an F finding's, relative to `src/` (`translator.ts`). */
   readonly module?: string;
   readonly line?: number;
   /** What is wrong and what to do about it. */
@@ -112,19 +177,23 @@ export interface SliceScan {
   readonly slices: readonly SliceMember[];
   /** Every diff module scanned, relative to `diff/`. */
   readonly diffModules: readonly string[];
-  /** The diff modules that import `TranslatorState`, in either import form. */
+  /** The diff modules that import `TranslatorState`, in any form rule C reads (the header lists them), sorted. */
   readonly stateImporters: readonly string[];
+  /** Every module rule F scanned, relative to `src/`. */
+  readonly sourceModules: readonly string[];
   /** Every rule-C read of a slice key, allowed or not. */
   readonly sliceReads: readonly SliceRead[];
   /** Every rule broken, in the order found. */
   readonly violations: readonly SliceViolation[];
 }
 
-/** The sources a scan reads: `state.ts`'s text and every production module under `diff/`. */
+/** The sources a scan reads: `state.ts`'s text, every production module under `diff/`, and every other one under `src/`. */
 export interface SliceSources {
   readonly state: string;
   /** Path relative to `diff/` with `/` separators → text. */
   readonly diff: ReadonlyMap<string, string>;
+  /** Rule F's modules: every production module under `src/` but `state.ts` and `diff/`, path relative to `src/` → text. None when absent. */
+  readonly other?: ReadonlyMap<string, string>;
 }
 
 /** Section heading → the flat member names still under it. */
@@ -133,38 +202,59 @@ export type FlatMemberPin = Readonly<Record<string, readonly string[]>>;
 /** `<module>:<sliceKey>` (module relative to `diff/`) → why that module may still read that slice through `TranslatorState`. */
 export type SliceReadAllowList = Readonly<Record<string, string>>;
 
-/** `state.ts` and every production `.ts` module under `diff/` (no tests, test support or declarations), from the package's `src`. */
+/**
+ * `state.ts`, every production `.ts` module under `diff/`, and every other
+ * production `.ts` module under the package's `src` (rule F's), with no tests,
+ * test support or declarations among them.
+ */
 export function readSliceSources(srcDir: string): SliceSources {
   const diffDir = join(srcDir, "diff");
-  const diff = new Map<string, string>();
-  const walk = (dir: string): void => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const full = join(dir, entry.name);
+  const statePath = join(srcDir, "state.ts");
+  /** Every production module under `root`, relative to `root`, leaving out the paths in `skip` and anything under them. */
+  const readModules = (root: string, skip: readonly string[]): Map<string, string> => {
+    const modules = new Map<string, string>();
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
 
-      if (entry.isDirectory()) {
-        walk(full);
+        if (skip.includes(full)) continue;
 
-        continue;
+        if (entry.isDirectory()) {
+          walk(full);
+
+          continue;
+        }
+
+        if (!entry.isFile() || !entry.name.endsWith(".ts")) continue;
+
+        if (
+          entry.name.endsWith(".d.ts") ||
+          entry.name.endsWith(".test.ts") ||
+          entry.name.endsWith(".test-support.ts")
+        ) {
+          continue;
+        }
+
+        modules.set(relative(root, full).split(sep).join("/"), readFileSync(full, "utf8"));
       }
+    };
 
-      if (!entry.isFile() || !entry.name.endsWith(".ts")) continue;
+    walk(root);
 
-      if (entry.name.endsWith(".d.ts") || entry.name.endsWith(".test.ts") || entry.name.endsWith(".test-support.ts")) {
-        continue;
-      }
-
-      diff.set(relative(diffDir, full).split(sep).join("/"), readFileSync(full, "utf8"));
-    }
+    return modules;
   };
 
-  walk(diffDir);
-
-  return { state: readFileSync(join(srcDir, "state.ts"), "utf8"), diff };
+  return {
+    state: readFileSync(statePath, "utf8"),
+    diff: readModules(diffDir, []),
+    other: readModules(srcDir, [diffDir, statePath]),
+  };
 }
 
 const HEADING = /^\/\/\s*──\s*(.+?)\s*─*\s*$/;
 const STATE_TYPE = "TranslatorState";
 const VIRTUAL_ROOT = "/virtual/diff/";
+const VIRTUAL_SRC_ROOT = "/virtual/src/";
 const DECISION_1 = "#1588 spec, decision 1";
 
 function lineOf(file: ts.SourceFile, node: ts.Node): number {
@@ -486,10 +576,11 @@ function checkState(state: StateFile, pin: FlatMemberPin, violations: SliceViola
 
 // ── diff/ ───────────────────────────────────────────────────────────────
 
-function createDiffProgram(sources: ReadonlyMap<string, string>): ts.Program {
+/** A program over `sources` alone (no lib, no module resolution), each at `root` + its path. */
+function createVirtualProgram(sources: ReadonlyMap<string, string>, root: string): ts.Program {
   const byPath = new Map<string, string>();
 
-  for (const [name, text] of sources) byPath.set(VIRTUAL_ROOT + name, text);
+  for (const [name, text] of sources) byPath.set(root + name, text);
 
   const host: ts.CompilerHost = {
     getSourceFile: (fileName, languageVersion) => {
@@ -497,9 +588,9 @@ function createDiffProgram(sources: ReadonlyMap<string, string>): ts.Program {
 
       return text === undefined ? undefined : ts.createSourceFile(fileName, text, languageVersion, true);
     },
-    getDefaultLibFileName: () => `${VIRTUAL_ROOT}lib.d.ts`,
+    getDefaultLibFileName: () => `${root}lib.d.ts`,
     writeFile: () => undefined,
-    getCurrentDirectory: () => VIRTUAL_ROOT,
+    getCurrentDirectory: () => root,
     getCanonicalFileName: (fileName) => fileName,
     useCaseSensitiveFileNames: () => true,
     getNewLine: () => "\n",
@@ -512,6 +603,11 @@ function createDiffProgram(sources: ReadonlyMap<string, string>): ts.Program {
     { noLib: true, noResolve: true, types: [], target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.ESNext },
     host,
   );
+}
+
+/** Whether `specifier` is a relative module specifier (`./x.js`, `../state.js`). */
+function isRelativeModule(specifier: ts.Expression): specifier is ts.StringLiteral {
+  return ts.isStringLiteral(specifier) && specifier.text.startsWith(".");
 }
 
 /** Whether `specifier` is a relative import of the package's `state.ts`. */
@@ -586,67 +682,158 @@ function rightmostName(name: ts.EntityName): string {
   return ts.isIdentifier(name) ? name.text : name.right.text;
 }
 
-/** Rules C and D over one diff module; pushes D and the type-level C findings, returns the slice reads. */
-function scanModule(
-  module: string,
-  file: ts.SourceFile,
-  checker: ts.TypeChecker,
-  slices: readonly SliceMember[],
-  violations: SliceViolation[],
-): ModuleScan {
-  const sliceKeys = new Map(slices.map((slice) => [slice.key, slice.type]));
-  const sliceTypes = new Set(slices.map((slice) => slice.type));
+/**
+ * The leftmost identifier and the rightmost name of a qualified name at any
+ * depth (`a.b.C`, as a type's `QualifiedName` or an `extends` clause's property
+ * access), or `undefined` for a bare identifier or anything else.
+ */
+function qualifiedParts(
+  name: ts.EntityName | ts.Expression,
+): { readonly leftmost: ts.Identifier; readonly rightmost: string } | undefined {
+  if (!ts.isQualifiedName(name) && !ts.isPropertyAccessExpression(name)) return undefined;
+
+  const rightmost = ts.isQualifiedName(name) ? name.right.text : name.name.text;
+  let current: ts.Node = name;
+
+  while (ts.isQualifiedName(current) || ts.isPropertyAccessExpression(current)) {
+    current = ts.isQualifiedName(current) ? current.left : current.expression;
+  }
+
+  return ts.isIdentifier(current) ? { leftmost: current, rightmost } : undefined;
+}
+
+/** How one module's types reach `TranslatorState`, read from its imports and its own declarations alone. */
+interface StateTypes {
+  /** The local names `TranslatorState` is imported under, from any relative module. */
+  readonly stateImports: ReadonlySet<ts.Symbol>;
+  /** Namespace imports of `state.ts`. */
+  readonly stateNamespaces: ReadonlySet<ts.Symbol>;
+  readonly symbolOf: (node: ts.Node) => ts.Symbol | undefined;
+  /** The `state.ts` export a type names, if any (`TranslatorState` through a relay too). */
+  readonly stateExportOf: (node: ts.TypeReferenceNode | ts.ImportTypeNode) => string | undefined;
+  /** The shape of a module-local alias or interface, or `undefined` when `symbol` is not one. */
+  readonly declaredShape: (symbol: ts.Symbol | undefined, depth: number) => Shape | undefined;
+  readonly namedShape: (
+    name: ts.EntityName | ts.Expression,
+    typeArguments: readonly ts.TypeNode[] | undefined,
+    depth: number,
+  ) => Shape;
+  readonly shapeOf: (type: ts.TypeNode, depth?: number) => Shape;
+}
+
+/**
+ * Reads how `file`'s types reach `TranslatorState`: its imports of it and of
+ * `state.ts`, and the shapes of its types (`shapeOf`). Shared by rule C over
+ * the diff modules and rule F over the other modules.
+ */
+function readStateTypes(file: ts.SourceFile, checker: ts.TypeChecker, sliceTypes: ReadonlySet<string>): StateTypes {
   /** The local names `TranslatorState` is imported under. */
   const stateImports = new Set<ts.Symbol>();
   /** Namespace imports of `state.ts`. */
   const stateNamespaces = new Set<ts.Symbol>();
+  /**
+   * Every binding imported from a relative module, named, namespace or
+   * default: any of them may be a namespace a relay re-exports (`export * as
+   * model from "./relay.js"`, at any depth), so `x.….TranslatorState` with one
+   * of them leftmost is the state.
+   */
+  const importedBindings = new Set<ts.Symbol>();
   /** Local names of slice types imported from `state.ts`, by alias symbol. */
   const sliceTypeAliases = new Map<ts.Symbol, string>();
   const symbolOf = (node: ts.Node): ts.Symbol | undefined => checker.getSymbolAtLocation(node);
-  const pushC = (name: string, node: ts.Node, message: (where: string) => string): void => {
-    const line = lineOf(file, node);
+  const bind = (name: ts.Identifier): ts.Symbol | undefined => {
+    const symbol = symbolOf(name);
 
-    violations.push({ rule: "C", name, module, line, message: message(`diff/${module}:${line}`) });
+    if (symbol !== undefined) importedBindings.add(symbol);
+
+    return symbol;
   };
 
+  // `TranslatorState` by name is the state from any relative module, not only
+  // from state.ts: a module that re-exports it (`export type {
+  // TranslatorState } from "./state.js"`) relays it as surely, and the scan
+  // reads each diff module alone, so it cannot follow the relay. Slice types
+  // are read from state.ts only.
   for (const statement of file.statements) {
-    if (!ts.isImportDeclaration(statement) || !isStateModule(statement.moduleSpecifier)) continue;
+    if (!ts.isImportDeclaration(statement) || !isRelativeModule(statement.moduleSpecifier)) continue;
 
-    const bindings = statement.importClause?.namedBindings;
+    const fromState = isStateModule(statement.moduleSpecifier);
+    const clause = statement.importClause;
+
+    if (clause?.name !== undefined) bind(clause.name);
+
+    const bindings = clause?.namedBindings;
 
     if (bindings === undefined) continue;
 
     if (ts.isNamespaceImport(bindings)) {
-      const symbol = symbolOf(bindings.name);
+      const symbol = bind(bindings.name);
 
-      if (symbol !== undefined) stateNamespaces.add(symbol);
+      if (symbol !== undefined && fromState) stateNamespaces.add(symbol);
 
       continue;
     }
 
     for (const element of bindings.elements) {
       const imported = (element.propertyName ?? element.name).text;
-      const symbol = symbolOf(element.name);
+      const symbol = bind(element.name);
 
       if (symbol === undefined) continue;
 
       if (imported === STATE_TYPE) stateImports.add(symbol);
 
-      if (sliceTypes.has(imported)) sliceTypeAliases.set(symbol, imported);
+      if (fromState && sliceTypes.has(imported)) sliceTypeAliases.set(symbol, imported);
     }
   }
 
   /**
+   * Whether a qualified name (`ns.TranslatorState`, `facade.model.TranslatorState`,
+   * as a type or an `extends` expression) ends in `TranslatorState` and starts
+   * with a name imported from a relative module.
+   */
+  const isRelayedState = (name: ts.EntityName | ts.Expression): boolean => {
+    const parts = qualifiedParts(name);
+
+    if (parts === undefined || parts.rightmost !== STATE_TYPE) return false;
+
+    const leftmost = symbolOf(parts.leftmost);
+
+    return leftmost !== undefined && importedBindings.has(leftmost);
+  };
+
+  // `import Whole = facade.model.TranslatorState` (or `= TranslatorState`
+  // imported by name), at the top level or in a namespace, names the state as
+  // surely as an import does; in source order, so an alias of an alias counts.
+  eachNode(file, (node) => {
+    if (!ts.isImportEqualsDeclaration(node) || ts.isExternalModuleReference(node.moduleReference)) return;
+
+    const reference = node.moduleReference;
+    const target = ts.isIdentifier(reference) ? symbolOf(reference) : undefined;
+
+    if (!isRelayedState(reference) && (target === undefined || !stateImports.has(target))) return;
+
+    const symbol = symbolOf(node.name);
+
+    if (symbol !== undefined) stateImports.add(symbol);
+  });
+
+  /**
    * The `state.ts` export a type names, if any: `X` through a named import,
-   * `ns.X` through a namespace import, or `import("../state.js").X` inline.
+   * `ns.X` through a namespace import, or `import("../state.js").X` inline;
+   * and `TranslatorState` through any other relative module the same three
+   * ways.
    */
   const stateExportOf = (node: ts.TypeReferenceNode | ts.ImportTypeNode): string | undefined => {
     if (ts.isImportTypeNode(node)) {
       const specifier = importTypeSpecifier(node);
 
-      return specifier !== undefined && isStateModule(specifier) && node.qualifier !== undefined
-        ? rightmostName(node.qualifier)
-        : undefined;
+      if (specifier === undefined || node.qualifier === undefined) return undefined;
+
+      const name = rightmostName(node.qualifier);
+
+      if (isStateModule(specifier)) return name;
+
+      return isRelativeModule(specifier) && name === STATE_TYPE ? STATE_TYPE : undefined;
     }
 
     const typeName = node.typeName;
@@ -663,7 +850,9 @@ function scanModule(
 
     const left = ts.isIdentifier(typeName.left) ? symbolOf(typeName.left) : undefined;
 
-    return left !== undefined && stateNamespaces.has(left) ? typeName.right.text : undefined;
+    if (left !== undefined && stateNamespaces.has(left)) return typeName.right.text;
+
+    return isRelayedState(typeName) ? STATE_TYPE : undefined;
   };
 
   /** The module-local type alias or interface `symbol` names, if it is one. */
@@ -737,15 +926,7 @@ function scanModule(
       return null;
     }
 
-    const left = ts.isQualifiedName(name)
-      ? name.left
-      : ts.isPropertyAccessExpression(name)
-        ? name.expression
-        : undefined;
-    const right = ts.isQualifiedName(name) ? name.right : ts.isPropertyAccessExpression(name) ? name.name : undefined;
-    const namespace = left !== undefined && ts.isIdentifier(left) ? symbolOf(left) : undefined;
-
-    return namespace !== undefined && stateNamespaces.has(namespace) && right?.text === STATE_TYPE ? STATE : null;
+    return isRelayedState(name) ? STATE : null;
   };
 
   const heritageShape = (heritage: ts.ExpressionWithTypeArguments, depth: number): Shape =>
@@ -787,25 +968,72 @@ function scanModule(
     return null;
   }
 
+  return { stateImports, stateNamespaces, symbolOf, stateExportOf, declaredShape, namedShape, shapeOf };
+}
+
+/** Rules C and D over one diff module; pushes D and the type-level C findings, returns the slice reads. */
+function scanModule(
+  module: string,
+  file: ts.SourceFile,
+  checker: ts.TypeChecker,
+  slices: readonly SliceMember[],
+  violations: SliceViolation[],
+  /** Whether the relative specifier, from this module, names a scanned module that exports `TranslatorState` by name. */
+  relaysState: (specifier: string) => boolean,
+): ModuleScan {
+  const sliceKeys = new Map(slices.map((slice) => [slice.key, slice.type]));
+  const sliceTypes = new Set(slices.map((slice) => slice.type));
+  const { stateImports, symbolOf, stateExportOf, declaredShape, namedShape, shapeOf } = readStateTypes(
+    file,
+    checker,
+    sliceTypes,
+  );
+  const pushC = (name: string, node: ts.Node, message: (where: string) => string): void => {
+    const line = lineOf(file, node);
+
+    violations.push({ rule: "C", name, module, line, message: message(`diff/${module}:${line}`) });
+  };
+
   let importsState = stateImports.size > 0;
 
-  // `export type { TranslatorState } from "../state.js"` brings the state in
-  // as surely as an import does.
+  /**
+   * An `export *`, `export type *`, `export * as ns` or `export type * as ns`
+   * of state.ts or of a scanned module that relays `TranslatorState` by name,
+   * followed transitively: it re-exports the state, as `TranslatorState` or as
+   * `ns.TranslatorState`.
+   */
+  const isWholeStateReExport = (
+    statement: ts.Statement,
+  ): statement is ts.ExportDeclaration & { readonly moduleSpecifier: ts.StringLiteral } =>
+    isRelativeReExport(statement) &&
+    ts.isStringLiteral(statement.moduleSpecifier) &&
+    (statement.exportClause === undefined || ts.isNamespaceExport(statement.exportClause)) &&
+    (isStateModule(statement.moduleSpecifier) || relaysState(statement.moduleSpecifier.text));
+
+  // `export type { TranslatorState } from` any relative module, and a star
+  // re-export of a module that exports it, bring the state in as surely as an
+  // import does.
   for (const statement of file.statements) {
-    if (
-      ts.isExportDeclaration(statement) &&
-      statement.moduleSpecifier !== undefined &&
-      isStateModule(statement.moduleSpecifier) &&
-      statement.exportClause !== undefined &&
-      ts.isNamedExports(statement.exportClause) &&
-      statement.exportClause.elements.some((element) => (element.propertyName ?? element.name).text === STATE_TYPE)
-    ) {
-      importsState = true;
-    }
+    if (!isRelativeReExport(statement)) continue;
+
+    const clause = statement.exportClause;
+    const wholeState = isWholeStateReExport(statement);
+    const namesState =
+      clause !== undefined &&
+      ts.isNamedExports(clause) &&
+      clause.elements.some((element) => (element.propertyName ?? element.name).text === STATE_TYPE);
+
+    if (wholeState || namesState) importsState = true;
   }
 
   eachNode(file, (node) => {
     if ((ts.isTypeReferenceNode(node) || ts.isImportTypeNode(node)) && stateExportOf(node) === STATE_TYPE) {
+      importsState = true;
+    }
+
+    // `interface Ctx extends ns.TranslatorState`, which `namedShape` reads as
+    // the state, is not a type reference node.
+    if (ts.isExpressionWithTypeArguments(node) && namedShape(node.expression, undefined, MAX_SHAPE_DEPTH) === STATE) {
       importsState = true;
     }
   });
@@ -853,13 +1081,33 @@ function scanModule(
           `${where} exports \`${name}\`, which stands for or holds ${STATE_TYPE}: a module importing it would reach the state unseen by this guard. Keep such a type module-local, and import ${STATE_TYPE} from state.ts where it is needed.`,
       );
 
-    for (const statement of file.statements) {
+    // Exported aliases, interfaces and `import X = …` aliases, at the top
+    // level or in an exported namespace.
+    for (const declaration of exportedDeclarations(file, checker)) {
       if (
-        (ts.isTypeAliasDeclaration(statement) || ts.isInterfaceDeclaration(statement)) &&
-        hasExportModifier(statement) &&
-        reachesState(declaredShape(symbolOf(statement.name), 0) ?? null)
+        (ts.isTypeAliasDeclaration(declaration) || ts.isInterfaceDeclaration(declaration)) &&
+        reachesState(declaredShape(symbolOf(declaration.name), 0) ?? null)
       ) {
-        exportedStandIn(statement.name.text, statement.name);
+        exportedStandIn(declaration.name.text, declaration.name);
+      }
+
+      const alias = ts.isImportEqualsDeclaration(declaration) ? symbolOf(declaration.name) : undefined;
+
+      if (ts.isImportEqualsDeclaration(declaration) && alias !== undefined && stateImports.has(alias)) {
+        exportedStandIn(declaration.name.text, declaration.name);
+      }
+    }
+
+    for (const statement of file.statements) {
+      // `export * from` state.ts or a relay re-exports `TranslatorState` under
+      // its own name, `export * as ns from` either as `ns.TranslatorState`.
+      if (isWholeStateReExport(statement)) {
+        const clause = statement.exportClause;
+
+        exportedStandIn(
+          clause !== undefined && ts.isNamespaceExport(clause) ? clause.name.text : STATE_TYPE,
+          statement,
+        );
       }
 
       if (!ts.isExportDeclaration(statement) || statement.exportClause === undefined) continue;
@@ -870,7 +1118,7 @@ function scanModule(
         const local = (element.propertyName ?? element.name).text;
 
         if (statement.moduleSpecifier !== undefined) {
-          if (isStateModule(statement.moduleSpecifier) && local === STATE_TYPE)
+          if (isRelativeModule(statement.moduleSpecifier) && local === STATE_TYPE)
             exportedStandIn(element.name.text, element);
 
           continue;
@@ -1122,6 +1370,147 @@ function scanModule(
   return { importsState, reads };
 }
 
+/** Every scanned module's syntax, by its path relative to `src/` (`state.ts`, `diff/laps.ts`, `translator.ts`). */
+type ModuleFiles = ReadonlyMap<string, ts.SourceFile>;
+
+/**
+ * The scanned module a relative specifier names from the module `from`, as
+ * the sources' `.js` specifiers name their `.ts` files (`./relay.js` →
+ * `relay.ts`, `./dir` → `dir.ts` or `dir/index.ts`), or `undefined` when it
+ * is not one of them.
+ */
+function resolveModule(files: ModuleFiles, from: string, specifier: string): string | undefined {
+  const joined = posix.normalize(posix.join(posix.dirname(from), specifier));
+
+  if (joined.startsWith("../")) return undefined;
+
+  const base = joined.replace(/\.(js|ts)$/, "");
+
+  return [`${base}.ts`, `${base}/index.ts`].find((candidate) => files.has(candidate));
+}
+
+/**
+ * Whether the scanned module `key` exports `TranslatorState` by that name:
+ * `state.ts` itself, a named export of it (`export { TranslatorState }`,
+ * `export type { TranslatorState } from …`), an exported declaration of that
+ * name, or an `export *` / `export type *` of a scanned module that does,
+ * followed transitively. A module already walked ends that branch, so a
+ * cycle terminates; a module outside the sources is not known to export it.
+ */
+function exportsStateByName(files: ModuleFiles, key: string, walked = new Set<string>()): boolean {
+  if (key === "state.ts") return true;
+
+  if (walked.has(key)) return false;
+
+  walked.add(key);
+
+  const file = files.get(key);
+
+  if (file === undefined) return false;
+
+  for (const statement of file.statements) {
+    if (ts.isExportDeclaration(statement)) {
+      const clause = statement.exportClause;
+
+      if (clause !== undefined && ts.isNamedExports(clause)) {
+        if (clause.elements.some((element) => element.name.text === STATE_TYPE)) return true;
+
+        continue;
+      }
+
+      if (clause !== undefined || statement.moduleSpecifier === undefined) continue;
+
+      if (!isRelativeModule(statement.moduleSpecifier)) continue;
+
+      const target = resolveModule(files, key, statement.moduleSpecifier.text);
+
+      if (target !== undefined && exportsStateByName(files, target, walked)) return true;
+
+      continue;
+    }
+
+    if (
+      (ts.isTypeAliasDeclaration(statement) || ts.isInterfaceDeclaration(statement)) &&
+      hasExportModifier(statement) &&
+      statement.name.text === STATE_TYPE
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/** Whether `statement` is an `export … from` of any relative module, `state.ts` included. */
+function isRelativeReExport(
+  statement: ts.Statement,
+): statement is ts.ExportDeclaration & { readonly moduleSpecifier: ts.Expression } {
+  return (
+    ts.isExportDeclaration(statement) &&
+    statement.moduleSpecifier !== undefined &&
+    isRelativeModule(statement.moduleSpecifier)
+  );
+}
+
+/**
+ * The declarations `file` exports, in source order: its top-level statements
+ * with an `export` modifier (`export { … }` and `export … from` aside), and,
+ * at any depth, the members of a namespace it exports (`export namespace
+ * model { … }`, dotted ones included, or a local namespace a top-level
+ * `export { model }` names). A member counts when it carries `export`, or
+ * sits in an ambient (`declare`) namespace, where every member is exported.
+ */
+function exportedDeclarations(file: ts.SourceFile, checker: ts.TypeChecker): ts.Statement[] {
+  const found: ts.Statement[] = [];
+  const seen = new Set<ts.ModuleDeclaration>();
+  /** Visits a namespace's members; `ambient` when it or an enclosing namespace is `declare`d. */
+  const visit = (declaration: ts.ModuleDeclaration, enclosingAmbient = false): void => {
+    if (seen.has(declaration) || !ts.isIdentifier(declaration.name)) return;
+
+    seen.add(declaration);
+
+    const ambient = enclosingAmbient || (ts.getCombinedModifierFlags(declaration) & ts.ModifierFlags.Ambient) !== 0;
+    let body = declaration.body;
+
+    while (body !== undefined && ts.isModuleDeclaration(body)) body = body.body;
+
+    if (body === undefined || !ts.isModuleBlock(body)) return;
+
+    for (const member of body.statements) {
+      if (!hasExportModifier(member) && !ambient) continue;
+
+      found.push(member);
+
+      if (ts.isModuleDeclaration(member)) visit(member, ambient);
+    }
+  };
+
+  for (const statement of file.statements) {
+    if (hasExportModifier(statement) && !ts.isExportDeclaration(statement)) {
+      found.push(statement);
+
+      if (ts.isModuleDeclaration(statement)) visit(statement);
+    }
+
+    if (
+      !ts.isExportDeclaration(statement) ||
+      statement.moduleSpecifier !== undefined ||
+      statement.exportClause === undefined ||
+      !ts.isNamedExports(statement.exportClause)
+    ) {
+      continue;
+    }
+
+    for (const element of statement.exportClause.elements) {
+      for (const declaration of checker.getExportSpecifierLocalTargetSymbol(element)?.declarations ?? []) {
+        if (ts.isModuleDeclaration(declaration) && declaration.getSourceFile() === file) visit(declaration);
+      }
+    }
+  }
+
+  return found.sort((a, b) => a.pos - b.pos);
+}
+
 /** Whether `node` carries an `export` modifier. */
 function hasExportModifier(node: ts.Node): boolean {
   return (
@@ -1143,6 +1532,104 @@ function isObjectAssign(callee: ts.Expression): boolean {
 }
 
 /**
+ * Rule F over one module outside `diff/`: it exports `TranslatorState` under
+ * no other name, and exports no type that is the state under another name, so
+ * a diff module importing it is always seen by rule E, which counts an import
+ * of `TranslatorState` by that name. A type that only holds the state
+ * (`{ state: TranslatorState }`) passes; re-exporting it as `TranslatorState`
+ * passes.
+ */
+function scanSourceModule(
+  module: string,
+  file: ts.SourceFile,
+  checker: ts.TypeChecker,
+  sliceTypes: ReadonlySet<string>,
+  violations: SliceViolation[],
+): void {
+  const { stateImports, stateNamespaces, symbolOf, declaredShape } = readStateTypes(file, checker, sliceTypes);
+  const pushF = (name: string, node: ts.Node, how: string): void => {
+    const line = lineOf(file, node);
+
+    violations.push({
+      rule: "F",
+      name,
+      module,
+      line,
+      message: `src/${module}:${line} exports \`${name}\`, ${how}: a diff module importing it would take the whole state unseen by rule E, which counts \`${STATE_TYPE}\` by its name. Relay it as \`${STATE_TYPE}\` if a module must (\`export type { ${STATE_TYPE} } from "./state.js"\`); a new diff module takes its slice (${SLICE_SECTION}).`,
+    });
+  };
+
+  // Exported aliases, interfaces and `import X = …` aliases, at the top level
+  // or in an exported namespace, that are the state under another name.
+  for (const declaration of exportedDeclarations(file, checker)) {
+    if (
+      (ts.isTypeAliasDeclaration(declaration) || ts.isInterfaceDeclaration(declaration)) &&
+      declaration.name.text !== STATE_TYPE &&
+      declaredShape(symbolOf(declaration.name), 0)?.kind === "state"
+    ) {
+      pushF(declaration.name.text, declaration.name, `a type that is ${STATE_TYPE} under another name`);
+    }
+
+    const alias = ts.isImportEqualsDeclaration(declaration) ? symbolOf(declaration.name) : undefined;
+
+    if (
+      ts.isImportEqualsDeclaration(declaration) &&
+      declaration.name.text !== STATE_TYPE &&
+      alias !== undefined &&
+      stateImports.has(alias)
+    ) {
+      pushF(declaration.name.text, declaration.name, `an \`import … =\` alias of ${STATE_TYPE} under another name`);
+    }
+  }
+
+  for (const statement of file.statements) {
+    if (!ts.isExportDeclaration(statement)) continue;
+
+    const clause = statement.exportClause;
+
+    if (statement.moduleSpecifier !== undefined) {
+      if (clause !== undefined && ts.isNamespaceExport(clause) && isStateModule(statement.moduleSpecifier)) {
+        pushF(
+          clause.name.text,
+          statement,
+          `state.ts as a namespace, carrying ${STATE_TYPE} as \`${clause.name.text}.${STATE_TYPE}\``,
+        );
+      }
+
+      if (clause === undefined || !ts.isNamedExports(clause) || !isRelativeModule(statement.moduleSpecifier)) continue;
+
+      for (const element of clause.elements) {
+        if ((element.propertyName ?? element.name).text === STATE_TYPE && element.name.text !== STATE_TYPE) {
+          pushF(element.name.text, element, `${STATE_TYPE} re-exported under another name`);
+        }
+      }
+
+      continue;
+    }
+
+    if (clause === undefined || !ts.isNamedExports(clause)) continue;
+
+    for (const element of clause.elements) {
+      if (element.name.text === STATE_TYPE) continue;
+
+      const target = checker.getExportSpecifierLocalTargetSymbol(element);
+
+      if (target === undefined) continue;
+
+      if (stateNamespaces.has(target)) {
+        pushF(
+          element.name.text,
+          element,
+          `state.ts as a namespace, carrying ${STATE_TYPE} as \`${element.name.text}.${STATE_TYPE}\``,
+        );
+      } else if (stateImports.has(target) || declaredShape(target, 0)?.kind === "state") {
+        pushF(element.name.text, element, `${STATE_TYPE}, or a type that is it, under another name`);
+      }
+    }
+  }
+}
+
+/**
  * Scans `state.ts` and the diff modules against the pin and the allow-list.
  * Pure: reads nothing but `sources`.
  */
@@ -1150,19 +1637,42 @@ export function scanStateSlices(sources: SliceSources, pin: FlatMemberPin, allow
   const violations: SliceViolation[] = [];
   const state = readStateFile(sources.state, violations);
   const slices = checkState(state, pin, violations);
-  const program = createDiffProgram(sources.diff);
+  const program = createVirtualProgram(sources.diff, VIRTUAL_ROOT);
   const checker = program.getTypeChecker();
   const diffModules = [...sources.diff.keys()].sort();
   const stateImporters: string[] = [];
   const sliceReads: SliceRead[] = [];
   const types = new Map(slices.map((slice) => [slice.key, slice.type]));
+  const otherSources = sources.other ?? new Map<string, string>();
+  const sourceModules = [...otherSources.keys()].sort();
+  const sourceProgram = createVirtualProgram(otherSources, VIRTUAL_SRC_ROOT);
+  // Every module's syntax by its path under src/, so a star re-export is
+  // followed to the module it names.
+  const files = new Map<string, ts.SourceFile>([["state.ts", state.file]]);
+
+  for (const module of diffModules) {
+    const file = program.getSourceFile(VIRTUAL_ROOT + module);
+
+    if (file !== undefined) files.set(`diff/${module}`, file);
+  }
+
+  for (const module of sourceModules) {
+    const file = sourceProgram.getSourceFile(VIRTUAL_SRC_ROOT + module);
+
+    if (file !== undefined) files.set(module, file);
+  }
 
   for (const module of diffModules) {
     const file = program.getSourceFile(VIRTUAL_ROOT + module);
 
     if (file === undefined) continue;
 
-    const { importsState, reads } = scanModule(module, file, checker, slices, violations);
+    const relaysState = (specifier: string): boolean => {
+      const target = resolveModule(files, `diff/${module}`, specifier);
+
+      return target !== undefined && exportsStateByName(files, target);
+    };
+    const { importsState, reads } = scanModule(module, file, checker, slices, violations, relaysState);
 
     if (importsState) stateImporters.push(module);
 
@@ -1202,12 +1712,193 @@ export function scanStateSlices(sources: SliceSources, pin: FlatMemberPin, allow
     }
   }
 
+  const sliceTypes = new Set(slices.map((slice) => slice.type));
+
+  for (const module of sourceModules) {
+    const file = sourceProgram.getSourceFile(VIRTUAL_SRC_ROOT + module);
+
+    if (file !== undefined) scanSourceModule(module, file, sourceProgram.getTypeChecker(), sliceTypes, violations);
+  }
+
   return {
     members: state.members.map(({ member }) => member),
     slices,
     diffModules,
     stateImporters,
+    sourceModules,
     sliceReads,
     violations,
   };
+}
+
+// ── Frozen baselines (rules B and E) ────────────────────────────────────
+
+/** Where the slice convention is written down, for the messages of a list that grew. */
+const SLICE_SECTION = '`packages/sim-events-iracing/CLAUDE.md`, "Translator state slices (#1588)"';
+
+/** The file holding both frozen baselines, relative to the package. */
+const BASELINE_FILE = "src/state-slices.baseline.test-support.ts";
+
+/** One name a shrink-only list holds, and where it holds it (`LEGACY_FLAT_MEMBERS["Flags"]`). */
+interface ListedName {
+  readonly name: string;
+  readonly where: string;
+}
+
+/** How one shrink-only list is held to its frozen baseline. */
+interface BaselineCheck {
+  readonly rule: SliceRule;
+  /** The list's name in `state-slices.test.ts`. */
+  readonly list: string;
+  /** The baseline's name in `BASELINE_FILE`. */
+  readonly baseline: string;
+  /** Why a name the baseline does not hold is refused, and what to do instead. */
+  readonly refuse: string;
+  /** Whether a finding names its entry as its `module` too (rule E's entries are diff modules). */
+  readonly entriesAreModules: boolean;
+}
+
+/**
+ * The list against its frozen baseline, by name: the baseline is sorted by
+ * code unit with no repeats, every listed name is one the baseline holds
+ * (whatever else the change removed, so a name is never let in by a shrink),
+ * and every baseline name is still listed (else its line is deleted). Prints
+ * no record or list to copy: the only edit a failure asks of the baseline is
+ * the deletion of a line it names.
+ */
+function checkAgainstBaseline(
+  listed: readonly ListedName[],
+  frozen: readonly string[],
+  check: BaselineCheck,
+): SliceViolation[] {
+  const violations: SliceViolation[] = [];
+  const push = (name: string, message: string): void => {
+    violations.push(
+      check.entriesAreModules ? { rule: check.rule, name, module: name, message } : { rule: check.rule, name, message },
+    );
+  };
+
+  for (let index = 1; index < frozen.length; index++) {
+    if (frozen[index - 1] < frozen[index]) continue;
+
+    push(
+      frozen[index],
+      `${check.baseline} (${BASELINE_FILE}) has \`${frozen[index]}\` after \`${frozen[index - 1]}\`: keep it sorted by code unit with each name once, so a line has one place to be.`,
+    );
+  }
+
+  const frozenSet = new Set(frozen);
+  const listedNames = new Set<string>();
+
+  for (const { name, where } of listed) {
+    if (listedNames.has(name)) continue;
+
+    listedNames.add(name);
+
+    if (frozenSet.has(name)) continue;
+
+    push(
+      name,
+      `${where} names \`${name}\`, which ${check.baseline} (${BASELINE_FILE}) does not hold: ${check.refuse} The baseline only ever loses lines; never add one to let a name in.`,
+    );
+  }
+
+  for (const name of frozenSet) {
+    if (listedNames.has(name)) continue;
+
+    push(
+      name,
+      `${check.baseline} (${BASELINE_FILE}) holds \`${name}\`, which ${check.list} no longer names: delete the line \`"${name}",\` from ${check.baseline} in the same change, so the name cannot come back.`,
+    );
+  }
+
+  return violations;
+}
+
+/** Rule B's baseline: every name the flat pin holds against `frozen`, the names it held when frozen. */
+export function checkFlatPinFrozen(pin: FlatMemberPin, frozen: readonly string[]): SliceViolation[] {
+  const listed = Object.entries(pin).flatMap(([heading, names]) =>
+    names.map((name) => ({ name, where: `LEGACY_FLAT_MEMBERS["${heading}"]` })),
+  );
+
+  return checkAgainstBaseline(listed, frozen, {
+    rule: "B",
+    list: "LEGACY_FLAT_MEMBERS",
+    baseline: "FROZEN_FLAT_MEMBERS",
+    refuse: `the pin only shrinks. New state goes into a slice, one member \`<family>: <Family>State\` with its \`create<Family>State()\` in state.ts (${SLICE_SECTION}); take the name out of the pin and make its cluster a slice. A flat member renamed is a name added: rename it when its cluster moves into a slice.`,
+    entriesAreModules: false,
+  });
+}
+
+/**
+ * Rule E: every `diff/` module that imports `TranslatorState` is one the
+ * importer pin names, every pinned module still is one, and the pin holds to
+ * `frozen`, the modules it named when frozen. Pure: reads the scan's
+ * `diffModules` and `stateImporters` only.
+ */
+export function checkStateImporters(
+  scan: Pick<SliceScan, "diffModules" | "stateImporters">,
+  pinned: readonly string[],
+  frozen: readonly string[],
+): SliceViolation[] {
+  const violations: SliceViolation[] = [];
+  const pinnedSet = new Set(pinned);
+  const importers = new Set(scan.stateImporters);
+  const modules = new Set(scan.diffModules);
+  const takeSlice = `a new diff module takes its slice as its first parameter, never ${STATE_TYPE} whole, \`Readonly\` or narrowed with \`Pick<>\`, and another family's fact arrives as a value \`handleTick\` reads at the call (${SLICE_SECTION})`;
+
+  for (const module of scan.stateImporters) {
+    if (pinnedSet.has(module)) continue;
+
+    violations.push({
+      rule: "E",
+      name: module,
+      module,
+      message: `diff/${module} imports ${STATE_TYPE}, and WHOLE_STATE_DIFF_MODULES does not name it: ${takeSlice}. Drop the ${STATE_TYPE} import. WHOLE_STATE_DIFF_MODULES names only the modules that took the whole state when it was frozen, and only shrinks.`,
+    });
+  }
+
+  const seen = new Set<string>();
+
+  for (const module of pinned) {
+    if (seen.has(module)) {
+      violations.push({
+        rule: "E",
+        name: module,
+        module,
+        message: `WHOLE_STATE_DIFF_MODULES names \`${module}\` twice: delete one.`,
+      });
+
+      continue;
+    }
+
+    seen.add(module);
+
+    if (importers.has(module)) continue;
+
+    const why = modules.has(module) ? `no longer imports ${STATE_TYPE}` : "is not a diff module";
+
+    violations.push({
+      rule: "E",
+      name: module,
+      module,
+      message: `WHOLE_STATE_DIFF_MODULES names \`${module}\`, which ${why}: delete the entry, and the line \`"${module}",\` from FROZEN_WHOLE_STATE_DIFF_MODULES (${BASELINE_FILE}), in the same change.`,
+    });
+  }
+
+  violations.push(
+    ...checkAgainstBaseline(
+      pinned.map((module) => ({ name: module, where: "WHOLE_STATE_DIFF_MODULES" })),
+      frozen,
+      {
+        rule: "E",
+        list: "WHOLE_STATE_DIFF_MODULES",
+        baseline: "FROZEN_WHOLE_STATE_DIFF_MODULES",
+        refuse: `the list only shrinks: ${takeSlice}.`,
+        entriesAreModules: true,
+      },
+    ),
+  );
+
+  return violations;
 }

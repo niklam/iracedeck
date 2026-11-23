@@ -13,9 +13,11 @@
 // Test sources are classified as the plugin-shell guard classifies them
 // (`isTestSource`: `*.test.*`, `*.test-support.*`, `*.test-util.*`,
 // `*.fixture-cases.*`, anything under `test-support/`). An entry's own source
-// (`src/testing.ts`, read from the package's `exports["./testing"]`) counts as
-// test support too: it re-exports its package's modules by relative path, and
-// may build on another package's entry.
+// (`src/testing.ts`, read from the package's `exports["./testing"]` by
+// `testingEntrySources` in `lib/package-exports.mjs`, which replay-engine's
+// barrel consumer check shares, #1661) counts as test support too: it
+// re-exports its package's modules by relative path, and may build on another
+// package's entry.
 //
 // Test support may import an entry, so it is a way round the rule: a
 // production `adapter.ts` importing `./fake.test-support.js`, which imports
@@ -43,7 +45,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { pickTarget } from "./lib/package-exports.mjs";
+import { testingEntrySources } from "./lib/package-exports.mjs";
 import { isTestSource, moduleReferences, packageOf, trackedPackageSources } from "./lib/source-imports.mjs";
 import { trackedPackageDirs } from "./lib/workspace-packages.mjs";
 
@@ -52,96 +54,6 @@ const P = path.posix;
 
 /** A specifier naming a package's testing entry or a path beneath it. */
 const TESTING_ENTRY = /^@iracedeck\/[^/]+\/testing(\/|$)/;
-
-/** The source extension each compiled `dist/` extension is built from. */
-const SOURCE_EXTENSION = { ".js": ".ts", ".mjs": ".mts", ".cjs": ".cts" };
-
-/**
- * The source file a package's `./testing` export is built from, repo-relative,
- * or undefined when it declares none. The target is resolved through nested
- * conditions as a test's `import` resolves it (`pickTarget`); `./dist/<x>.js`
- * then maps to `src/<x>.ts`, the layout every package building to `dist/`
- * shares, and a source export is taken as it is.
- *
- * Throws when the package declares `./testing` but no file can be derived from
- * it, so an entry never drops out of the guard unseen.
- *
- * @param {string} dir the package's directory under `packages/`
- * @param {{ exports?: unknown }} manifest
- * @returns {string | undefined}
- */
-export function testingEntrySource(dir, manifest) {
-  const { exports } = manifest;
-  const target =
-    exports !== null && typeof exports === "object" && !Array.isArray(exports) ? exports["./testing"] : undefined;
-
-  // `null` is Node's way of saying the subpath is not exported.
-  if (target === undefined || target === null) return undefined;
-  const file = pickTarget(target);
-
-  if (file === null) {
-    throw new Error(
-      `packages/${dir}/package.json declares a ./testing export (${JSON.stringify(target)}) with no import, node, ` +
-        `development or default target: give it one, or teach testingEntrySource this shape`,
-    );
-  }
-
-  const relative = P.normalize(file.replaceAll("\\", "/"));
-
-  if (!relative.startsWith("dist/")) return P.join("packages", dir, relative);
-  const extension = P.extname(relative);
-
-  if (!Object.hasOwn(SOURCE_EXTENSION, extension)) {
-    throw new Error(
-      `packages/${dir}/package.json's ./testing export ${file} is a dist/ file whose source cannot be derived: ` +
-        `teach testingEntrySource its extension`,
-    );
-  }
-
-  return P.join(
-    "packages",
-    dir,
-    `src/${relative.slice("dist/".length, -extension.length)}${SOURCE_EXTENSION[extension]}`,
-  );
-}
-
-/**
- * Each package's testing entry source, and one line for every package whose
- * `./testing` export names no source file, or one git does not track.
- *
- * @param {string[]} dirs package directories under `packages/`
- * @param {(dir: string) => { exports?: unknown }} manifestOf
- * @param {Set<string>} tracked every tracked package source
- * @returns {{ sources: Set<string>, problems: string[] }}
- */
-export function testingEntrySources(dirs, manifestOf, tracked) {
-  const sources = new Set();
-  const problems = [];
-
-  for (const dir of dirs) {
-    let source;
-
-    try {
-      source = testingEntrySource(dir, manifestOf(dir));
-    } catch (error) {
-      problems.push(error.message);
-      continue;
-    }
-
-    if (source === undefined) continue;
-    if (!tracked.has(source)) {
-      problems.push(
-        `packages/${dir}/package.json's ./testing export is built from ${source}, which git does not track as a ` +
-          `package source: fix the export, or teach testingEntrySource the package's layout`,
-      );
-      continue;
-    }
-
-    sources.add(source);
-  }
-
-  return { sources, problems };
-}
 
 /** The `.ts` sources a relative `.js` / extensionless specifier may name. */
 function candidates(resolved) {
@@ -489,79 +401,6 @@ describe("the check itself (positive controls)", () => {
     expect(productionTestingImports({ files: [{ file, source }], entrySources: ENTRY_SOURCES })).toEqual([]);
     expect(productionTestingImports({ files: [{ file, source: planted }], entrySources: ENTRY_SOURCES })).toEqual([
       expect.stringContaining(`${file} imports @iracedeck/deck-core/testing`),
-    ]);
-  });
-
-  it("maps a dist export to its source and takes a source export as it is", () => {
-    expect(
-      testingEntrySource("deck-core", {
-        exports: { "./testing": { import: "./dist/testing.js", types: "./dist/testing.d.ts" } },
-      }),
-    ).toBe("packages/deck-core/src/testing.ts");
-    expect(testingEntrySource("pi-components", { exports: { "./testing": "./src/build/testing.ts" } })).toBe(
-      "packages/pi-components/src/build/testing.ts",
-    );
-    expect(testingEntrySource("logger", { exports: { ".": "./dist/index.js" } })).toBeUndefined();
-    expect(testingEntrySource("logger", { exports: "./dist/index.js" })).toBeUndefined();
-    expect(testingEntrySource("logger", { exports: { ".": "./dist/index.js", "./testing": null } })).toBeUndefined();
-    expect(testingEntrySource("logger", {})).toBeUndefined();
-  });
-
-  it("resolves a testing export through nested conditions", () => {
-    for (const target of [
-      { import: { types: "./dist/testing.d.ts", default: "./dist/testing.js" } },
-      { types: "./dist/testing.d.ts", node: "./dist/testing.js" },
-      { types: "./dist/testing.d.ts", default: "./dist/testing.js" },
-      { node: { import: { types: "./dist/testing.d.ts", default: "./dist/testing.js" } } },
-      { require: "./dist/testing.cjs", import: "./dist/testing.js" },
-      [{ types: "./dist/testing.d.ts" }, "./dist/testing.js"],
-    ]) {
-      expect(testingEntrySource("deck-core", { exports: { "./testing": target } }), JSON.stringify(target)).toBe(
-        "packages/deck-core/src/testing.ts",
-      );
-    }
-    expect(testingEntrySource("deck-core", { exports: { "./testing": "./dist/testing.mjs" } })).toBe(
-      "packages/deck-core/src/testing.mts",
-    );
-  });
-
-  it("fails, rather than skips, a testing export it cannot derive a source from", () => {
-    for (const target of [
-      { types: "./dist/testing.d.ts" },
-      { types: "./dist/testing.d.ts", require: "./dist/testing.cjs" },
-      { import: { types: "./dist/testing.d.ts" } },
-      {},
-      [],
-    ]) {
-      expect(
-        () => testingEntrySource("deck-core", { exports: { "./testing": target } }),
-        JSON.stringify(target),
-      ).toThrow("packages/deck-core/package.json declares a ./testing export");
-    }
-    expect(() => testingEntrySource("deck-core", { exports: { "./testing": "./dist/testing.json" } })).toThrow(
-      "is a dist/ file whose source cannot be derived",
-    );
-  });
-
-  it("collects every entry, and a problem for an underivable or untracked one", () => {
-    const manifests = {
-      ok: { exports: { "./testing": { import: { default: "./dist/testing.js" } } } },
-      none: { exports: { ".": "./dist/index.js" } },
-      underivable: { exports: { "./testing": { types: "./dist/testing.d.ts" } } },
-      untracked: { exports: { "./testing": "./dist/testing.js" } },
-    };
-    const { sources, problems } = testingEntrySources(
-      Object.keys(manifests),
-      (dir) => manifests[dir],
-      new Set(["packages/ok/src/testing.ts"]),
-    );
-
-    expect([...sources]).toEqual(["packages/ok/src/testing.ts"]);
-    expect(problems).toEqual([
-      expect.stringContaining("packages/underivable/package.json declares a ./testing export"),
-      expect.stringContaining(
-        "packages/untracked/package.json's ./testing export is built from packages/untracked/src/testing.ts, which git does not track",
-      ),
     ]);
   });
 });

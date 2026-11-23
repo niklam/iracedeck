@@ -2,8 +2,8 @@
  * The TypeScript-compiler plumbing the engine's scan tests share (#1502): the
  * camera-switch scanner (`camera-switch-waiter.single-policy.test-support.ts`),
  * the reset-coverage scanner (`replay-engine-reset.coverage.test-support.ts`)
- * and the barrel's signature-type guard (`index.test.ts`). It reads the
- * production sources of a directory, builds an in-memory program over them
+ * and the barrel's signature-type and consumer guards (`index.test.ts`). It
+ * reads the production sources of a directory, builds an in-memory program over them
  * (no lib; module resolution only when asked for), builds the package's real
  * program from its `tsconfig.json`, and holds the small node helpers the
  * scanners use. What a scanner looks for stays in the scanner.
