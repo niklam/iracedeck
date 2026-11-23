@@ -1677,12 +1677,15 @@ function fedStarts(command, text, fed, programs) {
   const stringAt = (L, d, kind, join, flavor) => {
     let N = readLevel(L, d, join);
     if (flavor) N = unescaped(N, flavor);
-    readAs(N, kind, L);
+    readAs(N, kind, L, d);
   };
-  // The level `N` a shell reads, handed over from the level `L` with `kind`.
-  const readAs = (N, kind, L) => {
+  // The level `N` a shell reads, handed over from the level `L` with `kind`
+  // by the word at `d` there (`up`, `upAt`: {@link levelLead}).
+  const readAs = (N, kind, L, d) => {
     if (!N.text) return;
     N.via = kind.via;
+    N.up = L;
+    N.upAt = d;
     if (N.unread && N.via !== "cmd") unclosed = true;
     if (L === base) for (let k = N.from; k < N.to; k++) if (closes.has(k)) quoteKinds.set(k, kind);
     levels.push(N);
@@ -1771,10 +1774,10 @@ function fedStarts(command, text, fed, programs) {
               const flavor = echoEscapes(command, from, args[0].at);
               let N = readLevel(base, args[0].at, true);
               if (flavor) N = reprint(unescaped(N, flavor));
-              readAs(N, kind, base);
+              readAs(N, kind, base, echo.start);
             } else {
               const out = printed(args.map(({ at }) => readLevel(base, at, false)));
-              if (out) readAs(reprint(out), kind, base);
+              if (out) readAs(reprint(out), kind, base, echo.start);
               else unprintable = true;
             }
           },
@@ -2905,8 +2908,11 @@ const COMMAND_END = /[()\x60]|(?<![<>])&(?!>)/;
  * names `../ir-5`, not `../ir-5'`, and `echo 'pnpm test' | bash` holds no
  * piped `pnpm test`. A match whose command its shell reads differently from
  * the text here (an escape, a join, #1646) carries `decoded`, that command as
- * its shell reads it: its raw groups are mis-sliced, and `checkBash` lets no
- * such command pass ({@link takeDecodedHits}).
+ * its shell reads it, and `sep`, the separator that ends it there (`|`
+ * for a pipe): its raw groups are mis-sliced, and `checkBash` lets no such
+ * command pass ({@link takeDecodedHits}). A match read in a string's level
+ * carries `before`, what that string's shells run ahead of it ({@link
+ * levelLead}).
  */
 export function* matchesAt(command, re) {
   const all = [...found(command, re, 0, trustedMask(command).length)].sort((x, y) => x.program - y.program);
@@ -2979,8 +2985,10 @@ function* found(command, re, a, b) {
     const read = levelCommand(v, f.program) ?? levelCommand(v, wordStartOf(v, f.program));
     if (read?.divergent) {
       f.decoded = read.text;
+      f.sep = read.sep;
       decodedHit(command, re, f.program);
     }
+    if (read) f.before = levelLead(read.L, read.d);
     return f;
   };
   const taken = new Set();
@@ -3022,16 +3030,26 @@ function* found(command, re, a, b) {
     yielded.add(p);
     decodedHit(command, re, p);
     const indices = m.indices.map((r) => r && viewOf(r[0], r[1]));
-    yield { at, end, indices, kind, program: p, decoded: L.text.slice(d, L.ends[d]) };
+    yield {
+      at,
+      end,
+      indices,
+      kind,
+      program: p,
+      decoded: L.text.slice(d, L.ends[d]),
+      sep: L.text.slice(L.ends[d], L.ends[d] + 2),
+      before: levelLead(L, d),
+    };
   }
 }
 
 /**
  * The command at the view index `p` as the shell of the level it was read in
- * reads it (#1646, {@link found}): `{ text, divergent }`, its text from its
- * program word to its end there, and whether the view's text over the same
- * span differs; `undefined` where no level position starts at `p`. Read once
- * per position and view.
+ * reads it (#1646, {@link found}): `{ text, divergent, sep, L, d }`, its text
+ * from its program word to its end there, whether the view's text over the
+ * same span differs, the separator that ends it, and the level and index it
+ * starts at; `undefined` where no level position starts at `p`. Read once per
+ * position and view.
  */
 function levelCommand(v, p) {
   if (v.levelCommands?.has(p)) return v.levelCommands.get(p);
@@ -3048,10 +3066,36 @@ function levelCommand(v, p) {
     const [, L, d] = decoded[lo];
     const e = Math.max(L.ends[d], d + 1);
     const text = L.text.slice(d, e);
-    out = { text, divergent: v.text.slice(L.at[d], L.end[e - 1]) !== asWritten(v.text, L, d, e) };
+    out = {
+      text,
+      divergent: v.text.slice(L.at[d], L.end[e - 1]) !== asWritten(v.text, L, d, e),
+      sep: L.text.slice(L.ends[d], L.ends[d] + 2),
+      L,
+      d,
+    };
   }
   (v.levelCommands ??= new Map()).set(p, out);
   return out;
+}
+
+/**
+ * What the shells reading the {@link level} `L` run ahead of its index `d`
+ * (#1646, CodeRabbit CLI): its own text before `d`, after that of each level
+ * holding it before the word that handed it over, outermost first, each as
+ * `{ text, shell }` with the shell that reads it. The typed command's own
+ * text is not among them: `root`, a property of the list, is the view index
+ * of the word there that hands the outermost string over, for {@link
+ * chainCommands} to start from where the typed command's own `cd`s leave it.
+ * {@link dirAfter} reads the `cd`s here, so a command a string runs is judged
+ * where that string moved to.
+ */
+function levelLead(L, d) {
+  const lines = [];
+  let k = d;
+  for (let X = L; X.up; k = X.upAt, X = X.up)
+    lines.unshift({ text: X.text.slice(0, k), shell: /^(?:pwsh|powershell)$/i.test(X.via ?? "") ? POWERSHELL : BASH });
+  lines.root = k;
+  return lines;
 }
 
 /**
@@ -3155,11 +3199,13 @@ function innerStart(text, m, re, known = () => false) {
 }
 
 /** A {@link matchesAt} result: the groups read from the raw command, with the match's facts. */
-function rawMatch(command, { at, indices, kind, program, decoded }) {
+function rawMatch(command, { at, indices, kind, program, decoded, sep, before }) {
   const raw = indices.map((r) => r && command.slice(r[0], r[1]));
   raw.index = at;
   raw.program = program;
   if (decoded !== undefined) raw.decoded = decoded;
+  if (sep !== undefined) raw.sep = sep;
+  if (before !== undefined) raw.before = before;
   raw.how = kind.how;
   if (kind.via) raw.via = kind.via;
   if (kind.stdin) raw.stdin = true;
@@ -3193,6 +3239,45 @@ const PS_CD_RE = new RegExp(
 const cdRe = (shell) => (shell === POWERSHELL ? PS_CD_RE : CD_RE);
 /** `cd -` / `cd +` go back or forward in a history the hook cannot see: the directory stays put. */
 const HISTORY_DIR = new Set(["-", "+"]);
+
+/** A command that moves the directory, at the start of a chain segment: its name is group 1 ({@link dirAfter}). */
+const DIR_CHANGE = /^\s*(?:\w+=\S*\s+)*(cd|pushd|popd|chdir|sl|set-location|push-location|pop-location)(?=\s|$)/i;
+/** `pushd <dir>` and PowerShell's `Push-Location`, as {@link CD_RE} reads a `cd`. */
+const PUSHD_RE = new RegExp(
+  String.raw`^\s*(?:\w+=\S*\s+)*(?:pushd|push-location)(?:\s+-(?:path|literalpath))?\s+${QUOTED_ARG}\s*$`,
+  "di",
+);
+
+/**
+ * Where the lines `lines` ({@link levelLead}: `{ text, shell }`, the text a
+ * string's shell runs ahead of a command) leave a shell that starts in `base`
+ * (#1646, CodeRabbit CLI): each `cd`, `pushd` or `Set-Location` at the start
+ * of a chain segment followed, as the typed command's are ({@link
+ * chainCommands}), its directory resolved as {@link resolveDir} resolves
+ * one. `undefined` where one cannot be known — a directory that expands
+ * (`cd "$X"`), a history step (`cd -`), a `cd` or `pushd` with no directory
+ * or with options, a `popd` — so the caller judges the command lost rather
+ * than in the wrong tree. One inside parentheses moves only its subshell.
+ */
+export function dirAfter(lines, base) {
+  let dir = base;
+  for (const { text, shell } of lines) {
+    if (!/(?:cd|pushd|popd|chdir|sl|location)\b/i.test(text)) continue;
+    const masked = trustedMask(text);
+    for (const [a, b] of ranges(masked, CHAIN)) {
+      const name = DIR_CHANGE.exec(masked.slice(a, b))?.[1]?.toLowerCase();
+      if (!name || (shell !== POWERSHELL && !/^(?:cd|pushd|popd)$/.test(name))) continue;
+      const to = /^(?:pushd|push-location)$/.test(name)
+        ? argIn(text, masked, a, b, PUSHD_RE)
+        : /^pop/.test(name)
+          ? undefined
+          : argIn(text, masked, a, b, cdRe(shell));
+      if (!to || HISTORY_DIR.has(to) || /[$\x60~*?[]/.test(to)) return undefined;
+      dir = resolveDir(dir, to, { shell });
+    }
+  }
+  return dir;
+}
 
 /** Git Bash's spelling of a drive, `/c/…` or `/cygdrive/c/…`, for `C:\…`. */
 const GIT_BASH_DRIVE = /^(?:\/cygdrive)?\/([a-zA-Z])(?=\/|$)/;
@@ -3486,8 +3571,19 @@ export function* chainCommands(command, cwd, re, shell = BASH) {
   const text = trustedMask(command);
   const v = view(command);
   let base = cwd;
+  // Each chain range's start with the directory its commands start in.
+  const starts = [];
+  // The directory the typed command's `cd`s leave at its view index `p`.
+  const baseAt = (p) => starts.findLast(([a]) => a <= p)?.[1] ?? cwd;
   for (const [a, b] of ranges(text, CHAIN)) {
+    starts.push([a, base]);
     for (const f of [...found(command, re, a, b)].sort((x, y) => x.program - y.program)) {
+      // A command a string runs runs where the `cd`s ahead of it in that
+      // string, and in the strings holding it, moved (#1646, CodeRabbit CLI):
+      // `printf 'cd %s; pnpm %s\n' ../ir-x dev:voices | bash`. They start from
+      // where the typed command's own leave the word handing the string over,
+      // never from a `cd` the chain ranges read inside that string.
+      const lead = f.before?.length ? dirAfter(f.before, baseAt(f.before.root)) : base;
       const start = programStart(command, f.at);
       const from = f.end;
       const stop = text.slice(from, b).search(COMMAND_END);
@@ -3499,7 +3595,7 @@ export function* chainCommands(command, cwd, re, shell = BASH) {
         cut = undefined;
       }
       yield {
-        base,
+        base: lead ?? base,
         start,
         head: command.slice(start, from),
         args: command.slice(from, to),
@@ -3507,6 +3603,7 @@ export function* chainCommands(command, cwd, re, shell = BASH) {
         cut,
         how: f.kind.how,
         program: f.program,
+        ...(lead === undefined ? { lost: true } : {}),
         ...(f.decoded !== undefined ? { decoded: f.decoded } : {}),
         ...(f.kind.via ? { via: f.kind.via } : {}),
         ...(f.kind.stdin ? { stdin: true } : {}),
@@ -3707,9 +3804,6 @@ export function commandWords(text, from) {
   return out;
 }
 
-/** The characters bash's `$'…'` decodes after a backslash. */
-const ANSI = { n: "\n", t: "\t", r: "\r", "\\": "\\", "'": "'", '"': '"' };
-
 /**
  * The quoted or escaped piece of a bash word that starts at `i` in `text` — a
  * `\` escape, `'…'`, `$'…'` or `"…"` — as `[decoded, indexAfter]`, read to the
@@ -3727,8 +3821,14 @@ function quotedPiece(text, i) {
   if (ch === "$" && text[i + 1] === "'") {
     let k = i + 2;
     let s = "";
-    for (; k < text.length && text[k] !== "'"; k++)
-      s += text[k] === "\\" ? (ANSI[text[++k]] ?? text[k] ?? "") : text[k];
+    // Every ANSI-C escape decoded as bash decodes it (`\x20`, `\047`, `\cA`),
+    // so a `$'cd\x20../x; …'` a wrapper runs is read as the line it is (#1646).
+    while (k < text.length && text[k] !== "'")
+      if (text[k] === "\\") {
+        const [c, next] = ansiEscape(text, k + 1);
+        s += c;
+        k = next;
+      } else s += text[k++];
     return [s, Math.min(k + 1, text.length)];
   }
   if (ch === '"') {

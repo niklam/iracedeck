@@ -396,6 +396,40 @@ const REDIRECT_WORD = /^\d*(?:<<<|[<>]&|&>>?|>>|>\||<>|<|>)(.*)$/;
 /** The deny of the piped-pnpm rule. */
 const PIPED_PNPM =
   "Piping `pnpm build/test/...` hides its exit code (you get tail's). Prefix `set -o pipefail;` or check the log before claiming green.";
+/** The pnpm commands whose exit code a pipe hides ({@link pipedPnpm}). */
+const PIPED_PNPM_RE = cmd(/pnpm\s+(?:run\s+)?(?:build|test|typecheck|lint|format)\b/);
+
+/**
+ * Whether the pnpm `m` matched ({@link PIPED_PNPM_RE}) has its exit code
+ * hidden by a pipe no `pipefail` covers, in `c` and its trusted text `text`,
+ * `piped` saying whether a text starts with such a pipe. The pipe that hides
+ * it is the one after the pnpm in its own command, or, inside a string a shell
+ * runs, the one after the string's close that pipes that shell on. A pnpm its
+ * shell reads differently from the text here (`decoded`, #1646) is judged on
+ * what it reads: the separator that ends it there, and a `pipefail` that
+ * string's shells set ahead of it (`before`).
+ */
+function pipedPnpm(c, text, m, piped) {
+  const end = m.index + m[0].length;
+  const string = stringBounds(c, m.program);
+  const decoded = m.decoded !== undefined;
+  const lead = (m.before ?? []).map((x) => x.text).join("\n");
+  if (!string)
+    return !/pipefail/.test(text.slice(0, m.index)) && (decoded ? /^\|(?!\|)/.test(m.sep) : piped(text.slice(end)));
+  const [open, close] = string;
+  // Where the command that runs the shell starts: after the last operator ahead of the string.
+  const from = text.slice(0, open).search(/[^\n;&|()\x60]*$/);
+  // The shell's own `-o pipefail`, alone or ending a cluster (`-eo pipefail`);
+  // a `+o pipefail` turns it off, so it excuses nothing (#1634).
+  const inner =
+    /pipefail/.test(decoded ? lead : text.slice(open, m.index)) ||
+    /(?<!\S)-[A-Za-z]*o\s+pipefail\b/.test(text.slice(from, open));
+  if (!inner && (decoded ? /^\|(?!\|)/.test(m.sep) : piped(text.slice(end, close)))) return true;
+  if (/pipefail/.test(text.slice(0, from))) return false;
+  const after = /^(?:>&\d|&>|[^;&\n])*/.exec(text.slice(close + 1))[0];
+  const pipes = (after.match(/(?<!\|)\|(?!\|)/g) ?? []).length;
+  return pipes >= (stringKind(c, m.program)?.piped ? 2 : 1);
+}
 
 /** `gh pr merge` flags that take a value, so the value is never read as the PR or as a flag. */
 const MERGE_VALUE_FLAGS = new Set([
@@ -1049,7 +1083,7 @@ export const rules = [
     // it runs in, so `cd ../ir-integration && git push` is caught.
     name: "git push: the integration branch is never pushed",
     test: (c, ctx) => {
-      for (const { base, start, args, program, decoded } of chainCommands(c, ctx.cwd, GIT_PUSH, ctx.shell)) {
+      for (const { base, start, args, program, decoded, lost } of chainCommands(c, ctx.cwd, GIT_PUSH, ctx.shell)) {
         // Every `-C`, in order (#1606). The push reads the current branch only
         // when no refspec names one, and only then does a `--git-dir` or
         // `GIT_DIR`, which hides whose branch that is, refuse it.
@@ -1062,7 +1096,8 @@ export const rules = [
         // `--git-dir` or `--work-tree` among those options as moving the
         // repository. A shape it cannot place is judged as moving it.
         let read = args;
-        let moved = movesRepo;
+        // A `cd` ahead of it in its string that cannot be known leaves its tree unknown too (#1646).
+        let moved = movesRepo || Boolean(lost);
         if (decoded !== undefined) {
           const verb = new RegExp(GIT_PUSH.inner.source, "y").exec(decoded);
           read = verb ? decoded.slice(verb[0].length) : "";
@@ -1481,25 +1516,11 @@ export const rules = [
       // run with nothing after it takes the whole redirect rather than stopping
       // at its `&`.
       const piped = (s) => /^(?:>&\d|&>|[^|&;\n])*\|(?!\|)/.test(s);
-      for (const m of matchesAt(c, cmd(/pnpm\s+(?:run\s+)?(?:build|test|typecheck|lint|format)\b/))) {
-        const end = m.index + m[0].length;
-        const string = stringBounds(c, m.program);
-        if (!string) {
-          if (!/pipefail/.test(text.slice(0, m.index)) && piped(text.slice(end))) return PIPED_PNPM;
-          continue;
-        }
-        const [open, close] = string;
-        // Where the command that runs the shell starts: after the last operator ahead of the string.
-        const from = text.slice(0, open).search(/[^\n;&|()\x60]*$/);
-        // The shell's own `-o pipefail`, alone or ending a cluster (`-eo pipefail`);
-        // a `+o pipefail` turns it off, so it excuses nothing (#1634).
-        const inner =
-          /pipefail/.test(text.slice(open, m.index)) || /(?<!\S)-[A-Za-z]*o\s+pipefail\b/.test(text.slice(from, open));
-        if (!inner && piped(text.slice(end, close))) return PIPED_PNPM;
-        if (/pipefail/.test(text.slice(0, from))) continue;
-        const after = /^(?:>&\d|&>|[^;&\n])*/.exec(text.slice(close + 1))[0];
-        const pipes = (after.match(/(?<!\|)\|(?!\|)/g) ?? []).length;
-        if (pipes >= (stringKind(c, m.program)?.piped ? 2 : 1)) return PIPED_PNPM;
+      for (const m of matchesAt(c, PIPED_PNPM_RE)) {
+        if (pipedPnpm(c, text, m, piped)) return PIPED_PNPM;
+        // A pnpm its shell reads differently from the text here was judged on
+        // what that shell reads: its decoded hit is excused (#1646).
+        if (m.decoded !== undefined) excuseDecodedHit(c, PIPED_PNPM_RE, m.program);
       }
       return null;
     },

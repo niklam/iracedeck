@@ -1818,4 +1818,45 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
     String.raw`echo "-e" -E 'first\ngh pr merge 7' | bash`,
     String.raw`echo first "-e" 'x\ngh pr merge 7' | bash`,
   ])("decodes no escapes where echo reads none: %s", (c) => expect(lexer.has(c, MERGE)).toBe(false));
+
+  // Round 6 (#1646, the CodeRabbit CLI finding at 3212c3d97).
+  describe("the directory a string's `cd`s leave", () => {
+    const bash = (text) => ({ text, shell: lexer.BASH });
+    it("follows each cd and pushd at the start of a segment, as the typed command's are", () => {
+      expect(lexer.dirAfter([bash("cd ../ir-5; ")], MASTER)).toBe(tree("ir-5"));
+      expect(lexer.dirAfter([bash("true && pushd ../ir-5 && cd sub; ")], MASTER)).toBe(tree("ir-5", "sub"));
+      expect(lexer.dirAfter([bash("cd ../ir-5; "), bash("cd ../ir-6; ")], MASTER)).toBe(tree("ir-6"));
+      expect(lexer.dirAfter([bash("echo cd x; (cd ../ir-5); ")], MASTER)).toBe(MASTER);
+      expect(lexer.dirAfter([{ text: "Set-Location ../ir-5; ", shell: POWERSHELL }], MASTER)).toBe(tree("ir-5"));
+    });
+
+    it.each(['cd "$X"; ', "cd -; ", "cd; ", "pushd; ", "popd; ", "cd ~/x; ", "cd -P ../ir-5; ", "cd `pwd`; "])(
+      "cannot know where `%s` leaves it",
+      (text) => expect(lexer.dirAfter([bash(text)], MASTER)).toBeUndefined(),
+    );
+
+    const where = (c) => [...lexer.chainCommands(c, MASTER, cmd(/pnpm\b/))].map(({ base, lost }) => ({ base, lost }));
+    it("moves a command a string runs by the cds ahead of it there, once", () => {
+      expect(where(String.raw`printf 'cd %s; pnpm %s\n' ../ir-5 test | bash`)).toEqual([
+        { base: tree("ir-5"), lost: undefined },
+      ]);
+      expect(where(String.raw`bash -c $'cd\x20../ir-5; pnpm test'`)).toEqual([{ base: tree("ir-5"), lost: undefined }]);
+      // A cd the chain ranges read inside the string moves it once, not twice.
+      expect(where("su -c 'true; cd sub && pnpm x'")).toEqual([{ base: path.join(MASTER, "sub"), lost: undefined }]);
+      expect(where("cd ../ir-5 && echo 'cd sub; pnpm x' | bash")).toEqual([
+        { base: tree("ir-5", "sub"), lost: undefined },
+      ]);
+      expect(
+        where(String.raw`printf 'cd %s; pnpm %s; cd %s; pnpm %s\n' ../ir-5 test ../ir-6 x | bash`).map((x) => x.base),
+      ).toEqual([tree("ir-5"), tree("ir-6")]);
+    });
+
+    it("marks a command lost where a cd ahead of it in its string cannot be known", () =>
+      expect(where(String.raw`printf 'cd "$X"; pnpm %s\n' test | bash`)).toEqual([{ base: MASTER, lost: true }]));
+  });
+
+  it("decodes every ANSI-C escape of a word a wrapper is handed", () => {
+    expect(lexer.wordText(String.raw`$'cd\x20../x;\040pnpm\ttest'`)).toBe("cd ../x; pnpm\ttest");
+    expect(lexer.wordText(String.raw`$'it\'s'`)).toBe("it's");
+  });
 });

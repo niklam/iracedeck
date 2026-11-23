@@ -6488,4 +6488,75 @@ describe("a carried merge or tag push behind a quoted lead value (#1646)", () =>
     "passes an echo whose output runs no merge: %s",
     (c) => passes(c),
   );
+
+  // Round 6 (#1646, the CodeRabbit CLI finding at 3212c3d97): a runner a string
+  // runs is judged in the tree the `cd`s ahead of it in that string move to.
+  describe("a runner after a cd inside the string a shell runs", () => {
+    const INTEGRATION = tree("ir-integration");
+    const ROOTS = [MASTER, tree("ir-5"), INTEGRATION];
+    // A Stream Deck link into ../ir-integration, the session in master: dev:voices asks only there.
+    const linked = ctx({
+      linkTargets: () => [{ host: "Stream Deck", target: path.join(INTEGRATION, "packages", "p", "x.sdPlugin") }],
+      toplevel: (d) => ROOTS.find((r) => isInside(d, r)),
+    });
+    const there = /Stream Deck plugin link points into .*ir-integration.*relinks the running plugin/;
+
+    it.each([
+      String.raw`printf 'cd %s; pnpm %s\n' ../ir-integration dev:voices | bash`,
+      String.raw`bash -c $'cd\x20../ir-integration; pnpm dev:voices'`,
+      "echo 'cd ../ir-integration; pnpm dev:voices' | bash",
+      "su -c 'cd ../ir-integration && pnpm dev:voices'",
+      "trap 'cd ../ir-integration && pnpm dev:voices' EXIT",
+      "bash <<< 'pushd ../ir-integration && pnpm dev:voices'",
+      "cd ../ir-5 && echo 'cd ../ir-integration; pnpm dev:voices' | bash",
+      String.raw`printf 'cd %s; pnpm %s; cd %s; pnpm %s\n' ../ir-5 test ../ir-integration dev:voices | bash`,
+    ])("asks for dev:voices a string runs after a cd into the linked tree: %s", (c) =>
+      expect(asks(c, linked)).toMatch(there),
+    );
+
+    it.each([
+      String.raw`printf 'cd %s; pnpm %s\n' ../ir-5 dev:voices | bash`,
+      String.raw`printf 'pnpm %s\n' dev:voices | bash`,
+      "echo 'cd ../ir-5; pnpm dev:voices' | bash",
+    ])("passes dev:voices a string runs in a tree no link points into: %s", (c) => passes(c, linked));
+
+    it("still asks for a relink after a decoded cd", () =>
+      expect(asks(String.raw`bash -c $'cd\x20../ir-integration; pnpm relink:stream-deck'`, linked)).toMatch(
+        /relink:stream-deck/,
+      ));
+
+    it.each([
+      String.raw`printf 'cd "$X"; pnpm %s\n' dev:voices | bash`,
+      String.raw`printf 'cd -; pnpm %s\n' dev:voices | bash`,
+      String.raw`printf 'pushd; pnpm %s\n' dev:voices | bash`,
+    ])("refuses a decoded runner after a cd it cannot follow: %s", (c) =>
+      expect(deny(c, linked)).toMatch(/reads its words differently/),
+    );
+
+    it.each([
+      String.raw`printf 'pnpm %s\n' test | bash`,
+      String.raw`bash -c $'pnpm\x20test'`,
+      String.raw`printf 'cd %s; pnpm %s\n' ../ir-5 test | bash`,
+      String.raw`printf 'set -o pipefail; pnpm %s | tee x\n' test | bash`,
+      String.raw`bash -c $'pnpm\x20test || true'`,
+    ])("passes a decoded pnpm test whose exit code no pipe hides: %s", (c) => passes(c, linked));
+
+    it.each([
+      String.raw`printf 'pnpm %s | tee x\n' test | bash`,
+      String.raw`printf 'pnpm %s\n' test | bash | tail`,
+      String.raw`bash -c $'pnpm\x20test | tail'`,
+      String.raw`bash -c $'pnpm\x20test' | tail`,
+    ])("denies a decoded pnpm test a pipe hides: %s", (c) => expect(deny(c)).toMatch(/hides its exit code/));
+
+    it("denies an integration push a string runs after a cd into the integration tree", () => {
+      const branchByTree = ctx({
+        branch: (d) => (isInside(d, INTEGRATION) ? "integration" : "master"),
+        toplevel: (d) => ROOTS.find((r) => isInside(d, r)),
+      });
+      expect(deny(String.raw`printf 'cd %s; git push\n' ../ir-integration | bash`, branchByTree)).toMatch(
+        /integration` branch is local/,
+      );
+      passes(String.raw`printf 'cd %s; git push\n' ../ir-5 | bash`, branchByTree);
+    });
+  });
 });

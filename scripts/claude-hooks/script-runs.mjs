@@ -915,6 +915,11 @@ function deckReach(c, cwd, ctx, shell, trail) {
     // there; its decoded hit is excused only once its words are judged. A
     // shape the decoded text does not hold leaves the hit standing.
     const shape = m.decoded === undefined ? null : shapeAt(re, m.decoded);
+    // `base` follows the `cd`s the string ran ahead of it ({@link
+    // chainCommands}); where one cannot be known (`cd "$X"`, `cd -`) it is
+    // lost, and a decoded runner's hit is left standing, refused, rather than
+    // judged in the wrong tree (#1646, CodeRabbit CLI).
+    if (shape && m.lost) continue;
     const words = shape
       ? commandWordsRaw(m.decoded, shape[0].length, m.decoded.length)
       : commandWordsRaw(c, at, stringEnd(c, at - 1));
