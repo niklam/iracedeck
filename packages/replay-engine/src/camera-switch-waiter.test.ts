@@ -48,7 +48,7 @@ import { watchReplayLeft } from "./replay-left.test-support.js";
 import { pendingReplaySearch, queueReplaySearch } from "./replay-search-queue.js";
 import { resolveLiveSpeed } from "./replay-speed-state.js";
 import { noteReplaySpeedSent } from "./replay-speed-state.test-support.js";
-import { REPLAY_JUMP_MAX_WAIT_MS } from "./replay-timing.js";
+import { REPLAY_JUMP_MAX_WAIT_MS, STABILIZATION_POLL_INTERVAL_MS } from "./replay-timing.js";
 
 let debug: Mock<(message: string) => void>;
 let warn: Mock<(message: string) => void>;
@@ -838,6 +838,41 @@ describe("requestCameraSwitch", () => {
 
       expect(auto).toHaveBeenCalledOnce();
       expect(walk.claim()?.interruptedBy).toBeNull();
+    });
+
+    it("a wait ended under it stops polling at its next read, and sends nothing (second read)", async () => {
+      engineOver(fakeReplay({ frame: 2_000 }));
+
+      const walk = lapPress();
+      const autoJumps = quiet();
+      const auto = vi.fn();
+      let ended = false;
+      const request = requestCameraSwitch(auto, automatic({ jumps: autoJumps })).then(() => (ended = true));
+
+      // While it is the current wait, the press holds it.
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(isCameraSwitchWaiting()).toBe(true);
+      expect(ended).toBe(false);
+
+      // A user's switch ends its wait: the run stops at its next read, with the press still holding.
+      const user = vi.fn();
+
+      await requestCameraSwitch(user, options({ by: "cycle-camera", interruptsWalks: false, jumps: quiet() }));
+      expect(user).toHaveBeenCalledOnce();
+
+      await vi.advanceTimersByTimeAsync(STABILIZATION_POLL_INTERVAL_MS);
+      expect(ended).toBe(true);
+      expect(autoJumps.waitToSettle).not.toHaveBeenCalled();
+
+      // Nothing of it runs once the press ends: no wait for the jumps, no send.
+      walk.finish();
+      await walk.press;
+      await vi.advanceTimersByTimeAsync(500);
+      await request;
+
+      expect(autoJumps.waitToSettle).not.toHaveBeenCalled();
+      expect(auto).not.toHaveBeenCalled();
+      expect(user).toHaveBeenCalledOnce();
     });
 
     it("keeps waiting through a lap press that starts while it waits, and goes out after it", async () => {

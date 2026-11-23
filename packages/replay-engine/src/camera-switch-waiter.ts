@@ -271,23 +271,40 @@ function isUnderWay(options: CameraSwitchOptions): boolean {
  * yielding switch by {@link YIELDING_SWITCH_MAX_WAIT_MS}, each wait for the
  * jumps inside it by `REPLAY_JUMP_MAX_WAIT_MS` still; both only give up:
  * every end is a read.
+ *
+ * Ends early, `orphaned`, once `isCurrent()` is false: the wait was ended
+ * under it (a switch that does not yield replacing a yielding one, a lap
+ * press, a reset), and its caller sends nothing for it. The held poll stops
+ * at its next read and no further wait for the jumps starts, so presses that
+ * keep ending waits during a long paced search do not stack loops polling
+ * for up to {@link YIELDING_SWITCH_MAX_WAIT_MS} each. A wait for the jumps
+ * already under way runs to its own end, since the gate's wait takes no
+ * cancel, and the loop ends after it.
  */
-async function waitUntilQuiet(jumps: CameraSwitchJumps, yields: boolean): Promise<ReplaySettledOutcome> {
+async function waitUntilQuiet(
+  jumps: CameraSwitchJumps,
+  yields: boolean,
+  isCurrent: () => boolean,
+): Promise<ReplaySettledOutcome | "orphaned"> {
   const deadline = now() + (yields ? YIELDING_SWITCH_MAX_WAIT_MS : REPLAY_JUMP_MAX_WAIT_MS);
   const left = (): number => Math.max(0, deadline - now());
   const held = (): boolean => isHeld(yields);
 
   for (;;) {
     if (held()) {
-      const released = await pollUntil(() => (held() ? undefined : true), {
-        intervalMs: STABILIZATION_POLL_INTERVAL_MS,
-        timeoutMs: left(),
-      });
+      const released = await pollUntil(
+        (): "released" | "orphaned" | undefined => (!isCurrent() ? "orphaned" : held() ? undefined : "released"),
+        { intervalMs: STABILIZATION_POLL_INTERVAL_MS, timeoutMs: left() },
+      );
 
       if (released.kind === "timed-out") return "gave-up";
     }
 
+    if (!isCurrent()) return "orphaned";
+
     const outcome = await jumps.waitToSettle(Math.min(left(), REPLAY_JUMP_MAX_WAIT_MS));
+
+    if (!isCurrent()) return "orphaned";
 
     if (outcome !== "settled" || !held()) return outcome;
 
@@ -336,10 +353,10 @@ async function send(request: CameraSwitchRequest): Promise<void> {
 
 /** Waits for the jump under way, then makes whatever switch is waiting by then — or drops it. */
 async function switchWhenJumpsSettle(starter: CameraSwitchOptions, generation: number): Promise<void> {
-  let outcome: ReplaySettledOutcome;
+  let outcome: ReplaySettledOutcome | "orphaned";
 
   try {
-    outcome = await waitUntilQuiet(jumpsOf(starter), yieldsOf(starter));
+    outcome = await waitUntilQuiet(jumpsOf(starter), yieldsOf(starter), () => waitGeneration === generation);
   } catch (error) {
     // A wait that failed sends nothing, and leaves no switch waiting: the
     // next one asked for is one of its own.
@@ -356,7 +373,8 @@ async function switchWhenJumpsSettle(starter: CameraSwitchOptions, generation: n
     if (waitGeneration === generation) waiter = null;
   }
 
-  if (waitGeneration !== generation) return;
+  // A wait ended under it sends nothing: what it held is dropped or waits on its own.
+  if (waitGeneration !== generation || outcome === "orphaned") return;
 
   const turn = waiting;
 
@@ -481,8 +499,8 @@ function endYieldingWait(by: CameraSwitchOptions): void {
  * A lap press drops the switch still waiting from before it (#1428 / #1435):
  * the press is the newer one, and the older switch would otherwise go out at
  * its walk's first quiet moment and interrupt it. The wait it sat behind ends
- * with it, as {@link _resetCameraSwitchWaiter} ends one: its run goes on to
- * its end and sends nothing, and a switch asked for after the press is one of
+ * with it, as {@link _resetCameraSwitchWaiter} ends one: its run stops at
+ * its next read and sends nothing, and a switch asked for after the press is one of
  * its own — its own ceiling from its own request, and its own jump reads —
  * never folded into the older wait. A yielding switch (#1656) is the
  * exception: it is held for the whole press in any case and interrupts no
@@ -520,7 +538,7 @@ export function isCameraSwitchWaiting(): boolean {
 
 /**
  * @internal For tests: forgets the switch waiting behind a jump. The wait
- * itself runs on and sends nothing.
+ * itself stops at its next read and sends nothing.
  */
 export function _resetCameraSwitchWaiter(): void {
   waiting = null;
