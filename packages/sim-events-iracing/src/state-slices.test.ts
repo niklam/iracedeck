@@ -655,6 +655,25 @@ describe("TranslatorState keeps to the slice convention (#1588)", () => {
     );
   });
 
+  it("reports a new diff module taking the state through a facade's namespace chain in the real tree, and passes the relay and the facade", () => {
+    const other = new Map(sources.other);
+    const diff = new Map(sources.diff);
+
+    other.set("planted-relay.ts", `export type { TranslatorState } from "./state.js";\n`);
+    other.set("planted-facade.ts", `export * as model from "./planted-relay.js";\n`);
+    diff.set(
+      "planted-facade-user.ts",
+      `import type * as facade from "../planted-facade.js";\nexport function diffPlanted(state: facade.model.TranslatorState): unknown {\n  return state.fastestLap;\n}\n`,
+    );
+
+    const result = realFindings(scanStateSlices({ ...sources, diff, other }, LEGACY_FLAT_MEMBERS, SLICE_READS_ALLOWED));
+
+    expect(added(findings, result)).toEqual([
+      "C:planted-facade-user.ts:fastestLap",
+      "E:planted-facade-user.ts:planted-facade-user.ts",
+    ]);
+  });
+
   it("reports a real diff module that reads a slice through the whole state", () => {
     const flags = sources.diff.get("flags.ts") ?? "";
 
@@ -1059,6 +1078,40 @@ describe("the state-slice scanner (positive controls)", () => {
       expect(scan.violations).toEqual([]);
     });
 
+    it("counts a namespace chain through a facade at any depth, and reads through it (rules C and E)", () => {
+      // `src/relay.ts` re-exports TranslatorState by its own name and
+      // `src/facade.ts` does `export * as model from "./relay.js"`: both pass
+      // rule F, so the diff module's qualified name is what must count.
+      const scan = planted(plantedState(), {
+        "two-deep.ts": `import type * as facade from "../facade.js";\nexport function diff(state: facade.model.TranslatorState): unknown {\n  return state.fastestLap;\n}\n`,
+        "three-deep.ts": `import type { outer } from "../facade.js";\nexport function diff(state: outer.model.inner.TranslatorState): unknown {\n  return state.trackGaps;\n}\n`,
+        "default-extends.ts": `import facade from "../facade.js";\ninterface Ctx extends facade.model.TranslatorState {\n  now: number;\n}\nexport function diff(ctx: Ctx): unknown {\n  return ctx.fastestLap;\n}\n`,
+      });
+
+      expect(scan.stateImporters).toEqual(["default-extends.ts", "three-deep.ts", "two-deep.ts"]);
+      expect(scan.violations.map((v) => `${v.rule}:${v.module}:${v.line}:${v.name}`)).toEqual([
+        "C:default-extends.ts:6:fastestLap",
+        "C:three-deep.ts:3:trackGaps",
+        "C:two-deep.ts:3:fastestLap",
+      ]);
+      expect(violationKeys(checkStateImporters(scan, [], []))).toEqual([
+        "E:default-extends.ts:default-extends.ts",
+        "E:three-deep.ts:three-deep.ts",
+        "E:two-deep.ts:two-deep.ts",
+      ]);
+    });
+
+    it("passes a deep qualified name ending in something else, or starting with a name not imported from a relative module", () => {
+      const scan = planted(plantedState(), {
+        "other-end.ts": `import type * as facade from "../facade.js";\nexport function diff(view: facade.model.TranslatorStateView, reading: facade.model.TranslatorState.Reading): unknown {\n  return [view.fastestLap, reading];\n}\n`,
+        "package.ts": `import type * as pkg from "@iracedeck/other";\nexport function diff(state: pkg.model.TranslatorState): unknown {\n  return state.fastestLap;\n}\n`,
+        "local-namespace.ts": `declare namespace local {\n  namespace model {\n    interface TranslatorState {\n      fastestLap: number;\n    }\n  }\n}\nexport function diff(state: local.model.TranslatorState): unknown {\n  return state.fastestLap;\n}\n`,
+      });
+
+      expect(scan.stateImporters).toEqual([]);
+      expect(scan.violations).toEqual([]);
+    });
+
     it("counts `X.TranslatorState` through a name imported from a relay, which may be a namespace it re-exports", () => {
       const scan = planted(plantedState(), {
         "qualified.ts": `import type { S } from "../translator-types.js";\nexport function diff(state: S.TranslatorState): unknown {\n  return state.fastestLap;\n}\n`,
@@ -1422,6 +1475,15 @@ describe("the state-slice scanner (positive controls)", () => {
       });
 
       expect(fKeys(scan)).toEqual(["F:e.ts:2:Whole", "F:f.ts:1:Whole", "F:g.ts:2:Whole", "F:h.ts:3:Whole"]);
+    });
+
+    it("reports an exported alias of the state reached through a namespace chain, and passes the facade itself", () => {
+      const scan = scanOther({
+        "facade.ts": `export * as model from "./relay.js";\n`,
+        "alias.ts": `import type * as facade from "./facade.js";\nexport type Whole = facade.model.TranslatorState;\n`,
+      });
+
+      expect(fKeys(scan)).toEqual(["F:alias.ts:2:Whole"]);
     });
 
     it("reports state.ts exported as a namespace, by `export * as` and by re-exporting a namespace import", () => {

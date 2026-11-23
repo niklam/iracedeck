@@ -43,8 +43,11 @@
  *   from any relative module, not only `state.ts`, since a module that
  *   re-exports it relays it, as in
  *   `import type { TranslatorState } from "../translator-types.js"`; and
- *   `X.TranslatorState` counts through any name imported from a relative
- *   module, which may be a namespace the relay re-exports):
+ *   a qualified name ending in `TranslatorState` counts at any depth
+ *   (`ns.TranslatorState`, `facade.model.TranslatorState`, in a type or an
+ *   `extends` clause) when its leftmost name is imported from a relative
+ *   module, named, namespace or default, since that may be a namespace a
+ *   facade re-exports):
  *   - names no slice type;
  *   - exports no type alias or interface that is, or holds, the state (the
  *     scan reads each module alone, so a module importing such a type would
@@ -102,8 +105,12 @@
  *   (`export * as ns from "./state.js"`, a namespace import re-exported).
  *   Passes: the state relayed as `TranslatorState` (`export *` included), a
  *   type that only holds it (`{ state: TranslatorState }`), and any other
- *   name renamed. Reported by the exported name, with the module relative to
- *   `src/`. A type derived without naming the state is E's gap above, here
+ *   name renamed. A facade's `export * as ns from "./relay.js"` passes too:
+ *   a diff module can reach the state through it only by a qualified name
+ *   ending in `TranslatorState`, which rule C counts at any depth, so only a
+ *   rename loses the name and only a rename is refused. Reported by the
+ *   exported name, with the module relative to `src/`. A type derived without
+ *   naming the state is E's gap above, here
  *   too.
  *
  * `scan` findings are a source the scanner cannot read at all (no
@@ -665,6 +672,26 @@ function rightmostName(name: ts.EntityName): string {
   return ts.isIdentifier(name) ? name.text : name.right.text;
 }
 
+/**
+ * The leftmost identifier and the rightmost name of a qualified name at any
+ * depth (`a.b.C`, as a type's `QualifiedName` or an `extends` clause's property
+ * access), or `undefined` for a bare identifier or anything else.
+ */
+function qualifiedParts(
+  name: ts.EntityName | ts.Expression,
+): { readonly leftmost: ts.Identifier; readonly rightmost: string } | undefined {
+  if (!ts.isQualifiedName(name) && !ts.isPropertyAccessExpression(name)) return undefined;
+
+  const rightmost = ts.isQualifiedName(name) ? name.right.text : name.name.text;
+  let current: ts.Node = name;
+
+  while (ts.isQualifiedName(current) || ts.isPropertyAccessExpression(current)) {
+    current = ts.isQualifiedName(current) ? current.left : current.expression;
+  }
+
+  return ts.isIdentifier(current) ? { leftmost: current, rightmost } : undefined;
+}
+
 /** How one module's types reach `TranslatorState`, read from its imports and its own declarations alone. */
 interface StateTypes {
   /** The local names `TranslatorState` is imported under, from any relative module. */
@@ -694,11 +721,23 @@ function readStateTypes(file: ts.SourceFile, checker: ts.TypeChecker, sliceTypes
   const stateImports = new Set<ts.Symbol>();
   /** Namespace imports of `state.ts`. */
   const stateNamespaces = new Set<ts.Symbol>();
-  /** Namespace imports of any other relative module, read for `ns.TranslatorState` only. */
-  const relayNamespaces = new Set<ts.Symbol>();
+  /**
+   * Every binding imported from a relative module, named, namespace or
+   * default: any of them may be a namespace a relay re-exports (`export * as
+   * model from "./relay.js"`, at any depth), so `x.….TranslatorState` with one
+   * of them leftmost is the state.
+   */
+  const importedBindings = new Set<ts.Symbol>();
   /** Local names of slice types imported from `state.ts`, by alias symbol. */
   const sliceTypeAliases = new Map<ts.Symbol, string>();
   const symbolOf = (node: ts.Node): ts.Symbol | undefined => checker.getSymbolAtLocation(node);
+  const bind = (name: ts.Identifier): ts.Symbol | undefined => {
+    const symbol = symbolOf(name);
+
+    if (symbol !== undefined) importedBindings.add(symbol);
+
+    return symbol;
+  };
 
   // `TranslatorState` by name is the state from any relative module, not only
   // from state.ts: a module that re-exports it (`export type {
@@ -709,33 +748,48 @@ function readStateTypes(file: ts.SourceFile, checker: ts.TypeChecker, sliceTypes
     if (!ts.isImportDeclaration(statement) || !isRelativeModule(statement.moduleSpecifier)) continue;
 
     const fromState = isStateModule(statement.moduleSpecifier);
-    const bindings = statement.importClause?.namedBindings;
+    const clause = statement.importClause;
+
+    if (clause?.name !== undefined) bind(clause.name);
+
+    const bindings = clause?.namedBindings;
 
     if (bindings === undefined) continue;
 
     if (ts.isNamespaceImport(bindings)) {
-      const symbol = symbolOf(bindings.name);
+      const symbol = bind(bindings.name);
 
-      if (symbol !== undefined) (fromState ? stateNamespaces : relayNamespaces).add(symbol);
+      if (symbol !== undefined && fromState) stateNamespaces.add(symbol);
 
       continue;
     }
 
     for (const element of bindings.elements) {
       const imported = (element.propertyName ?? element.name).text;
-      const symbol = symbolOf(element.name);
+      const symbol = bind(element.name);
 
       if (symbol === undefined) continue;
 
       if (imported === STATE_TYPE) stateImports.add(symbol);
 
-      // A name imported from a relay may be a namespace it re-exports
-      // (`export * as ns from "./state.js"`), so `ns.TranslatorState` counts.
-      if (!fromState) relayNamespaces.add(symbol);
-
       if (fromState && sliceTypes.has(imported)) sliceTypeAliases.set(symbol, imported);
     }
   }
+
+  /**
+   * Whether a qualified name (`ns.TranslatorState`, `facade.model.TranslatorState`,
+   * as a type or an `extends` expression) ends in `TranslatorState` and starts
+   * with a name imported from a relative module.
+   */
+  const isRelayedState = (name: ts.EntityName | ts.Expression): boolean => {
+    const parts = qualifiedParts(name);
+
+    if (parts === undefined || parts.rightmost !== STATE_TYPE) return false;
+
+    const leftmost = symbolOf(parts.leftmost);
+
+    return leftmost !== undefined && importedBindings.has(leftmost);
+  };
 
   /**
    * The `state.ts` export a type names, if any: `X` through a named import,
@@ -770,11 +824,9 @@ function readStateTypes(file: ts.SourceFile, checker: ts.TypeChecker, sliceTypes
 
     const left = ts.isIdentifier(typeName.left) ? symbolOf(typeName.left) : undefined;
 
-    if (left === undefined) return undefined;
+    if (left !== undefined && stateNamespaces.has(left)) return typeName.right.text;
 
-    if (stateNamespaces.has(left)) return typeName.right.text;
-
-    return relayNamespaces.has(left) && typeName.right.text === STATE_TYPE ? STATE_TYPE : undefined;
+    return isRelayedState(typeName) ? STATE_TYPE : undefined;
   };
 
   /** The module-local type alias or interface `symbol` names, if it is one. */
@@ -848,19 +900,7 @@ function readStateTypes(file: ts.SourceFile, checker: ts.TypeChecker, sliceTypes
       return null;
     }
 
-    const left = ts.isQualifiedName(name)
-      ? name.left
-      : ts.isPropertyAccessExpression(name)
-        ? name.expression
-        : undefined;
-    const right = ts.isQualifiedName(name) ? name.right : ts.isPropertyAccessExpression(name) ? name.name : undefined;
-    const namespace = left !== undefined && ts.isIdentifier(left) ? symbolOf(left) : undefined;
-
-    return namespace !== undefined &&
-      (stateNamespaces.has(namespace) || relayNamespaces.has(namespace)) &&
-      right?.text === STATE_TYPE
-      ? STATE
-      : null;
+    return isRelayedState(name) ? STATE : null;
   };
 
   const heritageShape = (heritage: ts.ExpressionWithTypeArguments, depth: number): Shape =>
