@@ -86,7 +86,7 @@ A throw in one step of a tick costs that step and no other. `TickSteps` (`src/ti
   - C: a `diff/` module importing `TranslatorState` names no slice type and reads no slice key off a binding annotated `TranslatorState`, destructuring included; an exception goes in `SLICE_READS_ALLOWED` with its reason (`laps.ts:lapCrossing` until the laps cluster moves), and an entry no read matches fails.
   - D: no assignment in a `diff/` module targets `<x>.<sliceKey>`; a slice is cleared in place.
   - E: the `diff/` modules importing `TranslatorState`, in any form rule C reads, are exactly `WHOLE_STATE_DIFF_MODULES`, those that took the whole state when it was frozen (#1661), held to `WHOLE_STATE_DIFF_MODULES_FROZEN` as the pin is: a new diff module importing the state fails, since it takes its slice (*What a diff receives* above), and a pinned module that no longer imports it fails until its entry is deleted and the record re-frozen.
-  - What B's and E's records cannot see is one change that removes names and adds fewer: the failure prints its record like any shrink, so the record's edit in the diff is what a review reads.
+  - What B's and E's records cannot see is one change that removes names and adds fewer: the failure prints its record like any shrink, so the record's edit in the diff is what a review reads. Nor does E see a module that takes the whole state through a type derived without naming `TranslatorState` (`Parameters<typeof diffFlags>[0]`, `SimRawState["state"]`): the scan reads each module's syntax alone, so such a disguise is also left to review.
 
 ## Rules
 

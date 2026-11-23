@@ -77,7 +77,12 @@
  *   otherwise matches its record, so the printed record never carries an added
  *   module); an entry named twice is reported too; and the pin's distinct names
  *   are held against a frozen record as rule B's are, with the same blind spot.
- *   Reported by module, or by the pin's name for the frozen record.
+ *   Reported by module, or by the pin's name for the frozen record. Like rules
+ *   A–D it reads each module's syntax alone, so it sees the state only where a
+ *   module names `TranslatorState` (in the forms rule C reads): a type derived
+ *   without naming it, such as `Parameters<typeof diffFlags>[0]` or
+ *   `SimRawState["state"]`, is not counted. Catching that needs the type
+ *   checker over the package; such a disguise is left to review.
  *
  * `scan` findings are a source the scanner cannot read at all (no
  * `TranslatorState` type literal, no `createInitialState` returning an object
