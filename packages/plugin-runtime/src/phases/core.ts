@@ -1,6 +1,6 @@
 /**
- * Phase 1 (#1349): the plugin config, the log level, the two run-long
- * monitors, the setup-warning check, the native addons' load report (#1373),
+ * Phase 1 (#1349): the plugin config, the log level, the `Build:` line
+ * (#1678), the two run-long monitors, the setup-warning check, the native addons' load report (#1373),
  * the SDK and the event bus — everything later phases read through `Core` —
  * and, last, the plugin-state sections of the Telemetry Snapshot (#1387).
  */
@@ -21,6 +21,7 @@ import { getGlobalSettings, onGlobalSettingsChange, validateSetupWarningPatterns
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { formatBuildLine, readBuildInfo } from "../build-info.js";
 import { requireLogLocation } from "../log-location.js";
 import { type NativeAddonStatuses, nativeLoadErrorLines } from "../native-addons.js";
 import { registerStateSections } from "../state-sections.js";
@@ -45,6 +46,17 @@ export function initCore(host: PluginHost): Core {
   };
   onGlobalSettingsChange(applyDebugLogging);
   applyDebugLogging(getGlobalSettings());
+
+  // Name the build that wrote this log (#1678): the first line after the level
+  // is applied, so before the native-addon errors and the watchdog's start, and
+  // at info whatever `debugLogging` says, since the logs support receives are
+  // info logs. Written again at every iRacing session start (below), because a
+  // file the host cuts by day or by size may hold a session but not the start.
+  const buildLogger = adapter.createLogger("Build");
+  const logBuildLine = (): void => {
+    buildLogger.info(formatBuildLine(readBuildInfo(adapter)));
+  };
+  logBuildLine();
 
   // Say so when a native addon failed to load (#1373): one ERROR per addon,
   // naming it and carrying the load error, which names the `.node` and the OS
@@ -86,6 +98,11 @@ export function initCore(host: PluginHost): Core {
     onSessionEnd: onIRacingTerminated,
     isSessionActive: isIRacingActive,
   });
+
+  // Repeat the `Build:` line at each iRacing session start (#1678), beside the
+  // resource monitor's session edge, so the line sits next to the session in a
+  // per-day or size-cut log file. The app monitor fires once per session.
+  onIRacingStarted(logBuildLine);
 
   // Banner a broken setup-warning regex pattern (issue #625). Validating on every
   // settings change gives immediate PI feedback when a user types an invalid

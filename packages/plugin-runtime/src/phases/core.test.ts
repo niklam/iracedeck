@@ -1,9 +1,11 @@
 import { LogLevel } from "@iracedeck/logger";
 import { readFileSync, writeFileSync } from "node:fs";
+import { arch, release } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { cleanupTempBinDirs, createFakeAdapter, createHost } from "../test-support/fake-host.js";
+import { formatBuildLine } from "../build-info.js";
+import { cleanupTempBinDirs, createFakeAdapter, createHost, FAKE_HOST_APPLICATION } from "../test-support/fake-host.js";
 import { callLog, implement, resetRecorder } from "../test-support/recorder.js";
 import { initCore } from "./core.js";
 
@@ -33,7 +35,7 @@ describe("initCore", () => {
   beforeEach(() => resetRecorder());
   afterAll(() => cleanupTempBinDirs());
 
-  it("runs config → log level → watchdog → resource monitor → setup-warning check → SDK → bus, in that order", () => {
+  it("runs config → log level → watchdog → resource monitor → Build line repeat → setup-warning check → SDK → bus, in that order", () => {
     initCore(createHost());
 
     expect(
@@ -44,6 +46,7 @@ describe("initCore", () => {
           "adapter.setLogLevel",
           "startMainThreadWatchdog",
           "startResourceMonitor",
+          "onIRacingStarted",
           "validateSetupWarningPatterns",
           "initializeSDK",
           "initializeEventBus",
@@ -55,6 +58,7 @@ describe("initCore", () => {
       "adapter.setLogLevel",
       "startMainThreadWatchdog",
       "startResourceMonitor",
+      "onIRacingStarted", // the Build line's session-start repeat (#1678)
       "onGlobalSettingsChange",
       "validateSetupWarningPatterns",
       "initializeSDK",
@@ -67,7 +71,7 @@ describe("initCore", () => {
 
     initCore(host);
 
-    expect(host.adapter.scopes).toEqual(["MainThreadWatchdog", "ResourceMonitor", "iRacingSDK", "EventBus"]);
+    expect(host.adapter.scopes).toEqual(["Build", "MainThreadWatchdog", "ResourceMonitor", "iRacingSDK", "EventBus"]);
   });
 
   it("refuses an adapter that writes no log file, before the watchdog starts (#1330)", () => {
@@ -138,11 +142,17 @@ describe("initCore", () => {
       "registerStateSection",
       "registerStateSection",
     ]);
-    // Registering reads nothing: every one of these is a call a reader makes at the press.
-    expect(callLog).not.toContain("getPluginVersion");
-    expect(callLog).not.toContain("isSettingsStoreReady");
-    expect(callLog).not.toContain("readSettingsForSnapshot");
-    expect(callLog).not.toContain("readSimState");
+    // Registering reads nothing: every one of these is a call a reader makes at
+    // the press. Only the calls after the bus count, since the Build line read
+    // the plugin version earlier in the phase (#1678).
+    const registering = callLog.slice(callLog.lastIndexOf("initializeEventBus") + 1);
+    // Positive control: the slice holds the four registrations it is about.
+    expect(registering.filter((name) => name === "registerStateSection")).toHaveLength(4);
+    expect(registering).not.toContain("getPluginVersion");
+    expect(registering).not.toContain("getPluginPlatform");
+    expect(registering).not.toContain("isSettingsStoreReady");
+    expect(registering).not.toContain("readSettingsForSnapshot");
+    expect(registering).not.toContain("readSimState");
   });
 
   it("hands the environment section the controller it returns, read at the press (#1387)", () => {
@@ -163,6 +173,160 @@ describe("initCore", () => {
       "isSettingsStoreReady",
       "getSettingsStoreSource",
     ]);
+  });
+
+  describe("the Build: line (#1678)", () => {
+    /** The facts the line names that come from the mocked plugin config, and debug logging off. */
+    function implementPluginConfig(): void {
+      implement("getPluginVersion", () => "3.10.0");
+      implement("getPluginPlatform", () => "stream-deck");
+      implement("getGlobalSettings", () => ({ debugLogging: false }));
+    }
+
+    /**
+     * A host whose `Build` logger records each line with its level, and pushes
+     * `Build.<level>` into the call log, so the line's place among the phase's
+     * calls can be read.
+     */
+    function hostRecordingBuildLines(): {
+      host: ReturnType<typeof createHost>;
+      lines: { level: string; message: string }[];
+    } {
+      const host = createHost();
+      const lines: { level: string; message: string }[] = [];
+      const createLogger = host.adapter.createLogger;
+      host.adapter.createLogger = (scope: string) => {
+        const base = createLogger(scope);
+
+        if (scope !== "Build") return base;
+
+        const record =
+          (level: string) =>
+          (message: string): void => {
+            callLog.push(`Build.${level}`);
+            lines.push({ level, message });
+          };
+
+        return {
+          ...base,
+          trace: record("trace"),
+          debug: record("debug"),
+          info: record("info"),
+          warn: record("warn"),
+          error: record("error"),
+        };
+      };
+
+      return { host, lines };
+    }
+
+    /** The line the fake host's run should write, built from the same facts. */
+    function expectedLine(): string {
+      return formatBuildLine({
+        pluginVersion: "3.10.0",
+        platform: "stream-deck",
+        hostApplication: FAKE_HOST_APPLICATION,
+        windows: release(),
+        arch: arch(),
+        node: process.version,
+      });
+    }
+
+    it("writes the line once at initCore, at info, naming the build and the adapter's host", () => {
+      implementPluginConfig();
+      const { host, lines } = hostRecordingBuildLines();
+
+      initCore(host);
+
+      expect(lines).toEqual([{ level: "info", message: expectedLine() }]);
+      // Positive control: the fake host is in the line, so the host part was not dropped.
+      expect(lines[0].message).toContain(`, ${FAKE_HOST_APPLICATION.name} ${FAKE_HOST_APPLICATION.version},`);
+    });
+
+    it("writes it with debugLogging off: the level applied is Info, and the line is an info line", () => {
+      implementPluginConfig();
+      const { host, lines } = hostRecordingBuildLines();
+      const levels: LogLevel[] = [];
+      host.adapter.setLogLevel = (level) => levels.push(level);
+
+      initCore(host);
+
+      expect(levels).toEqual([LogLevel.Info]);
+      expect(lines.map(({ level }) => level)).toEqual(["info"]);
+    });
+
+    it("writes it as the first line after the log level is applied, before the watchdog starts", () => {
+      implementPluginConfig();
+      const { host, lines } = hostRecordingBuildLines();
+      const linesWhenWatchdogStarted: number[] = [];
+      implement("startMainThreadWatchdog", () => linesWhenWatchdogStarted.push(lines.length));
+
+      initCore(host);
+
+      // The spied watchdog start saw the line already written.
+      expect(linesWhenWatchdogStarted).toEqual([1]);
+      const setLevel = callLog.indexOf("adapter.setLogLevel");
+      const build = callLog.indexOf("Build.info");
+      expect(setLevel).toBeGreaterThanOrEqual(0);
+      expect(build).toBeGreaterThan(setLevel);
+      expect(build).toBeLessThan(callLog.indexOf("startMainThreadWatchdog"));
+    });
+
+    it("writes it before a native addon's load error", () => {
+      implementPluginConfig();
+      const statuses: unknown[] = [{ kind: "load-failed", error: "quarantined" }, { kind: "native" }];
+      implement("getNativeLoadStatus", () => statuses.shift());
+      const host = createHost();
+      const order: string[] = [];
+      const createLogger = host.adapter.createLogger;
+      host.adapter.createLogger = (scope: string) => ({
+        ...createLogger(scope),
+        info: () => order.push(`${scope}.info`),
+        error: () => order.push(`${scope}.error`),
+      });
+
+      initCore(host);
+
+      expect(order).toEqual(["Build.info", "NativeAddons.error"]);
+    });
+
+    it("writes it again on each iRacing session start, through one subscription", () => {
+      implementPluginConfig();
+      const listeners: (() => void)[] = [];
+      implement("onIRacingStarted", (listener) => listeners.push(listener as () => void));
+      const { host, lines } = hostRecordingBuildLines();
+
+      initCore(host);
+
+      expect(listeners).toHaveLength(1);
+      expect(lines).toHaveLength(1);
+
+      listeners[0]();
+      expect(lines).toHaveLength(2);
+
+      // A later session, after an exit: the monitor fires once per session.
+      listeners[0]();
+      expect(lines).toEqual([
+        { level: "info", message: expectedLine() },
+        { level: "info", message: expectedLine() },
+        { level: "info", message: expectedLine() },
+      ]);
+    });
+
+    it("leaves the host part out for an adapter that names no host", () => {
+      implementPluginConfig();
+      const { host, lines } = hostRecordingBuildLines();
+      const noHost = { ...host, adapter: { ...host.adapter, hostApplication: undefined } };
+
+      initCore(noHost);
+
+      expect(lines).toEqual([
+        {
+          level: "info",
+          message: `Build: iRaceDeck 3.10.0 (stream-deck), Windows ${release()} ${arch()}, Node ${process.version}`,
+        },
+      ]);
+    });
   });
 
   describe("the native addons' load report (#1373)", () => {
