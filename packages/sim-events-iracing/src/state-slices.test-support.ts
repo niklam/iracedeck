@@ -42,7 +42,9 @@
  *   the named, namespace, inline and re-export forms count `TranslatorState`
  *   from any relative module, not only `state.ts`, since a module that
  *   re-exports it relays it, as in
- *   `import type { TranslatorState } from "../translator-types.js"`):
+ *   `import type { TranslatorState } from "../translator-types.js"`; and
+ *   `X.TranslatorState` counts through any name imported from a relative
+ *   module, which may be a namespace the relay re-exports):
  *   - names no slice type;
  *   - exports no type alias or interface that is, or holds, the state (the
  *     scan reads each module alone, so a module importing such a type would
@@ -85,6 +87,24 @@
  *   without naming it, such as `Parameters<typeof diffFlags>[0]` or
  *   `SimRawState["state"]`, is not counted. Catching that needs the type
  *   checker over the package; such a disguise is left to review.
+ * - **F** — `scanSourceModule`, over every other production module under
+ *   `src/` (`SliceSources.other`: neither `state.ts` nor `diff/`, no tests,
+ *   test support or declarations): `TranslatorState` is exported under no
+ *   other name. Rule E counts an import of the state by that name, so a relay
+ *   under another name would carry it into a diff module unseen (#1661 QA:
+ *   `export type { TranslatorState as WholeTranslatorState } from
+ *   "./state.js"`). Refused: `TranslatorState` re-exported `as` another name
+ *   from any relative module, or a local import of it exported under another
+ *   name; an exported alias or interface that IS the state in rule C's sense
+ *   (`type X = Readonly<TranslatorState>`, `interface X extends
+ *   TranslatorState`, `import("./state.js").TranslatorState`, a local alias
+ *   exported `as` another name); and `state.ts` exported as a namespace
+ *   (`export * as ns from "./state.js"`, a namespace import re-exported).
+ *   Passes: the state relayed as `TranslatorState` (`export *` included), a
+ *   type that only holds it (`{ state: TranslatorState }`), and any other
+ *   name renamed. Reported by the exported name, with the module relative to
+ *   `src/`. A type derived without naming the state is E's gap above, here
+ *   too.
  *
  * `scan` findings are a source the scanner cannot read at all (no
  * `TranslatorState` type literal, no `createInitialState` returning an object
@@ -95,14 +115,14 @@ import { join, relative, sep } from "node:path";
 import ts from "typescript";
 
 /** Which rule a violation breaks; `heading`, `allow` and `scan` are the scanner's own. */
-export type SliceRule = "A" | "B" | "C" | "D" | "E" | "heading" | "allow" | "scan";
+export type SliceRule = "A" | "B" | "C" | "D" | "E" | "F" | "heading" | "allow" | "scan";
 
 /** One broken rule, by the name it is about and what to do. */
 export interface SliceViolation {
   readonly rule: SliceRule;
   /** The member, slice key, slice type, `<Type>.<field>`, heading or allow-list key the finding is about. */
   readonly name: string;
-  /** The diff module, relative to `diff/` (`laps.ts`), for a C or D finding. */
+  /** The module a C, D or E finding is about, relative to `diff/` (`laps.ts`); an F finding's, relative to `src/` (`translator.ts`). */
   readonly module?: string;
   readonly line?: number;
   /** What is wrong and what to do about it. */
@@ -142,17 +162,21 @@ export interface SliceScan {
   readonly diffModules: readonly string[];
   /** The diff modules that import `TranslatorState`, in any form rule C reads (the header lists them), sorted. */
   readonly stateImporters: readonly string[];
+  /** Every module rule F scanned, relative to `src/`. */
+  readonly sourceModules: readonly string[];
   /** Every rule-C read of a slice key, allowed or not. */
   readonly sliceReads: readonly SliceRead[];
   /** Every rule broken, in the order found. */
   readonly violations: readonly SliceViolation[];
 }
 
-/** The sources a scan reads: `state.ts`'s text and every production module under `diff/`. */
+/** The sources a scan reads: `state.ts`'s text, every production module under `diff/`, and every other one under `src/`. */
 export interface SliceSources {
   readonly state: string;
   /** Path relative to `diff/` with `/` separators → text. */
   readonly diff: ReadonlyMap<string, string>;
+  /** Rule F's modules: every production module under `src/` but `state.ts` and `diff/`, path relative to `src/` → text. None when absent. */
+  readonly other?: ReadonlyMap<string, string>;
 }
 
 /** Section heading → the flat member names still under it. */
@@ -161,38 +185,59 @@ export type FlatMemberPin = Readonly<Record<string, readonly string[]>>;
 /** `<module>:<sliceKey>` (module relative to `diff/`) → why that module may still read that slice through `TranslatorState`. */
 export type SliceReadAllowList = Readonly<Record<string, string>>;
 
-/** `state.ts` and every production `.ts` module under `diff/` (no tests, test support or declarations), from the package's `src`. */
+/**
+ * `state.ts`, every production `.ts` module under `diff/`, and every other
+ * production `.ts` module under the package's `src` (rule F's), with no tests,
+ * test support or declarations among them.
+ */
 export function readSliceSources(srcDir: string): SliceSources {
   const diffDir = join(srcDir, "diff");
-  const diff = new Map<string, string>();
-  const walk = (dir: string): void => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const full = join(dir, entry.name);
+  const statePath = join(srcDir, "state.ts");
+  /** Every production module under `root`, relative to `root`, leaving out the paths in `skip` and anything under them. */
+  const readModules = (root: string, skip: readonly string[]): Map<string, string> => {
+    const modules = new Map<string, string>();
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
 
-      if (entry.isDirectory()) {
-        walk(full);
+        if (skip.includes(full)) continue;
 
-        continue;
+        if (entry.isDirectory()) {
+          walk(full);
+
+          continue;
+        }
+
+        if (!entry.isFile() || !entry.name.endsWith(".ts")) continue;
+
+        if (
+          entry.name.endsWith(".d.ts") ||
+          entry.name.endsWith(".test.ts") ||
+          entry.name.endsWith(".test-support.ts")
+        ) {
+          continue;
+        }
+
+        modules.set(relative(root, full).split(sep).join("/"), readFileSync(full, "utf8"));
       }
+    };
 
-      if (!entry.isFile() || !entry.name.endsWith(".ts")) continue;
+    walk(root);
 
-      if (entry.name.endsWith(".d.ts") || entry.name.endsWith(".test.ts") || entry.name.endsWith(".test-support.ts")) {
-        continue;
-      }
-
-      diff.set(relative(diffDir, full).split(sep).join("/"), readFileSync(full, "utf8"));
-    }
+    return modules;
   };
 
-  walk(diffDir);
-
-  return { state: readFileSync(join(srcDir, "state.ts"), "utf8"), diff };
+  return {
+    state: readFileSync(statePath, "utf8"),
+    diff: readModules(diffDir, []),
+    other: readModules(srcDir, [diffDir, statePath]),
+  };
 }
 
 const HEADING = /^\/\/\s*──\s*(.+?)\s*─*\s*$/;
 const STATE_TYPE = "TranslatorState";
 const VIRTUAL_ROOT = "/virtual/diff/";
+const VIRTUAL_SRC_ROOT = "/virtual/src/";
 const DECISION_1 = "#1588 spec, decision 1";
 
 function lineOf(file: ts.SourceFile, node: ts.Node): number {
@@ -514,10 +559,11 @@ function checkState(state: StateFile, pin: FlatMemberPin, violations: SliceViola
 
 // ── diff/ ───────────────────────────────────────────────────────────────
 
-function createDiffProgram(sources: ReadonlyMap<string, string>): ts.Program {
+/** A program over `sources` alone (no lib, no module resolution), each at `root` + its path. */
+function createVirtualProgram(sources: ReadonlyMap<string, string>, root: string): ts.Program {
   const byPath = new Map<string, string>();
 
-  for (const [name, text] of sources) byPath.set(VIRTUAL_ROOT + name, text);
+  for (const [name, text] of sources) byPath.set(root + name, text);
 
   const host: ts.CompilerHost = {
     getSourceFile: (fileName, languageVersion) => {
@@ -525,9 +571,9 @@ function createDiffProgram(sources: ReadonlyMap<string, string>): ts.Program {
 
       return text === undefined ? undefined : ts.createSourceFile(fileName, text, languageVersion, true);
     },
-    getDefaultLibFileName: () => `${VIRTUAL_ROOT}lib.d.ts`,
+    getDefaultLibFileName: () => `${root}lib.d.ts`,
     writeFile: () => undefined,
-    getCurrentDirectory: () => VIRTUAL_ROOT,
+    getCurrentDirectory: () => root,
     getCanonicalFileName: (fileName) => fileName,
     useCaseSensitiveFileNames: () => true,
     getNewLine: () => "\n",
@@ -619,16 +665,31 @@ function rightmostName(name: ts.EntityName): string {
   return ts.isIdentifier(name) ? name.text : name.right.text;
 }
 
-/** Rules C and D over one diff module; pushes D and the type-level C findings, returns the slice reads. */
-function scanModule(
-  module: string,
-  file: ts.SourceFile,
-  checker: ts.TypeChecker,
-  slices: readonly SliceMember[],
-  violations: SliceViolation[],
-): ModuleScan {
-  const sliceKeys = new Map(slices.map((slice) => [slice.key, slice.type]));
-  const sliceTypes = new Set(slices.map((slice) => slice.type));
+/** How one module's types reach `TranslatorState`, read from its imports and its own declarations alone. */
+interface StateTypes {
+  /** The local names `TranslatorState` is imported under, from any relative module. */
+  readonly stateImports: ReadonlySet<ts.Symbol>;
+  /** Namespace imports of `state.ts`. */
+  readonly stateNamespaces: ReadonlySet<ts.Symbol>;
+  readonly symbolOf: (node: ts.Node) => ts.Symbol | undefined;
+  /** The `state.ts` export a type names, if any (`TranslatorState` through a relay too). */
+  readonly stateExportOf: (node: ts.TypeReferenceNode | ts.ImportTypeNode) => string | undefined;
+  /** The shape of a module-local alias or interface, or `undefined` when `symbol` is not one. */
+  readonly declaredShape: (symbol: ts.Symbol | undefined, depth: number) => Shape | undefined;
+  readonly namedShape: (
+    name: ts.EntityName | ts.Expression,
+    typeArguments: readonly ts.TypeNode[] | undefined,
+    depth: number,
+  ) => Shape;
+  readonly shapeOf: (type: ts.TypeNode, depth?: number) => Shape;
+}
+
+/**
+ * Reads how `file`'s types reach `TranslatorState`: its imports of it and of
+ * `state.ts`, and the shapes of its types (`shapeOf`). Shared by rule C over
+ * the diff modules and rule F over the other modules.
+ */
+function readStateTypes(file: ts.SourceFile, checker: ts.TypeChecker, sliceTypes: ReadonlySet<string>): StateTypes {
   /** The local names `TranslatorState` is imported under. */
   const stateImports = new Set<ts.Symbol>();
   /** Namespace imports of `state.ts`. */
@@ -638,11 +699,6 @@ function scanModule(
   /** Local names of slice types imported from `state.ts`, by alias symbol. */
   const sliceTypeAliases = new Map<ts.Symbol, string>();
   const symbolOf = (node: ts.Node): ts.Symbol | undefined => checker.getSymbolAtLocation(node);
-  const pushC = (name: string, node: ts.Node, message: (where: string) => string): void => {
-    const line = lineOf(file, node);
-
-    violations.push({ rule: "C", name, module, line, message: message(`diff/${module}:${line}`) });
-  };
 
   // `TranslatorState` by name is the state from any relative module, not only
   // from state.ts: a module that re-exports it (`export type {
@@ -672,6 +728,10 @@ function scanModule(
       if (symbol === undefined) continue;
 
       if (imported === STATE_TYPE) stateImports.add(symbol);
+
+      // A name imported from a relay may be a namespace it re-exports
+      // (`export * as ns from "./state.js"`), so `ns.TranslatorState` counts.
+      if (!fromState) relayNamespaces.add(symbol);
 
       if (fromState && sliceTypes.has(imported)) sliceTypeAliases.set(symbol, imported);
     }
@@ -841,6 +901,30 @@ function scanModule(
 
     return null;
   }
+
+  return { stateImports, stateNamespaces, symbolOf, stateExportOf, declaredShape, namedShape, shapeOf };
+}
+
+/** Rules C and D over one diff module; pushes D and the type-level C findings, returns the slice reads. */
+function scanModule(
+  module: string,
+  file: ts.SourceFile,
+  checker: ts.TypeChecker,
+  slices: readonly SliceMember[],
+  violations: SliceViolation[],
+): ModuleScan {
+  const sliceKeys = new Map(slices.map((slice) => [slice.key, slice.type]));
+  const sliceTypes = new Set(slices.map((slice) => slice.type));
+  const { stateImports, symbolOf, stateExportOf, declaredShape, namedShape, shapeOf } = readStateTypes(
+    file,
+    checker,
+    sliceTypes,
+  );
+  const pushC = (name: string, node: ts.Node, message: (where: string) => string): void => {
+    const line = lineOf(file, node);
+
+    violations.push({ rule: "C", name, module, line, message: message(`diff/${module}:${line}`) });
+  };
 
   let importsState = stateImports.size > 0;
 
@@ -1240,6 +1324,90 @@ function isObjectAssign(callee: ts.Expression): boolean {
 }
 
 /**
+ * Rule F over one module outside `diff/`: it exports `TranslatorState` under
+ * no other name, and exports no type that is the state under another name, so
+ * a diff module importing it is always seen by rule E, which counts an import
+ * of `TranslatorState` by that name. A type that only holds the state
+ * (`{ state: TranslatorState }`) passes; re-exporting it as `TranslatorState`
+ * passes.
+ */
+function scanSourceModule(
+  module: string,
+  file: ts.SourceFile,
+  checker: ts.TypeChecker,
+  sliceTypes: ReadonlySet<string>,
+  violations: SliceViolation[],
+): void {
+  const { stateImports, stateNamespaces, symbolOf, declaredShape } = readStateTypes(file, checker, sliceTypes);
+  const pushF = (name: string, node: ts.Node, how: string): void => {
+    const line = lineOf(file, node);
+
+    violations.push({
+      rule: "F",
+      name,
+      module,
+      line,
+      message: `src/${module}:${line} exports \`${name}\`, ${how}: a diff module importing it would take the whole state unseen by rule E, which counts \`${STATE_TYPE}\` by its name. Relay it as \`${STATE_TYPE}\` if a module must (\`export type { ${STATE_TYPE} } from "./state.js"\`); a new diff module takes its slice (${SLICE_SECTION}).`,
+    });
+  };
+
+  for (const statement of file.statements) {
+    if (
+      (ts.isTypeAliasDeclaration(statement) || ts.isInterfaceDeclaration(statement)) &&
+      hasExportModifier(statement) &&
+      statement.name.text !== STATE_TYPE &&
+      declaredShape(symbolOf(statement.name), 0)?.kind === "state"
+    ) {
+      pushF(statement.name.text, statement.name, `a type that is ${STATE_TYPE} under another name`);
+    }
+
+    if (!ts.isExportDeclaration(statement)) continue;
+
+    const clause = statement.exportClause;
+
+    if (statement.moduleSpecifier !== undefined) {
+      if (clause !== undefined && ts.isNamespaceExport(clause) && isStateModule(statement.moduleSpecifier)) {
+        pushF(
+          clause.name.text,
+          statement,
+          `state.ts as a namespace, carrying ${STATE_TYPE} as \`${clause.name.text}.${STATE_TYPE}\``,
+        );
+      }
+
+      if (clause === undefined || !ts.isNamedExports(clause) || !isRelativeModule(statement.moduleSpecifier)) continue;
+
+      for (const element of clause.elements) {
+        if ((element.propertyName ?? element.name).text === STATE_TYPE && element.name.text !== STATE_TYPE) {
+          pushF(element.name.text, element, `${STATE_TYPE} re-exported under another name`);
+        }
+      }
+
+      continue;
+    }
+
+    if (clause === undefined || !ts.isNamedExports(clause)) continue;
+
+    for (const element of clause.elements) {
+      if (element.name.text === STATE_TYPE) continue;
+
+      const target = checker.getExportSpecifierLocalTargetSymbol(element);
+
+      if (target === undefined) continue;
+
+      if (stateNamespaces.has(target)) {
+        pushF(
+          element.name.text,
+          element,
+          `state.ts as a namespace, carrying ${STATE_TYPE} as \`${element.name.text}.${STATE_TYPE}\``,
+        );
+      } else if (stateImports.has(target) || declaredShape(target, 0)?.kind === "state") {
+        pushF(element.name.text, element, `${STATE_TYPE}, or a type that is it, under another name`);
+      }
+    }
+  }
+}
+
+/**
  * Scans `state.ts` and the diff modules against the pin and the allow-list.
  * Pure: reads nothing but `sources`.
  */
@@ -1247,7 +1415,7 @@ export function scanStateSlices(sources: SliceSources, pin: FlatMemberPin, allow
   const violations: SliceViolation[] = [];
   const state = readStateFile(sources.state, violations);
   const slices = checkState(state, pin, violations);
-  const program = createDiffProgram(sources.diff);
+  const program = createVirtualProgram(sources.diff, VIRTUAL_ROOT);
   const checker = program.getTypeChecker();
   const diffModules = [...sources.diff.keys()].sort();
   const stateImporters: string[] = [];
@@ -1299,11 +1467,22 @@ export function scanStateSlices(sources: SliceSources, pin: FlatMemberPin, allow
     }
   }
 
+  const sourceModules = [...(sources.other ?? new Map<string, string>()).keys()].sort();
+  const sourceProgram = createVirtualProgram(sources.other ?? new Map<string, string>(), VIRTUAL_SRC_ROOT);
+  const sliceTypes = new Set(slices.map((slice) => slice.type));
+
+  for (const module of sourceModules) {
+    const file = sourceProgram.getSourceFile(VIRTUAL_SRC_ROOT + module);
+
+    if (file !== undefined) scanSourceModule(module, file, sourceProgram.getTypeChecker(), sliceTypes, violations);
+  }
+
   return {
     members: state.members.map(({ member }) => member),
     slices,
     diffModules,
     stateImporters,
+    sourceModules,
     sliceReads,
     violations,
   };

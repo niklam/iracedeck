@@ -17,8 +17,9 @@ import {
  * `TranslatorState` arrives in slices (#1588): every new cluster of translator
  * state is one member `<family>: <Family>State`, and a diff takes its slice
  * rather than the whole state. This guards the convention over `state.ts` and
- * `diff/` with the four rules of the #1588 spec, decision 3, and a fifth that
- * refuses a new diff module on the whole state (#1661); the scanner's header in
+ * `diff/` with the four rules of the #1588 spec, decision 3, and two more
+ * (#1661): E refuses a new diff module on the whole state, and F a module
+ * outside `diff/` that exports the state under another name; the scanner's header in
  * `state-slices.test-support.ts` says what each rule matches.
  */
 
@@ -439,6 +440,18 @@ describe("TranslatorState keeps to the slice convention (#1588)", () => {
     expect(scan.diffModules.length).toBeGreaterThanOrEqual(40);
     expect(scan.diffModules).toContain("laps.ts");
     expect(scan.stateImporters).toEqual([...WHOLE_STATE_DIFF_MODULES].sort());
+    // Rule F reads every other production module under src/ (16 on
+    // 2026-11-23), the three that import TranslatorState among them, and
+    // never state.ts, a diff module or a test.
+    expect(scan.sourceModules.length).toBeGreaterThanOrEqual(12);
+    expect(scan.sourceModules).toEqual(
+      expect.arrayContaining(["index.ts", "race-order.ts", "sim-state.ts", "translator.ts"]),
+    );
+    expect(
+      scan.sourceModules.filter(
+        (module) => module === "state.ts" || module.startsWith("diff/") || module.includes(".test"),
+      ),
+    ).toEqual([]);
   });
 
   it("holds both pins to their frozen baselines", () => {
@@ -615,6 +628,29 @@ describe("TranslatorState keeps to the slice convention (#1588)", () => {
     expect(
       added(findings, realFindings(result, LEGACY_FLAT_MEMBERS, remaining, FROZEN_FLAT_MEMBERS, baselineDeleted)),
     ).toEqual([]);
+  });
+
+  it("reports a module outside diff/ that relays the state under another name, as QA planted it (rule F)", () => {
+    // #1661 QA step 6b: this pair passed the guard before rule F, since rule E
+    // counts an import of TranslatorState by that name.
+    const other = new Map(sources.other);
+    const diff = new Map(sources.diff);
+
+    other.set(
+      "qa-relay.ts",
+      `/** QA plant (#1661): a relay of the whole state outside diff/, under another name. */\nexport type { TranslatorState as WholeTranslatorState } from "./state.js";\n`,
+    );
+    diff.set(
+      "qa-planted.ts",
+      `import type { WholeTranslatorState } from "../qa-relay.js";\n\nexport function diffQaPlanted(state: WholeTranslatorState): boolean {\n  return state.pitLaneInitialized;\n}\n`,
+    );
+
+    const result = realFindings(scanStateSlices({ ...sources, diff, other }, LEGACY_FLAT_MEMBERS, SLICE_READS_ALLOWED));
+
+    expect(added(findings, result)).toEqual(["F:qa-relay.ts:WholeTranslatorState"]);
+    expect(result.find((v) => v.rule === "F")?.message).toContain(
+      "src/qa-relay.ts:2 exports `WholeTranslatorState`, TranslatorState re-exported under another name",
+    );
   });
 
   it("reports a real diff module that reads a slice through the whole state", () => {
@@ -1021,6 +1057,15 @@ describe("the state-slice scanner (positive controls)", () => {
       expect(scan.violations).toEqual([]);
     });
 
+    it("counts `X.TranslatorState` through a name imported from a relay, which may be a namespace it re-exports", () => {
+      const scan = planted(plantedState(), {
+        "qualified.ts": `import type { S } from "../translator-types.js";\nexport function diff(state: S.TranslatorState): unknown {\n  return state.fastestLap;\n}\n`,
+      });
+
+      expect(scan.stateImporters).toEqual(["qualified.ts"]);
+      expect(violationNames(scan)).toEqual(["C:fastestLap"]);
+    });
+
     it("passes an exported type that neither is nor holds the state", () => {
       const scan = planted(plantedState(), {
         "gaps.ts": `${IMPORT}export type Reading = { gap: number; traces: TranslatorState["pitLaneInitialized"] };\ntype Local = TranslatorState;\nexport function diff(state: Local): boolean {\n  return state.pitLaneInitialized;\n}\n`,
@@ -1331,6 +1376,74 @@ describe("the state-slice scanner (positive controls)", () => {
 
       expect(violationKeys(findings)).toEqual(["E:flags.ts:flags.ts"]);
       expect(findings[0].message).toContain("keep it sorted by code unit");
+    });
+  });
+  describe("rule F", () => {
+    const F_IMPORT = `import type { TranslatorState } from "./state.js";\n`;
+    const scanOther = (other: Record<string, string>): SliceScan =>
+      scanStateSlices(
+        { state: plantedState(), diff: new Map(), other: new Map(Object.entries(other)) },
+        PLANTED_PIN,
+        {},
+      );
+    const fKeys = (scan: SliceScan): string[] =>
+      scan.violations.map((v) => `${v.rule}:${v.module}:${v.line}:${v.name}`);
+
+    it("reports TranslatorState re-exported under another name, from state.ts and from a relay", () => {
+      const scan = scanOther({
+        "a.ts": `export type { TranslatorState as Whole } from "./state.js";\n`,
+        "b.ts": `export { type TranslatorState as Whole } from "./relay.js";\n`,
+      });
+
+      expect(fKeys(scan)).toEqual(["F:a.ts:1:Whole", "F:b.ts:1:Whole"]);
+      expect(scan.violations[0].message).toContain(
+        "a diff module importing it would take the whole state unseen by rule E",
+      );
+      expect(scan.violations[0].message).toContain("Relay it as `TranslatorState` if a module must");
+    });
+
+    it("reports an imported TranslatorState exported under another name", () => {
+      const scan = scanOther({
+        "c.ts": `${F_IMPORT}export type { TranslatorState as Whole };\n`,
+        "d.ts": `import type { TranslatorState as T } from "./state.js";\nexport type { T };\n`,
+      });
+
+      expect(fKeys(scan)).toEqual(["F:c.ts:2:Whole", "F:d.ts:2:T"]);
+    });
+
+    it("reports an exported type that is the state under another name", () => {
+      const scan = scanOther({
+        "e.ts": `${F_IMPORT}export type Whole = Readonly<TranslatorState>;\n`,
+        "f.ts": `export type Whole = import("./state.js").TranslatorState;\n`,
+        "g.ts": `${F_IMPORT}export interface Whole extends TranslatorState {\n  now: number;\n}\n`,
+        "h.ts": `${F_IMPORT}type Local = TranslatorState;\nexport type { Local as Whole };\n`,
+      });
+
+      expect(fKeys(scan)).toEqual(["F:e.ts:2:Whole", "F:f.ts:1:Whole", "F:g.ts:2:Whole", "F:h.ts:3:Whole"]);
+    });
+
+    it("reports state.ts exported as a namespace, by `export * as` and by re-exporting a namespace import", () => {
+      const scan = scanOther({
+        "i.ts": `export * as S from "./state.js";\n`,
+        "j.ts": `import type * as S from "./state.js";\nexport type { S };\n`,
+      });
+
+      expect(fKeys(scan)).toEqual(["F:i.ts:1:S", "F:j.ts:2:S"]);
+    });
+
+    it("passes TranslatorState under its own name, a type that holds it, export *, a renamed slice type and an unrelated rename", () => {
+      const other = {
+        "own.ts": `export type { TranslatorState } from "./state.js";\n`,
+        "own-local.ts": `${F_IMPORT}export type { TranslatorState };\n`,
+        "holder.ts": `${F_IMPORT}export type SimRawState = { state: TranslatorState; now: number };\nexport interface Ctx {\n  state: Readonly<TranslatorState>;\n}\n`,
+        "star.ts": `export * from "./state.js";\n`,
+        "slice.ts": `export type { TrackGapsState as Gaps } from "./state.js";\n`,
+        "unrelated.ts": `export { foo as bar } from "./x.js";\nimport { baz } from "./y.js";\nexport { baz as qux };\n`,
+      };
+      const scan = scanOther(other);
+
+      expect(scan.violations).toEqual([]);
+      expect(scan.sourceModules).toEqual(Object.keys(other).sort());
     });
   });
 });
