@@ -323,7 +323,7 @@ describe("initCore", () => {
       expect(lines).toEqual([
         {
           level: "info",
-          message: `Build: iRaceDeck 3.10.0 (stream-deck), Windows ${release()} ${arch()}, Node ${process.version}`,
+          message: `iRaceDeck 3.10.0 (stream-deck), Windows ${release()} ${arch()}, Node ${process.version}`,
         },
       ]);
     });

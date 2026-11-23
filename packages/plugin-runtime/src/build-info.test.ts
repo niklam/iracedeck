@@ -69,20 +69,20 @@ describe("readBuildInfo (#1678)", () => {
 describe("formatBuildLine (#1678)", () => {
   it("writes every fact in the spec's order", () => {
     expect(formatBuildLine(info())).toBe(
-      "Build: iRaceDeck 3.10.0 (stream-deck), Stream Deck 7.1.0, Windows 10.0.26300 x64, Node v24.16.0",
+      "iRaceDeck 3.10.0 (stream-deck), Stream Deck 7.1.0, Windows 10.0.26300 x64, Node v24.16.0",
     );
   });
 
   it("names a host with no version by its name alone", () => {
     expect(
       formatBuildLine(info({ platform: "ulanzi", hostApplication: { name: "UlanziStudio", version: null } })),
-    ).toBe("Build: iRaceDeck 3.10.0 (ulanzi), UlanziStudio, Windows 10.0.26300 x64, Node v24.16.0");
+    ).toBe("iRaceDeck 3.10.0 (ulanzi), UlanziStudio, Windows 10.0.26300 x64, Node v24.16.0");
   });
 
   it("leaves the host part out entirely when there is no host, with no double comma", () => {
     const line = formatBuildLine(info({ hostApplication: null }));
 
-    expect(line).toBe("Build: iRaceDeck 3.10.0 (stream-deck), Windows 10.0.26300 x64, Node v24.16.0");
+    expect(line).toBe("iRaceDeck 3.10.0 (stream-deck), Windows 10.0.26300 x64, Node v24.16.0");
     expect(line).not.toContain(",,");
     expect(line).not.toContain(", ,");
   });
@@ -90,12 +90,12 @@ describe("formatBuildLine (#1678)", () => {
   it("writes a VSD Craft host with its version", () => {
     expect(
       formatBuildLine(info({ platform: "mirabox", hostApplication: { name: "VSD Craft", version: "3.10.188" } })),
-    ).toBe("Build: iRaceDeck 3.10.0 (mirabox), VSD Craft 3.10.188, Windows 10.0.26300 x64, Node v24.16.0");
+    ).toBe("iRaceDeck 3.10.0 (mirabox), VSD Craft 3.10.188, Windows 10.0.26300 x64, Node v24.16.0");
   });
 
   it("formats what readBuildInfo reads, so the line names the running build", () => {
     expect(formatBuildLine(readBuildInfo({ hostApplication: { name: "Stream Deck", version: "7.1.0" } }))).toBe(
-      `Build: iRaceDeck 3.10.0 (stream-deck), Stream Deck 7.1.0, Windows ${release()} ${arch()}, Node ${process.version}`,
+      `iRaceDeck 3.10.0 (stream-deck), Stream Deck 7.1.0, Windows ${release()} ${arch()}, Node ${process.version}`,
     );
   });
 });

@@ -54,8 +54,10 @@ export function readBuildInfo(adapter: Pick<IDeckPlatformAdapter, "hostApplicati
 }
 
 /**
- * The `Build:` log line, e.g.
- * `Build: iRaceDeck 3.10.0 (stream-deck), Stream Deck 7.1.0, Windows 10.0.26300 x64, Node v24.16.0`.
+ * The `Build:` log line's message, e.g.
+ * `iRaceDeck 3.10.0 (stream-deck), Stream Deck 7.1.0, Windows 10.0.26300 x64, Node v24.16.0`.
+ * The `Build` logger's scope supplies the prefix each host renders (`Build: ` on
+ * Stream Deck, `[Build] ` on Mirabox and Ulanzi), so the message carries none.
  * It writes what it has and nothing it does not: a host with no version is its
  * name alone (`UlanziStudio`), and no host leaves the host part out entirely.
  */
@@ -69,5 +71,5 @@ export function formatBuildLine(info: BuildInfo): string {
 
   parts.push(`Windows ${info.windows} ${info.arch}`, `Node ${info.node}`);
 
-  return `Build: ${parts.join(", ")}`;
+  return parts.join(", ");
 }
