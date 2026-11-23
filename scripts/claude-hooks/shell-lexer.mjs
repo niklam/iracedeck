@@ -3309,11 +3309,21 @@ const NESTED_DIR_CHANGE =
  * Whether the chain segment `[a, b)` of the masked `text` ({@link ranges}
  * over {@link CHAIN}) is a stage of a pipeline: a lone `|` (or `|&`) ends it
  * or comes before it. bash runs every stage in a subshell, so a `cd` there
- * moves nothing after the pipeline (CodeRabbit CLI on #1646).
+ * moves nothing after the pipeline (CodeRabbit CLI on #1646) — except the
+ * final one under `shopt -s lastpipe`, which a shell without job control (a
+ * script, `bash -c`) runs in itself: where `lastpipe` may be on ({@link
+ * LASTPIPE}), the final stage is no subshell, and its `cd` moves on.
  */
-function pipelineStage(text, a, b) {
-  return (text[b] === "|" && text[b + 1] !== "|") || (text[a - 1] === "|" && text[a - 2] !== "|");
+function pipelineStage(text, a, b, lastpipe) {
+  return (text[b] === "|" && text[b + 1] !== "|") || (!lastpipe && text[a - 1] === "|" && text[a - 2] !== "|");
 }
+
+/**
+ * Where a command may turn bash's `lastpipe` on ({@link pipelineStage}): the
+ * word anywhere in it, or a `BASHOPTS` / `SHELLOPTS` it sets or exports,
+ * which a child bash takes its options from. Errs towards on.
+ */
+const LASTPIPE = /lastpipe|\b(?:BASHOPTS|SHELLOPTS)\b/;
 /** `pushd <dir>` and PowerShell's `Push-Location`, as {@link CD_RE} reads a `cd`. */
 const PUSHD_RE = new RegExp(
   String.raw`^\s*(?:\w+=\S*\s+)*(?:pushd|push-location)(?:\s+-(?:path|literalpath))?\s+${QUOTED_ARG}\s*$`,
@@ -3334,8 +3344,9 @@ const PUSHD_RE = new RegExp(
  * segment (`(cd x)`); one inside a compound command whose extent the segment
  * does not show (`{ cd x; …`, `then cd x`, `(cd x; …`) cannot be known.
  */
-export function dirAfter(lines, base) {
+export function dirAfter(lines, base, lastpipe = false) {
   let dir = base;
+  const late = lastpipe || lines.some(({ text }) => LASTPIPE.test(text));
   for (const { text, shell } of lines) {
     if (!/(?:cd|pushd|popd|chdir|sl|location)\b/i.test(text)) continue;
     const masked = trustedMask(text);
@@ -3350,7 +3361,7 @@ export function dirAfter(lines, base) {
         return undefined;
       }
       if (shell !== POWERSHELL && !/^(?:cd|pushd|popd)$/.test(name)) continue;
-      if (pipelineStage(masked, a, b)) continue;
+      if (pipelineStage(masked, a, b, late)) continue;
       const to = /^(?:pushd|push-location)$/.test(name)
         ? argIn(text, masked, a, b, PUSHD_RE)
         : /^pop/.test(name)
@@ -3435,12 +3446,13 @@ export function gitPlace(command, cwd, re, shell = BASH) {
  */
 export function cwdAt(command, cwd, index, shell = BASH) {
   const text = trustedMask(command);
+  const lastpipe = LASTPIPE.test(command);
   let base = cwd;
   for (const [a, b] of ranges(text, CHAIN)) {
     if (b > index) break;
     const dir = argIn(command, text, a, b, cdRe(shell));
     // A cd in a pipeline stage runs in a subshell and moves nothing after it (#1646).
-    if (dir && !HISTORY_DIR.has(dir) && !pipelineStage(text, a, b)) base = resolveDir(base, dir, { shell });
+    if (dir && !HISTORY_DIR.has(dir) && !pipelineStage(text, a, b, lastpipe)) base = resolveDir(base, dir, { shell });
   }
   return base;
 }
@@ -3654,6 +3666,7 @@ export function cdsAhead(command, re, cwd, shell = BASH) {
  */
 export function* chainCommands(command, cwd, re, shell = BASH) {
   const text = trustedMask(command);
+  const lastpipe = LASTPIPE.test(command);
   const v = view(command);
   let base = cwd;
   // Each chain range's start with the directory its commands start in.
@@ -3668,7 +3681,7 @@ export function* chainCommands(command, cwd, re, shell = BASH) {
       // `printf 'cd %s; pnpm %s\n' ../ir-x dev:voices | bash`. They start from
       // where the typed command's own leave the word handing the string over,
       // never from a `cd` the chain ranges read inside that string.
-      const lead = f.before?.length ? dirAfter(f.before, baseAt(f.before.root)) : base;
+      const lead = f.before?.length ? dirAfter(f.before, baseAt(f.before.root), lastpipe) : base;
       const start = programStart(command, f.at);
       const from = f.end;
       const stop = text.slice(from, b).search(COMMAND_END);
@@ -3699,7 +3712,7 @@ export function* chainCommands(command, cwd, re, shell = BASH) {
     }
     const dir = argIn(command, text, a, b, cdRe(shell));
     // A cd in a pipeline stage runs in a subshell and moves nothing after it (#1646).
-    if (dir && !HISTORY_DIR.has(dir) && !pipelineStage(text, a, b)) base = resolveDir(base, dir, { shell });
+    if (dir && !HISTORY_DIR.has(dir) && !pipelineStage(text, a, b, lastpipe)) base = resolveDir(base, dir, { shell });
   }
 }
 

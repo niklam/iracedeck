@@ -6585,6 +6585,21 @@ describe("a carried merge or tag push behind a quoted lead value (#1646)", () =>
       passes("cd ../ir-integration | cat; git push", branchByTree);
       expect(deny("bash -c 'cd ../ir-integration; git push'", branchByTree)).toMatch(/integration` branch is local/);
     });
+
+    // A shell without job control runs a pipeline's final stage in itself
+    // under `shopt -s lastpipe`, so a cd there moves on (CodeRabbit CLI at 6146b0d79).
+    it.each([
+      "shopt -s lastpipe; true | cd ../ir-integration; pnpm dev:voices",
+      "bash -c 'shopt -s lastpipe; true | cd ../ir-integration; pnpm dev:voices'",
+      "export SHELLOPTS; true | cd ../ir-integration; pnpm dev:voices",
+      String.raw`printf 'shopt -s lastpipe; true | cd %s; pnpm %s\n' ../ir-integration dev:voices | bash`,
+    ])("follows a final-stage cd where lastpipe may be on: %s", (c) => expect(asks(c, linked)).toMatch(there));
+
+    it.each([
+      "true | cd ../ir-integration; pnpm dev:voices",
+      "cd ../ir-integration | cat; pnpm dev:voices",
+      "shopt -s lastpipe; cd ../ir-integration | cat; pnpm dev:voices",
+    ])("keeps a cd in a subshell stage from moving what follows: %s", (c) => passes(c, linked));
   });
 
   // Round 7 (#1646, the CodeRabbit CLI findings at 28552cfbe).
