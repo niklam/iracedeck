@@ -11,7 +11,8 @@
  * same-line `# v<major>.<minor>[.<patch>]` comment naming the release, which is how a
  * reader sees the version and how Dependabot's github-actions updates rewrite
  * the hash and the comment together. First-party `actions/*` stay on tags;
- * local `./…` actions and reusable workflows are this repository's own code.
+ * local `./…` actions and reusable workflows are exempt only while they are
+ * files in this repository.
  *
  * Decisions, each tested below:
  * - **Exactly 40 lowercase hex.** GitHub's commit ids are SHA-1, and Dependabot
@@ -53,8 +54,23 @@
  *   `runs.steps[*]`) and job `uses` (a reusable workflow, where
  *   `owner/repo/.github/workflows/x.yml@ref` is third-party and
  *   `./.github/workflows/x.yml` is local). A local step action is followed to
- *   its `action.yml`, so one kept outside `.github/actions/` is read too; a
- *   dangling one is `workflow-setup-node.test.mjs`'s to report.
+ *   its `action.yml`, so one kept outside `.github/actions/` is read too.
+ * - **A local action must be in the repository.** A step `uses: ./tools/x` with
+ *   no `tools/x/action.yml` or `action.yaml` in the tree is code fetched at run
+ *   time, typically an `actions/checkout` of another repository into the
+ *   workspace at a moving `ref`, which neither this test nor Dependabot reads.
+ *   It is refused, with the fix: name it as `owner/repo[/path]@<hash> # <tag>`,
+ *   or commit the action here. A path that leaves the repository (`./..`) is
+ *   refused the same way.
+ * - **Dependabot must be able to see every pin it is asked to keep.** Its
+ *   github-actions entry with `directory: "/"` reads `.github/workflows/` and a
+ *   root `action.yml` only, so a composite action elsewhere holding a pinned
+ *   third-party step would be frozen on its hash: forced there by this test and
+ *   never bumped. Every scanned file holding a third-party use must therefore
+ *   sit in a directory the entry's `directory` or `directories` names (`/` or
+ *   `/.github/workflows` for a workflow; the action's own directory otherwise),
+ *   matched exactly or by Dependabot's `*` (one path segment) and `**` (any
+ *   depth) globs. A file whose uses are all first-party needs no listing.
  *
  * It is proven by positive controls (planted documents that must each be
  * reported) and by coverage floors, so a discovery or parser change that finds
@@ -204,8 +220,8 @@ function isFirstParty(uses) {
 /**
  * Checks one parsed document's `uses:` values.
  *
- * @returns {{ violations: string[], thirdParty: number, localSteps: string[] }}
- *   `localSteps` are the step-level `./…` values, for the caller to follow.
+ * @returns {{ violations: string[], thirdParty: number, localSteps: { uses: string, label: string }[] }}
+ *   `localSteps` are the step-level `./…` values and where they are, for the caller to follow.
  */
 function pinViolations(fileName, source) {
   const lineCounter = new LineCounter();
@@ -225,7 +241,7 @@ function pinViolations(fileName, source) {
     }
     const uses = node.value;
     if (isLocal(uses)) {
-      if (level === "step") localSteps.push(uses);
+      if (level === "step") localSteps.push({ uses, label });
       continue;
     }
     if (uses.toLowerCase().startsWith("docker://")) {
@@ -259,14 +275,62 @@ function pinViolations(fileName, source) {
   return { violations, thirdParty, localSteps };
 }
 
+const DEPENDABOT = ".github/dependabot.yml";
+
 /**
- * Walks `seeds` and every local step action they name, each file once.
- * `read(relPath)` returns the file's text, or undefined when there is none.
+ * The directories Dependabot's github-actions entries name, as written.
+ *
+ * @returns {{ entries: number, directories: string[], violations: string[] }}
+ */
+function dependabotActionDirectories(source) {
+  if (source === undefined) return { entries: 0, directories: [], violations: [`${DEPENDABOT} does not exist`] };
+  const doc = parseDocument(source);
+  const violations = doc.errors.map((error) => `${DEPENDABOT}: does not parse as YAML: ${error.message}`);
+  const updates = doc.toJS()?.updates;
+  const entries = Array.isArray(updates) ? updates.filter((u) => u?.["package-ecosystem"] === "github-actions") : [];
+  const directories = [];
+  for (const entry of entries) {
+    if (typeof entry.directory === "string") directories.push(entry.directory);
+    if (Array.isArray(entry.directories)) directories.push(...entry.directories.filter((d) => typeof d === "string"));
+  }
+  if (entries.length === 0) violations.push(`${DEPENDABOT} has no github-actions entry, so no pin is ever bumped`);
+  return { entries: entries.length, directories, violations };
+}
+
+/** `/a/b/` and `a/b` both as `/a/b`; the root as `/`. */
+function normalizeDir(dir) {
+  const trimmed = `/${dir}`.replace(/\/+/g, "/").replace(/\/$/, "");
+  return trimmed === "" ? "/" : trimmed;
+}
+
+/** Whether a Dependabot `directory`/`directories` value names `dir`: exact, or by its `*` / `**` globs. */
+function dirMatches(pattern, dir) {
+  const glob = normalizeDir(pattern);
+  const regex = glob
+    .split(/(\*\*|\*)/)
+    .map((part) => (part === "**" ? ".*" : part === "*" ? "[^/]*" : part.replace(/[.+?^${}()|[\]\\]/g, "\\$&")))
+    .join("");
+  return new RegExp(`^${regex}$`).test(dir);
+}
+
+/** The directories any one of which lets Dependabot read `file`'s pins. */
+function dependabotDirsFor(file) {
+  if (/^\.github\/workflows\/[^/]+$/.test(file)) return ["/", "/.github/workflows"];
+  return [normalizeDir(path.posix.dirname(file))];
+}
+
+/**
+ * Walks `seeds` and every local step action they name, each file once, and
+ * checks Dependabot's github-actions entry covers each file holding a
+ * third-party use. `read(relPath)` returns the file's text, or undefined when
+ * there is none; `.github/dependabot.yml` is read through it too.
  */
 function scan(seeds, read) {
   const violations = [];
   const visited = new Set();
   let thirdParty = 0;
+  const dependabot = dependabotActionDirectories(read(DEPENDABOT));
+  violations.push(...dependabot.violations);
   const queue = [...seeds];
   while (queue.length > 0) {
     const file = queue.shift();
@@ -277,14 +341,26 @@ function scan(seeds, read) {
     const r = pinViolations(file, text);
     violations.push(...r.violations);
     thirdParty += r.thirdParty;
-    for (const uses of r.localSteps) {
-      const dir = path.posix.normalize(uses);
-      if (dir.startsWith("..")) continue;
-      const target = [`${dir}/action.yml`, `${dir}/action.yaml`].find((f) => read(f) !== undefined);
-      if (target !== undefined) queue.push(target);
+    const wanted = dependabotDirsFor(file);
+    if (r.thirdParty > 0 && !dependabot.directories.some((d) => wanted.some((w) => dirMatches(d, w)))) {
+      violations.push(
+        `${file} holds ${r.thirdParty} third-party uses, but ${DEPENDABOT}'s github-actions entry does not cover ${wanted[0]} (it lists ${JSON.stringify(dependabot.directories)}), so their hashes would never be bumped; add "${wanted[0]}" to that entry's directories`,
+      );
+    }
+    for (const { uses, label } of r.localSteps) {
+      const dir = path.posix.normalize(uses).replace(/\/+$/, "");
+      const candidates = dir === "." ? ["action.yml", "action.yaml"] : [`${dir}/action.yml`, `${dir}/action.yaml`];
+      const target = dir.startsWith("..") ? undefined : candidates.find((f) => read(f) !== undefined);
+      if (target === undefined) {
+        violations.push(
+          `${label} uses ${uses}, which is not an action in this repository (no ${candidates.join(" or ")}), so it is code fetched at run time that nothing here pins or bumps; name it as owner/repo[/path]@<40-hex commit> # <release>, or commit it here`,
+        );
+      } else {
+        queue.push(target);
+      }
     }
   }
-  return { violations, thirdParty, visited };
+  return { violations, thirdParty, visited, dependabotEntries: dependabot.entries };
 }
 
 /** Reads a repo-relative file from disk, or undefined when it is not a file. */
@@ -304,6 +380,12 @@ describe("every third-party action in .github is pinned to a commit hash", () =>
 
   it("reads at least the known number of third-party uses", () => {
     expect(result.thirdParty).toBeGreaterThanOrEqual(MIN_THIRD_PARTY_USES);
+  });
+
+  it("reads a github-actions entry in .github/dependabot.yml that covers the workflows", () => {
+    expect(result.dependabotEntries).toBeGreaterThanOrEqual(1);
+    const { directories } = dependabotActionDirectories(readRepoFile(DEPENDABOT));
+    expect(directories.some((d) => dirMatches(d, "/"))).toBe(true);
   });
 
   it("has no unpinned third-party action", () => {
@@ -495,7 +577,11 @@ describe("pinViolations (negative controls)", () => {
 
   it("accepts local actions and local reusable workflows, and hands the step ones back", () => {
     const doc = "jobs:\n  call:\n    uses: ./.github/workflows/x.yml\n  b:\n    steps:\n      - uses: ./x\n";
-    expect(check(doc)).toEqual({ violations: [], thirdParty: 0, localSteps: ["./x"] });
+    expect(check(doc)).toEqual({
+      violations: [],
+      thirdParty: 0,
+      localSteps: [{ uses: "./x", label: 'w.yml:6: job "b" step 1' }],
+    });
   });
 
   it("accepts a correctly pinned third-party step, job and quoted value", () => {
@@ -524,26 +610,131 @@ describe("pinViolations (negative controls)", () => {
   });
 });
 
-describe("scan (local actions, in-memory tree)", () => {
-  const tree = (files) => (rel) => files[rel];
+const WF = ".github/workflows/w.yml";
+const dependabotYml = (...entries) =>
+  `version: 2\nupdates:\n  - package-ecosystem: "npm"\n    directory: "/"\n${entries.join("")}`;
+const actionsEntry = (dirs) =>
+  `  - package-ecosystem: "github-actions"\n${typeof dirs === "string" ? `    directory: "${dirs}"\n` : `    directories:\n${dirs.map((d) => `      - "${d}"\n`).join("")}`}`;
+const composite = (uses) => `runs:\n  using: composite\n  steps:\n    - uses: ${uses}\n`;
+/** An in-memory repository; `dependabot: null` means it has no `.github/dependabot.yml`. */
+const tree =
+  (files, dependabot = dependabotYml(actionsEntry("/"))) =>
+  (rel) =>
+    rel === DEPENDABOT ? (dependabot ?? undefined) : files[rel];
 
+describe("scan (local actions, in-memory tree)", () => {
   it("follows a local step action and reports its tag-pinned step", () => {
     const r = scan(
-      ["w.yml"],
-      tree({
-        "w.yml": step("./ci/setup"),
-        "ci/setup/action.yml": "runs:\n  using: composite\n  steps:\n    - uses: owner/tool@v1\n",
-      }),
+      [WF],
+      tree(
+        { [WF]: step("./ci/setup"), "ci/setup/action.yml": composite("owner/tool@v1") },
+        dependabotYml(actionsEntry(["/", "/ci/setup"])),
+      ),
     );
-    expect([...r.visited].sort()).toEqual(["ci/setup/action.yml", "w.yml"]);
+    expect([...r.visited].sort()).toEqual([WF, "ci/setup/action.yml"]);
     expect(r.thirdParty).toBe(1);
-    expect(r.violations[0]).toMatch(/^ci\/setup\/action\.yml:4: composite step 1 uses owner\/tool@v1/);
+    expect(r.violations).toEqual([
+      expect.stringMatching(/^ci\/setup\/action\.yml:4: composite step 1 uses owner\/tool@v1/),
+    ]);
   });
 
-  it("skips a dangling local action and survives a cycle", () => {
+  it("reports a dangling local action and survives a cycle", () => {
     const self = "runs:\n  using: composite\n  steps:\n    - uses: ./a\n    - uses: ./missing\n";
-    const r = scan(["w.yml"], tree({ "w.yml": step("./a"), "a/action.yml": self }));
+    const r = scan([WF], tree({ [WF]: step("./a"), "a/action.yml": self }));
+    expect(r.violations).toEqual([
+      expect.stringMatching(
+        /^a\/action\.yml:5: composite step 2 uses \.\/missing, which is not an action in this repository/,
+      ),
+    ]);
+    expect([...r.visited].sort()).toEqual([WF, "a/action.yml"]);
+  });
+
+  it("reports an action checked out at run time and then used as a local path", () => {
+    const doc = [
+      "jobs:",
+      "  build:",
+      "    steps:",
+      "      - uses: actions/checkout@v7",
+      "        with:",
+      "          repository: owner/tool",
+      "          ref: v1",
+      "          path: tools/x",
+      "      - uses: ./tools/x",
+      "",
+    ].join("\n");
+    const r = scan([WF], tree({ [WF]: doc }));
+    expect(r.thirdParty).toBe(0);
+    expect(r.violations).toHaveLength(1);
+    expect(r.violations[0]).toMatch(
+      /^\.github\/workflows\/w\.yml:9: job "build" step 2 uses \.\/tools\/x, which is not an action in this repository \(no tools\/x\/action\.yml or tools\/x\/action\.yaml\), so it is code fetched at run time/,
+    );
+    expect(r.violations[0]).toMatch(/name it as owner\/repo\[\/path\]@<40-hex commit> # <release>/);
+  });
+
+  it("reports a local path that leaves the repository, and finds a root action.yml", () => {
+    const outside = scan([WF], tree({ [WF]: step("./../elsewhere"), "../elsewhere/action.yml": composite("./x") }));
+    expect(outside.violations).toEqual([
+      expect.stringMatching(/uses \.\/\.\.\/elsewhere, which is not an action in this repository/),
+    ]);
+    const root = scan([WF], tree({ [WF]: step("./"), "action.yml": "runs:\n  using: composite\n  steps: []\n" }));
+    expect(root.violations).toEqual([]);
+    expect([...root.visited].sort()).toEqual([WF, "action.yml"]);
+  });
+});
+
+describe("scan (Dependabot sees every pin)", () => {
+  const ACTION = ".github/actions/setup/action.yml";
+  const pinned = composite(`owner/tool@${SHA} # v1.2.3`);
+
+  it("reports a composite action holding a pinned third-party step in a directory Dependabot does not read", () => {
+    const r = scan([WF, ACTION], tree({ [WF]: step(`owner/tool@${SHA} # v1.2.3`), [ACTION]: pinned }));
+    expect(r.violations).toHaveLength(1);
+    expect(r.violations[0]).toMatch(
+      /^\.github\/actions\/setup\/action\.yml holds 1 third-party uses, but \.github\/dependabot\.yml's github-actions entry does not cover \/\.github\/actions\/setup \(it lists \["\/"\]\)/,
+    );
+    expect(r.violations[0]).toMatch(/add "\/\.github\/actions\/setup" to that entry's directories$/);
+  });
+
+  it("passes it once directories lists it, exactly or by a * or ** glob", () => {
+    for (const dirs of [
+      ["/", "/.github/actions/setup"],
+      ["/", ".github/actions/setup/"],
+      ["/", "/.github/actions/*"],
+      ["/**"],
+    ]) {
+      const r = scan(
+        [WF, ACTION],
+        tree({ [WF]: step(`owner/tool@${SHA} # v1.2.3`), [ACTION]: pinned }, dependabotYml(actionsEntry(dirs))),
+      );
+      expect(r.violations, JSON.stringify(dirs)).toEqual([]);
+    }
+  });
+
+  it("does not let * cross a path segment", () => {
+    const deep = ".github/actions/group/setup/action.yml";
+    const r = scan([deep], tree({ [deep]: pinned }, dependabotYml(actionsEntry(["/", "/.github/actions/*"]))));
+    expect(r.violations).toEqual([expect.stringMatching(/does not cover \/\.github\/actions\/group\/setup/)]);
+  });
+
+  it("needs no listing for a composite action with only first-party steps", () => {
+    const r = scan([ACTION], tree({ [ACTION]: composite("actions/setup-node@v6") }));
     expect(r.violations).toEqual([]);
-    expect([...r.visited].sort()).toEqual(["a/action.yml", "w.yml"]);
+  });
+
+  it("reports a workflow's pins when the entry does not read the workflows", () => {
+    const r = scan([WF], tree({ [WF]: step(`owner/tool@${SHA} # v1.2.3`) }, dependabotYml(actionsEntry("/tools"))));
+    expect(r.violations).toEqual([
+      expect.stringMatching(/^\.github\/workflows\/w\.yml holds 1 third-party uses, .*add "\/" to/),
+    ]);
+    const listed = dependabotYml(actionsEntry(["/.github/workflows"]));
+    expect(scan([WF], tree({ [WF]: step(`owner/tool@${SHA} # v1.2.3`) }, listed)).violations).toEqual([]);
+  });
+
+  it("reports a missing dependabot.yml or one without a github-actions entry", () => {
+    const files = { [WF]: step("actions/checkout@v7") };
+    expect(scan([WF], tree(files, null)).violations).toEqual([".github/dependabot.yml does not exist"]);
+    const npmOnly = scan([WF], tree(files, dependabotYml()));
+    expect(npmOnly.dependabotEntries).toBe(0);
+    expect(npmOnly.violations).toEqual([expect.stringMatching(/has no github-actions entry/)]);
   });
 });
