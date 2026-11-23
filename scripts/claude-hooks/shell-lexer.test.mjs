@@ -618,6 +618,8 @@ describe("the program-word rewrite's second read (#1606)", () => {
     "bash -c 'a; b' && git push origin integration # x/'y",
     `sudo x "a;b"/gh pr merge 5; git.exe push --tags; echo "q/r"`,
     "sudo x `a; b`/c; gh pr merge 5 | echo 'd/e'",
+    // #1646 review: a backslashed word rewritten.
+    String.raw`bash -c "\gh.exe pr merge 5; \ls"; git push origin integration; echo "a/b"`,
     // #1646: words read inside a string at the level its shell reads it.
     `bash -c "X=\\"a; b\\" gh.exe pr merge 5"; git push origin integration; echo "a/b"`,
     String.raw`bash -c 'X='\''a b'\'' /usr/bin/gh pr merge 5' && git.exe push --tags; echo 'c/d'`,
@@ -1115,9 +1117,12 @@ describe("the #1634 review round: options, cuts and program positions", () => {
     expect(trustedMask("find . -exec GH.EXE pr merge {} \\;")).toBe("find . -exec     gh pr merge {} \\;");
     expect(lexer.programKind("find . -exec gh pr merge {} \\;", 13)).toEqual({ how: "wrapper", via: "find -exec" });
     expect(lexer.programKind("sudo nice gh pr merge 7", 10)).toEqual({ how: "wrapper", via: "nice" });
-    // The gap that stays: a program quoted whole in a string a shell joins from its words.
-    expect(trustedMask('eval "gh" pr merge 7')).toBe('eval "gh" pr merge 7');
-    expect(lexer.has('eval "gh" pr merge 7', MERGE)).toBe(false);
+    // A program quoted whole among the words a shell joins is read whole too,
+    // its own quotes with it, as `sudo "gh"`'s are; another word's stay (#1646).
+    expect(trustedMask('eval "gh" pr merge 7')).toBe("eval   gh pr merge 7");
+    expect(lexer.has('eval "gh" pr merge 7', MERGE)).toBe(true);
+    const joined = `eval "gh.exe" pr merge 5 "x;y"; git.exe push --tags`;
+    expect(trustedMask(joined)).toBe(`eval ${" ".repeat(6)}gh pr merge 5 "x;y";     git push --tags`);
   });
 
   it("has no fedCommandStart export: programKind says how a word is the program", () =>
@@ -1491,15 +1496,16 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
   // A program word a fed string's shell expands is one the hook cannot read,
   // as at top level: listed, so `checkBash` judges it as gh and as git. A
   // substitution or backtick is no word the raw text holds whole, so it was
-  // skipped; an escaped `$` in a double-quoted string started no word.
+  // skipped; an escaped `$` in a double-quoted string started no word, and is
+  // named by its raw spelling, from its backslash.
   it.each([
     ['bash -c "$(echo gh) pr merge 7"', "$(echo gh)"],
     ['bash -c "`echo gh` pr merge 7"', "`echo gh`"],
     ["bash -c '$(echo gh) pr merge 7'", "$(echo gh)"],
     ["bash -c '`echo gh` pr merge 7'", "`echo gh`"],
     [`bash -c 'X="a b" $(echo gh) pr merge 7'`, "$(echo gh)"],
-    [String.raw`eval "\$GH pr merge 7"`, "$GH"],
-    [String.raw`bash -c "\$GH pr merge 7"`, "$GH"],
+    [String.raw`eval "\$GH pr merge 7"`, String.raw`\$GH`],
+    [String.raw`bash -c "\$GH pr merge 7"`, String.raw`\$GH`],
   ])("lists a program word the string's shell expands as unreadable: %s", (c, word) =>
     expect(lexer.unreadablePrograms(c).map((u) => u.word)).toContain(word),
   );
@@ -1508,4 +1514,75 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
     "lists no argument or assignment that expands as a program: %s",
     (c) => expect(lexer.unreadablePrograms(c)).toEqual([]),
   );
+
+  // A program word starting with a backslash: its rewrite drops the backslash,
+  // and the next round read the word from its name and found the raw backslash
+  // ahead of it, so the recorded starts alternated and never settled.
+  it.each([
+    String.raw`bash -c '\cp -f a b'`,
+    String.raw`bash -c "\ls -la"`,
+    String.raw`bash -c 'X=1 \ls'`,
+    String.raw`bash -c $'\\x67h pr merge 7'`,
+    String.raw`bash -c '\gh pr merge 7'`,
+    String.raw`bash -c "nice \gh pr merge 7"`,
+  ])("settles a program word that starts with a backslash: %s", (c) => expect(view(c).unsettled).toBe(false));
+
+  it("reads the program after a backslash as its shell does", () => {
+    expect(lexer.has(String.raw`bash -c '\gh pr merge 7'`, MERGE)).toBe(true);
+    expect(lexer.has(String.raw`bash -c $'\\x67h pr merge 7'`, MERGE)).toBe(false);
+    expect(lexer.respelledPrograms(String.raw`bash -c $'g\x68 pr merge 7'`).respelled.map((w) => w.name)).toEqual([
+      "gh",
+    ]);
+  });
+
+  // A program spelled so the raw text cannot show the name its shell runs.
+  it.each([
+    [String.raw`bash -c "\"gh\" pr merge 7"`, String.raw`\"gh\"`, "gh"],
+    [String.raw`pwsh -Command "& \"C:\Program Files\GitHub CLI\gh.exe\" pr merge 7"`, null, "gh"],
+    [String.raw`bash -c "\"git\" push origin v1.2.3"`, String.raw`\"git\"`, "git"],
+  ])("lists a program escaped within its string with the name its shell runs: %s", (c, word, name) => {
+    const { respelled, spliced } = lexer.respelledPrograms(c);
+    expect(spliced).toEqual([]);
+    expect(respelled.map((w) => w.name)).toEqual([name]);
+    if (word) expect(respelled[0].word).toBe(word);
+  });
+
+  it.each([
+    `bash -c 'g'"h"' pr merge 7'`,
+    `bash -c 'X="a b" g'"h"' pr merge 7'`,
+    `bash -c 'echo hi; g'"h"' pr merge 7'`,
+  ])("lists a program spliced from quoted pieces: %s", (c) =>
+    expect(lexer.respelledPrograms(c).spliced.map((w) => w.word)).toEqual([`g'"h`]),
+  );
+
+  it.each([
+    "bash -c 'gh pr merge 7'",
+    `bash -c "X='a b' gh pr merge 7"`,
+    `echo '"gh" pr merge 7' | bash`,
+    String.raw`bash -c 'X='\''a b'\'' gh pr merge 7'`,
+  ])("lists nothing respelled where the raw text spells the program: %s", (c) =>
+    expect(lexer.respelledPrograms(c)).toEqual({ respelled: [], spliced: [] }),
+  );
+
+  // What echo -e and printf print is the script the piped shell reads.
+  it.each([
+    String.raw`echo -e 'x\ngh pr merge 7' | bash`,
+    String.raw`echo -ne 'x\ngh pr merge 7' | bash`,
+    String.raw`echo -e 'x\x0agh pr merge 7' | bash`,
+    String.raw`echo -e 'x\012gh pr merge 7' | bash`,
+    String.raw`printf 'x\ngh pr merge 7\n' | bash`,
+    String.raw`printf 'x\012gh pr merge 7' | sh`,
+    String.raw`printf '%b' 'x\ngh pr merge 7' | bash`,
+  ])("reads what echo -e or printf prints, its escapes decoded: %s", (c) => expect(lexer.has(c, MERGE)).toBe(true));
+
+  it.each([
+    String.raw`echo 'x\ngh pr merge 7' | bash`,
+    String.raw`echo -eE 'x\ngh pr merge 7' | bash`,
+    String.raw`printf '%s' 'x\ngh pr merge 7' | bash`,
+  ])("keeps an escape echo or printf prints as written: %s", (c) => expect(lexer.has(c, MERGE)).toBe(false));
+
+  it("sets no unclosed lead for cmd.exe, which has no single quotes", () => {
+    expect(view(`cmd /c "it's.bat"`).unclosedLead).toBe(false);
+    expect(view(`bash -c "it's"`).unclosedLead).toBe(true);
+  });
 });

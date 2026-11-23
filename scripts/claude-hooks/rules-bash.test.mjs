@@ -6282,4 +6282,47 @@ describe("a carried merge or tag push behind a quoted lead value (#1646)", () =>
     "passes an expansion that is an argument, or a program no guard reads, as at top level: %s",
     (c) => passes(c),
   );
+
+  // The /code-review (xhigh) round on 4d4729246.
+  it.each([
+    String.raw`bash -c '\cp -f a b'`,
+    String.raw`bash -c "\ls -la"`,
+    String.raw`bash -c 'X=1 \ls'`,
+    String.raw`bash -c $'\\x67h pr merge 7'`,
+    String.raw`cmd /c "it's.bat"`,
+    String.raw`bash -c "\"ls\" -la"`,
+    String.raw`echo 'x\ngh pr merge 7' | bash`,
+    String.raw`printf '%s' 'x\ngh pr merge 7' | bash`,
+  ])("passes as master does: %s", (c) => passes(c));
+
+  it("keeps the asks a backslashed program word reaches", () => {
+    expect(asks(String.raw`bash -c "\git push origin v1.2.3"`)).toMatch(/Pushing a tag cuts a release/);
+    expect(asks(String.raw`bash -c "\pnpm relink:stream-deck"`)).toMatch(/relink/);
+  });
+
+  it.each([String.raw`bash -c '\gh pr merge 7'`, String.raw`eval "\gh pr merge 7"`])(
+    "refuses a backslashed merge as one handed to a shell, never as unsettled: %s",
+    (c) => expect(refused(c)).toMatch(/is not its own command/),
+  );
+
+  it.each([
+    `bash -c 'g'"h"' pr merge 7'`,
+    `bash -c 'X="a b" g'"h"' pr merge 7'`,
+    `bash -c 'echo hi; g'"h"' pr merge 7'`,
+  ])("refuses a program spliced from quoted pieces: %s", (c) =>
+    expect(refused(c)).toMatch(/spliced from quoted pieces/),
+  );
+
+  it.each([
+    String.raw`bash -c "\"gh\" pr merge 7"`,
+    String.raw`pwsh -Command "& \"C:\Program Files\GitHub CLI\gh.exe\" pr merge 7"`,
+    `eval "gh" pr merge 7`,
+    String.raw`bash -c "C:\\tools\\gh.exe pr merge 7"`,
+    String.raw`echo -e 'x\ngh pr merge 7' | bash`,
+    String.raw`printf 'x\ngh pr merge 7\n' | bash`,
+    String.raw`printf '%b' 'x\ngh pr merge 7' | bash`,
+  ])("refuses a merge its shell runs under a quoted, escaped or printed name: %s", (c) => refused(c));
+
+  it("judges a program escaped in its string by the name its shell runs, an ask kept an ask", () =>
+    expect(asks(String.raw`bash -c "\"git\" push origin v1.2.3"`)).toMatch(/Pushing a tag cuts a release/));
 });

@@ -48,6 +48,7 @@ import {
   programStart,
   ranges,
   resolveDir,
+  respelledPrograms,
   stringBounds,
   stringEnd,
   stringKind,
@@ -2090,10 +2091,41 @@ const checkName = (c) => c.name ?? c.context ?? c.__typename ?? "?";
  * words after it as the command (#1606 second read), so it is judged once more
  * blanked out, at the same length, which puts the next word at command
  * position.
+ *
+ * A program word a string handed to a shell spells so the text cannot show
+ * the name it runs (#1646, `respelledPrograms` in `shell-lexer.mjs`): one
+ * spliced from quoted pieces (`bash -c 'g'"h"' pr merge 7'`) is refused,
+ * naming it; one escaped within its string (`bash -c "\"gh\" pr merge 7"`,
+ * pwsh's `& \"C:\…\gh.exe\"`) is judged with the name its shell runs in its
+ * place, and that verdict stands.
  */
 export function checkBash(command, ctx) {
   const powershell = ctx.shell === POWERSHELL;
-  const text = powershell ? powershellAsBash(command) : command;
+  return checkText(powershell ? powershellAsBash(command) : command, ctx, powershell, 0);
+}
+
+/** {@link checkBash} over the command read as bash (`text`); `depth` counts the re-judges with a respelled name in place. */
+function checkText(text, ctx, powershell, depth) {
+  const { respelled, spliced } = respelledPrograms(text);
+  if (spliced.length)
+    return `The program \`${spliced[0].word}\` in a string this command hands to a shell is spliced from quoted pieces, so the hook cannot read which program it runs. Spell the program as one plain word.`;
+  if (respelled.length) {
+    if (depth > 0)
+      return `The program \`${respelled[0].word}\` in a string this command hands to a shell is quoted or escaped so the hook cannot read it in place. Spell the program as a plain word.`;
+    // Each word replaced by the name its shell runs, from the last, so the
+    // earlier ones keep their indices; and once more by the name its raw text
+    // spells, where that differs, the stricter verdict standing.
+    const named = (key) => {
+      let out = text;
+      for (const w of [...respelled].sort((x, y) => y.start - x.start))
+        out = out.slice(0, w.start) + w[key] + out.slice(w.end);
+      return out;
+    };
+    const verdicts = [named("name"), named("rawName")]
+      .filter((c, k, all) => all.indexOf(c) === k)
+      .map((c) => checkText(c, ctx, powershell, depth + 1));
+    return verdicts.find((v) => typeof v === "string") ?? verdicts.find((v) => v) ?? null;
+  }
   // Shells or wrappers nested past the lexer's depth leave the program at the
   // bottom unread by every rule, and a re-judge hits the same depth, so the
   // command is refused whole rather than passed (#1634, an independent judge
