@@ -431,18 +431,20 @@ describe("TranslatorState keeps to the slice convention (#1588)", () => {
   const scan = scanStateSlices(sources, LEGACY_FLAT_MEMBERS, SLICE_READS_ALLOWED);
   const findings = realFindings(scan);
 
-  it("scans the whole state and every diff module, not an empty or narrowed read", () => {
+  it("scans the whole state, the diff modules and the other modules, not an empty read and missing no pinned importer", () => {
     // Measured when the importer list was frozen (#1661), 2026-11-23: 244
     // members (229 pinned flat, 15 slices), 59 diff modules, 28 of them
-    // importing TranslatorState. The importers are pinned exactly (rule E), so
-    // an empty or narrowed read reports every pinned module as stale.
+    // importing TranslatorState. The counts are floors, so they catch an empty
+    // read; the importers must equal the pin exactly (rule E), so a read that
+    // misses a pinned importer fails too. A read that skips a diff module that
+    // imports nothing, while the count holds, is not caught here.
     expect(scan.members.length).toBeGreaterThan(200);
     expect(scan.diffModules.length).toBeGreaterThanOrEqual(40);
     expect(scan.diffModules).toContain("laps.ts");
     expect(scan.stateImporters).toEqual([...WHOLE_STATE_DIFF_MODULES].sort());
     // Rule F reads every other production module under src/ (16 on
-    // 2026-11-23), the three that import TranslatorState among them, and
-    // never state.ts, a diff module or a test.
+    // 2026-11-23): a floor, four modules named, the three that import
+    // TranslatorState among them, and never state.ts, a diff module or a test.
     expect(scan.sourceModules.length).toBeGreaterThanOrEqual(12);
     expect(scan.sourceModules).toEqual(
       expect.arrayContaining(["index.ts", "race-order.ts", "sim-state.ts", "translator.ts"]),
