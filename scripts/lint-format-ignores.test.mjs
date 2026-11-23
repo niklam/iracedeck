@@ -39,60 +39,70 @@ const NATIVE_OUTPUT = [
 // ignore machinery is a one-time cold cost: about 0.7 s and 0.5 s alone, up to
 // 2.6 s each inside a full `pnpm test`, and 9.3 s once under load (#1588),
 // against vitest's 5 s per test. A fresh ESLint per test paid it inside the
-// first ESLint test (#1647). So it is paid once, here, under a hook timeout of
-// about three times the slowest load seen; every test then reads warm caches.
+// first ESLint test (#1647). So each tool's cost is paid once, in a hook of its
+// own block, under a timeout of about three times the slowest load seen; its
+// tests then read warm caches, and a tool that fails to load fails only its own.
 const WARM_UP_TIMEOUT_MS = 30_000;
 
 describe("lint and format ignores", () => {
-  let eslint;
-
-  beforeAll(async () => {
-    eslint = new ESLint({ cwd: repoRoot });
-    await eslint.isPathIgnored(join(repoRoot, "eslint.config.js"));
-    await prettier.getFileInfo(join(repoRoot, "eslint.config.js"), { ignorePath: PRETTIER_IGNORE_FILES });
-  }, WARM_UP_TIMEOUT_MS);
-
   // A discovery that finds nothing would pass every assertion below vacuously.
   it("finds tracked source under a build/ directory to check", () => {
     expect(trackedUnderBuild.filter((file) => LINTED.test(file)).length).toBeGreaterThan(0);
   });
 
-  // The control for the node-gyp check below: the same kind of path outside a
-  // build/ root is NOT ignored, so a `true` there comes from the ignore pattern.
-  it("ESLint does not ignore a .ts path outside a build/ root", async () => {
-    expect(await eslint.isPathIgnored(join(repoRoot, "packages/iracing-native/src/config.ts"))).toBe(false);
+  describe("ESLint", () => {
+    let eslint;
+
+    beforeAll(async () => {
+      eslint = new ESLint({ cwd: repoRoot });
+      await eslint.isPathIgnored(join(repoRoot, "eslint.config.js"));
+    }, WARM_UP_TIMEOUT_MS);
+
+    // The control for the node-gyp check below: the same kind of path outside a
+    // build/ root is NOT ignored, so a `true` there comes from the ignore pattern.
+    it("does not ignore a .ts path outside a build/ root", async () => {
+      expect(await eslint.isPathIgnored(join(repoRoot, "packages/iracing-native/src/config.ts"))).toBe(false);
+    });
+
+    it("does not ignore tracked source under a build/ directory", async () => {
+      const files = trackedUnderBuild.filter((file) => LINTED.test(file));
+      const ignored = [];
+
+      for (const file of files) {
+        if (await eslint.isPathIgnored(join(repoRoot, file))) ignored.push(file);
+      }
+
+      expect(ignored).toEqual([]);
+    });
+
+    it("still ignores node-gyp's build output", async () => {
+      for (const file of NATIVE_OUTPUT) {
+        expect(await eslint.isPathIgnored(join(repoRoot, file)), file).toBe(true);
+      }
+    });
   });
 
-  it("ESLint does not ignore tracked source under a build/ directory", async () => {
-    const files = trackedUnderBuild.filter((file) => LINTED.test(file));
-    const ignored = [];
+  describe("Prettier", () => {
+    const fileInfo = (file) => prettier.getFileInfo(join(repoRoot, file), { ignorePath: PRETTIER_IGNORE_FILES });
 
-    for (const file of files) {
-      if (await eslint.isPathIgnored(join(repoRoot, file))) ignored.push(file);
-    }
+    beforeAll(async () => {
+      await fileInfo("eslint.config.js");
+    }, WARM_UP_TIMEOUT_MS);
 
-    expect(ignored).toEqual([]);
-  });
+    it("does not ignore tracked source under a build/ directory", async () => {
+      const ignored = [];
 
-  it("Prettier does not ignore tracked source under a build/ directory", async () => {
-    const ignored = [];
+      for (const file of trackedUnderBuild) {
+        if ((await fileInfo(file)).ignored) ignored.push(file);
+      }
 
-    for (const file of trackedUnderBuild) {
-      const info = await prettier.getFileInfo(join(repoRoot, file), { ignorePath: PRETTIER_IGNORE_FILES });
+      expect(ignored).toEqual([]);
+    });
 
-      if (info.ignored) ignored.push(file);
-    }
-
-    expect(ignored).toEqual([]);
-  });
-
-  it("both still ignore node-gyp's build output", async () => {
-    for (const file of NATIVE_OUTPUT) {
-      expect(await eslint.isPathIgnored(join(repoRoot, file)), file).toBe(true);
-
-      const info = await prettier.getFileInfo(join(repoRoot, file), { ignorePath: PRETTIER_IGNORE_FILES });
-
-      expect(info.ignored, file).toBe(true);
-    }
+    it("still ignores node-gyp's build output", async () => {
+      for (const file of NATIVE_OUTPUT) {
+        expect((await fileInfo(file)).ignored, file).toBe(true);
+      }
+    });
   });
 });
