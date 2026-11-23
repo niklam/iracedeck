@@ -1052,14 +1052,18 @@ export const rules = [
         // `GIT_DIR`, which hides whose branch that is, refuse it.
         const { dir, movesRepo } = gitPlaceAt(c, start, base, ctx.shell);
         // A push its shell reads differently from the text here is judged on
-        // what it reads (#1646): its refspecs from that text, and any git
-        // option ahead of `push` there as one that moves the repository.
+        // what it reads (#1646): its refspecs past the verb the rule's own
+        // shape matched there, git's global options and their values skipped
+        // as `GIT_GLOBALS` reads them (`git -c 'x.push=integration' push
+        // origin main` names no `integration`), and, apart from that, a `-C`,
+        // `--git-dir` or `--work-tree` among those options as moving the
+        // repository. A shape it cannot place is judged as moving it.
         let read = args;
         let moved = movesRepo;
         if (decoded !== undefined) {
-          const [head, ...rest] = decoded.split(/\bpush\b/);
-          read = rest.join("push");
-          moved ||= /\s-/.test(head);
+          const verb = new RegExp(GIT_PUSH.inner.source, "y").exec(decoded);
+          read = verb ? decoded.slice(verb[0].length) : "";
+          moved ||= !verb || /(?:^|\s)(?:-C|--git-dir|--work-tree)(?=[\s=]|$)/.test(verb[0]);
           excuseDecodedHit(c, GIT_PUSH, program);
         }
         let unknown = false;

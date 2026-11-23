@@ -6403,4 +6403,35 @@ describe("a carried merge or tag push behind a quoted lead value (#1646)", () =>
     "refuses what a raw-argument rule would pass on mis-sliced arguments: %s",
     (c) => expect(deny(c)).toMatch(/reads its words differently/),
   );
+
+  // Round 4 (#1646, the CodeRabbit CLI findings at 760adedc2).
+  it("refuses printf output past its budget fast, before reading any PR", () => {
+    const started = performance.now();
+    expect(refused(String.raw`printf '%999999999s\ngh pr merge 7' x | bash`)).toMatch(/cannot be known/);
+    expect(refused(String.raw`printf '%60000s' a b c d e f g h | bash`)).toMatch(/cannot be known/);
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
+  it("reads a decoded push's refspecs past git's own options, not at the first `push` in them", () => {
+    passes(String.raw`bash -c $'git -c \'test.push=x integration y\' push origin main'`);
+    expect(deny(String.raw`bash -c $'git -c \'test.push=x integration y\' push origin integration'`)).toMatch(
+      /integration` branch is local/,
+    );
+  });
+
+  it("refuses a merge after an astral character in printf output", () =>
+    expect(refused(`printf '%s\\n' 'echo 😀; gh pr merge 7' | bash`)).toMatch(/its own command/));
+
+  it.each(["bash -c 'constructor -x y'", "constructor -x y", "bash -c '__proto__ -u v x'", "toString --unset x y"])(
+    "passes a command word named like an Object.prototype member: %s",
+    (c) => passes(c),
+  );
+
+  it("reads a decoded runner's arguments on the stdin path: a start passes, a relink asks", () => {
+    passes(String.raw`printf '%s %s\n' pnpm 'start:stream-deck' | bash`);
+    expect(asks(String.raw`printf '%s %s\n' pnpm 'relink:stream-deck' | bash`)).toMatch(/relink/);
+  });
+
+  it("keeps each word `watch -x` runs one word, so the restart it repeats asks", () =>
+    expect(asks("watch -x bash -c 'pnpm restart:stream-deck'")).toBeTruthy());
 });

@@ -1045,12 +1045,13 @@ function optionValueEnd(t, i) {
 
 /** The lead's keywords, the wrappers whose options the lead steps over, and the options of each that take a value ({@link leadStep}). */
 const LEAD_KEYWORDS = new Set(["if", "then", "do", "else", "elif", "while", "until", "!", "{"]);
-const LEAD_VALUE_OPTIONS = {
-  time: ["-u", "-C", "-S", "-a", "--unset", "--chdir", "--split-string"],
-  timeout: ["-k", "-s", "--kill-after", "--signal"],
-  xargs: ["-I", "-d", "-E", "-e", "-L", "-n", "-P", "-s"],
-};
-for (const w of ["command", "exec", "env", "nohup"]) LEAD_VALUE_OPTIONS[w] = LEAD_VALUE_OPTIONS.time;
+// A Map, as it is keyed by a command word: an object would answer `constructor` (#1646).
+const WRAPPER_VALUES = ["-u", "-C", "-S", "-a", "--unset", "--chdir", "--split-string"];
+const LEAD_VALUE_OPTIONS = new Map([
+  ...["time", "command", "exec", "env", "nohup"].map((w) => [w, WRAPPER_VALUES]),
+  ["timeout", ["-k", "-s", "--kill-after", "--signal"]],
+  ["xargs", ["-I", "-d", "-E", "-e", "-L", "-n", "-P", "-s"]],
+]);
 /** A redirection operator ahead of the program, with its fd ({@link leadStep}). */
 const LEAD_REDIRECT = /^\d*(?:<<<|[<>]&|&>>?|>>|>\||<>|<|>)/;
 
@@ -1082,7 +1083,7 @@ function leadStep(t, i) {
   if (e <= i || !/\s/.test(t[e] ?? "")) return undefined;
   const word = t.slice(i, e);
   if (LEAD_KEYWORDS.has(word)) return { end: blanksFrom(t, e), wrapper: "keyword" };
-  const values = LEAD_VALUE_OPTIONS[word];
+  const values = LEAD_VALUE_OPTIONS.get(word);
   if (!values) return undefined;
   let k = blanksFrom(t, e);
   while (t[k] === "-") {
@@ -1337,11 +1338,23 @@ function unescaped(N, flavor) {
   return levelOf(chars, { from: N.from, to: N.to, parts: null, stopped });
 }
 
-/** The characters of the {@link level} `L`, each `{ c, at, end }` ({@link printed}). */
-const charsOf = (L) => [...L.text].map((c, k) => ({ c, at: L.at[k], end: L.end[k] }));
+/**
+ * The characters of the {@link level} `L`, each `{ c, at, end }` ({@link
+ * printed}), one per UTF-16 code unit as the level's `at` and `end` are, so
+ * an astral character (`😀`, two units) shifts no later index (#1646).
+ */
+const charsOf = (L) => Array.from({ length: L.text.length }, (_, k) => ({ c: L.text[k], at: L.at[k], end: L.end[k] }));
 
 /** A printf conversion: flags, width, precision and letter ({@link printed}). */
 const PRINTF_CONVERSION = /^%([-+ #0]*)(\d*|\*)(?:\.(\d*|\*))?([a-zA-Z]?)/;
+
+/**
+ * The most printf output {@link printed} builds, in UTF-16 code units: a
+ * literal width (`%999999999s`) or a format reused over many arguments could
+ * otherwise exhaust the hook's memory or time, and a hook that crashes or
+ * times out lets the command through (#1646, CodeRabbit CLI).
+ */
+const PRINTED_BUDGET = 64 * 1024;
 
 /**
  * What a `printf` prints from its format and arguments, each the {@link
@@ -1354,7 +1367,8 @@ const PRINTF_CONVERSION = /^%([-+ #0]*)(\d*|\*)(?:\.(\d*|\*))?([a-zA-Z]?)/;
  * padded to a literal width; a missing argument is empty, or 0. The format is
  * reused while arguments remain, as printf reuses it. `null` where the output
  * cannot be known — a `*` width or precision, another conversion, a number
- * that is no literal integer, a format or an argument that expands — and the
+ * that is no literal integer, a format or an argument that expands — or
+ * would pass {@link PRINTED_BUDGET}, checked before anything is allocated; the
  * caller refuses the command, since the pipe's shell then runs text the hook
  * cannot read.
  */
@@ -1362,6 +1376,8 @@ function printed([format, ...args]) {
   if (!format || [format, ...args].some((L) => L.live.some((x) => x === 1))) return null;
   const out = [];
   const F = format;
+  // Appends one character, `false` once the output would pass the budget.
+  const put = (x) => out.length < PRINTED_BUDGET && out.push(x) > 0;
   let next = 0;
   let done = false;
   for (let pass = 0; !done; pass++) {
@@ -1371,18 +1387,21 @@ function printed([format, ...args]) {
       if (c === "\\") {
         const [s, n] = printedEscape(F.text, k + 1, "printf");
         const end = F.end[Math.min(n, F.text.length) - 1];
-        for (let q = 0; q < s.length; q++) out.push({ c: s[q], at: F.at[k], end });
+        for (let q = 0; q < s.length; q++) if (!put({ c: s[q], at: F.at[k], end })) return null;
         k = n;
       } else if (c !== "%") {
-        out.push({ c, at: F.at[k], end: F.end[k] });
+        if (!put({ c, at: F.at[k], end: F.end[k] })) return null;
         k++;
       } else if (F.text[k + 1] === "%") {
-        out.push({ c, at: F.at[k], end: F.end[k + 1] });
+        if (!put({ c, at: F.at[k], end: F.end[k + 1] })) return null;
         k += 2;
       } else {
         const m = PRINTF_CONVERSION.exec(F.text.slice(k));
         const [whole, flags, width, precision, letter] = m;
         if (width === "*" || precision === "*" || !letter) return null;
+        // A width past what is left of the budget fails before anything is allocated.
+        const wide = Number(width || 0);
+        if (out.length + wide > PRINTED_BUDGET) return null;
         const at = F.at[k];
         const end = F.end[k + whole.length - 1];
         const arg = args[next++];
@@ -1395,22 +1414,19 @@ function printed([format, ...args]) {
         } else if ("diuoxX".includes(letter)) {
           const t = arg ? arg.text : "0";
           if (!/^[+-]?\d+$/.test(t) || (/[oxX]/.test(letter) && t.startsWith("-"))) return null;
-          const n = BigInt(t);
-          const digits = { o: 8, x: 16, X: 16 }[letter] ? n.toString({ o: 8, x: 16, X: 16 }[letter]) : n.toString();
+          const base = { o: 8, x: 16, X: 16 }[letter] ?? 10;
+          const digits = BigInt(t).toString(base);
           chars = [...(letter === "X" ? digits.toUpperCase() : digits)].map((d) => ({ c: d, at, end }));
         } else return null;
-        if (letter === "c") chars = chars.slice(0, 1);
+        // `%c` prints the first character, both units of an astral one.
+        if (letter === "c") chars = chars.slice(0, /[\uD800-\uDBFF]/.test(chars[0]?.c ?? "") ? 2 : 1);
         if (precision !== undefined && "sb".includes(letter)) chars = chars.slice(0, Number(precision || 0));
-        const pad = Number(width || 0) - chars.length;
-        if (pad > 0) {
-          const fill = Array.from({ length: pad }, () => ({
-            c: flags.includes("0") && !flags.includes("-") && !"sbc".includes(letter) ? "0" : " ",
-            at,
-            end,
-          }));
-          chars = flags.includes("-") ? [...chars, ...fill] : [...fill, ...chars];
-        }
-        out.push(...chars);
+        const pad = Math.max(0, wide - chars.length);
+        const fill = { c: flags.includes("0") && !flags.includes("-") && !"sbc".includes(letter) ? "0" : " ", at, end };
+        const left = !flags.includes("-");
+        if (left) for (let q = 0; q < pad; q++) if (!put({ ...fill })) return null;
+        for (const x of chars) if (!put(x)) return null;
+        if (!left) for (let q = 0; q < pad; q++) if (!put({ ...fill })) return null;
         k += whole.length;
       }
     }
@@ -1455,7 +1471,10 @@ const JOINING_SHELLS = new Map([
  * and all, so the rewrite reads it whole as at command position.
  */
 function levelWord(L, d, e) {
-  const part = L.parts?.find((x) => x.first === d && x.last === e);
+  // The joined word starting at `d`, from an index built once per level, so a
+  // level of n joined words costs n lookups, not n² (#1646).
+  const starting = L.parts && (L.partAt ??= new Map(L.parts.map((x) => [x.first, x]))).get(d);
+  const part = starting?.last === e ? starting : undefined;
   const text = L.text.slice(d, e);
   const chars = decodeWord(text).map((x) => ({ ...x, live: x.live || L.live?.[d + x.at] === 1 }));
   let contiguous = true;
@@ -1637,7 +1656,13 @@ function fedStarts(command, text, fed, programs) {
           const kind = via === "sudo" && !sudoRunsShell(L.text, d) ? { how: "wrapper", via } : { how: "shell", via };
           const limit = L === base ? b : L.text.length;
           const { program, string, attached } = commandOf(OPTION_SPECS.get(via) ?? NO_OPTIONS, L.text, d, limit);
-          const join = JOINING_SHELLS.get(via);
+          // `watch -x` (`--exec`) runs its words as they are, no shell joining
+          // them: each is kept one word, as sudo -s keeps its (#1646).
+          const exec =
+            via === "watch" &&
+            program !== undefined &&
+            /(?:^|\s)(?:--exec|-[A-Za-z]*x[A-Za-z]*)(?=\s)/.test(L.text.slice(d, program));
+          const join = exec ? "escaped" : JOINING_SHELLS.get(via);
           // A wrapper's word is the program whole, quoted or not; a shell's is the string it runs.
           if (program !== undefined)
             if (kind.how === "wrapper") jobs.push([L, program, kind]);

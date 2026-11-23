@@ -888,14 +888,24 @@ function deckReach(c, cwd, ctx, shell, trail) {
     // string among them is one word however many `&&` it holds, where `args`
     // ends at the first (#1607) — and the lexer's own match past it is the
     // one skipped above.
-    const words = commandWordsRaw(c, at, stringEnd(c, at - 1));
-    const tokens = whole ? [name(), ...words] : words.map(wordText);
+    // A command its shell reads differently from the text here (#1646: a
+    // string printf or `echo -e` prints, an escape the shell decodes) is read
+    // from what that shell reads, past the runner the rule's shape matched
+    // there; its decoded hit is excused only once its words are judged. A
+    // shape the decoded text does not hold leaves the hit standing.
+    const shape = m.decoded === undefined ? null : new RegExp((re.inner ?? re).source, "y").exec(m.decoded);
+    const words = shape
+      ? commandWordsRaw(m.decoded, shape[0].length, m.decoded.length)
+      : commandWordsRaw(c, at, stringEnd(c, at - 1));
+    const runner = () => (shape ? (shape[0].match(/[^\s|;&()\x60]+$/)?.[0] ?? "") : name());
+    const tokens = whole ? [runner(), ...words] : words.map(wordText);
     // A substitution cut the arguments short: it and what follows it are
     // unread. Glued to a word (`$(`, `--x=\``), it ends that word.
-    if (!whole && (cut === "(" || cut === "\x60"))
+    if (!shape && !whole && (cut === "(" || cut === "\x60"))
       if (tokens.length && !/\s$/.test(args)) tokens.push(tokens.pop().replace(/\$$/, "") + UNREAD);
       else tokens.push(UNREAD);
     const own = read(tokens, base, shell);
+    if (shape) leave();
     // What a command run over and over runs, it runs over and over: a rollup
     // hook or a `turbo watch` task keeps its own reason.
     const reason = again(at, via);

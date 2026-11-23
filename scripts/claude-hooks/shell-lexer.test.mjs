@@ -1729,4 +1729,51 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
     lexer.excuseDecodedHit(c, MERGE, m.program);
     expect(lexer.takeDecodedHits(c).size).toBe(0);
   });
+
+  // Round 4 (#1646, the CodeRabbit CLI findings at 760adedc2).
+  it.each([
+    String.raw`printf '%999999999s\ngh pr merge 7' x | bash`,
+    String.raw`printf '%60000s' a b c d e f g h | bash`,
+    `printf '%s' '${"x".repeat(70_000)}' | bash`,
+  ])("refuses printf output past its budget, fast, without building it: %s", (c) => {
+    const started = performance.now();
+    lexer.view.last = undefined;
+    expect(view(c.slice(0, 200_000)).unprintable).toBe(true);
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
+  it("still builds printf output with a small width", () => {
+    expect(lexer.has(String.raw`printf '%5s\ngh pr merge 7\n' x | bash`, MERGE)).toBe(true);
+    expect(view(String.raw`printf '%-3s|\n' x | bash`).unprintable).toBe(false);
+  });
+
+  it("maps a word after an astral character in printf output to its own raw word", () => {
+    const c = `printf '%s\\n' 'echo 😀; gh pr merge 7' | bash`;
+    const m = lexer.matchAt(c, MERGE);
+    expect(m).not.toBeNull();
+    expect(c.slice(lexer.programStart(c, m.program))).toMatch(/^gh pr merge 7/);
+    expect(lexer.has(`printf '%s\\n' 'echo 😀;  echo ready' | bash`, MERGE)).toBe(false);
+    // Only the printed map places these: no raw anchor stands before the `gh`.
+    for (const d of [`printf '%s\\n%s\\n' 😀 'gh pr merge 7' | bash`, `printf '%s\\n' 'x😀x' 'gh pr merge 7' | bash`]) {
+      const found = lexer.matchAt(d, MERGE);
+      expect(d.slice(lexer.programStart(d, found.program)), d).toMatch(/^gh pr merge 7/);
+    }
+  });
+
+  it.each([
+    "bash -c 'constructor -x y'",
+    "constructor -x y",
+    "bash -c 'toString -u v gh pr merge 7'",
+    "__proto__ -x y gh pr merge 7",
+    "bash -c 'hasOwnProperty -x y'",
+    "valueOf --unset x y",
+  ])("reads a command word named like an Object.prototype member as a plain word: %s", (c) => {
+    lexer.view.last = undefined;
+    expect(() => view(c)).not.toThrow();
+    expect(lexer.has(c, MERGE)).toBe(false);
+  });
+
+  it("reads the whole words of a long eval join in time linear in their count", { timeout: TIMING_TIMEOUT_MS }, () => {
+    readsLinearly((n) => `eval ${'"echo ready;" '.repeat(n)}`, 1500, MERGE, false);
+  });
 });
