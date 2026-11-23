@@ -31,8 +31,15 @@ const tree = (...parts) => path.join(REPO, ...parts);
  * as it does idle — an absolute bound did not (#1634 review) — while a
  * quadratic pass takes four times as long, which fails once the run at `n`
  * is past 25 ms (the sizes the callers pick put each pass's known quadratic
- * well past it), and an exponential one thousands of times. Returns the two
- * timings.
+ * well past it), and an exponential one thousands of times.
+ *
+ * A failed comparison takes three more runs at each size, up to `ATTEMPTS`
+ * rounds in all, and compares the fastest of every run so far. Load only ever
+ * slows a run, so a busy machine can push one round past the bound (87 ms
+ * against 84.9 ms in a full `pnpm test`, #1647); more runs can only lower
+ * each fastest time, and the one at `n` is what sets the bound, so a slowed
+ * round can never loosen it, while a super-linear read stays over it. Returns
+ * the two timings.
  */
 function readsLinearly(make, n, re, found, read = (c) => lexer.has(c, re)) {
   const time = (size) => {
@@ -44,15 +51,31 @@ function readsLinearly(make, n, re, found, read = (c) => lexer.has(c, re)) {
     return performance.now() - started;
   };
   const runs = [[], []];
-  for (let k = 0; k < 3; k++) {
-    runs[0].push(time(n));
-    runs[1].push(time(2 * n));
-  }
-  const [t1, t2] = runs.map((r) => Math.min(...r));
-  const label = `${make(1).slice(0, 40)}: ${t1.toFixed(1)} ms at ${n}, ${t2.toFixed(1)} ms at ${2 * n}`;
+  const fastest = () => runs.map((r) => Math.min(...r));
+  let rounds = 0;
+  do {
+    for (let k = 0; k < 3; k++) {
+      runs[0].push(time(n));
+      runs[1].push(time(2 * n));
+    }
+    rounds++;
+  } while (rounds < ATTEMPTS && fastest()[1] > 3 * fastest()[0] + 25);
+  const [t1, t2] = fastest();
+  const label = `${make(1).slice(0, 40)}: ${t1.toFixed(1)} ms at ${n}, ${t2.toFixed(1)} ms at ${2 * n}, fastest of ${3 * rounds} runs each`;
   expect(t2, label).toBeLessThanOrEqual(3 * t1 + 25);
   return [t1, t2];
 }
+
+/** How many rounds of three runs per size `readsLinearly` takes before a comparison over its bound fails. */
+const ATTEMPTS = 3;
+
+/**
+ * The timeout of an `it` made of `readsLinearly` cases. Each such `it` took 0.4
+ * to 1.5 s in a full `pnpm test`, one round per case; a loaded run can take
+ * every case to `ATTEMPTS` rounds, so up to three times that, past vitest's 5 s
+ * default (#1647). About four times that worst case, so only a hang fails.
+ */
+const TIMING_TIMEOUT_MS = 20_000;
 
 describe("helpers", () => {
   it("gitCwd honours -C", () => {
@@ -945,20 +968,24 @@ describe("the first word of a shell-fed string is at command position (#1634)", 
     expect([...lexer.matchesAt(command, MERGE)].map((m) => m[1])).toEqual(["5", "7"]);
   });
 
-  it("reads a long fed string, a long lead and a long run of options in time linear in their length", () => {
-    readsLinearly((n) => `bash -c '${"gh pr merge 7 ".repeat(n)}'`, 2000, MERGE, true);
-    readsLinearly((n) => `echo ${"-x gh pr merge 7 ".repeat(n)}`, 2000, MERGE, false);
-    readsLinearly((n) => `sudo ${"-E ".repeat(n)}gh pr merge 7`, 2000, MERGE, true);
-    readsLinearly((n) => `bash -c '${"A=1 ".repeat(n)}gh pr merge 7'`, 2000, MERGE, true);
-    readsLinearly((n) => `echo '${"gh pr merge 7; ".repeat(n)}' | bash`, 2000, MERGE, true);
-    readsLinearly((n) => `echo '${"x gh pr merge 7 ".repeat(n)}' | bash`, 2000, MERGE, false);
-    // A lead token whose option value were free to be another option (the one
-    // parse per token COMMAND_LEAD keeps) would backtrack here, where the lead
-    // fails at the string's close or the text's end, in time that grows as the
-    // Fibonacci numbers do: trivial at 20 options, a second at 40.
-    readsLinearly((n) => `bash -c 'env ${"-u ".repeat(n)}-u'`, 20, MERGE, false);
-    readsLinearly((n) => `env ${"-u ".repeat(n)}-u`, 20, MERGE, false);
-  });
+  it(
+    "reads a long fed string, a long lead and a long run of options in time linear in their length",
+    { timeout: TIMING_TIMEOUT_MS },
+    () => {
+      readsLinearly((n) => `bash -c '${"gh pr merge 7 ".repeat(n)}'`, 2000, MERGE, true);
+      readsLinearly((n) => `echo ${"-x gh pr merge 7 ".repeat(n)}`, 2000, MERGE, false);
+      readsLinearly((n) => `sudo ${"-E ".repeat(n)}gh pr merge 7`, 2000, MERGE, true);
+      readsLinearly((n) => `bash -c '${"A=1 ".repeat(n)}gh pr merge 7'`, 2000, MERGE, true);
+      readsLinearly((n) => `echo '${"gh pr merge 7; ".repeat(n)}' | bash`, 2000, MERGE, true);
+      readsLinearly((n) => `echo '${"x gh pr merge 7 ".repeat(n)}' | bash`, 2000, MERGE, false);
+      // A lead token whose option value were free to be another option (the one
+      // parse per token COMMAND_LEAD keeps) would backtrack here, where the lead
+      // fails at the string's close or the text's end, in time that grows as the
+      // Fibonacci numbers do: trivial at 20 options, a second at 40.
+      readsLinearly((n) => `bash -c 'env ${"-u ".repeat(n)}-u'`, 20, MERGE, false);
+      readsLinearly((n) => `env ${"-u ".repeat(n)}-u`, 20, MERGE, false);
+    },
+  );
 });
 
 // The #1634 /code-review round: a shell word's value options ended the walk
@@ -1082,7 +1109,7 @@ describe("the #1634 review round: options, cuts and program positions", () => {
   it("has no fedCommandStart export: programKind says how a word is the program", () =>
     expect(lexer.fedCommandStart).toBeUndefined());
 
-  it("answers has() and reads every match in time linear in a long chain", () => {
+  it("answers has() and reads every match in time linear in a long chain", { timeout: TIMING_TIMEOUT_MS }, () => {
     readsLinearly((n) => "gh pr merge 7; ".repeat(n), 4000, MERGE, true);
     // No timing case for a chain of rewritten program words (`gh.exe pr merge
     // 7; ` × n): the merge of their edits no longer scans every earlier one

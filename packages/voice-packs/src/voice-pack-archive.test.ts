@@ -900,8 +900,17 @@ function extractorCases(size: number): void {
   });
 }
 
+/**
+ * The extractor's cases inflate megabytes per test (the bounded-slices case,
+ * the cap and bomb cases): up to 3.1 s each in a full `pnpm test` under load,
+ * against up to 1.2 s alone, and over vitest's 5 s default in a loaded gate
+ * run (#1647). About six times the slowest measured, so only a hang fails.
+ */
+const INFLATE_TIMEOUT_MS = 20_000;
+
 describe.each(CHUNK_SIZES.map((size) => [size === WHOLE ? "one whole chunk" : `${size}-byte chunks`, size]))(
   "extractVoicePackArchive, source in %s",
+  { timeout: INFLATE_TIMEOUT_MS },
   (_label, size) => extractorCases(size),
 );
 
