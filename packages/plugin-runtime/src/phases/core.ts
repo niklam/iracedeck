@@ -1,8 +1,9 @@
 /**
  * Phase 1 (#1349): the plugin config, the log level, the `Build:` line
- * (#1678), the two run-long monitors, the setup-warning check, the native addons' load report (#1373),
- * the SDK and the event bus — everything later phases read through `Core` —
- * and, last, the plugin-state sections of the Telemetry Snapshot (#1387).
+ * (#1678), the two run-long monitors, the setup-warning check, the native
+ * addons' load report (#1373), the SDK and the event bus — everything later
+ * phases read through `Core` — and, last, the plugin-state sections of the
+ * Telemetry Snapshot (#1387).
  */
 import { getNativeLoadStatus as getAudioNativeLoadStatus } from "@iracedeck/audio-native";
 import { initPluginConfig, type PluginConfig } from "@iracedeck/deck-core";
