@@ -19,7 +19,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import z from "zod";
 
-import { borderColorForState } from "../../icons/status-bar.js";
+import { borderColorForState, statusBarNA, statusBarOff, statusBarOn } from "../../icons/status-bar.js";
 import { CAR_CYCLE_BINDING_KEYS } from "../../shared/car-cycle-bindings.js";
 import { _resetSelectIntents, getSelectIntent } from "../../shared/car-select-intent.js";
 import { describePressShapeRouting } from "../../shared/press-shape.test-support.js";
@@ -28,6 +28,7 @@ import keyBindings from "../data/key-bindings.json" with { type: "json" };
 import { _resetAutoGroup, autoGroupOwner } from "./auto-group.js";
 import {
   AUTO_GROUP_TITLE,
+  autoGroupKeyState,
   CAMERA_GROUP_MAP,
   CAMERA_GROUPS_SETTING_KEY,
   CameraControls,
@@ -41,6 +42,7 @@ import {
   DEFAULT_CAMERA_GROUPS,
   DEFAULT_ENABLED_GROUPS,
   extractIconArtwork,
+  generateAutoGroupKeySvg,
   generateCameraControlsSvg,
   generateCameraSelectSvg,
   generateCycleCameraGridSvg,
@@ -157,11 +159,14 @@ vi.mock("@iracedeck/icons/camera-focus/set-camera-state.svg", () => ({
 vi.mock("@iracedeck/icons/camera-focus/focus-select-car.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">focus-select-car {{mainLabel}} {{subLabel}}</svg>',
 }));
-vi.mock("@iracedeck/icons/camera-focus/auto-group-on.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">auto-group-on {{mainLabel}} {{subLabel}}</svg>',
+// Auto Group (#1656): its standalone artwork snippet and the tri-state chrome template.
+vi.mock("@iracedeck/icons/camera-focus/auto-group.svg", () => ({
+  default:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 84 75"><desc>{}</desc><path data-art="auto-group" fill="{{graphic1Color}}"/></svg>',
 }));
-vi.mock("@iracedeck/icons/camera-focus/auto-group-off.svg", () => ({
-  default: '<svg xmlns="http://www.w3.org/2000/svg">auto-group-off {{mainLabel}} {{subLabel}}</svg>',
+vi.mock("../../../icons/camera-controls-auto-group.svg", () => ({
+  default:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144" data-template="auto-group">{{borderDefs}}<rect width="144" height="144" fill="{{backgroundColor}}"/>{{borderContent}}{{iconContent}}</svg>',
 }));
 
 // focus-select-car (#790): the shared device-filtered bundled-profile reader
@@ -263,6 +268,13 @@ vi.mock("@iracedeck/deck-core", async () => ({
   requestProfileSwitch: vi.fn(),
   resolveProfileNameForDevice: vi.fn((name: string) => `${name} XL`),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
+  // The Auto Group key's tri-state layout (#1656): the full key area, and a
+  // transform that records the area the artwork was fitted into.
+  computeGraphicArea: vi.fn(() => ({ x: 8, y: 8, width: 128, height: 128 })),
+  applyGraphicTransform: vi.fn(
+    (content: string, _bounds: unknown, area: { y: number; height: number }) =>
+      `<g data-area="${area.y},${area.height}">${content}</g>`,
+  ),
   getGlobalBorderSettings: vi.fn(() => ({})),
   getGlobalGraphicSettings: vi.fn(() => ({})),
   LogLevel: { Info: 2 },
@@ -4750,7 +4762,20 @@ describe("Auto Group on Car Change key (#1656)", () => {
     return decodeURIComponent(String(last));
   }
 
-  const isOn = (action: CameraControls, id: string): boolean => lastImage(action, id).includes("auto-group-on");
+  /** The tri-state the key's last image shows, read off its status bar. */
+  function keyState(action: CameraControls, id: string): "on" | "off" | "na" | null {
+    const image = lastImage(action, id);
+
+    if (image.includes(statusBarOn())) return "on";
+
+    if (image.includes(statusBarOff())) return "off";
+
+    if (image.includes(statusBarNA())) return "na";
+
+    return null;
+  }
+
+  const isOn = (action: CameraControls, id: string): boolean => keyState(action, id) === "on";
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -4794,36 +4819,108 @@ describe("Auto Group on Car Change key (#1656)", () => {
     });
   });
 
-  describe("generateCameraControlsSvg", () => {
-    it("draws the off icon with the AUTO GROUP title and the grey state border", () => {
-      const svg = decodeURIComponent(generateCameraControlsSvg({ target: "auto-group" }));
+  describe("autoGroupKeyState", () => {
+    it("is on for the owner and off for any other key while a candidate exists", () => {
+      expect(autoGroupKeyState(true, false)).toBe("on");
+      expect(autoGroupKeyState(false, false)).toBe("off");
+    });
+
+    it("is N/A with no candidate, the owner's included", () => {
+      expect(autoGroupKeyState(false, true)).toBe("na");
+      expect(autoGroupKeyState(true, true)).toBe("na");
+    });
+  });
+
+  describe("the tri-state key (Pit Crew toggle layout)", () => {
+    const lastBorderState = (): unknown => vi.mocked(deckCore.resolveBorderSettings).mock.calls.at(-1)?.[3];
+
+    it.each([
+      ["on", statusBarOn(), "#2ecc71"],
+      ["off", statusBarOff(), "#e74c3c"],
+      ["na", statusBarNA(), "#888888"],
+    ] as const)("draws %s with its status bar and the same state colour on the border", (state, bar, colour) => {
+      const svg = decodeURIComponent(generateAutoGroupKeySvg({}, state));
+
+      expect(svg).toContain('data-template="auto-group"');
+      expect(svg).toContain(bar);
+      expect(lastBorderState()).toBe(borderColorForState(state));
+      expect(borderColorForState(state)).toBe(colour);
+    });
+
+    it("draws the artwork, coloured, above the status bar", () => {
+      vi.mocked(deckCore.resolveIconColors).mockReturnValueOnce({ graphic1Color: "#abcdef" });
+
+      const svg = decodeURIComponent(generateAutoGroupKeySvg({}, "on"));
+
+      expect(svg).toContain('data-art="auto-group" fill="#abcdef"');
+      // Fitted into y 8..92: the bar starts at 100, with the Pit Crew toggles' 8-unit gap.
+      expect(svg).toContain('data-area="8,84"');
+      expect(svg.indexOf('data-art="auto-group"')).toBeLessThan(svg.indexOf(statusBarOn()));
+      expect(vi.mocked(deckCore.applyGraphicTransform).mock.calls.at(-1)?.[1]).toEqual({
+        x: 0,
+        y: 0,
+        width: 84,
+        height: 75,
+      });
+    });
+
+    it("hides the title by its template, with AUTO GROUP as the default text a per-key override shows", () => {
+      vi.mocked(deckCore.resolveTitleSettings).mockReturnValueOnce({
+        showTitle: false,
+        showGraphics: true,
+        titleText: AUTO_GROUP_TITLE,
+        bold: true,
+        fontSize: 9,
+        position: "top",
+        customPosition: 0,
+      });
+
+      const hidden = decodeURIComponent(generateAutoGroupKeySvg({}, "off"));
 
       expect(AUTO_GROUP_TITLE).toBe("AUTO\nGROUP");
-      expect(svg).toContain("auto-group-off");
-      expect(svg).toContain(AUTO_GROUP_TITLE);
-      expect(vi.mocked(deckCore.resolveBorderSettings).mock.calls.at(-1)?.[3]).toBe(borderColorForState("na"));
-      expect(lastIconOptions().dimmed).toBeUndefined();
+      expect(vi.mocked(deckCore.resolveTitleSettings).mock.calls.at(-1)?.[3]).toBe(AUTO_GROUP_TITLE);
+      expect(hidden).not.toContain(AUTO_GROUP_TITLE);
+
+      const shown = decodeURIComponent(generateAutoGroupKeySvg({ titleOverrides: { showTitle: true } }, "off"));
+
+      expect(shown).toContain(`<text>${AUTO_GROUP_TITLE}</text>`);
     });
 
-    it("draws the on icon with the green state border", () => {
-      const svg = decodeURIComponent(generateCameraControlsSvg({ target: "auto-group" }, false, false, true));
+    it("draws no artwork when the graphic is hidden, keeping the status bar", () => {
+      vi.mocked(deckCore.resolveTitleSettings).mockReturnValueOnce({
+        showTitle: false,
+        showGraphics: false,
+        titleText: AUTO_GROUP_TITLE,
+        bold: true,
+        fontSize: 9,
+        position: "top",
+        customPosition: 0,
+      });
 
-      expect(svg).toContain("auto-group-on");
-      expect(svg).toContain(AUTO_GROUP_TITLE);
-      expect(vi.mocked(deckCore.resolveBorderSettings).mock.calls.at(-1)?.[3]).toBe(borderColorForState("on"));
+      const svg = decodeURIComponent(generateAutoGroupKeySvg({}, "on"));
+
+      expect(svg).not.toContain('data-art="auto-group"');
+      expect(svg).toContain(statusBarOn());
     });
 
-    it("keeps the unavailable look on an on key, its on icon still telling it apart", () => {
-      const svg = decodeURIComponent(generateCameraControlsSvg({ target: "auto-group" }, false, true, true));
+    it("is what generateCameraControlsSvg draws for the mode, never through the unavailable look", () => {
+      const svg = decodeURIComponent(generateCameraControlsSvg({ target: "auto-group" }, false, true, "na"));
 
-      expect(svg).toContain("auto-group-on");
-      expect(lastIconOptions().dimmed).toBe(true);
+      expect(svg).toContain(statusBarNA());
+      expect(vi.mocked(deckCore.assembleIcon)).not.toHaveBeenCalled();
+    });
+
+    it("defaults to off through generateCameraControlsSvg", () => {
+      const svg = decodeURIComponent(generateCameraControlsSvg({ target: "auto-group" }));
+
+      expect(svg).toContain(statusBarOff());
+      expect(lastBorderState()).toBe(borderColorForState("off"));
     });
 
     it("passes no state border for any other mode", () => {
-      generateCameraControlsSvg({ target: "focus-your-car" }, false, false, true);
+      generateCameraControlsSvg({ target: "focus-your-car" }, false, false, "on");
 
-      expect(vi.mocked(deckCore.resolveBorderSettings).mock.calls.at(-1)?.[3]).toBeUndefined();
+      expect(lastBorderState()).toBeUndefined();
     });
   });
 
@@ -5012,7 +5109,7 @@ describe("Auto Group on Car Change key (#1656)", () => {
       expect(controller.unsubscribe).toHaveBeenCalledTimes(1);
       expect(action["logger"].info).toHaveBeenCalledWith("Auto group stopped: its key no longer offers it");
       expect(lastImage(action, "ag-1")).toContain("focus-your-car");
-      expect(lastImage(action, "ag-1")).not.toContain("auto-group-on");
+      expect(lastImage(action, "ag-1")).not.toContain('data-template="auto-group"');
     });
 
     it("leaves it running when another key moves to another mode", async () => {
@@ -5236,43 +5333,81 @@ describe("Auto Group on Car Change key (#1656)", () => {
     });
   });
 
-  describe("the unavailable look", () => {
-    it("is drawn while a session lacks every ticked group", async () => {
+  describe("the N/A state", () => {
+    it("is drawn while a session lacks every ticked group, in place of the unavailable look", async () => {
       const action = newAction(CASE_TWIN_GROUPS);
       await appear(action, "ag-1");
 
-      expect(lastIconOptions().dimmed).toBe(true);
+      expect(keyState(action, "ag-1")).toBe("na");
+      expect(anyIconDimmed()).toBe(false);
     });
 
     it("is drawn for an empty list in a session", async () => {
       const action = newAction();
       await appear(action, "ag-1", { autoGroupSubset: { groups: { TV1: false } } });
 
-      expect(lastIconOptions().dimmed).toBe(true);
+      expect(keyState(action, "ag-1")).toBe("na");
     });
 
     it("is not drawn while the session has one ticked group", async () => {
       const action = newAction(CASE_TWIN_GROUPS);
       await appear(action, "ag-1", { autoGroupSubset: { groups: { TV1: true, Chase: true } } });
 
-      expect(lastIconOptions().dimmed).toBeUndefined();
+      expect(keyState(action, "ag-1")).toBe("off");
     });
 
     it("is never drawn with no session, an empty list included", async () => {
       const action = newAction(null);
       await appear(action, "ag-1", { autoGroupSubset: { groups: {} } });
 
-      expect(lastIconOptions().dimmed).toBeUndefined();
+      expect(keyState(action, "ag-1")).toBe("off");
     });
 
-    it("keeps the on icon while unavailable", async () => {
+    it("still toggles the automation on a press, and the owner shows N/A while the track has no candidate", async () => {
       const action = newAction(CASE_TWIN_GROUPS);
       const ctx = await appear(action, "ag-1");
 
       await press(action, ctx);
 
-      expect(isOn(action, "ag-1")).toBe(true);
-      expect(lastIconOptions().dimmed).toBe(true);
+      expect(autoGroupOwner()).toBe("ag-1");
+      expect(controller.subscribe).toHaveBeenCalledTimes(1);
+      expect(keyState(action, "ag-1")).toBe("na");
+      expect(vi.mocked(deckCore.resolveBorderSettings).mock.calls.at(-1)?.[3]).toBe(borderColorForState("na"));
+      expect(mockCamera.switchNum).not.toHaveBeenCalled();
+
+      await press(action, ctx);
+
+      expect(autoGroupOwner()).toBeNull();
+      expect(keyState(action, "ag-1")).toBe("na");
+    });
+
+    it("redraws the owner on when a session update brings a candidate, and N/A again when it goes", async () => {
+      const action = newAction(CASE_TWIN_GROUPS);
+      let tick: (() => void) | undefined;
+      captureTick(action, (t) => (tick = t));
+      const ctx = await appear(action, "ag-1");
+      await press(action, ctx);
+      expect(keyState(action, "ag-1")).toBe("na");
+
+      vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue({});
+      vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue(ROAD_GROUPS);
+      tick?.();
+      await flush();
+
+      expect(autoGroupOwner()).toBe("ag-1");
+      expect(keyState(action, "ag-1")).toBe("on");
+
+      const redraws = vi.mocked(action["updateKeyImage"]).mock.calls.length;
+      tick?.();
+      await flush();
+      expect(vi.mocked(action["updateKeyImage"]).mock.calls.length).toBe(redraws);
+
+      vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue({});
+      vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue(CASE_TWIN_GROUPS);
+      tick?.();
+      await flush();
+
+      expect(keyState(action, "ag-1")).toBe("na");
     });
   });
 });

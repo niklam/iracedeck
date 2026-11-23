@@ -1,9 +1,12 @@
 import {
+  applyGraphicTransform,
   assembleIcon,
   CAR_SELECTOR_PROFILE,
   CommonSettings,
+  computeGraphicArea,
   DIMMED_OPACITY,
   extractGraphicContent,
+  generateBorderParts,
   generateTitleText,
   getGlobalBorderSettings,
   getGlobalGraphicSettings,
@@ -40,8 +43,7 @@ import subCameraPreviousSvg from "@iracedeck/icons/camera-cycle/sub-camera-previ
 import trackPositionAheadSvg from "@iracedeck/icons/camera-cycle/track-position-ahead.svg";
 import trackPositionBehindSvg from "@iracedeck/icons/camera-cycle/track-position-behind.svg";
 // Focus icons
-import autoGroupOffSvg from "@iracedeck/icons/camera-focus/auto-group-off.svg";
-import autoGroupOnSvg from "@iracedeck/icons/camera-focus/auto-group-on.svg";
+import autoGroupArtworkSvg from "@iracedeck/icons/camera-focus/auto-group.svg";
 import focusOnIncidentSvg from "@iracedeck/icons/camera-focus/focus-on-incident.svg";
 import focusOnLeaderSvg from "@iracedeck/icons/camera-focus/focus-on-leader.svg";
 import focusOnMostExcitingSvg from "@iracedeck/icons/camera-focus/focus-on-most-exciting.svg";
@@ -89,7 +91,14 @@ import { getGlobalColors, getGlobalSettings, onGlobalSettingsChange } from "@ira
 import { getLiveRacePositions } from "@iracedeck/sim-events-iracing";
 import z from "zod";
 
-import { borderColorForState } from "../../icons/status-bar.js";
+import autoGroupTemplate from "../../../icons/camera-controls-auto-group.svg";
+import {
+  borderColorForState,
+  statusBarNA,
+  statusBarOff,
+  statusBarOn,
+  type ToggleState,
+} from "../../icons/status-bar.js";
 import { carCycleBindingKey } from "../../shared/car-cycle-bindings.js";
 import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { setSelectIntent } from "../../shared/car-select-intent.js";
@@ -380,9 +389,103 @@ const FOCUS_TITLES: Record<string, string> = {
 /**
  * @internal Exported for testing
  *
- * Auto Group on Car Change's default title (#1656, spec decision 7), on and off alike.
+ * Auto Group on Car Change's default title (#1656, spec decision 7), in every
+ * state. Its template hides it and locks Show title off, as on the Pit Crew
+ * toggles: the status bar already reads the state, and the artwork says what
+ * the key is. A per-key override can still show it, at the top.
  */
 export const AUTO_GROUP_TITLE = "AUTO\nGROUP";
+
+/** Top of the tri-state status bar every toggle key draws over y 100–144 (`status-bar.ts`). */
+const STATUS_BAR_TOP = 100;
+/** Gap kept between the artwork and the status bar, the Pit Crew toggles' padding. */
+const STATUS_BAR_GAP = 8;
+
+const AUTO_GROUP_STATUS_BARS: Record<ToggleState, () => string> = {
+  on: statusBarOn,
+  off: statusBarOff,
+  na: statusBarNA,
+};
+
+/**
+ * @internal Exported for testing
+ *
+ * The tri-state an Auto Group on Car Change key shows (#1656): N/A while a
+ * loaded session's camera groups hold no candidate of the key's list (an empty
+ * list included), whether or not the key owns the run; otherwise on while the
+ * key owns the run and off when it does not. N/A wins over on because it is
+ * what the run can do on this track, which is nothing; it keeps running, and
+ * the bar goes back to on by itself on a track that has a candidate.
+ */
+export function autoGroupKeyState(owner: boolean, noCandidate: boolean): ToggleState {
+  if (noCandidate) return "na";
+
+  return owner ? "on" : "off";
+}
+
+/**
+ * @internal Exported for testing
+ *
+ * Draws an Auto Group on Car Change key (#1656) on the tri-state toggle
+ * layout of the Pit Crew toggles (Race Engineer, Corner Names): its 144×144
+ * chrome template, the artwork scaled into the area above the status bar, the
+ * title (hidden unless a per-key override shows it), the full-width ON / OFF /
+ * N/A bar, and the key border in the same state colour. The artwork is a
+ * standalone snippet, read through its own viewBox like every other Camera
+ * Controls icon, and coloured with the template's resolved slots.
+ */
+export function generateAutoGroupKeySvg(settings: Partial<CommonSettings>, state: ToggleState): string {
+  const colors = resolveIconColors(autoGroupTemplate, getGlobalColors(), settings.colorOverrides) as Record<
+    string,
+    string
+  >;
+  const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
+  const title = resolveTitleSettings(
+    autoGroupTemplate,
+    getGlobalTitleSettings(),
+    settings.titleOverrides,
+    AUTO_GROUP_TITLE,
+  );
+
+  // The status bar takes y 100–144, so the artwork is fitted above it.
+  const fullArea = computeGraphicArea(title);
+  const graphicArea = {
+    ...fullArea,
+    height: Math.min(fullArea.height, STATUS_BAR_TOP - STATUS_BAR_GAP - fullArea.y),
+  };
+  const bounds = parseSvgViewBox(autoGroupArtworkSvg);
+  const artwork = renderIconTemplate(extractGraphicContent(autoGroupArtworkSvg), colors);
+  const scaledGraphic =
+    title.showGraphics && bounds ? applyGraphicTransform(artwork, bounds, graphicArea, graphic.scale) : "";
+
+  const titleText = title.showTitle
+    ? generateTitleText({
+        text: title.titleText ?? AUTO_GROUP_TITLE,
+        fontSize: title.fontSize,
+        bold: title.bold,
+        position: title.position,
+        customPosition: title.customPosition,
+        fill: colors.textColor ?? "#ffffff",
+      })
+    : "";
+
+  const border = resolveBorderSettings(
+    autoGroupTemplate,
+    getGlobalBorderSettings(),
+    settings.borderOverrides,
+    borderColorForState(state),
+  );
+  const borderSvg = generateBorderParts(border);
+
+  const svg = renderIconTemplate(autoGroupTemplate, {
+    iconContent: scaledGraphic + titleText + AUTO_GROUP_STATUS_BARS[state](),
+    borderDefs: borderSvg.defs,
+    borderContent: borderSvg.rects,
+    ...colors,
+  });
+
+  return svgToDataUri(svg);
+}
 
 // --- Settings schema ---
 
@@ -587,11 +690,10 @@ type CameraControlsSettings = z.infer<typeof CameraControlsSettings>;
  * the artwork (#1352), so `carNumber` / `position` are part of what the icon is
  * drawn from.
  *
- * An Auto Group on Car Change key (#1656, spec decision 7) draws its on or off
- * icon by `autoGroupOn`, with the toggle actions' state border: green on, grey
- * off. While its list leaves no candidate in the session it takes the
- * unavailable look over either, an on key included (spec decision 5): the
- * on/off icon still tells the two apart.
+ * An Auto Group on Car Change key (#1656) is a tri-state toggle, drawn by
+ * {@link generateAutoGroupKeySvg} in `autoGroupState`. It never takes the
+ * unavailable look, since its N/A state says the same thing, and it has no
+ * binding, so neither `unavailable` nor `bindingMissing` applies to it.
  */
 export function generateCameraControlsSvg(
   settings: {
@@ -604,20 +706,16 @@ export function generateCameraControlsSvg(
     Partial<CommonSettings>,
   bindingMissing = false,
   unavailable = false,
-  autoGroupOn = false,
+  autoGroupState: ToggleState = "off",
 ): string {
   const { target, direction = "next" } = settings;
 
+  if (target === "auto-group") return generateAutoGroupKeySvg(settings, autoGroupState);
+
   let iconSvg: string;
   let defaultTitle: string;
-  // The toggle state border, for the one mode that is a toggle (#1656).
-  let stateColor: string | undefined;
 
-  if (target === "auto-group") {
-    iconSvg = autoGroupOn ? autoGroupOnSvg : autoGroupOffSvg;
-    defaultTitle = AUTO_GROUP_TITLE;
-    stateColor = borderColorForState(autoGroupOn ? "on" : "na");
-  } else if (isCycleTarget(target)) {
+  if (isCycleTarget(target)) {
     if (target === "cycle-camera") {
       const enabledNames = getEnabledGroupNames(settings.cameraGroupSubset);
 
@@ -645,7 +743,7 @@ export function generateCameraControlsSvg(
 
   const colors = resolveIconColors(iconSvg, getGlobalColors(), settings.colorOverrides);
   const title = resolveTitleSettings(iconSvg, getGlobalTitleSettings(), settings.titleOverrides, defaultTitle);
-  const border = resolveBorderSettings(iconSvg, getGlobalBorderSettings(), settings.borderOverrides, stateColor);
+  const border = resolveBorderSettings(iconSvg, getGlobalBorderSettings(), settings.borderOverrides);
 
   const graphic = resolveGraphicSettings(getGlobalGraphicSettings(), settings.graphicOverrides);
   const templateValues = switchTargetTemplateValues(target, settings);
@@ -2437,16 +2535,18 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
    * A key's resting icon. A Change Camera key's is drawn unavailable while the
    * session lacks its group (#1653); the binding state is read when it is drawn.
    *
-   * An Auto Group key's (#1656) is on only while this key owns the running
-   * automation, and unavailable while its list leaves no candidate in the
-   * session. Both are in the look's id, so an owner change, which redraws the
-   * key, and a session update that flips availability each write it once.
+   * An Auto Group key's (#1656) is its tri-state toggle: on only while this key
+   * owns the running automation, N/A while its list leaves no candidate in the
+   * session (owner or not), off otherwise. Ownership and the N/A condition are
+   * both in the look's id, so an owner change, which redraws the key, and a
+   * session update that flips the candidates each write it once.
    */
   private restingLook(contextId: string, settings: CameraControlsSettings, version: number): KeyLook {
-    const { unavailable, autoGroupOn } = this.restingState(contextId, settings);
+    const { unavailable, autoGroupOwner, autoGroupNoCandidate } = this.restingState(contextId, settings);
+    const autoGroupState = autoGroupKeyState(autoGroupOwner, autoGroupNoCandidate);
 
     return {
-      id: `rest:${version}:${unavailable ? 1 : 0}:${autoGroupOn ? 1 : 0}`,
+      id: `rest:${version}:${unavailable ? 1 : 0}:${autoGroupOwner ? 1 : 0}:${autoGroupNoCandidate ? 1 : 0}`,
       version,
       kind: "rest",
       unavailable,
@@ -2456,29 +2556,35 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
         // SDK-driven camera keys around it.
         const bindingMissing = this.isBindingMissing(resolveBindingKey(settings.target, settings.direction));
 
-        return generateCameraControlsSvg(settings, bindingMissing, unavailable, autoGroupOn);
+        return generateCameraControlsSvg(settings, bindingMissing, unavailable, autoGroupState);
       },
     };
   }
 
-  /** What a key's resting icon depends on beyond its settings, read now. */
+  /**
+   * What a key's resting icon depends on beyond its settings, read now. An
+   * Auto Group key is never `unavailable` (#1656): its N/A state is the
+   * tri-state toggle's own answer to the same condition.
+   */
   private restingState(
     contextId: string,
     settings: CameraControlsSettings,
-  ): { unavailable: boolean; autoGroupOn: boolean } {
+  ): { unavailable: boolean; autoGroupOwner: boolean; autoGroupNoCandidate: boolean } {
     switch (settings.target) {
       case "change-camera":
         return {
           unavailable: this.isChangeCameraUnavailableCached(changeCameraGroupName(settings)),
-          autoGroupOn: false,
+          autoGroupOwner: false,
+          autoGroupNoCandidate: false,
         };
       case "auto-group":
         return {
-          unavailable: this.isAutoGroupUnavailableCached(autoGroupNames(settings.autoGroupSubset)),
-          autoGroupOn: isAutoGroupOwner(contextId),
+          unavailable: false,
+          autoGroupOwner: isAutoGroupOwner(contextId),
+          autoGroupNoCandidate: this.isAutoGroupUnavailableCached(autoGroupNames(settings.autoGroupSubset)),
         };
       default:
-        return { unavailable: false, autoGroupOn: false };
+        return { unavailable: false, autoGroupOwner: false, autoGroupNoCandidate: false };
     }
   }
 
