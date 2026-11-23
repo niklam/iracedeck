@@ -1205,8 +1205,9 @@ function fedStarts(command, text, fed, programs) {
     for (;;) {
       if (d >= end) return;
       const p = viewAt(L, d);
-      // A character escaped in the view's text starts no word of it.
-      if (!(L.at && command[p - 1] === "\\")) {
+      // A character escaped in the view's text starts no word of it, but for an
+      // expansion the string's own shell makes (`eval "\$GH pr merge 7"`).
+      if (!(L.at && command[p - 1] === "\\" && !/[$\x60]/.test(command[p]))) {
         const at = wordStarts[p] >= 0 ? wordStarts[p] : p;
         if (!starts.has(at)) starts.set(at, kind);
         const e = wordEnd(L.text, d);
@@ -2145,7 +2146,14 @@ function normalisePrograms(command, text, flat, words, raw, extra = new Map(), f
       // Where the mask is set aside the rules read the raw text as it stands,
       // separators inside strings included: a word there is rewritten only when
       // it is whole on its own, so no rewrite hides a command (#1606 second read).
-      if (raw(start) && !selfContained(word)) continue;
+      // A word a fed string's own shell reads whole (`fedWords`) is still a
+      // program the hook cannot read when it expands (`bash -c "$(echo gh) pr
+      // merge 7"`): listed, never rewritten, as at command position (#1646).
+      if (raw(start) && !selfContained(word)) {
+        if (fedWords.get(start) === end && !ASSIGNMENT.test(word) && !word.startsWith("-"))
+          if (programName(decodeWord(word))?.unreadable) unreadable.push({ start, end, word });
+        continue;
+      }
       const chars = decodeWord(word);
       const live = chars.some((x) => x.live);
       const decoded = chars.map((x) => x.c).join("");

@@ -1487,4 +1487,25 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
       readsLinearly((n) => `bash -c 'X=${'"a"'.repeat(n)}"b gh pr merge 7'`, 2000, MERGE, false);
     },
   );
+
+  // A program word a fed string's shell expands is one the hook cannot read,
+  // as at top level: listed, so `checkBash` judges it as gh and as git. A
+  // substitution or backtick is no word the raw text holds whole, so it was
+  // skipped; an escaped `$` in a double-quoted string started no word.
+  it.each([
+    ['bash -c "$(echo gh) pr merge 7"', "$(echo gh)"],
+    ['bash -c "`echo gh` pr merge 7"', "`echo gh`"],
+    ["bash -c '$(echo gh) pr merge 7'", "$(echo gh)"],
+    ["bash -c '`echo gh` pr merge 7'", "`echo gh`"],
+    [`bash -c 'X="a b" $(echo gh) pr merge 7'`, "$(echo gh)"],
+    [String.raw`eval "\$GH pr merge 7"`, "$GH"],
+    [String.raw`bash -c "\$GH pr merge 7"`, "$GH"],
+  ])("lists a program word the string's shell expands as unreadable: %s", (c, word) =>
+    expect(lexer.unreadablePrograms(c).map((u) => u.word)).toContain(word),
+  );
+
+  it.each(["bash -c 'echo \"$(date)\"'", "bash -c 'X=$(echo a b) true'", 'bash -c "echo $(date)"'])(
+    "lists no argument or assignment that expands as a program: %s",
+    (c) => expect(lexer.unreadablePrograms(c)).toEqual([]),
+  );
 });

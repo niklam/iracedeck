@@ -6259,4 +6259,27 @@ describe("a carried merge or tag push behind a quoted lead value (#1646)", () =>
     "bash -c 'nice env X=\"a b\" git push origin main'",
     `bash -c 'echo "unclosed'`,
   ])("passes a mention, an argument and a push of no tag: %s", (c) => passes(c));
+
+  // A program word the string's shell expands is judged as at top level: as
+  // gh and as git, so a merge it may run is refused before any PR read.
+  it.each([
+    'bash -c "$(echo gh) pr merge 7"',
+    'bash -c "`echo gh` pr merge 7"',
+    "bash -c '$(echo gh) pr merge 7'",
+    `bash -c 'X="a b" $(echo gh) pr merge 7'`,
+    "bash -c '$GH pr merge 7'",
+    "eval '$GH pr merge 7'",
+    String.raw`eval "\$GH pr merge 7"`,
+    String.raw`eval "\`echo gh\` pr merge 7"`,
+  ])("refuses a merge whose program word a fed shell expands: %s", (c) =>
+    expect(refused(c)).toMatch(/Could not read the program/),
+  );
+
+  it("refuses the same word at top level as before", () =>
+    expect(deny("$(echo gh) pr merge 7")).toMatch(/Could not read the program `\$\(echo gh\)`; judged as gh/));
+
+  it.each(["bash -c 'echo \"$(date)\"'", 'echo "$(date)"', "bash -c '$EDITOR notes.md'", "$EDITOR notes.md"])(
+    "passes an expansion that is an argument, or a program no guard reads, as at top level: %s",
+    (c) => passes(c),
+  );
 });
