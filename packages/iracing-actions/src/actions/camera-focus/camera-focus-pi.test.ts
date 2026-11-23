@@ -1,15 +1,18 @@
 // @vitest-environment jsdom
 import { CAMERA_CATALOG_KEY, type CameraCatalogView, STANDARD_CAMERA_GROUP_OPTIONS } from "@iracedeck/app-constants";
 import { CAMERA_GROUP_NAME_MAX_LENGTH as RECORDED_NAME_MAX_LENGTH } from "@iracedeck/deck-iracing";
+import { partialsDir, piTemplatePlugin } from "@iracedeck/pi-components/build";
 import {
   CAMERA_GROUP_HELPERS,
   CAMERA_GROUP_NAME_MAX_LENGTH,
   LEGACY_CAMERA_GROUP_NAMES,
 } from "@iracedeck/pi-components/testing";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { AUTO_GROUP_DEFAULT_GROUPS } from "../camera-controls/auto-group-pick.js";
 import {
   CHANGE_CAMERA_GROUPS,
   DEFAULT_CAMERA_GROUPS,
@@ -63,6 +66,10 @@ describe("camera-focus PI camera-group lists", () => {
 
   it("enables the same groups by default as the action", () => {
     expect(readStringArray("DEFAULT_ENABLED")).toEqual(DEFAULT_ENABLED_GROUPS);
+  });
+
+  it("ticks the same groups on a fresh Auto Group list as the action (#1656)", () => {
+    expect(readStringArray("AUTO_GROUP_DEFAULT_ENABLED")).toEqual(AUTO_GROUP_DEFAULT_GROUPS);
   });
 
   it("covers every listed group with exactly one contiguous section", () => {
@@ -201,6 +208,61 @@ describe("the Change Camera picker in the template (#1653)", () => {
   });
 });
 
+describe("the Auto Group settings in the template (#1656)", () => {
+  /** The `<sdpi-select>` bound to `setting`, and its option values in order. */
+  function select(setting: string): { tag: string; values: string[]; body: string } {
+    const escaped = setting.replace(/\./g, "\\.");
+    const match = template.match(
+      new RegExp(`(<sdpi-select\\b[^>]*\\bsetting="${escaped}"[^>]*>)([\\s\\S]*?)<\\/sdpi-select>`),
+    );
+
+    if (!match) throw new Error(`no sdpi-select for ${setting}`);
+
+    return {
+      tag: match[1],
+      body: match[2],
+      values: [...match[2].matchAll(/<option\b[^>]*\bvalue="([^"]+)"/g)].map((m) => m[1]),
+    };
+  }
+
+  it("offers the keypad mode as Auto Group on Car Change", () => {
+    expect(select("target").body).toContain('<option value="auto-group">Auto Group on Car Change</option>');
+  });
+
+  it.each(["autoGroupPick", "dial.autoGroupPick"])("offers %s as In order, the default, or Random", (setting) => {
+    const pick = select(setting);
+
+    expect(pick.tag).toContain('default="in-order"');
+    expect(pick.values).toEqual(["in-order", "random"]);
+    expect(pick.body).toContain('<option value="in-order">In order</option>');
+    expect(pick.body).toContain('<option value="random">Random</option>');
+  });
+
+  it.each(["dial.pressAction", "dial.longPressAction", "dial.tapAction", "dial.longTouchAction"])(
+    "offers Auto Group on/off last in %s, which still defaults to None",
+    (setting) => {
+      const gesture = select(setting);
+
+      expect(gesture.tag).toContain('default="none"');
+      expect(gesture.values.at(-1)).toBe("auto-group");
+      expect(gesture.body).toContain('<option value="auto-group">Auto Group on/off</option>');
+    },
+  );
+
+  it("keeps the key's Pick inside the section the Mode shows, and the dial's inside the dial's", () => {
+    const keypad = template.slice(
+      template.indexOf('<div id="auto-group-section"'),
+      template.indexOf("<!-- Dial settings"),
+    );
+    const dial = template.slice(template.indexOf('<div id="dial-auto-group-section"'));
+
+    expect(keypad).toContain('setting="autoGroupPick"');
+    expect(keypad).toContain('id="auto-group-grid"');
+    expect(dial).toContain('setting="dial.autoGroupPick"');
+    expect(dial).toContain('id="dial-auto-group-grid"');
+  });
+});
+
 describe("camera-focus PI Car Number field (#1353)", () => {
   const field = template.match(/<sdpi-textfield[^>]*setting="carNumber"[^>]*>/)?.[0];
 
@@ -231,6 +293,9 @@ interface DomElement {
   textContent: string | null;
   title: string;
   checked: boolean;
+  /** An `sdpi-select`'s value, which sdpi sets as a property. */
+  value?: string;
+  classList: { contains(name: string): boolean };
   dataset: Record<string, string | undefined>;
   children: ArrayLike<DomElement>;
   querySelector(selector: string): DomElement | null;
@@ -246,6 +311,7 @@ const dom = globalThis as unknown as {
     body: { innerHTML: string };
     activeElement: DomElement | null;
     getElementById(id: string): DomElement | null;
+    querySelector(selector: string): DomElement | null;
   };
   customElements: { get(name: string): unknown; define(name: string, constructor: unknown): void };
   HTMLElement: new () => object;
@@ -255,12 +321,30 @@ const dom = globalThis as unknown as {
 /** The template's one inline script. */
 const script = template.match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? "";
 
-/** What the grid script needs on the page: the two grids and their buttons, and the two Mode selects. */
+/**
+ * What the grid script needs on the page: the four grids and their buttons,
+ * the keypad Mode select, and the dial's gesture selects and the two Auto
+ * Group sections whose visibility they drive (#1656).
+ */
 const SKELETON = `
   <div id="camera-groups-grid"></div>
   <button id="btn-select-all"></button><button id="btn-clear"></button>
   <div id="dial-camera-groups-grid"></div>
   <button id="dial-btn-select-all"></button><button id="dial-btn-clear"></button>
+  <sdpi-select id="target-select" setting="target"></sdpi-select>
+  <div id="camera-groups-section" class="hidden"></div>
+  <div id="auto-group-section" class="hidden">
+    <div id="auto-group-grid"></div>
+    <button id="auto-group-btn-select-all"></button><button id="auto-group-btn-clear"></button>
+  </div>
+  <sdpi-select setting="dial.pressAction"></sdpi-select>
+  <sdpi-select setting="dial.longPressAction"></sdpi-select>
+  <sdpi-select setting="dial.tapAction"></sdpi-select>
+  <sdpi-select setting="dial.longTouchAction"></sdpi-select>
+  <div id="dial-auto-group-section" class="hidden">
+    <div id="dial-auto-group-grid"></div>
+    <button id="dial-auto-group-btn-select-all"></button><button id="dial-auto-group-btn-clear"></button>
+  </div>
 `;
 
 const STANDARD = STANDARD_CAMERA_GROUP_OPTIONS.map((o) => o.name);
@@ -287,6 +371,10 @@ describe("camera-focus PI Cycle Camera grids: the Remembered groups section (#16
   let global: Map<string, ((value: unknown) => void)[]>;
   let keypadSave: ReturnType<typeof vi.fn>;
   let dialSave: ReturnType<typeof vi.fn>;
+  /** The save of every other per-key setting the script binds (the Auto Group lists, #1656), by key. */
+  let otherSaves: Map<string, ReturnType<typeof vi.fn>>;
+  /** What the script handed `irdPoll`, run by `poll()`. */
+  let polls: (() => void)[];
   /**
    * The values sdpi already holds, which a hook's getter returns; a promise
    * stands for a getter that resolves later.
@@ -301,6 +389,7 @@ describe("camera-focus PI Cycle Camera grids: the Remembered groups section (#16
     // look their grids up by id, so they would draw into this page too.
     perKey.clear();
     global.clear();
+    polls = [];
     new Function(script)();
 
     // initializePI awaits whenDefined("sdpi-select"); let it, and the getter
@@ -320,6 +409,8 @@ describe("camera-focus PI Cycle Camera grids: the Remembered groups section (#16
     global = new Map();
     keypadSave = vi.fn();
     dialSave = vi.fn();
+    otherSaves = new Map();
+    polls = [];
     storedGlobals = new Map();
     storedPerKey = new Map();
 
@@ -328,7 +419,10 @@ describe("camera-focus PI Cycle Camera grids: the Remembered groups section (#16
         useSettings: (key: string, callback: (value: unknown) => void) => {
           perKey.set(key, callback);
 
-          return [async () => (await storedPerKey.get(key)) ?? "", keypadSave];
+          return [
+            async () => (await storedPerKey.get(key)) ?? "",
+            key === "cameraGroupSubset" ? keypadSave : saveOf(key),
+          ];
         },
         useGlobalSettings: (key: string, callback: (value: unknown) => void) => {
           global.set(key, [...(global.get(key) ?? []), callback]);
@@ -337,7 +431,7 @@ describe("camera-focus PI Cycle Camera grids: the Remembered groups section (#16
         },
       },
       irdCameraGroups: CAMERA_GROUP_HELPERS,
-      irdPoll: () => {},
+      irdPoll: (fn: () => void) => polls.push(fn),
       irdDigitsOnly: () => {},
       irdResolveController: async () => "Keypad",
       irdApplyDialView: () => {},
@@ -345,6 +439,18 @@ describe("camera-focus PI Cycle Camera grids: the Remembered groups section (#16
 
     await load();
   });
+
+  /** The save the per-key hook of `key` returns; one per key, made on first use. */
+  function saveOf(key: string): ReturnType<typeof vi.fn> {
+    let save = otherSaves.get(key);
+
+    if (!save) {
+      save = vi.fn();
+      otherSaves.set(key, save);
+    }
+
+    return save;
+  }
 
   /** One global push, delivered the way sdpi delivers: to every subscription of the key. */
   function pushGlobal(key: string, value: unknown): void {
@@ -911,5 +1017,234 @@ describe("camera-focus PI Cycle Camera grids: the Remembered groups section (#16
 
   it("subscribes to the catalog under the key the plugin publishes", () => {
     expect(global.has(CAMERA_CATALOG_KEY)).toBe(true);
+  });
+
+  describe("the Auto Group lists (#1656)", () => {
+    const KEY = "autoGroupSubset";
+    const DIAL_KEY = "dial.autoGroupSubset";
+    const AUTO_GRIDS = ["auto-group-grid", "dial-auto-group-grid"] as const;
+    const subset = (groups: Record<string, boolean>): string => JSON.stringify({ groups });
+
+    /** The standard groups a grid shows ticked, in the grid's order. */
+    function tickedStandard(id: string): string[] {
+      return read(id)
+        .entries.filter((e) => STANDARD.includes(e.name) && e.checked)
+        .map((e) => e.name);
+    }
+
+    function hidden(id: string): boolean {
+      return grid(id).classList.contains("hidden");
+    }
+
+    /** Sets an sdpi-select's value the way sdpi does, then fires `event` when given. */
+    function choose(selector: string, value: string, event?: string): void {
+      const element = dom.document.querySelector(selector);
+
+      if (!element) throw new Error(`${selector} missing`);
+
+      element.value = value;
+
+      if (event) element.dispatchEvent(new dom.Event(event));
+    }
+
+    const runPolls = (): void => polls.forEach((fn) => fn());
+
+    it.each(AUTO_GRIDS)("ticks TV1, TV2 and TV3 on a fresh key's #%s", (id) => {
+      expect(tickedStandard(id)).toEqual(["TV1", "TV2", "TV3"]);
+    });
+
+    it("leaves Cycle Camera's grids on their six defaults", () => {
+      expect(tickedStandard("camera-groups-grid")).toEqual(["Nose", "Cockpit", "Chase", "TV1", "TV2", "TV3"]);
+      expect(tickedStandard("dial-camera-groups-grid")).toEqual(["Nose", "Cockpit", "Chase", "TV1", "TV2", "TV3"]);
+    });
+
+    it("saves the key's list under autoGroupSubset, filling in the three TV groups", () => {
+      toggle("auto-group-grid", "Nose");
+
+      const saved = (JSON.parse(saveOf(KEY).mock.calls.at(-1)?.[0] as string) as { groups: Record<string, boolean> })
+        .groups;
+
+      expect(Object.keys(saved).sort()).toEqual([...STANDARD].sort());
+      expect(Object.keys(saved).filter((name) => saved[name])).toEqual(["Nose", "TV1", "TV2", "TV3"]);
+      expect(keypadSave).not.toHaveBeenCalled();
+      expect(otherSaves.has(DIAL_KEY) && saveOf(DIAL_KEY).mock.calls.length > 0).toBe(false);
+    });
+
+    it("saves the dial's list under dial.autoGroupSubset", () => {
+      toggle("dial-auto-group-grid", "TV2");
+
+      const saved = (
+        JSON.parse(saveOf(DIAL_KEY).mock.calls.at(-1)?.[0] as string) as { groups: Record<string, boolean> }
+      ).groups;
+
+      expect(Object.keys(saved).filter((name) => saved[name])).toEqual(["TV1", "TV3"]);
+      expect(dialSave).not.toHaveBeenCalled();
+      expect(keypadSave).not.toHaveBeenCalled();
+      expect(saveOf(KEY)).not.toHaveBeenCalled();
+    });
+
+    it("shows only what a stored list ticks, pushed or held", async () => {
+      storedPerKey.set(DIAL_KEY, subset({ Chopper: true }));
+      await load();
+      perKey.get(KEY)?.(subset({ Nose: true }));
+
+      expect(tickedStandard("auto-group-grid")).toEqual(["Nose"]);
+      expect(tickedStandard("dial-auto-group-grid")).toEqual(["Chopper"]);
+    });
+
+    it.each(AUTO_GRIDS)("draws the Remembered section on #%s, unticked unless the list ticks it", (id) => {
+      perKey.get(id === "auto-group-grid" ? KEY : DIAL_KEY)?.(subset({ TV1: true, DynamicTV: true }));
+      pushCatalog(CATALOG);
+
+      expect(read(id).headings).toEqual(["Car", "Chase", "Track", "Aerial", "Remembered groups"]);
+      expect(remembered(id).map((e) => [e.name, e.checked])).toEqual([
+        ["SpeedCam", false],
+        ["DynamicTV", true],
+        ["Alpha", false],
+        ["Zulu", false],
+      ]);
+    });
+
+    it("Clear unticks the key's whole list", () => {
+      grid("auto-group-btn-clear").click();
+
+      const saved = (JSON.parse(saveOf(KEY).mock.calls.at(-1)?.[0] as string) as { groups: Record<string, boolean> })
+        .groups;
+
+      expect(Object.values(saved).every((v) => v === false)).toBe(true);
+    });
+
+    it("shows the key's section only while the Mode is Auto Group on Car Change", () => {
+      expect(hidden("auto-group-section")).toBe(true);
+
+      choose("#target-select", "auto-group", "change");
+      expect(hidden("auto-group-section")).toBe(false);
+      expect(hidden("camera-groups-section")).toBe(true);
+
+      choose("#target-select", "cycle-camera", "input");
+      expect(hidden("auto-group-section")).toBe(true);
+      expect(hidden("camera-groups-section")).toBe(false);
+    });
+
+    it("shows the dial's section while any gesture is Auto Group on/off, and hides it otherwise", () => {
+      expect(hidden("dial-auto-group-section")).toBe(true);
+
+      choose('sdpi-select[setting="dial.pressAction"]', "auto-group", "change");
+      expect(hidden("dial-auto-group-section")).toBe(false);
+
+      choose('sdpi-select[setting="dial.longTouchAction"]', "auto-group", "input");
+      choose('sdpi-select[setting="dial.pressAction"]', "focus-my-car", "change");
+      expect(hidden("dial-auto-group-section")).toBe(false);
+
+      choose('sdpi-select[setting="dial.longTouchAction"]', "none", "change");
+      expect(hidden("dial-auto-group-section")).toBe(true);
+    });
+
+    it("catches a gesture sdpi set from stored settings on the next poll", () => {
+      choose('sdpi-select[setting="dial.tapAction"]', "auto-group");
+      expect(hidden("dial-auto-group-section")).toBe(true);
+
+      runPolls();
+      expect(hidden("dial-auto-group-section")).toBe(false);
+    });
+
+    it("watches only the gesture slots the build compiled (a knob has Press alone)", async () => {
+      dom.document.body.innerHTML = "";
+      perKey.clear();
+      global.clear();
+      polls = [];
+      const knobSkeleton = SKELETON.replace(
+        /<sdpi-select setting="dial\.(longPress|tap|longTouch)Action"><\/sdpi-select>/g,
+        "",
+      );
+
+      expect(knobSkeleton).not.toContain("dial.tapAction");
+
+      dom.document.body.innerHTML = knobSkeleton;
+      new Function(script)();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      choose('sdpi-select[setting="dial.pressAction"]', "auto-group", "change");
+      expect(hidden("dial-auto-group-section")).toBe(false);
+    });
+  });
+});
+
+describe("the compiled Camera Controls PI per host (#1656)", () => {
+  const outputs = new Map<boolean, string>();
+
+  /** Compiles every action template the way a plugin build does, and keeps camera-focus's page. */
+  async function compile(dialExtendedGestures: boolean): Promise<string> {
+    const dir = mkdtempSync(join(tmpdir(), "camera-focus-pi-"));
+
+    const plugin = piTemplatePlugin({
+      templatesDir: join(import.meta.dirname, ".."),
+      outputDir: dir,
+      partialsDir,
+      version: "0.0.0-test",
+      platformFeatures: { features: { dialExtendedGestures } },
+    });
+    const context = {
+      addWatchFile: vi.fn(),
+      warn: vi.fn(),
+      info: vi.fn(),
+      error: (message: string) => {
+        throw new Error(message);
+      },
+    };
+
+    await (plugin.generateBundle as (this: unknown) => unknown).call(context);
+
+    try {
+      return readFileSync(join(dir, "camera-focus.html"), "utf-8");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  /** Each dial gesture select of a compiled page, by setting, with its option values. */
+  function gestures(html: string): Map<string, string[]> {
+    const pattern = /<sdpi-select\b[^>]*\bsetting="(dial\.\w+Action)"[^>]*>([\s\S]*?)<\/sdpi-select>/g;
+
+    return new Map(
+      [...html.matchAll(pattern)].map((m) => [
+        m[1],
+        [...m[2].matchAll(/<option\b[^>]*\bvalue="([^"]+)"/g)].map((o) => o[1]),
+      ]),
+    );
+  }
+
+  beforeAll(async () => {
+    outputs.set(true, await compile(true));
+    outputs.set(false, await compile(false));
+  }, 60_000);
+
+  it("offers Auto Group on/off on every press slot of a Stream Deck+ dial", () => {
+    const slots = gestures(outputs.get(true) ?? "");
+
+    expect([...slots.keys()]).toEqual([
+      "dial.pressAction",
+      "dial.longPressAction",
+      "dial.tapAction",
+      "dial.longTouchAction",
+    ]);
+
+    for (const [setting, values] of slots) expect(values, setting).toContain("auto-group");
+  });
+
+  it("offers it on Press alone on a Mirabox knob, with the dial's list beside it", () => {
+    const html = outputs.get(false) ?? "";
+    const slots = gestures(html);
+
+    expect([...slots.keys()]).toEqual(["dial.pressAction"]);
+    expect(slots.get("dial.pressAction")).toContain("auto-group");
+    expect(html).toContain('id="dial-auto-group-section"');
+    expect(html).toContain('setting="dial.autoGroupPick"');
+  });
+
+  it("offers the keypad mode on both hosts", () => {
+    for (const html of outputs.values()) {
+      expect(html).toContain('<option value="auto-group">Auto Group on Car Change</option>');
+    }
   });
 });
