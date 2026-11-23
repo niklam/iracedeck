@@ -2,9 +2,12 @@
  * Test helpers shared with `iracing-actions`' tests (#1467); never imported by
  * production code. Reached as `@iracedeck/replay-engine/testing`.
  *
- * Besides the helpers, the test hooks and the engine names only tests reach
- * (#1502): the main barrel carries what production imports and no more, so a
- * `_reset*` / `_configure*` hook is never callable from production code.
+ * Besides the helpers, the test hooks and the engine names only other
+ * packages' tests reach (#1502): the main barrel carries what production
+ * imports and no more, so a `_reset*` / `_configure*` hook is never callable
+ * from production code. `index.test.ts` fails on a barrel name no production
+ * source outside the engine imports (#1661), and names this entry as where it
+ * goes when another package's tests need it.
  */
 export { _configureReplayEngine } from "./replay-engine-env.js";
 export {
