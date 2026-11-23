@@ -15,16 +15,17 @@
  *   only recorded; a tick with no telemetry (iRacing gone) changes nothing.
  *   Each change (re)arms one {@link AUTO_GROUP_SETTLE_MS} timer, so a burst
  *   of changes ends in one switch.
- * - **The send** goes through the replay engine's `requestCameraSwitch` with
- *   `interruptsWalks: false`; its target is worked out when it goes out, from
- *   the car the camera is on then, and it keeps that car (`switchNum` with
- *   its `CarNumberRaw`), so it cannot trigger the run again. It is dropped if
- *   the run was stopped or replaced while it waited behind a jump.
- * - **A user's switch comes first** (plan decision 1): when the timer fires
- *   while a camera switch is waiting behind a jump, a lap press (Jump to
- *   Fastest Lap / Race Start) is in flight or a paced search is running, the
- *   timer is re-armed instead, since the engine's one waiting slot would
- *   otherwise give the user's switch up for this one.
+ * - **The send** goes once, when the timer fires, through the replay engine's
+ *   `requestCameraSwitch` with `interruptsWalks: false`; its target is worked
+ *   out when it goes out, from the car the camera is on then, and it keeps
+ *   that car (`switchNum` with its `CarNumberRaw`), so it cannot trigger the
+ *   run again. It is dropped if the run was stopped or replaced while it
+ *   waited.
+ * - **A user's switch comes first** (decision 4): the send is a yielding one
+ *   (`yields: true`), and the engine's camera-switch waiter keeps the rule:
+ *   it never takes the waiting slot from a user's switch, gives it up to any
+ *   user's switch, and waits out a lap press (Jump to Fastest Lap / Race
+ *   Start) or a paced search. The run reads none of the engine's state.
  */
 import { getCommands, getController } from "@iracedeck/deck-iracing";
 import {
@@ -34,12 +35,7 @@ import {
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
-import {
-  isCameraSwitchWaiting,
-  isLapPressInFlight,
-  pendingReplaySearch,
-  requestCameraSwitch,
-} from "@iracedeck/replay-engine";
+import { requestCameraSwitch } from "@iracedeck/replay-engine";
 
 import { autoGroupCandidates, type AutoGroupPick, pickAutoGroup } from "./auto-group-pick.js";
 import { normalizeSessionGroups } from "./camera-groups.js";
@@ -78,8 +74,6 @@ interface Run {
   /** The name of the group picked last, for In order. */
   lastPicked: string | null;
   timer: ReturnType<typeof setTimeout> | null;
-  /** What the send is waiting behind (plan decision 1), logged once when it starts waiting; null when not waiting. */
-  waitingFor: string | null;
 }
 
 let active: Run | null = null;
@@ -110,7 +104,6 @@ export function toggleAutoGroup(start: AutoGroupStart): AutoGroupToggleResult {
     lastCar: null,
     lastPicked: null,
     timer: null,
-    waitingFor: null,
   };
 
   if (current !== null) {
@@ -249,40 +242,21 @@ function onTick(telemetry: TelemetryData | null): void {
   arm(run);
 }
 
-/** Whether a switch the user asked for is waiting, or a replay walk or search is under way: then the run waits. */
-function replayBusy(): string | null {
-  if (isCameraSwitchWaiting()) return "a camera switch is waiting for a replay jump";
-
-  if (isLapPressInFlight()) return "a lap press is under way";
-
-  if (pendingReplaySearch() !== null) return "a replay search is under way";
-
-  return null;
-}
-
-/** The camera's car stayed put for the settle time: asks for the switch. */
+/**
+ * The camera's car stayed put for the settle time: asks for the switch, once,
+ * as a yielding one, so the engine's waiter puts any switch the user asks for
+ * first and holds this one through a lap press or a paced search.
+ */
 function settle(run: Run): void {
   run.timer = null;
 
   if (run !== active) return;
 
-  const busy = replayBusy();
-
-  if (busy !== null) {
-    if (run.waitingFor !== busy) run.logger.debug(`Auto group: ${busy}, the switch waits`);
-
-    run.waitingFor = busy;
-    arm(run);
-
-    return;
-  }
-
-  run.waitingFor = null;
-
   if (autoGroupTargets(run, true).length === 0) return;
 
   void requestCameraSwitch(() => sendAuto(run), {
     by: "camera-controls auto-group",
+    yields: true,
     interruptsWalks: false,
     label: "Camera controls",
     name: "auto group",

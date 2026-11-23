@@ -53,9 +53,6 @@ type SwitchRequest = { send: () => unknown; options: CameraSwitchOptions };
 
 const { engine, fake, switchNum } = vi.hoisted(() => {
   const state = {
-    waiting: false,
-    lapPress: false,
-    search: null as null | { target: string; count: number; origin: string },
     /** When false, `requestCameraSwitch` holds each request in `held` instead of sending it. */
     sendAtOnce: true,
     held: [] as SwitchRequest[],
@@ -85,9 +82,6 @@ vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
 vi.mock("@iracedeck/replay-engine", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@iracedeck/replay-engine")>()),
   requestCameraSwitch: engine.requestCameraSwitch,
-  isCameraSwitchWaiting: () => engine.state.waiting,
-  isLapPressInFlight: () => engine.state.lapPress,
-  pendingReplaySearch: () => engine.state.search,
 }));
 
 /** The track's camera groups, numbered as the sim numbers them. */
@@ -159,9 +153,6 @@ beforeEach(() => {
   fake.controller = new FakeController();
   fake.controller.sessionInfo = sessionInfo();
   fake.controller.setCamera(1, G.Nose);
-  engine.state.waiting = false;
-  engine.state.lapPress = false;
-  engine.state.search = null;
   engine.state.sendAtOnce = true;
   engine.state.held = [];
   logger = spyLogger();
@@ -212,7 +203,7 @@ describe("auto group triggers", () => {
     expect(switchNum).toHaveBeenCalledExactlyOnceWith(106, G.TV1, 0);
   });
 
-  it("goes through the replay engine's camera-switch waiter as a switch of the angle only", () => {
+  it("goes through the replay engine's camera-switch waiter as a yielding switch of the angle only", () => {
     start();
     landOn(4);
 
@@ -220,8 +211,25 @@ describe("auto group triggers", () => {
 
     const options = engine.requestCameraSwitch.mock.calls[0][1];
 
-    expect(options).toMatchObject({ interruptsWalks: false, label: "Camera controls", name: "auto group", logger });
+    // The waiter keeps the "a user's switch comes first" rule for a yielding switch (decision 4).
+    expect(options).toMatchObject({
+      yields: true,
+      interruptsWalks: false,
+      label: "Camera controls",
+      name: "auto group",
+      logger,
+    });
     expect(options.stillValid()).toBe(true);
+  });
+
+  it("asks once per settled change, however long the switch then waits in the engine", () => {
+    engine.state.sendAtOnce = false;
+    start();
+    landOn(4);
+    vi.advanceTimersByTime(AUTO_GROUP_SETTLE_MS * 40);
+
+    expect(engine.requestCameraSwitch).toHaveBeenCalledTimes(1);
+    expect(engine.state.held).toHaveLength(1);
   });
 
   it("sends one switch for a burst of changes inside the window, for the car it lands on", () => {
@@ -316,76 +324,6 @@ describe("auto group triggers", () => {
       landOn(7);
 
       expect(switchNum).toHaveBeenCalledExactlyOnceWith(107, G.TV1, 0);
-    });
-  });
-
-  describe("a switch the user asked for comes first (plan decision 1)", () => {
-    const holds: Array<[string, () => void, () => void]> = [
-      [
-        "a camera switch waiting behind a jump",
-        () => {
-          engine.state.waiting = true;
-        },
-        () => {
-          engine.state.waiting = false;
-        },
-      ],
-      [
-        "a lap press in flight",
-        () => {
-          engine.state.lapPress = true;
-        },
-        () => {
-          engine.state.lapPress = false;
-        },
-      ],
-      [
-        "a paced search running",
-        () => {
-          engine.state.search = { target: "lap", count: 1, origin: "dial" };
-        },
-        () => {
-          engine.state.search = null;
-        },
-      ],
-    ];
-
-    it.each(holds)("waits while there is %s, then sends", (_label, begin, end) => {
-      start();
-      begin();
-      landOn(4);
-
-      expect(engine.requestCameraSwitch).not.toHaveBeenCalled();
-
-      vi.advanceTimersByTime(AUTO_GROUP_SETTLE_MS * 4);
-      expect(engine.requestCameraSwitch).not.toHaveBeenCalled();
-
-      end();
-      vi.advanceTimersByTime(AUTO_GROUP_SETTLE_MS);
-      expect(engine.requestCameraSwitch).toHaveBeenCalledTimes(1);
-      expect(switchNum).toHaveBeenCalledExactlyOnceWith(104, G.TV1, 0);
-    });
-
-    it("sends nothing while it waits if the run is stopped", () => {
-      start();
-      engine.state.waiting = true;
-      landOn(4);
-      stopAutoGroup();
-      engine.state.waiting = false;
-      vi.advanceTimersByTime(AUTO_GROUP_SETTLE_MS * 4);
-
-      expect(engine.requestCameraSwitch).not.toHaveBeenCalled();
-    });
-
-    it("logs the wait once, however long it lasts", () => {
-      start();
-      engine.state.waiting = true;
-      landOn(4);
-      vi.advanceTimersByTime(AUTO_GROUP_SETTLE_MS * 20);
-
-      const waits = vi.mocked(logger.debug).mock.calls.filter(([line]) => line.includes("the switch waits"));
-
-      expect(waits).toEqual([["Auto group: a camera switch is waiting for a replay jump, the switch waits"]]);
     });
   });
 });
