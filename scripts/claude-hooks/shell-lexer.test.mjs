@@ -1887,7 +1887,7 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
 
   describe("a cd in a pipeline or a compound command", () => {
     const bash = (text) => ({ text, shell: lexer.BASH });
-    it.each(["cd ../ir-5 | cat; ", "cat | cd ../ir-5; ", "cd ../ir-5 |& cat; ", "echo cd x; (cd ../ir-5); "])(
+    it.each(["cd ../ir-5 | cat; ", "cd ../ir-5 |& cat; ", "echo cd x; (cd ../ir-5); "])(
       "moves nothing after `%s`",
       (text) => expect(lexer.dirAfter([bash(text)], MASTER)).toBe(MASTER),
     );
@@ -1904,16 +1904,16 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
       expect(lexer.cwdAt("cd ../ir-5 | cat; pnpm x", MASTER, 18)).toBe(MASTER);
     });
 
-    it("follows a pipeline's final-stage cd where lastpipe may be on, and no other stage's", () => {
-      expect(lexer.dirAfter([bash("true | cd ../ir-5; ")], MASTER, true)).toBe(tree("ir-5"));
-      expect(lexer.dirAfter([bash("shopt -s lastpipe; true | cd ../ir-5; ")], MASTER)).toBe(tree("ir-5"));
+    // A lastpipe the hook cannot see (a profile, BASH_ENV) runs the final stage in the shell itself.
+    it("follows a pipeline's final-stage cd always, and no other stage's", () => {
+      expect(lexer.dirAfter([bash("true | cd ../ir-5; ")], MASTER)).toBe(tree("ir-5"));
+      expect(lexer.dirAfter([bash("cat | cd ../ir-5; ")], MASTER)).toBe(tree("ir-5"));
       expect(lexer.dirAfter([bash("shopt -s lastpipe; cd ../ir-5 | cat; ")], MASTER)).toBe(MASTER);
-      expect(lexer.dirAfter([bash("true | cd ../ir-5; ")], MASTER)).toBe(MASTER);
       const bases = (c) => [...lexer.chainCommands(c, MASTER, cmd(/pnpm\b/))].map((x) => x.base);
-      expect(bases("shopt -s lastpipe; true | cd ../ir-5; pnpm x")).toEqual([tree("ir-5")]);
-      expect(bases("BASHOPTS=lastpipe bash -c 'true | cd ../ir-5; pnpm x'")).toEqual([tree("ir-5")]);
-      expect(bases("true | cd ../ir-5; pnpm x")).toEqual([MASTER]);
-      expect(lexer.cwdAt("shopt -s lastpipe; true | cd ../ir-5; pnpm x", MASTER, 38)).toBe(tree("ir-5"));
+      expect(bases("true | cd ../ir-5; pnpm x")).toEqual([tree("ir-5")]);
+      expect(bases("bash -c 'true | cd ../ir-5; pnpm x'")).toEqual([tree("ir-5")]);
+      expect(bases("true | cd ../ir-5 | cat; pnpm x")).toEqual([MASTER]);
+      expect(lexer.cwdAt("true | cd ../ir-5; pnpm x", MASTER, 19)).toBe(tree("ir-5"));
     });
   });
 });
