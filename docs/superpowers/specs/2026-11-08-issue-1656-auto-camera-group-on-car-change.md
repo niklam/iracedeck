@@ -31,6 +31,8 @@ A streamer turns this on and off during a stream: before the start, off for a ba
 - **A press on the active key** stops it.
 - **Every Auto Group key** shows on only while it is the active one. A second key reads off, so the deck never shows two lit keys for one automation.
 
+An edit to the running key's or dial's own list or Pick takes effect on the running automation at once, with no need to press it off and on; an edit on any other key or dial changes nothing until that one is pressed (added 2026-11-22).
+
 It is run-scoped: never persisted, off at every plugin start, because a camera automation that starts by itself in the middle of someone's stream is worse than one they have to press. It stays on when its key leaves the screen (a profile switch mid-stream). It ends only with a press, a press on another Auto Group key, or the plugin stopping. On iRacing disconnect it does nothing (there is no camera to move), and it carries on in the next session if it is still on.
 
 Rejected:
@@ -49,13 +51,15 @@ The switch keeps the car (`switchNum` with the current car's `CarNumberRaw` and 
 
 The switch is sent through `@iracedeck/replay-engine`'s `requestCameraSwitch`, like every camera switch (`iracing-actions/CLAUDE.md`), with `interruptsWalks: false`, because it changes only the camera's angle and never the car. Its target is built inside `send`, from the car the camera is on when the switch goes out. Its `stillValid` drops it if the automation was stopped or replaced meanwhile. During a replay jump the waiter holds it like any other switch.
 
+**It never displaces the user's switch** (added 2026-11-22). The replay engine keeps one waiting camera switch for the whole plugin, and a newer request replaces it, so an automation switch sent while the user's own switch waits behind a replay jump would silently drop the user's. So while a switch is waiting, or a replay walk or paced search is running, the settle timer re-arms instead of sending. `@iracedeck/replay-engine` exports what that needs (`isCameraSwitchWaiting`, and its walk-busy signal), so the module asks the engine rather than tracking it.
+
 ### 5. Picking the next group
 
 The candidates are the ticked names the current session has, matched with #1653's lookup and in the sim's group order. Names the track lacks are skipped silently, logged at debug.
 - **In order** steps through the candidates from where it left off, wrapping at the end. If the camera is already in the next group, it steps once more, so a car change is always visibly a new shot when there are two or more candidates.
 - **Random** picks uniformly from the candidates other than the group the camera is in now.
 
-With exactly one candidate, both switch to it if the camera is elsewhere and send nothing if it is already there. With none, nothing is sent, and the key is drawn with the shared unavailable look while a session is loaded, as #1653 does for a missing group.
+With exactly one candidate, both switch to it if the camera is elsewhere and send nothing if it is already there. With none (an empty list included), nothing is sent, and the key is drawn with the shared unavailable look while a session is loaded, as #1653 does for a missing group; an on key that is also unavailable keeps the unavailable look.
 
 Rejected: weights per group. Nothing asked for them, and a name ticked twice cannot express one.
 
@@ -79,6 +83,7 @@ A Camera Controls dial is where a broadcaster spins through the field, which is 
 - **Ownership is decision 2's:** the dial's context is the owner when its gesture started the automation; a press of the same gesture on the active dial stops it, and a key or another dial takes over as a key would.
 - **The dial shows the state** on its strip (the screen above the knob on Mirabox): while it is the active owner, an on marker in the strip's Camera Controls style, drawn the same on both hosts. The marker's look is approved by Niklas on a review page with the key icons.
 - **Comms:** the dial's comms map gains the same `api` entry; no binding.
+- **Hold preview** (added 2026-11-22): on Long Press or Long Touch the strip previews the outcome mid-hold (on or off), as `encoders-and-touchscreen.md` rule 9 requires whenever the outcome is the plugin's own state. Its text is user-facing and goes to Niklas with the rest.
 
 Rejected:
 - **A dial Mode, Auto Group,** that the rotation would drive. Turning has nothing to do with on/off, and the Mode is what makes the dial useful for picking the car the automation then follows.
