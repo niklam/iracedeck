@@ -68,8 +68,8 @@ export function autoGroupCandidates(names: readonly string[], sessionGroups: Cam
 }
 
 /**
- * Whether the key or dial is drawn with the unavailable look (spec decision 5,
- * plan decision 2): a session's group list is loaded and the list leaves no
+ * Whether an Auto Group key shows its N/A state (spec decision 5, the
+ * tri-state toggle convention): a session's group list is loaded and the list leaves no
  * candidate in it, an empty list included. With no session there is nothing
  * to judge by, so never.
  */
