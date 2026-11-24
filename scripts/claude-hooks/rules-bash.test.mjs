@@ -2976,6 +2976,10 @@ describe("the mask fails closed (#1321 review)", () => {
   const merges = (commands, c = ctx()) => {
     for (const command of commands) expect(deny(command, c), command).toMatch(REAL);
   };
+  // A heredoc in a command the lexer cannot finish is refused whole, before the merge gate (#1659).
+  const unreadHeredocs = (commands) => {
+    for (const command of commands) expect(deny(command), command).toMatch(/heredoc, and its quoting cannot be read/);
+  };
   const linked = ctx({ linkTargets: () => [{ host: "Stream Deck", target: tree("ir-1013", "plugin") }] });
   const green = () => ({
     number: 7,
@@ -3095,7 +3099,8 @@ describe("the mask fails closed (#1321 review)", () => {
   });
 
   it("finding 6: a misread mask falls back to the raw command instead of blanking the rest", () => {
-    merges([`echo 'unterminated && gh pr merge 7 --squash`, `cat <<EOF\nnever closed\ngh pr merge 7 --squash`]);
+    merges([`echo 'unterminated && gh pr merge 7 --squash`]);
+    unreadHeredocs([`cat <<EOF\nnever closed\ngh pr merge 7 --squash`]);
   });
 
   it("finding 7: an indented line, a backtick and a case arm are command positions", () => {
@@ -3103,11 +3108,11 @@ describe("the mask fails closed (#1321 review)", () => {
       `if gh pr checks 7; then\n  echo green\n  gh pr merge 7 --squash\nfi`,
       // #1328 review: a case pattern's `)` inside a quoted substitution.
       `x="$(case $y in a) gh pr merge 7 --squash;; esac)"`,
-      `cat <<EOF\n$(case $y in a) gh pr merge 7 --squash;; esac)\nEOF`,
       "x=`gh pr merge 7 --squash`",
       "echo `gh pr merge 7 --squash`",
       `case x in *) gh pr merge 7 --squash ;; esac`,
     ]);
+    unreadHeredocs([`cat <<EOF\n$(case $y in a) gh pr merge 7 --squash;; esac)\nEOF`]);
     asks(`if true; then\n  git push origin v9.9.9\nfi`);
     deny(`for f in a; do\n\tpnpm exec vitest run "$f"\ndone`);
   });
@@ -3132,12 +3137,12 @@ describe("the mask fails closed (#1321 review)", () => {
   it("finding 9: ANSI-C quotes, partly quoted or unusual delimiters and `EOF)` do not blank what follows", () => {
     merges([
       "echo $'it\\'s' && gh pr merge 7 --squash",
-      `x=$(cat <<'EOF'\nbody\nEOF)\ngh pr merge 7 --squash`,
       `cat <<E'OF'\nbody\nEOF\ngh pr merge 7 --squash`,
       `cat <<"E"OF\nbody\nEOF\ngh pr merge 7 --squash`,
       `cat <<@END\nbody\n@END\ngh pr merge 7 --squash`,
       `cat <<END+\nbody\nEND+\ngh pr merge 7 --squash`,
     ]);
+    unreadHeredocs([`x=$(cat <<'EOF'\nbody\nEOF)\ngh pr merge 7 --squash`]);
     passes(`cat <<E'OF'\ngh pr merge 7 --squash --admin\nEOF`);
     passes(`cat <<@END\npnpm exec vitest run\n@END`);
   });
@@ -5793,4 +5798,38 @@ describe("a shell inside a command substitution or under coproc (#1659)", () => 
     `x=$(( $(git rev-list --count HEAD) + 1 ))`,
     String.raw`printf '%s\n' 'example; eval echo hello; end' > notes.txt; bash -c true`,
   ])("passes %s", (c) => passes(c));
+});
+
+// A judge on 15ce351a1: with the lex unsure, the raw reading paired a quote in
+// a quoted heredoc's body with one after it, and read the commands between as
+// one string, while bash runs each line before it reaches the stray quote.
+describe("a heredoc in a command whose quoting the lexer cannot finish (#1659)", () => {
+  const HEREDOC = /heredoc, and its quoting cannot be read to its end/;
+  it.each([
+    `cat <<'EOF'\n"\nEOF\nbash -c 'gh pr merge 7'\n"`,
+    `cat <<'EOF'\n$(")\nEOF\nbash -c 'gh pr merge 7'\n"`,
+    `cat <<'EOF'\n$(|")\nEOF\nbash -c 'gh pr merge 7'; echo "`,
+    `cat <<'EOF'\n'\nEOF\nbash -c "gh pr merge 7"\n'`,
+    `cat <<'EOF'\n"\nEOF\necho x | bash\n"`,
+    `cat <<'EOF'\n"\nEOF\neval x\n"`,
+    `cat <<'EOF'\n"\nEOF\nbash <<< x\n"`,
+    `cat <<'EOF'\n"\nEOF\nexec <<< x; bash\n"`,
+    `cat <<EOF\n"\nEOF\nbash -c 'gh pr merge 7'\n"`,
+  ])("refuses %j whole", (c) => expect(deny(c)).toMatch(HEREDOC));
+  it("names no text of the heredoc in its reason", () => {
+    const reason = deny(`node - <<'EOF'\n$(|"). *\nEOF\n"`);
+    expect(reason).toMatch(HEREDOC);
+    expect(reason).not.toContain(". *");
+  });
+  it.each([`cat <<'EOF'\nok "it's"\nEOF\nbash -c 'ls'`, `node - <<'EOF'\nconst a = "$(";\nEOF`])(
+    "passes %j, whose quoting reads to its end",
+    (c) => passes(c),
+  );
+  // The same pairing through a comment, with no heredoc: an unsure lex reads
+  // no word as a mention, so the merge each runs is judged.
+  it.each([
+    `ls # "\nbash -c 'gh pr merge 7'\n"`,
+    `ls # '\nbash -c "gh pr merge 7"\n'`,
+    `echo $(( 1 # "\n))\nbash -c 'gh pr merge 7'\n"`,
+  ])("judges the merge in %j", (c) => expect(deny(c)).toMatch(/first word of a string `bash` runs/));
 });

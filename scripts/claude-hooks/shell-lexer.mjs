@@ -69,10 +69,12 @@ import path from "node:path";
  * list elements off it without guessing where any of those are. `words`,
  * where each word bash reads ends, keyed by where it starts, at every depth
  * ({@link normalisePrograms}). And `heredocs`, every heredoc as `{ op, start,
- * end, resume }` — `op` the index of its `<<`, `[start, end)` its body up to
- * the terminator line, or to the end of the text when none comes, and
- * `resume` where the line after the terminator starts — so the body of one
- * fed to a shell can be read raw ({@link fedSpans}).
+ * end, resume, quoted }` — `op` the index of its `<<`, `[start, end)` its body
+ * up to the terminator line, or to the end of the text when none comes,
+ * `resume` where the line after the terminator starts and `quoted` whether
+ * its delimiter is quoted — so the body of one fed to a shell can be read raw
+ * ({@link fedSpans}), and a raw reading keeps every body inert ({@link
+ * heredocsInert}).
  *
  * One recursive lexer rather than a scanner per context: the three hand-copied
  * scanners it replaced had already drifted apart, and each gap blanked the rest
@@ -89,9 +91,10 @@ export function maskInert(command) {
   // body is `_`, and a comment or a line continuation is blank.
   const topText = s.split("");
   const pending = [];
-  // Every heredoc, `{ op, start, end, resume }`: `op` the index of its `<<`,
-  // `[start, end)` its body and `resume` where the line after its terminator
-  // starts, at every depth (#1607, {@link fedSpans}).
+  // Every heredoc, `{ op, start, end, resume, quoted }`: `op` the index of its
+  // `<<`, `[start, end)` its body, `resume` where the line after its
+  // terminator starts and `quoted` whether its delimiter is quoted, at every
+  // depth (#1607, {@link fedSpans}).
   const heredocs = [];
   // Where each word bash reads ends, keyed by where it starts: at every depth,
   // a substitution's own words included (#1606, {@link view}).
@@ -228,7 +231,7 @@ export function maskInert(command) {
         p = eol + 1;
       }
       const end = found < 0 ? limit : found;
-      heredocs.push({ op, start: at, end, resume });
+      heredocs.push({ op, start: at, end, resume, quoted });
       if (quoted) blank(out, at, end);
       else expanding(at, end, false);
       if (top) blank(flat, at, end);
@@ -1155,59 +1158,18 @@ function pipelinesOf(command, a, b) {
 }
 
 /**
- * 1 at each character of `[a, b)` of `t` that a quote makes literal text,
- * past its opening quote: inside `'…'` and `$'…'`, and inside `"…"` but for
- * the `$( … )` and backtick substitutions it holds, whose text runs as code
- * however deep, with quotes of its own (#1659). A word starting at a marked
- * character is a mention, never a program word; one inside `"$(eval …)"` is
- * not, which reading every quoted string's whole span as text made one.
+ * Whether the word starting at `s` of `command` sits in text bash reads as
+ * no command: a quoted string's, a comment's or a heredoc body's, which
+ * {@link maskInert} blanks while it keeps every substitution live, however
+ * deep and inside double quotes too (`echo "$(eval …)"` runs, #1659). Only
+ * a sure lex says so: an unsure one falls back to the raw text, where a quote
+ * pairs with one in a comment or a heredoc body, and the commands between
+ * read as a string while bash runs each line before the stray quote (a judge
+ * on 15ce351a1), so there no word is a mention. `lex` is the command's
+ * {@link maskInert}.
  */
-function literalQuoted(t, a, b) {
-  const mask = new Uint8Array(t.length + 1);
-  // A substitution's body from `i`, to just past its close at `close`.
-  const sub = (i, close) => {
-    code(i, close - 1);
-    return close;
-  };
-  // A double-quoted string's text from `i`, to just past its closing quote.
-  const quoted = (i, end) => {
-    while (i < end && t[i] !== '"') {
-      const c = t[i];
-      if (c === "\x60") {
-        mask[i] = 1;
-        i = sub(i + 1, Math.min(tickEnd(t, i), end));
-      } else if (c === "$" && ((t[i + 1] === "(" && t[i + 2] !== "(") || funsubAt(t, i))) {
-        mask.fill(1, i, i + 2);
-        i = sub(i + 2, Math.min(closeAt(t, i + 2, t[i + 1]), end));
-      } else {
-        const n = c === "\\" ? 2 : 1;
-        mask.fill(1, i, Math.min(i + n, end));
-        i += n;
-      }
-    }
-    if (i < end) mask[i] = 1;
-    return i + 1;
-  };
-  // Code from `i` to `end`: only its quotes make literal text.
-  const code = (i, end) => {
-    while (i < end) {
-      const c = t[i];
-      if (c === "\\") i += 2;
-      else if (c === "'") {
-        let k = i + 1;
-        if (ansiOpen(t, i)) while (k < end && t[k] !== "'") k += t[k] === "\\" ? 2 : 1;
-        else while (k < end && t[k] !== "'") k++;
-        mask.fill(1, i + 1, Math.min(k, end) + 1);
-        i = k + 1;
-      } else if (c === '"') i = quoted(i + 1, end);
-      else if (c === "\x60") i = sub(i + 1, Math.min(tickEnd(t, i), end));
-      else if (c === "$" && ((t[i + 1] === "(" && t[i + 2] !== "(") || funsubAt(t, i)))
-        i = sub(i + 2, Math.min(closeAt(t, i + 2, t[i + 1]), end));
-      else i++;
-    }
-  };
-  code(a, b);
-  return mask;
+function mentionAt(command, { masked, sure }, s) {
+  return sure && masked[s] === "_" && command[s] !== "_";
 }
 
 /** A redirection that gives a command its stdin: `<`, `<<`, `<<<`, `<&`, `<>`, with an optional fd 0. Group 1 is the operator. */
@@ -2514,12 +2476,12 @@ function fedStarts(command, text, fed, programs) {
   // Every string a shell is handed, in the order of the word that hands it
   // over, so the level holding a word is built before the word is read.
   const sources = [];
+  // The command's lex, once: what it masks is no command ({@link mentionAt}).
+  const lex = maskInert(command);
   for (const [a, b] of fed) {
     const own = pipelinesOf(command, a, b);
     quotes.push(...own.quotes);
     for (const [open, close] of own.quotes) closes.set(open, close);
-    // The span's literal quoted text, read once a shell word asks.
-    let literal;
     // What feeds the shell word at `p` its stdin through a pipe in the span: a
     // printer in the stage before it (`echo '…' | bash`), or any other command.
     // Whether it refused one.
@@ -2554,9 +2516,9 @@ function fedStarts(command, text, fed, programs) {
           // element shows as a program word (`printf '…; eval x' > f; bash -c
           // true`, PR #1798 review); a quoted program word (`"bash"`) is its
           // own quote, and one in a substitution a double-quoted string holds
-          // runs (`echo "$(eval …)"`, {@link literalQuoted}).
+          // runs (`echo "$(eval …)"`, {@link mentionAt}).
           const s = wordStarts[p] >= 0 ? wordStarts[p] : p;
-          if (L === base && (literal ??= literalQuoted(command, a, b))[s]) return;
+          if (L === base && mentionAt(command, lex, s)) return;
           const d = levelIndex(L, p + via.length);
           const limit = L === base ? b : L.text.length;
           if (via === "sudo") {
@@ -3069,6 +3031,8 @@ export function view(command) {
       spliced: out.spliced,
       unsettled: !settled,
       unclosedLead: found.unclosed,
+      // A heredoc in a command whose lex is unsure (#1659, {@link unreadHeredoc}).
+      unreadHeredoc: !sure && heredocs.length > 0,
       refused: [...refused.values()],
       byName,
       wordStarts: wordStartsOf(out.programs, command.length),
@@ -3704,6 +3668,18 @@ export const unsettled = (command) => view(command).unsettled;
  * {@link unsettled} one.
  */
 export const unclosedLead = (command) => view(command).unclosedLead;
+
+/**
+ * Whether `command` holds a heredoc while its lex is unsure ({@link
+ * maskInert}): the raw reading the unsure lex falls back to cannot tell the
+ * heredoc's body from the commands after it, and paired a quote in a quoted
+ * body with one past it, reading the commands between as one string while
+ * bash runs each line before it reaches the stray quote (a judge on
+ * 15ce351a1). Nor can the mask be trusted to say where the body ends, so
+ * `checkBash` refuses the command whole, as it refuses an {@link unsettled}
+ * one.
+ */
+export const unreadHeredoc = (command) => view(command).unreadHeredoc;
 
 /**
  * The forms in `command` that hand text to a shell in a way the hook refuses
