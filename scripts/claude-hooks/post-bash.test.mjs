@@ -615,6 +615,18 @@ describe("post-bash.mjs acts on iracedeck/iracedeck only (#1527)", { timeout: 30
       );
       expect(filed(named.note)).toEqual([home(1534)]);
       expect(named.calls.some((c) => c.args[0] === "repo")).toBe(false);
+      // #1799: a create naming the former home lands here through GitHub's redirect, and gh prints the new URL.
+      for (const command of [
+        "gh issue create -R niklam/iracedeck --title x --body y",
+        "GH_REPO=niklam/iracedeck gh issue create --title x --body y",
+      ]) {
+        const redirected = fireWithGh(
+          command,
+          { ...created(1534, justNow()), "api graphql": boardItem(null) },
+          { stdout: `${home(1534)}\n` },
+        );
+        expect(filed(redirected.note), command).toEqual([home(1534)]);
+      }
     });
 
     // CodeRabbit on #1535: a just-created iRaceDeck issue another command printed
@@ -762,6 +774,7 @@ describe("post-bash.mjs moves a milestoned issue to Planned (#1574)", { timeout:
       ["gh issue edit 5 --remove-milestone", "#5"],
       [`gh issue edit 5 ${home(6)} --remove-milestone 2>/dev/null`, `#5, ${home(6)}`],
       ["gh issue edit 5 -R iracedeck/iracedeck --remove-milestone", "#5"],
+      ["gh issue edit 5 -R niklam/iracedeck --remove-milestone", "#5"],
       ["gh issue edit $N --remove-milestone", "the issues it edited"],
       ["printf '%s\\n' 5 | xargs gh issue edit --remove-milestone", "the issues it edited"],
     ]) {
@@ -845,6 +858,10 @@ describe("post-bash.mjs moves a milestoned issue to Planned (#1574)", { timeout:
     const named = fireWithGh("gh issue edit 5 -R iracedeck/iracedeck --milestone 3.8.0", replies);
     expect(named.note).toBe(planned(5));
     expect(named.calls[0].GH_REPO).toBe("iracedeck/iracedeck");
+    // #1799: the former home is read back through its redirect, and the URL gh returns decides.
+    const redirected = fireWithGh("gh issue edit 5 -R niklam/iracedeck --milestone 3.8.0", replies);
+    expect(redirected.note).toBe(planned(5));
+    expect(redirected.calls[0].GH_REPO).toBe("niklam/iracedeck");
     const moved = fireWithGh(`cd ${elsewhere.replaceAll("\\", "/")} && gh issue edit 5 --milestone 3.8.0`, replies);
     expect(path.resolve(moved.calls[0].cwd).toLowerCase()).toBe(path.resolve(elsewhere).toLowerCase());
     expect(moved.calls[0].GH_REPO).toBeUndefined();

@@ -11,6 +11,7 @@ import {
   isHomeRepo,
   issueCreateRepos,
   JUST_CREATED_MS,
+  mayBeHome,
   mergeRepo,
   missingWorkflows,
   pickCreated,
@@ -158,6 +159,15 @@ describe("post rules", () => {
       expect(isHomeRepo("niklam/iracedeck")).toBe(false);
       expect(isHomeRepo("iracedeck/iracedeck-fork")).toBe(false);
       expect(isHomeRepo(undefined)).toBe(false);
+    });
+
+    it("lets a former home GitHub redirects be read back like home, and nothing else (#1799)", () => {
+      expect(mayBeHome("iracedeck/iracedeck")).toBe(true);
+      expect(mayBeHome("NiklaM/iRaceDeck")).toBe(true);
+      expect(mayBeHome("niklam/iracedeck-fork")).toBe(false);
+      expect(mayBeHome("ghe.example.com/niklam/iracedeck")).toBe(false);
+      expect(mayBeHome("lint-staged/lint-staged")).toBe(false);
+      expect(mayBeHome(undefined)).toBe(false);
     });
 
     it("finds the issues gh issue create printed: a URL alone on its line", () => {

@@ -4260,6 +4260,8 @@ describe("gh issue and the board", () => {
       "gh api -X PATCH /orgs/o/projectsV2/1/items/5 -f status=x",
       "gh api --method=DELETE orgs/iracedeck/projectsV2/1/items/5",
       "gh api orgs/iracedeck/projectsV2/1/items -f id=I",
+      // #1799: the user board the org board replaced still exists.
+      "gh api --method=DELETE users/niklam/projectsV2/1/items/5",
       "gh api --method 'patch' orgs/o/projectsV2/1/items/5",
     ];
     it.each(shapes)("denies %s, as a Bash and as a PowerShell command", (c) => {
@@ -4277,6 +4279,7 @@ describe("gh issue and the board", () => {
       passes("gh api orgs/iracedeck/projectsV2/1/items");
       passes("gh api -X GET orgs/iracedeck/projectsV2/1/items -f per_page=50");
       passes("gh api --method GET orgs/o/projectsV2/1/items/5");
+      passes("gh api users/niklam/projectsV2/1/items");
     });
     it("passes the helpers, a read and a mention", () => {
       for (const c of [

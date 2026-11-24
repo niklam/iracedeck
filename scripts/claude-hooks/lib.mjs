@@ -707,13 +707,14 @@ export function boardItemForIssue(issueNumber, cwd) {
     '"){issue(number:$n){projectItems(first:20){nodes{id project{number owner{... on Organization{login} ... on User{login}}} fieldValueByName(name:"Status"){... on ProjectV2ItemFieldSingleSelectValue{name}}}}}}}';
   const data = ghJson(["api", "graphql", "-f", `query=${query}`, "-F", `n=${issueNumber}`], cwd);
   if (!data?.data?.repository) return null;
-  const node = data.data.repository.issue?.projectItems?.nodes?.find(
-    (n) =>
-      n.project?.number === BOARD.number &&
-      typeof n.project?.owner?.login === "string" &&
-      n.project.owner.login.toLowerCase() === BOARD.owner,
+  const numbered = (data.data.repository.issue?.projectItems?.nodes ?? []).filter(
+    (n) => n?.project?.number === BOARD.number,
   );
-  if (!node) return undefined;
+  const node = numbered.find(
+    (n) => typeof n.project.owner?.login === "string" && n.project.owner.login.toLowerCase() === BOARD.owner,
+  );
+  // A project 1 whose owner gh could not name may be the board's card: "could not look", not "not on it".
+  if (!node) return numbered.some((n) => typeof n.project.owner?.login !== "string") ? null : undefined;
   return { itemId: node.id, status: node.fieldValueByName?.name ?? "(none)" };
 }
 

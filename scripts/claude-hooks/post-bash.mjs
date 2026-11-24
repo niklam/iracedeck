@@ -34,6 +34,7 @@ import {
   isHomeRepo,
   issueCreateRepos,
   issueNumberOfUrl,
+  mayBeHome,
   mergeRepo,
   milestoneRemovedLine,
   missingWorkflows,
@@ -250,8 +251,8 @@ function afterIssueCreate(stdout, creates, cwd) {
       };
       resolved = creates.map(({ repo, dir }) => (repo !== undefined ? repo : repoOf(dir)));
     }
-    // An unreadable or unresolvable repository may be home.
-    return resolved.some((t) => t == null || isHomeRepo(t));
+    // An unreadable or unresolvable repository may be home, and so may a former home GitHub redirects (#1799).
+    return resolved.some((t) => t == null || mayBeHome(t));
   };
   const leftAlone = () =>
     `gh issue create ran in ${[...new Set(resolved.filter((t) => t != null))].join(", ")}, not ${HOME_REPO}: the Roadmap board is left alone.`;
@@ -345,7 +346,8 @@ function afterMilestone(edit, envRepo, cwd) {
       );
       continue;
     }
-    if (repo && !isHomeRepo(repo)) {
+    // A former home is read back like home (#1799): gh follows the redirect, and the URL it returns decides.
+    if (repo && !mayBeHome(repo)) {
       foreign.push(repoOfUrl(ref) ? ref : `${repo}#${ref}`);
       continue;
     }

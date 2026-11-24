@@ -751,6 +751,7 @@ describe("the board's Next lane and positions", () => {
   const UNREADABLE = 19; // its card lookup fails in gh
   const ON_OLD_BOARD_ONLY = 20; // a card on users/niklam/projects/1 alone
   const ON_BOTH_BOARDS = 21; // a Done card there, a Backlog card on the org board
+  const OWNER_UNREAD = 22; // a project 1 card whose owner gh could not name
   const calls = () => vi.mocked(spawnSync).mock.calls.map(([, args]) => args);
   const mutations = () => calls().filter((a) => a.some((x) => /mutation|item-edit/.test(x)));
   let mutationOk;
@@ -777,6 +778,10 @@ describe("the board's Next lane and positions", () => {
         if (n === ON_OLD_BOARD_ONLY) return items([card("PVTI_old", "niklam", "Backlog")]);
         if (n === ON_BOTH_BOARDS)
           return items([card("PVTI_old", "niklam", "Done"), card("PVTI_org", "IRaceDeck", "Backlog")]);
+        if (n === OWNER_UNREAD)
+          return items([
+            { id: "PVTI_unread", project: { number: 1, owner: null }, fieldValueByName: { name: "Backlog" } },
+          ]);
         if (!(n in lanes)) return items([]);
         return items([card(`PVTI_${n}`, "iracedeck", lanes[n])]);
       });
@@ -836,6 +841,8 @@ describe("the board's Next lane and positions", () => {
     expect(setBoardStatus(ON_OLD_BOARD_ONLY, "Planned", root)).toBe("board: #20 is not on the Roadmap board");
     expect(moveBoardItemAfter(ON_OLD_BOARD_ONLY, null, root)).toBe("board: #20 is not on the Roadmap board");
     expect(setBoardStatus(ON_BOTH_BOARDS, "Planned", root)).toBe("board (dry run): would move #21 Backlog → Planned");
+    // A project 1 card whose owner is unreadable is a card gh could not read, not one that is absent.
+    expect(setBoardStatus(OWNER_UNREAD, "Planned", root)).toMatch(/^board: could not read #22's card/);
     expect(mutations()).toEqual([]);
   });
 
@@ -865,8 +872,9 @@ describe("the board's Next lane and positions", () => {
     const edit = calls().find((a) => a[0] === "project" && a[1] === "item-edit");
     expect(edit).toEqual(expect.arrayContaining(["--id", "PVTI_10", "--single-select-option-id", "opt_Planned"]));
     // #1799: the board is the organization's, and an issue also on the old user board moves its org card.
-    for (const a of calls().filter((x) => x[0] === "project" && x.includes("--owner")))
-      expect(a[a.indexOf("--owner") + 1]).toBe("iracedeck");
+    const owned = calls().filter((x) => x[0] === "project" && x.includes("--owner"));
+    expect(owned.length).toBeGreaterThan(0);
+    for (const a of owned) expect(a[a.indexOf("--owner") + 1]).toBe("iracedeck");
     expect(setBoardStatus(ON_BOTH_BOARDS, "Planned", root)).toBe("board: #21 moved Backlog → Planned");
     const edits = calls().filter((a) => a[0] === "project" && a[1] === "item-edit");
     expect(edits.at(-1)).toEqual(expect.arrayContaining(["--id", "PVTI_org"]));

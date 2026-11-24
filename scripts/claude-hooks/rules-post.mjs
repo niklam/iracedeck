@@ -127,6 +127,21 @@ export const HOME_REPO = "iracedeck/iracedeck";
 /** Whether `slug` (`owner/repo`) is {@link HOME_REPO}; GitHub's names are case-insensitive. */
 export const isHomeRepo = (slug) => typeof slug === "string" && slug.toLowerCase() === HOME_REPO;
 
+/** The repository's earlier homes (#1799): GitHub redirects each to {@link HOME_REPO}, so gh resolves a command naming one to it. */
+export const FORMER_HOME_REPOS = ["niklam/iracedeck"];
+
+/**
+ * Whether a command that names `slug` may have acted on {@link HOME_REPO}:
+ * home itself, or a former home GitHub redirects there (#1799). Never a
+ * verdict of home on its own: the caller then reads the issue back, or takes
+ * the URL gh printed, and checks that with {@link isHomeRepo}. It only stops
+ * a redirected command from being dismissed as another repository's before
+ * that read. The merge gate does not use it: a merge naming a former home is
+ * refused, as any other repository's is.
+ */
+export const mayBeHome = (slug) =>
+  isHomeRepo(slug) || (typeof slug === "string" && FORMER_HOME_REPOS.includes(slug.toLowerCase()));
+
 /** `owner/repo` of a github.com issue or pull request URL, or `undefined`. */
 export function repoOfUrl(url) {
   const m = /^https:\/\/github\.com\/([^/\s]+)\/([^/\s]+)\/(?:issues|pull)\/\d+/i.exec(String(url ?? ""));
@@ -302,9 +317,9 @@ export function setsMilestone(edit) {
  */
 export function milestoneRemovedLine(edit, envRepo) {
   const targets = editTargets(edit, envRepo);
-  const maybeHome = targets.filter(({ repo }) => repo == null || isHomeRepo(repo));
+  const maybeHome = targets.filter(({ repo }) => repo == null || mayBeHome(repo));
   const named = edit.repo !== undefined ? edit.repo : envRepo;
-  const elsewhere = named != null && !isHomeRepo(normalizeRepo(named));
+  const elsewhere = named != null && !mayBeHome(normalizeRepo(named));
   const unread = !edit.readable || !targets.length;
   if (!maybeHome.length && (!unread || elsewhere)) return undefined;
   const which = maybeHome.length
