@@ -89,9 +89,11 @@ export const WORKSPACE_PACKAGES = Object.freeze(
 // actions, the Race Engineer catalog and wiring, the replay engine, the
 // composition root and the harness. Each of them reaches a sim package, itself
 // or through another, so a sim-neutral package that imported one would load the
-// sim at one remove, past a rule that named only the four (#1662). scripts/cross-package-reach.test.mjs
-// stops its runtime-closure walk at a sim-neutral package on the strength of
-// this rule, so the rule must hold every non-neutral package, not a list of them.
+// sim at one remove, past a rule that named only the four (#1662). It is the
+// editor's early warning on static and type imports; what a sim-neutral package
+// loads at runtime, dynamic import() and require included, is held by the
+// runtime-closure walk in scripts/cross-package-reach.test.mjs, which starts
+// from every source of every sim-neutral package.
 export const NON_NEUTRAL_PACKAGES = Object.freeze(
   Object.entries(WORKSPACE_PACKAGES)
     .filter(([dir, name]) => !SIM_NEUTRAL_PACKAGES.includes(dir) && !SIM_PACKAGES.includes(name))
@@ -125,10 +127,7 @@ const TS_FILES = ['**/*.ts', '**/*.mts'];
 // scripts/sim-boundary-coverage.test.mjs fails on a `packages/` glob that names
 // one extension without the others.
 const SCRIPT_EXTENSIONS = ['ts', 'mts', 'mjs'];
-// Exported so scripts/cross-package-reach.test.mjs can take every module source
-// in another extension (.js, .mdx), which no block here reads, as a root of its
-// runtime-closure walk (#1662).
-export const SOURCE_EXTENSIONS = Object.freeze([...SCRIPT_EXTENSIONS, 'astro']);
+const SOURCE_EXTENSIONS = [...SCRIPT_EXTENSIONS, 'astro'];
 
 // sources('packages/x/src/**/*'): that glob in every source extension.
 const sources = (stem) => SOURCE_EXTENSIONS.map((extension) => `${stem}.${extension}`);
@@ -300,8 +299,8 @@ export default [
     // (NON_NEUTRAL_PACKAGES, the workspace's complement of the list, derived
     // above), bare name or subpath (#1662): those load the sim themselves, so
     // refusing the four alone let `@iracedeck/iracing-actions` carry them in.
-    // It is what lets the runtime-closure walk in
-    // scripts/cross-package-reach.test.mjs stop at a sim-neutral package.
+    // A rule sees static and type imports only; a dynamic import() or require
+    // is held by the runtime-closure walk in scripts/cross-package-reach.test.mjs.
     //
     // This is the only block setting no-restricted-imports on these files: a
     // later block's options for the rule would replace these rather than add
