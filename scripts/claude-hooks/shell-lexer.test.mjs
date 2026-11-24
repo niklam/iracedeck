@@ -2148,4 +2148,58 @@ describe("the stopping rule: a form the lexer does not read is found, and refuse
       expect(fromPowerShell(c)).toEqual([]);
     });
   });
+
+  // Review finding on #1659: xargs substitutes its input into a shell's
+  // string before that shell parses it, and parallel with no command runs its
+  // input as commands.
+  describe("a shell string xargs or parallel fills in", () => {
+    const FILLED = "a shell string xargs or parallel fills in from its input";
+    const PARALLEL = "parallel running its input as commands";
+
+    it.each([
+      [`echo 'gh pr merge 7 --squash' | xargs -I{} bash -c '{}'`, FILLED],
+      [String.raw`echo 'gh pr merge 7 --squash' | xargs -d '\n' -I% sh -c '%'`, FILLED],
+      [String.raw`printf '%s\0' 'gh pr merge 7 --squash' | xargs -0 -I{} bash -c {}`, FILLED],
+      [`ls | xargs -I{} bash -c 'echo {}'`, FILLED],
+      [`ls | xargs -I {} sh -c 'cat "{}"'`, FILLED],
+      [`ls | xargs -i sh -c 'cat {}'`, FILLED],
+      [`ls | xargs -i@ sh -c 'cat @'`, FILLED],
+      [`ls | xargs --replace sh -c 'cat {}'`, FILLED],
+      [`ls | xargs --replace=@ sh -c 'cat @'`, FILLED],
+      [`ls | xargs -0I{} sh -c 'cat {}'`, FILLED],
+      [`ls | xargs -n 1 -P 4 -I{} sh -c 'cat {}'`, FILLED],
+      [`timeout 60 xargs -I{} sh -c '{}' < list.txt`, FILLED],
+      [`ls | /usr/bin/xargs -I{} zsh -c 'cat {}'`, FILLED],
+      [`echo '"gh pr merge 7 --squash"' | xargs bash -c`, FILLED],
+      [`ls | xargs -n1 sh -c`, FILLED],
+      [`echo '; gh pr merge 7' | xargs pwsh -Command Write-Output`, FILLED],
+      [`ls | xargs -I{} cmd /c "type {}"`, FILLED],
+      [`echo 'gh pr merge 7 --squash' | parallel`, PARALLEL],
+      [`parallel -j 4 < commands.txt`, PARALLEL],
+      [`parallel ::: 'gh pr merge 7 --squash'`, PARALLEL],
+      [`parallel -j2 :::: commands.txt`, PARALLEL],
+      [`parallel {} ::: 'gh pr merge 7 --squash'`, PARALLEL],
+      [`parallel -I @ @ ::: 'gh pr merge 7 --squash'`, PARALLEL],
+    ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+
+    it.each([
+      // The safe spellings: the name is an argument the string reads as `$1`.
+      `ls | xargs -I{} sh -c 'cat "$1"' _ {}`,
+      String.raw`find . -name '*.md' -exec sh -c 'cat "$1"' _ {} \;`,
+      `ls | xargs -I{} sed -n {}p f`,
+      `ls | xargs grep -l x`,
+      `ls | xargs -n1 bash -c 'echo "$0"'`,
+      `ls | xargs -I{} sh -c 'echo none'`,
+      `xargs sh -c 'ls'`,
+      `parallel gzip ::: a b`,
+      `parallel echo {} ::: a b`,
+      `echo xargs; bash -c 'echo {}'`,
+    ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+
+    it("advises the safe spellings for a string xargs fills in", () => {
+      const [r] = lexer.refusedForms(`ls | xargs -I{} sh -c 'cat {}'`);
+      expect(r.advice).toContain(`xargs -I{} sh -c 'cat "$1"' _ {}`);
+      expect(r.advice).toContain(String.raw`find … -exec sh -c '…' _ {} \;`);
+    });
+  });
 });

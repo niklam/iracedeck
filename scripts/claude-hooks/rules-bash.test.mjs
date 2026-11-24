@@ -5381,6 +5381,43 @@ describe("the lexer's stopping rule: a form it does not read is refused outright
     );
   });
 
+  // Review finding on #1659: xargs fills its input into a shell's string
+  // before that shell parses it, so the input can be any command. The PO
+  // ruled (2026-11-24) that this refusal stands though three real commands
+  // spelled a file listing so; the deny names the safe spellings.
+  describe("a shell string xargs or parallel fills in", () => {
+    const FILLED = "a shell string xargs or parallel fills in from its input";
+    it.each([
+      `echo 'gh pr merge 7 --squash' | xargs -I{} bash -c '{}'`,
+      String.raw`echo 'gh pr merge 7 --squash' | xargs -d '\n' -I% sh -c '%'`,
+      String.raw`printf '%s\0' 'gh pr merge 7 --squash' | xargs -0 -I{} bash -c {}`,
+      `ls | xargs -I{} bash -c 'echo {}'`,
+      `find . -name '*.md' | xargs -I{} sh -c 'echo "== {}"; cat {}'`,
+      `echo '"gh pr merge 7 --squash"' | xargs bash -c`,
+    ])("refuses %s, naming both safe spellings", (c) => {
+      const v = refusal(c);
+      expect(v).toContain(`(${FILLED})`);
+      expect(v).toContain(`\`xargs -I{} sh -c 'cat "$1"' _ {}\``);
+      expect(v).toContain("`find … -exec sh -c '…' _ {} \\;`");
+    });
+    it.each([`echo 'gh pr merge 7 --squash' | parallel`, `parallel ::: 'gh pr merge 7 --squash'`])("refuses %s", (c) =>
+      expect(refusal(c)).toContain("(parallel running its input as commands)"),
+    );
+    // The safe spellings the deny names, and xargs and parallel running a
+    // program, are read and judged as before.
+    it.each([
+      `find . -name '*.md' | xargs -I{} sh -c 'echo "== $1"; cat "$1"' _ {}`,
+      String.raw`find . -name '*.md' -exec sh -c 'echo "== $1"; cat "$1"' _ {} \;`,
+      `git status --porcelain | awk '{print $2}' | xargs -I{} stat -c '%y {}' {}`,
+      `ls | xargs -n1 bash -c 'echo "$0"'`,
+      `parallel gzip ::: a b`,
+    ])("passes %s", (c) => passes(c));
+    it("still judges what a safe spelling's string runs", () =>
+      expect(deny(`ls | xargs -I{} sh -c 'gh pr merge "$1" --squash' _ {}`)).toMatch(
+        /first word of a string `sh` runs/,
+      ));
+  });
+
   describe("every read form is still read and judged", () => {
     it.each([
       `timeout 1500 sh -c 'pnpm install && pnpm build'`,

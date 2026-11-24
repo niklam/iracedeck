@@ -15,7 +15,8 @@
  * script or startup file from (`source` and `.` too), PowerShell's
  * `-EncodedCommand`, `eval`, a `sudo` that
  * runs a shell, a string that is not one plain level, a string inside a string, a program
- * word in a string that is not its plain name — is listed by {@link
+ * word in a string that is not its plain name, a shell string xargs or
+ * parallel fills in from its input, parallel running its input — is listed by {@link
  * refusedForms}, and `checkBash` refuses it before any rule (#1659, the
  * stopping rule). On top of it, {@link cmd} anchors a regex to command
  * position, and {@link GIT_GLOBALS} carries a git command past its global
@@ -823,7 +824,8 @@ function stdinFrom(op, target, previous) {
  * PowerShell's bare `-` or `-File -`, at the word `dash`, and `startup` the
  * first startup file that names a stream, as `{ option, stream }` (`bash
  * --rcfile <(…)`), each read past the script for the redirections that set
- * its stdin (#1659). A value
+ * its stdin (#1659); `dangling` is set for a string switch with no string
+ * after it, which what runs the shell supplies (`xargs bash -c`). A value
  * option takes its value, a redirection its target, `--` ends
  * the options, a positional switch (bash's `-s`) makes the later plain words
  * arguments rather than a script file, and past the program the words are
@@ -925,6 +927,8 @@ export function readCommand(spec, next) {
     if (!scansOn) tail = true;
     else if (++scanned > SCANNED_WORDS) break;
   }
+  // A string switch with no string after it: what runs it supplies one (`xargs bash -c`, #1659).
+  if (stringNext && out.string === undefined) out.dangling = true;
   return out;
 }
 
@@ -957,6 +961,7 @@ function commandOf(spec, text, from, limit) {
     scriptAt: at(r.dash ?? r.program),
     startup: r.startup,
     encoded: Boolean(r.stop?.encoded),
+    dangling: Boolean(r.dangling),
     stop: r.stop !== undefined,
     file: Boolean(r.stop?.file),
   };
@@ -1457,6 +1462,8 @@ const REFUSED = Object.freeze({
   descriptor: "a shell reading its script from a descriptor",
   startup: "a shell startup file read from stdin, a descriptor or a process substitution",
   encoded: "an encoded command",
+  filled: "a shell string xargs or parallel fills in from its input",
+  parallel: "parallel running its input as commands",
   eval: "eval",
   sudo: "a sudo that runs a shell",
   ansi: "an ANSI-C string",
@@ -1465,6 +1472,89 @@ const REFUSED = Object.freeze({
   substitution: "a substitution at command position in a string",
   program: "a program word that is not its plain name",
 });
+
+/**
+ * What to type instead of a shell string xargs fills in ({@link
+ * REFUSED}`.filled`): the name handed over as an argument the string reads,
+ * which no input can turn into a command. `checkBash` says it in the deny.
+ */
+const FILLED_ADVICE =
+  "Pass the name as an argument the string reads instead: `xargs -I{} sh -c 'cat \"$1\"' _ {}`, or `find … -exec sh -c '…' _ {} \\;`.";
+
+/** An `xargs` word, by its last path segment, in any case ({@link xargsBefore}). */
+const XARGS_WORD = /(?<![^\s/\\'"])xargs(?:\.exe)?['"]?(?=\s)/gi;
+/** xargs' and parallel's short options that take a value, attached or in the next word ({@link replaceString}). */
+const FILLER_VALUES = "adEjLnNPRsS";
+/** Their long options that take a value in the next word when none is attached with `=`. */
+const FILLER_LONG_VALUES = new Set([
+  "--arg-file",
+  "--delimiter",
+  "--eof",
+  "--max-lines",
+  "--max-args",
+  "--max-procs",
+  "--max-chars",
+  "--process-slot-var",
+  "--jobs",
+  "--colsep",
+]);
+
+/**
+ * The replace string the xargs or parallel options `words` set (#1659): `-I
+ * <s>` or `-I<s>` (and BSD xargs' `-J`), `-i` or `--replace` (`{}`, or the
+ * string attached to it), the last one winning; `undefined` for none. A
+ * short cluster is read as getopt reads it (`-0I{}`), a value option taking
+ * the rest of its word or the next one; reading ends at the first word that
+ * is no option.
+ */
+function replaceString(words) {
+  let replace;
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (w === "--" || !w.startsWith("-") || w === "-") break;
+    if (w.startsWith("--")) {
+      const m = /^--replace(?:=([\s\S]*))?$/.exec(w);
+      if (m) replace = m[1] === undefined ? "{}" : wordValue(m[1]);
+      else if (FILLER_LONG_VALUES.has(w)) i++;
+      continue;
+    }
+    for (let k = 1; k < w.length; k++) {
+      const c = w[k];
+      if (c === "I" || c === "J") {
+        const v = k + 1 < w.length ? w.slice(k + 1) : words[++i];
+        replace = v === undefined ? "" : wordValue(v);
+        break;
+      }
+      if (c === "i") {
+        replace = k + 1 < w.length ? wordValue(w.slice(k + 1)) : "{}";
+        break;
+      }
+      if (FILLER_VALUES.includes(c)) {
+        if (k + 1 === w.length) i++;
+        break;
+      }
+      // `-e` and `-l` take an optional value, attached only.
+      if (c === "e" || c === "l") break;
+    }
+  }
+  return replace;
+}
+
+/**
+ * Whether the parallel whose words, read from `d` of `t`, give `r` ({@link
+ * commandOf}) runs its input as commands (#1659): no command at all, so it
+ * reads them from stdin or its `-a` file; a command that starts at `:::` or
+ * `::::`, whose arguments are the commands; or a program word that is a
+ * replacement string (`{}`, `{.}`, the `-I` one), which the input fills in.
+ */
+function parallelRunsInput(t, d, r) {
+  if (r.program === undefined) return true;
+  const options = [];
+  for (let w = commandWordEnd(t, d); w && w.start < r.program; w = commandWordEnd(t, w.end))
+    options.push(t.slice(w.start, w.end));
+  const program = wordValue(t.slice(r.program, commandWordEnd(t, r.program)?.end ?? r.program));
+  return /^:{3,4}\+?$/.test(program) || /^\{.*\}$/.test(program) || program === (replaceString(options) ?? "{}");
+}
 
 /** The shells that read a program word with `\` as plain text, a path separator ({@link wordForm}). */
 const LITERAL_BACKSLASH = new Set(["pwsh", "powershell", "cmd"]);
@@ -1689,8 +1779,12 @@ function sudoShell(t, from, limit) {
  * ({@link scriptStream}), `eval`, a `sudo`
  * that runs a shell, a string that is not one plain
  * level ({@link stringForm}), a shell inside a string that runs text it is
- * handed ({@link feedsText}), and a program word in a string that is not its
- * plain name ({@link wordForm}). Positions are recorded, never searched for,
+ * handed ({@link feedsText}), a program word in a string that is not its
+ * plain name ({@link wordForm}), a shell's string xargs fills in from its
+ * input — one holding the replace string, one its string switch leaves
+ * empty, or a joining shell's words xargs appends to ({@link replaceString})
+ * — and parallel running its input as commands ({@link parallelRunsInput}).
+ * Positions are recorded, never searched for,
  * so the pass is linear in the text (one option step per word, one lead step
  * per token, one decoding per string), whatever a rule later asks about.
  */
@@ -1704,8 +1798,10 @@ function fedStarts(command, text, fed, programs) {
   const quoteKinds = new Map();
   let unclosed = false;
   const refused = [];
-  const refuse = (form, shape) => {
-    if (!refused.some((r) => r.form === form && r.shape === shape)) refused.push({ form, shape });
+  // `advice`, where the deny names a safe spelling of its own.
+  const refuse = (form, shape, advice) => {
+    if (!refused.some((r) => r.form === form && r.shape === shape))
+      refused.push(advice ? { form, shape, advice } : { form, shape });
   };
   // A startup file `BASH_ENV` or `ENV` names a stream with, wherever either is
   // assigned — a command's prefix, through `env` or `export` (#1659): found in
@@ -1742,6 +1838,24 @@ function fedStarts(command, text, fed, programs) {
   const levels = [];
   const owner = new Int32Array(text.length).fill(-1);
   const levelAt = (p) => (owner[p] >= 0 ? levels[owner[p]] : base);
+  // The xargs ahead of the program word at `p` of the typed text, in its own
+  // command, as `{ replace }` ({@link replaceString}; `undefined` for none),
+  // or `undefined` where none is (#1659). Any `xargs` word between the
+  // command's start and `p` counts, so a wrapper between them (`xargs nice
+  // sh -c …`) hides nothing: the gate errs to deny.
+  const xargsBefore = (p) => {
+    let start = 0;
+    for (const c of base.commands)
+      if (c <= p) start = c;
+      else break;
+    let at;
+    for (const m of text.slice(start, p).matchAll(XARGS_WORD)) at = start + m.index + m[0].length;
+    if (at === undefined) return undefined;
+    const options = [];
+    for (let w = commandWordEnd(text, at); w && w.end <= p; w = commandWordEnd(text, w.end))
+      options.push(text.slice(w.start, w.end));
+    return { replace: replaceString(options) };
+  };
   // The program word `[d, e)` of a string's level `L`: refused when it is not
   // its plain name, when it is `eval` (PowerShell's too, in its string) or a
   // sudo that runs a shell, and when it is a shell that runs text it is
@@ -1781,6 +1895,8 @@ function fedStarts(command, text, fed, programs) {
     // by its form; one that reads the string's stdin is a string inside it.
     const stream = SCRIPT_READERS.has(name) ? scriptStream(name, r, L.text) : undefined;
     if (stream && !stream.piped) return refuse(stream.form, `${L.via} … ${stream.shape}`);
+    if (name === "parallel" && parallelRunsInput(L.text, e, r))
+      return refuse(REFUSED.parallel, `${L.via} … parallel …`);
     if (feedsText(name, r)) refuse(REFUSED.nested, `${L.via} … ${name} …`);
   };
   // `d` of the level `L`, and the position after each lead token from it, up
@@ -1905,6 +2021,9 @@ function fedStarts(command, text, fed, programs) {
           if (L !== base) return;
           if (via === "eval") return refuse(REFUSED.eval, "eval …");
           const r = commandOf(OPTION_SPECS.get(via) ?? NO_OPTIONS, text, d, b);
+          // A string switch with nothing after it, under xargs: the input is the string.
+          const fill = xargsBefore(p);
+          if (fill && r.dangling) return refuse(REFUSED.filled, `xargs … ${via} …`, FILLED_ADVICE);
           // A shell that reads its script from a stream: a here-string, a
           // heredoc, a process substitution, a descriptor or a pipe, all
           // refused; stdin named by a path or PowerShell's `-` is refused with
@@ -1923,6 +2042,20 @@ function fedStarts(command, text, fed, programs) {
             r.program !== undefined &&
             /(?:^|\s)(?:--exec|-[A-Za-z]*x[A-Za-z]*)(?=\s)/.test(text.slice(d, r.program));
           const join = exec ? "escaped" : JOINING_SHELLS.has(via) ? "plain" : undefined;
+          if (via === "parallel" && parallelRunsInput(text, d, r)) {
+            const w = r.program === undefined ? undefined : commandWordEnd(text, r.program);
+            return refuse(REFUSED.parallel, w ? `parallel ${clip(text.slice(w.start, w.end))} …` : "parallel");
+          }
+          // Under xargs, a string that holds the replace string is filled in
+          // from the input before its shell parses it; with none, a shell that
+          // joins its words (`pwsh -Command`, `cmd /c`) joins the input's
+          // words xargs appends into what it runs.
+          const runs = r.string ?? (join ? r.program : undefined);
+          if (fill && runs !== undefined) {
+            const filled =
+              fill.replace === undefined ? join !== undefined : readLevel(base, runs, join).text.includes(fill.replace);
+            if (filled) return refuse(REFUSED.filled, `xargs … ${via} …`, FILLED_ADVICE);
+          }
           if (r.program !== undefined) stringAt(r.program, kind, join, FILE_RUNNERS.has(via));
           if (r.string !== undefined) stringAt(r.string, r.attached ? { ...kind, attached: true } : kind, join);
         },

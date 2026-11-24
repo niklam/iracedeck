@@ -1314,7 +1314,9 @@ function manifestSources(command, commit, ctx, dir) {
  * too) or a startup file from (`--rcfile`, `BASH_ENV`, `ENV`), PowerShell's
  * `-EncodedCommand`, `eval`, a `sudo` that runs a shell, a string that is
  * not one plain level, a string inside a string, a program word in a string
- * that is not its plain name (`refusedForms` in `shell-lexer.mjs`, #1659) —
+ * that is not its plain name, a shell string xargs or parallel fills in from
+ * its input, parallel running its input as commands (`refusedForms` in
+ * `shell-lexer.mjs`, #1659) —
  * is refused outright, before any rule's verdict and never as an ask: the
  * lexer's stopping rule reads only the forms agents type here.
  */
@@ -1323,9 +1325,12 @@ export function checkBash(command, ctx) {
   return checkText(powershell ? powershellAsBash(command) : command, ctx, powershell, 0);
 }
 
-/** The deny of a form the lexer refuses rather than reads ({@link checkBash}, #1659). */
-const stoppingRefusal = ({ form, shape }) =>
-  `This command hands text to a shell in a form the hook does not read (${form}): \`${shape}\`. Type the commands directly, or write them to a script file and run it.`;
+/**
+ * The deny of a form the lexer refuses rather than reads ({@link checkBash},
+ * #1659), with the safe spelling the lexer names for it, if any (`advice`).
+ */
+const stoppingRefusal = ({ form, shape, advice }) =>
+  `This command hands text to a shell in a form the hook does not read (${form}): \`${shape}\`. ${advice ?? "Type the commands directly, or write them to a script file and run it."}`;
 
 /**
  * The first deny of the rules marked `occurrence` — those that fire on any
