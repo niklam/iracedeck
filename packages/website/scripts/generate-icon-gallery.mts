@@ -38,7 +38,7 @@ import { renderAudioStripSvg } from "../../iracing-actions/src/actions/audio-con
 import { renderBlackBoxStrip } from "../../iracing-actions/src/actions/black-box-selector/black-box-selector-dial-render.ts";
 import { renderCarCarousel } from "../../iracing-actions/src/actions/camera-controls/camera-dial-render.ts";
 import { switchTargetTemplateValues } from "../../iracing-actions/src/actions/camera-controls/switch-target-value.ts";
-import { renderStripCanvasSvg } from "../../iracing-actions/src/actions/fuel-service/fuel-dial-surface.ts";
+import { renderStripCanvasSvg } from "../../iracing-actions/src/actions/fuel-service/fuel-dial-render.ts";
 import { statusBarOn } from "../../iracing-actions/src/icons/status-bar.ts";
 import { type DialSideMarker, resolveDialBoxColors } from "../../iracing-actions/src/shared/dial-box.ts";
 import { renderStripBox } from "../../iracing-actions/src/shared/dial-strip-box.ts";
@@ -664,8 +664,10 @@ for (const spec of [...SETUP_DIAL_SAMPLES, ...DIAL_BOX_SAMPLES]) {
   });
 }
 
+// Manual add-amount, fueling on, drawn in liters: the renderer takes the
+// sim-neutral unit system the surface maps iRacing's display units onto (#1662).
 const fuelDashSvg = bakeDialScreenBackground(
-  renderStripCanvasSvg("manual", "add-amount", "on", 40, 20, 60, 0, 80, 1),
+  renderStripCanvasSvg("manual", "add-amount", "on", 40, 20, 60, 0, 80, "metric"),
   200,
   100,
 );
