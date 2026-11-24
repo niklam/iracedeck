@@ -1379,7 +1379,7 @@ function checkText(text, ctx, powershell, depth) {
   // heredoc with no delimiter: which word runs after it cannot be read, so the
   // command is refused whole rather than passed on a guess (#1646).
   if (unclosedLead(text))
-    return "A command this one hands to a shell (`bash -c`, `eval`, a piped script …) starts with a quote that never closes, or has a heredoc with no delimiter, so the hook cannot read which program it runs. Close the quote, or run the inner command directly.";
+    return "A command this one hands to a shell (`bash -c`, `pwsh -Command` …) starts with a quote that never closes, or has a heredoc with no delimiter, so the hook cannot read which program it runs. Close the quote, or run the inner command directly.";
   const verdict = judge(text, ctx, powershell);
   if (typeof verdict === "string") return verdict;
   // An ask the command carries anyway, from another command of the chain, is
@@ -1437,7 +1437,7 @@ const GUARDED_VERB = /^(?:pr|merge|create|push|commit|worktree|api|project|issue
 /** The rules' verdict on `text`, already read as bash ({@link checkBash}). */
 /** The refusal of a command a rule reads mis-sliced ({@link judge}, #1646). */
 const DECODED_REFUSAL =
-  "A command this one hands to a shell is spelled so that shell reads its words differently from how they are written here (an escape it decodes, words `eval` or `printf` join), and the hook cannot read its arguments as that shell does. Spell the command as plain words.";
+  "A command this one hands to a shell is spelled so that shell reads its words differently from how they are written here (an escape it decodes, words cmd.exe, PowerShell or `watch` join), and the hook cannot read its arguments as that shell does. Spell the command as plain words.";
 
 function judge(text, ctx, powershell) {
   const asks = [];

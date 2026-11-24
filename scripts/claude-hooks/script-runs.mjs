@@ -870,7 +870,7 @@ function deckReach(c, cwd, ctx, shell, trail, lostDir = false) {
   const judged = [];
   const runs = new Map();
   for (const m of [...matches].sort((x, y) => x.start - y.start)) {
-    const { base, start, args, at, cut, how, via, stdin, read, whole, re, occurrence } = m;
+    const { base, start, args, at, cut, how, via, read, whole, re, occurrence } = m;
     // A match this reader leaves to a wrapper's reader of the whole string is
     // read as its shell reads it, so a decoded hit there is no mis-slice (#1646).
     const leave = () => excuseDecodedHit(c, re, occurrence);
@@ -886,7 +886,7 @@ function deckReach(c, cwd, ctx, shell, trail, lostDir = false) {
     // a line is left to it. What `sudo`, `trap`, `watch` or `su` run no
     // wrapper reads, so those are judged here (a string a shell reads on stdin
     // is refused before any rule, #1659).
-    if (how === "shell" && !stdin && isWrapper(via)) {
+    if (how === "shell" && isWrapper(via)) {
       leave();
       continue;
     }
@@ -1082,7 +1082,7 @@ function loopSpans(c, shell) {
   // The loops inside a string whose commands are judged here, at its offset.
   for (const [open, close] of quotes) {
     const kind = quoteKinds.get(open);
-    if (!kind || (!kind.stdin && isWrapper(kind.via ?? ""))) continue;
+    if (!kind || isWrapper(kind.via ?? "")) continue;
     for (const [a, b] of loopSpans(c.slice(open + 1, close), shell)) spans.push([open + 1 + a, open + 1 + b]);
   }
   if (shell === POWERSHELL) {
