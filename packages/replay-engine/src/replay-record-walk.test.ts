@@ -12,6 +12,7 @@ import {
   getReplayGateView,
   pressReplayCommand,
   type ReplayGateNotice,
+  replaySearchOnItsWay,
   subscribeReplayGate,
 } from "./replay-command-gate.js";
 import { fakeReplay, type FakeReplay } from "./replay-command-gate.test-support.js";
@@ -445,14 +446,37 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
     await expect(done).resolves.toEqual({ frame: 0, from: "cursor" });
   });
 
-  it("re-reads the cursor when the search did not land within the patience on a paused replay", async () => {
+  it("waits a long search on a paused replay through to its landing, and starts there", async () => {
     setUp();
-    // Nine hundred thousand frames: about seven seconds of seeking, past the three-second patience.
+    // Nine hundred thousand frames: about seven seconds of seeking, which nothing shows on a paused replay.
     search("nextLap");
 
-    const { done } = awaitStart();
+    const { starts, done } = awaitStart();
 
+    // Past the paced search's three-second patience the search still runs: the press still waits.
     await vi.advanceTimersByTimeAsync(3_500);
+
+    expect(starts).toEqual([]);
+
+    await vi.advanceTimersByTimeAsync(4_500);
+
+    await expect(done).resolves.toEqual({ frame: 1_000_000, from: "cursor" });
+  });
+
+  it("re-reads the cursor once a search that found nothing on a paused replay could no longer be running, not before", async () => {
+    setUp();
+    search("nextIncident");
+
+    const couldRunMs = replaySearchOnItsWay()?.couldRunMs ?? 0;
+    const { starts, done } = awaitStart();
+
+    expect(couldRunMs).toBeGreaterThan(3_500);
+
+    await vi.advanceTimersByTimeAsync(couldRunMs - 100);
+
+    expect(starts).toEqual([]);
+
+    await vi.advanceTimersByTimeAsync(200);
 
     await expect(done).resolves.toEqual({ frame: 100_000, from: "cursor" });
     // The search it waited out no longer counts: the next press does not wait for it again.

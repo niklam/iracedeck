@@ -53,7 +53,7 @@ import {
   waitForReplaySearchLanding,
 } from "./replay-command-gate.js";
 import { engineLogger } from "./replay-engine-env.js";
-import { replaySearchPatienceMs, SEARCH_QUEUE_MAX } from "./replay-search-queue.js";
+import { SEARCH_QUEUE_MAX } from "./replay-search-queue.js";
 import { REPLAY_JUMP_MAX_WAIT_MS } from "./replay-timing.js";
 
 /** The two ways a walk goes: forward (Next, a clockwise turn) or back (Previous, counter-clockwise). */
@@ -202,9 +202,11 @@ function log(): ILogger {
  * - **A search on its way**, or an earlier press still waiting: the press
  *   joins the one queue of waiting starts. The head waits for the search's
  *   landing through the gate's own verdict (`waitForReplaySearchLanding`),
- *   bounded as the paced search bounds it: `replaySearchPatienceMs` of the
- *   time it could still run while nothing shows it on its way (a paused
- *   replay), else up to the landing or {@link REPLAY_JUMP_MAX_WAIT_MS}.
+ *   as long as the gate's slot holds a press behind it: while nothing shows
+ *   it on its way (a paused replay) until the time it could be running is
+ *   over, so a long search across hours of tape is waited through rather
+ *   than cancelled by the press's jump; once it is seen on its way, up to
+ *   the landing or {@link REPLAY_JUMP_MAX_WAIT_MS}.
  *   Whatever the outcome (landed, found nothing, not landed, gave up,
  *   superseded) the start is read again from the top with fresh reads
  *   (`readState`, `readTelemetry`): a landing gives the cursor there, a
@@ -263,12 +265,20 @@ export function awaitReplayWalkStart<T>(
   });
 }
 
-/** Waits for `search` to land or end, by the gate's verdict, bounded as the paced search bounds it. */
+/**
+ * Waits for `search` to land or end, by the gate's verdict. An unseen search
+ * (a paused replay shows none on its way) is waited for until the time it
+ * could still be running is over, as the gate's slot holds a press behind
+ * it: a shorter patience ends a long search's wait `not-landed` while it
+ * still runs, and the press's jump would then cancel it. A seen one is
+ * waited for up to its landing or {@link REPLAY_JUMP_MAX_WAIT_MS}, never less
+ * than the could-run time.
+ */
 async function waitForSearch(search: ReplaySearchOnItsWay): Promise<string> {
   try {
     const landing = await waitForReplaySearchLanding({
-      patienceMs: replaySearchPatienceMs(search.couldRunMs),
-      hardBoundMs: REPLAY_JUMP_MAX_WAIT_MS,
+      patienceMs: search.couldRunMs,
+      hardBoundMs: Math.max(REPLAY_JUMP_MAX_WAIT_MS, search.couldRunMs),
     });
 
     return landing.outcome;
