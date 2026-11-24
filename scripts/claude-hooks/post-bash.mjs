@@ -152,8 +152,16 @@ function afterMerge(merge, command, cwd, shell) {
     ];
   if (named && !isHomeRepo(named))
     return [`gh pr merge ran in ${named}, not ${HOME_REPO}: no Roadmap card moved and no post-merge runs listed.`];
-  // The merge gate lets only plain `cd`s run ahead of a merge, so its directory is always known here (#1646).
-  const ran = cwdAt(command, cwd, at, shell) ?? cwd;
+  // A `cd` ahead of the merge that may not run (`cd x && cd y; gh pr merge`)
+  // leaves its directory unknown (#1646). A merge that names no PR took the
+  // checkout's branch's, which the session's directory would answer for
+  // wrongly, so that one is left to a check by hand; a named PR is read back.
+  const known = cwdAt(command, cwd, at, shell);
+  if (known === undefined && !merge.ref)
+    return [
+      "gh pr merge ran where a `cd` ahead of it leaves its directory unknown, so the hook cannot tell which branch's PR it merged; check by hand whether it merged an iRaceDeck PR, and move its Roadmap card to Testing.",
+    ];
+  const ran = known ?? cwd;
   const pr = ghJson(
     [
       "pr",
