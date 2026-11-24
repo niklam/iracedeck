@@ -1120,6 +1120,139 @@ describe("requestCameraSwitch", () => {
       });
     });
 
+    describe("a trigger seen late, with its earliest moment (earliestTriggerMsAgo)", () => {
+      /**
+       * The timeline of a car change Auto Group's 200 ms read notices in a
+       * paused replay. At 1_000_000 the read still shows the old car; the car
+       * changes at +20; the read at +200 sees it; the settle timer asks at
+       * +450. The trigger was 250 ms before the request, the earliest it can
+       * have been 450 ms before it.
+       */
+      const TRIGGERED_MS_AGO = 250;
+      const EARLIEST_MS_AGO = 450;
+
+      /** A user's switch of the angle only, sent at once: Cycle Camera's. */
+      async function angleSwitch(): Promise<void> {
+        await requestCameraSwitch(
+          vi.fn(),
+          options({ by: "cycle-camera", name: "cycle camera", interruptsWalks: false, jumps: quiet() }),
+        );
+      }
+
+      /** A user's switch of the car, sent at once: Next Car's. */
+      async function carSwitch(): Promise<void> {
+        await requestCameraSwitch(vi.fn(), options({ jumps: quiet() }));
+      }
+
+      /** Auto Group's request at +450, with both ages unless overridden. */
+      async function autoAt450(overrides: Partial<CameraSwitchOptions> = {}): Promise<Mock<() => void>> {
+        const auto = vi.fn();
+
+        await vi.advanceTimersByTimeAsync(1_000_450 - Date.now());
+        await requestCameraSwitch(
+          auto,
+          automatic({
+            jumps: quiet(),
+            triggeredMsAgo: TRIGGERED_MS_AGO,
+            earliestTriggerMsAgo: EARLIEST_MS_AGO,
+            ...overrides,
+          }),
+        );
+
+        return auto;
+      }
+
+      it("drops it when the user picked an angle after the car changed but before the read saw it", async () => {
+        await vi.advanceTimersByTimeAsync(100);
+        await angleSwitch();
+
+        const auto = await autoAt450();
+
+        expect(auto).not.toHaveBeenCalled();
+        expect(debug).toHaveBeenCalledWith(
+          "Camera controls: automatic switch dropped (auto group), the cycle camera switch, of the angle only, went out when what asked for it may already have happened",
+        );
+      });
+
+      it("sends it on the same timeline without the earliest moment: the trigger is the read that saw it", async () => {
+        await vi.advanceTimersByTimeAsync(100);
+        await angleSwitch();
+
+        const auto = await autoAt450({ earliestTriggerMsAgo: undefined });
+
+        expect(auto).toHaveBeenCalledOnce();
+      });
+
+      it("sends it when the user's switch in that window changed the car: that switch is what it answers", async () => {
+        await vi.advanceTimersByTimeAsync(100);
+        await carSwitch();
+
+        const auto = await autoAt450();
+
+        expect(auto).toHaveBeenCalledOnce();
+      });
+
+      it("sends it when the angle pick went out before the earliest moment", async () => {
+        vi.setSystemTime(1_000_000 - 10);
+        await angleSwitch();
+
+        const auto = await autoAt450();
+
+        expect(auto).toHaveBeenCalledOnce();
+      });
+
+      it("drops it for an angle pick at the earliest moment itself", async () => {
+        await angleSwitch();
+
+        const auto = await autoAt450();
+
+        expect(auto).not.toHaveBeenCalled();
+      });
+
+      it("sends it when a switch of the car followed the angle pick inside the window", async () => {
+        await vi.advanceTimersByTimeAsync(50);
+        await angleSwitch();
+        await vi.advanceTimersByTimeAsync(50);
+        await carSwitch();
+
+        const auto = await autoAt450();
+
+        expect(auto).toHaveBeenCalledOnce();
+      });
+
+      it("drops it when an angle pick followed a switch of the car inside the window", async () => {
+        await vi.advanceTimersByTimeAsync(50);
+        await carSwitch();
+        await vi.advanceTimersByTimeAsync(50);
+        await angleSwitch();
+
+        const auto = await autoAt450();
+
+        expect(auto).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ["shorter than triggeredMsAgo", 100],
+        ["not a finite number", Number.NaN],
+      ])("takes the trigger itself as the earliest moment when it is %s", async (_label, earliestTriggerMsAgo) => {
+        await vi.advanceTimersByTimeAsync(100);
+        await angleSwitch();
+
+        const auto = await autoAt450({ earliestTriggerMsAgo });
+
+        expect(auto).toHaveBeenCalledOnce();
+      });
+
+      it("bounds nothing on a switch that gives no trigger", async () => {
+        await vi.advanceTimersByTimeAsync(100);
+        await angleSwitch();
+
+        const auto = await autoAt450({ triggeredMsAgo: undefined });
+
+        expect(auto).toHaveBeenCalledOnce();
+      });
+    });
+
     it("goes out at once on a quiet replay", async () => {
       const auto = vi.fn();
 

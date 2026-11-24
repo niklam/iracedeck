@@ -61,8 +61,14 @@
  *   for it happened (`triggeredMsAgo`) is dropped, at the request and again
  *   when it would go out after a wait, once a switch that does not yield
  *   has gone out since that moment: the user answered the trigger first,
- *   and the automation must not overwrite their pick. So the automation
- *   keeps no replay state of its own, and the one-slot rule stays here.
+ *   and the automation must not overwrite their pick. One that also says
+ *   the earliest that can have been (`earliestTriggerMsAgo`: a change a
+ *   periodic read noticed late) is dropped too when the last such switch
+ *   changed only the camera's angle (`interruptsWalks: false`) and went
+ *   out at or after that earliest moment: an angle pick inside the window
+ *   may be the user's answer to the change. A switch of the car inside it
+ *   is not, since it may be what made the change. So the automation keeps
+ *   no replay state of its own, and the one-slot rule stays here.
  *
  * Not a lane in the replay command gate: the gate's one newest-wins slot
  * holds a speed, search or pause, and the keypad's Next / Prev Car are
@@ -144,6 +150,26 @@ export interface CameraSwitchOptions {
    */
   readonly triggeredMsAgo?: number;
   /**
+   * With `yields` and `triggeredMsAgo` only: how long before this request
+   * what asked for it can have happened at the earliest, in ms, when the
+   * caller saw it late. Auto Group's car change seen by its periodic read (a
+   * paused replay's frozen tick) happened somewhere after the previous read
+   * that still showed the old car; this is that read's age, and
+   * `triggeredMsAgo` the age of the read that saw the change. A switch that
+   * does not yield, changes only the camera's angle (`interruptsWalks:
+   * false`), is the last such switch to have gone out, and went out at or
+   * after this earlier moment may be the user's answer to the change, so the
+   * yielding switch is dropped as for one sent after `triggeredMsAgo`. A
+   * switch of the car inside the window is no answer: it may be what changed
+   * the car, and the automation then answers it. Cycle Driving Cam's
+   * fallback for a car with no car number (`switchPos` with the car index as
+   * a position) can move the car while counting as angle-only, and the
+   * automation then gives way: the safe direction, and the same angle-only
+   * treatment that fallback already gets for walks. Left out, not a finite
+   * number, or shorter than `triggeredMsAgo`, the bound is the trigger itself.
+   */
+  readonly earliestTriggerMsAgo?: number;
+  /**
    * The jump reads; the gate's own ({@link isReplayJumpUnderWay}, {@link waitForReplayJumpsToLand}) by default.
    * The plugin's holds ({@link isHeldByPlugin}) are added to whichever reads are used.
    */
@@ -158,6 +184,12 @@ interface CameraSwitchRequest {
   readonly options: CameraSwitchOptions;
   /** A yielding switch's trigger, on the engine clock (`triggeredMsAgo` before the request); null when it gave none. */
   readonly triggeredAt: number | null;
+  /**
+   * The earliest that trigger can have been, on the engine clock
+   * (`earliestTriggerMsAgo` before the request, never after `triggeredAt`);
+   * null when it gave no trigger.
+   */
+  readonly earliestTriggerAt: number | null;
 }
 
 /**
@@ -185,10 +217,15 @@ let waitGeneration = 0;
 
 /**
  * The last switch that does not yield to go out, its `send` called: when, on
- * the engine clock, and its name for the drop line. A yielding switch whose
- * trigger is no later than this is dropped (`triggeredMsAgo`, #1656).
+ * the engine clock, its name for the drop line, and whether it changed only
+ * the camera's angle (`interruptsWalks: false`). A yielding switch whose
+ * trigger is no later than this is dropped (`triggeredMsAgo`, #1656), and so
+ * is one whose earliest trigger is no later than an angle-only one
+ * (`earliestTriggerMsAgo`). One record, not one per kind: a switch of the
+ * car after an angle pick is the likelier cause of the change seen, so the
+ * pick before it answers nothing.
  */
-let lastUserSend: { readonly at: number; readonly name: string } | null = null;
+let lastUserSend: { readonly at: number; readonly name: string; readonly angleOnly: boolean } | null = null;
 
 /** The gate's jump reads: the default for a switch that injects none. */
 const GATE_JUMPS: CameraSwitchJumps = {
@@ -265,14 +302,46 @@ function triggeredAtOf(options: CameraSwitchOptions): number | null {
 }
 
 /**
- * The switch that does not yield and went out at or after a yielding switch's
- * trigger, so the user answered it first and the yielding switch is dropped;
- * null when none did, or the switch gave no trigger.
+ * The earliest a yielding switch's trigger can have been, from its
+ * `earliestTriggerMsAgo`: never after the trigger itself, and the trigger
+ * when it gave no usable bound; null when it gave no trigger.
+ */
+function earliestTriggerAtOf(options: CameraSwitchOptions, triggeredAt: number | null): number | null {
+  if (triggeredAt === null) return null;
+
+  const ago = options.earliestTriggerMsAgo;
+
+  if (typeof ago !== "number" || !Number.isFinite(ago)) return triggeredAt;
+
+  return Math.min(triggeredAt, now() - Math.max(0, ago));
+}
+
+/** One switch asked for, its trigger and earliest trigger read on the engine clock now. */
+function requestOf(send: () => unknown, options: CameraSwitchOptions): CameraSwitchRequest {
+  const triggeredAt = triggeredAtOf(options);
+
+  return { send, options, triggeredAt, earliestTriggerAt: earliestTriggerAtOf(options, triggeredAt) };
+}
+
+/**
+ * Why a yielding switch is dropped because the user answered what asked for
+ * it first, for its drop line: the last switch that does not yield went out
+ * at or after its trigger, or changed only the angle and went out at or
+ * after the earliest the trigger can have been. Null when neither holds, or
+ * the switch gave no trigger.
  */
 function answeredBy(request: CameraSwitchRequest): string | null {
-  if (request.triggeredAt === null || lastUserSend === null) return null;
+  if (request.triggeredAt === null || request.earliestTriggerAt === null || lastUserSend === null) return null;
 
-  return lastUserSend.at >= request.triggeredAt ? lastUserSend.name : null;
+  if (lastUserSend.at >= request.triggeredAt) {
+    return `the ${lastUserSend.name} switch went out after what asked for it`;
+  }
+
+  if (lastUserSend.angleOnly && lastUserSend.at >= request.earliestTriggerAt) {
+    return `the ${lastUserSend.name} switch, of the angle only, went out when what asked for it may already have happened`;
+  }
+
+  return null;
 }
 
 function jumpsOf(options: CameraSwitchOptions): CameraSwitchJumps {
@@ -390,7 +459,9 @@ async function send(request: CameraSwitchRequest): Promise<void> {
 
   // Recorded as it goes out, before any await: a yielding switch asked for
   // while this send is still under way already sees it.
-  if (!yieldsOf(options)) lastUserSend = { at: now(), name: options.name };
+  if (!yieldsOf(options)) {
+    lastUserSend = { at: now(), name: options.name, angleOnly: options.interruptsWalks === false };
+  }
 
   try {
     await request.send();
@@ -460,9 +531,7 @@ async function switchWhenJumpsSettle(starter: CameraSwitchOptions, generation: n
   const answered = answeredBy(turn);
 
   if (answered !== null) {
-    loggerOf(options).debug(
-      `${options.label}: automatic switch dropped (${options.name}), the ${answered} switch went out after what asked for it`,
-    );
+    loggerOf(options).debug(`${options.label}: automatic switch dropped (${options.name}), ${answered}`);
 
     return;
   }
@@ -479,18 +548,18 @@ async function switchWhenJumpsSettle(starter: CameraSwitchOptions, generation: n
  * (`yields`, #1656) is dropped while a switch that does not yield waits, and
  * a switch that does not yield ends a yielding one's wait and then goes on as
  * if nothing had waited. A yielding switch with a `triggeredMsAgo` is
- * dropped once a switch that does not yield has gone out since its trigger.
- * Resolves when the switch has gone out, failed (logged) or been dropped;
- * never rejects for a failed send.
+ * dropped once a switch that does not yield has gone out since its trigger,
+ * or the last one changed only the angle and went out since the earliest
+ * that trigger can have been (`earliestTriggerMsAgo`). Resolves when the
+ * switch has gone out, failed (logged) or been dropped; never rejects for a
+ * failed send.
  */
 export function requestCameraSwitch(sendSwitch: () => unknown, options: CameraSwitchOptions): Promise<void> {
-  const request: CameraSwitchRequest = { send: sendSwitch, options, triggeredAt: triggeredAtOf(options) };
+  const request = requestOf(sendSwitch, options);
   const answered = answeredBy(request);
 
   if (answered !== null) {
-    loggerOf(options).debug(
-      `${options.label}: automatic switch dropped (${options.name}), the ${answered} switch went out after what asked for it`,
-    );
+    loggerOf(options).debug(`${options.label}: automatic switch dropped (${options.name}), ${answered}`);
 
     return Promise.resolve();
   }
