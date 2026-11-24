@@ -5327,6 +5327,15 @@ describe("a group holding a word an object inherits (#1659)", () => {
   });
 });
 
+// PR #1798 review at 0dced8c2f: an exec glued to its redirection leads its command.
+describe("an exec glued to its redirection (#1659)", () => {
+  it("refuses a glued stream, and passes a glued reset", () => {
+    expect(stopped(`exec<<< 'gh pr merge 7 --squash'; bash`)).toContain("from a here-string");
+    passes(`exec <<< 'gh pr merge 7 --squash'; exec</dev/null; bash`);
+    passes(`echo exec<<< x; bash`);
+  });
+});
+
 // PR #1798 review at 0dced8c2f: a subshell anywhere since the stream keeps it.
 describe("an exec reset across everything since the stream (#1659)", () => {
   it("refuses a reset in a subshell after another exec, and passes a plain chain", () => {

@@ -2200,9 +2200,13 @@ function fedStarts(command, text, fed, programs) {
   const commandExecs = () => {
     if (execs) return execs;
     execs = [];
-    for (const c of base.commands)
-      for (let k = blanksFrom(text, c), step; (step = leadStep(text, k)); k = step.end)
-        if (step.wrapper === "exec") execs.push(k);
+    for (const c of base.commands) {
+      let k = blanksFrom(text, c);
+      for (let step; (step = leadStep(text, k)); k = step.end) if (step.wrapper === "exec") execs.push(k);
+      // An `exec` glued to its redirection (`exec<<<x`), which the lead,
+      // wanting a blank after it, does not step over (PR #1798 review).
+      if (/^exec[<>]/.test(text.slice(k, k + 5))) execs.push(k);
+    }
     return execs;
   };
   // The program word `[d, e)` of a string's level `L`: refused when it is not

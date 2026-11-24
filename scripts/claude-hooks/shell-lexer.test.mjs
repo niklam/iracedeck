@@ -2649,3 +2649,16 @@ describe("the stopping rule: a reset across everything since the stream (#1659 P
     (c) => expect(lexer.refusedForms(c)).toEqual([]),
   );
 });
+
+// PR #1798 review at 0dced8c2f: an `exec` glued to its redirection leads its
+// command as one with a blank does.
+describe("the stopping rule: an exec glued to its redirection (#1659 PR review)", () => {
+  const HERE_STRING = "a shell reading its script from a here-string";
+  it.each([`exec<<< ':'; bash`, `exec>log<<<x; bash`, `if true; then exec<<<x; fi; bash`])("refuses %s", (c) =>
+    expect(lexer.refusedForms(c)[0]?.form).toBe(HERE_STRING),
+  );
+  it.each([`exec <<< ':'; exec</dev/null; bash`, `exec<<<x; exec</dev/null; bash`, `echo exec<<< x; bash`])(
+    "reads and refuses nothing in %s",
+    (c) => expect(lexer.refusedForms(c)).toEqual([]),
+  );
+});
