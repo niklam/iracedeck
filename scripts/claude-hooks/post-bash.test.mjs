@@ -249,6 +249,13 @@ describe("post-bash.mjs triggers", { timeout: 30_000 }, () => {
     expect(fire(curly, { withoutGh: true, tool })).toMatch(/could not read the PR back/);
     expect(fire("Write-Host 'a; gh pr merge 7 --squash; echo x'", { withoutGh: true, tool })).toBeNull();
   });
+
+  // PR #1798 review: the program word itself curly-quoted, run by the call operator.
+  it("follows up a merge whose gh is curly-quoted, from the PowerShell tool", () => {
+    const tool = "PowerShell";
+    expect(fire("& “gh” pr merge 7 --squash", { withoutGh: true, tool })).toMatch(/could not read the PR back/);
+    expect(fire("& ‘gh’ pr merge 7 --squash", { withoutGh: true, tool })).toMatch(/could not read the PR back/);
+  });
 });
 
 // #1527: a card is found by issue number alone, so a filing or a merge in
