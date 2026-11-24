@@ -24,7 +24,7 @@
  * Exit status: 0 when every pair gave the same completed verdict, 1 when one
  * differs, 2 on a usage error, 3 when the run could not be made (the base
  * unreadable, a module that does not load, a corpus or manifest it cannot
- * read) or a comparison skipped a tool-use record that did not parse, so
+ * read) or a comparison skipped a transcript record that did not parse, so
  * compared part of the corpus, 4 when a
  * comparison judged no command at all (a `--match` naming no folder), which
  * proves nothing, 5 when none differs but both sides threw alike on some
@@ -71,7 +71,7 @@ Exit status:
   0  every pair gave the same completed verdict
   1  a verdict differs
   2  a usage error
-  3  the run could not be made, or a comparison skipped a tool-use record that did not parse
+  3  the run could not be made, or a comparison skipped a transcript record that did not parse
   4  a comparison judged no command (no commands judged)
   5  none differs, but both sides threw alike on some command`;
 
@@ -80,13 +80,14 @@ Exit status:
 
 /**
  * The Bash and PowerShell commands one transcript line records, as `{ tool,
- * command }`: each `tool_use` entry of its `message.content`. A line that is
- * not JSON, or holds no such entry, gives none; an entry whose `command` is
- * not a string is skipped. Returns `null` for a line that mentions a tool use
- * but does not parse, so the caller can count it.
+ * command }`: each `tool_use` entry of its `message.content`. A blank line,
+ * or a record that holds no such entry, gives none; an entry whose `command`
+ * is not a string is skipped. Returns `null` for a nonblank line that does
+ * not parse, so the caller can count it: a record cut off before its tool use
+ * is named is one too (CLI check of 8086892f8).
  */
 export function extractCommands(line) {
-  if (!line.includes("tool_use")) return [];
+  if (!line.trim()) return [];
   let entry;
   try {
     entry = JSON.parse(line);
@@ -140,7 +141,7 @@ export function transcriptFiles(dir, match) {
   return files.filter((p) => !match || under(p).includes(match)).sort();
 }
 
-/** Streams every file into a {@link CommandSet}; `{ commands, unparsed }`, the second counting tool-use lines that were not JSON. */
+/** Streams every file into a {@link CommandSet}; `{ commands, unparsed }`, the second counting nonblank lines that were not JSON. */
 export async function readCommands(files) {
   const commands = new CommandSet();
   let unparsed = 0;
@@ -417,7 +418,7 @@ export function comparePair(base, head) {
 
 /**
  * The tool's exit status for a comparison ({@link main}): 1 for a
- * difference, else 3 when a tool-use record did not parse, so part of the
+ * difference, else 3 when a transcript record did not parse, so part of the
  * corpus went unjudged (CLI check of be3d79a4b), else 5 when both sides threw
  * on a command, else 0.
  */
@@ -923,7 +924,7 @@ export async function main(argv, print = (line) => process.stdout.write(`${line}
     }
 
     print(`transcripts read: ${files.length}`);
-    print(`tool-use lines not JSON: ${unparsed}`);
+    print(`records not JSON: ${unparsed}`);
     print(`distinct commands: ${list.length} (real ${census.totals.real}, probe ${census.totals.probe})`);
     print(`head: ${headRoot}`);
     print(`context: cwd ${contextRoot}, ${workspace.manifests.length} package manifests`);
@@ -943,7 +944,7 @@ export async function main(argv, print = (line) => process.stdout.write(`${line}
       for (const d of differences) for (const line of formatDifference(d, { ...opts, forms })) print(line);
       if (unparsed)
         print(
-          `replay-corpus: ${unparsed} tool-use line${unparsed === 1 ? "" : "s"} did not parse, so the comparison is partial`,
+          `replay-corpus: ${unparsed} record${unparsed === 1 ? "" : "s"} did not parse, so the comparison is partial`,
         );
     }
     print("");

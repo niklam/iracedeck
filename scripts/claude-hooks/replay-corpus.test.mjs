@@ -64,9 +64,13 @@ describe("reading a transcript line", () => {
     expect(extractCommands("")).toEqual([]);
   });
 
-  it("reports a tool-use line that is not JSON as null, so it can be counted", () => {
+  // CLI check of 8086892f8: a record cut off before its tool use is named
+  // was skipped as no tool use, so every nonblank line is parsed.
+  it("reports a nonblank line that is not JSON as null, so it can be counted", () => {
     expect(extractCommands('{"type":"tool_use", cut off')).toBeNull();
-    expect(extractCommands("not json at all")).toEqual([]);
+    expect(extractCommands('{"type":"assistant","message":{"content":[{"type":"tool_')).toBeNull();
+    expect(extractCommands("not json at all")).toBeNull();
+    expect(extractCommands(" 	")).toEqual([]);
   });
 
   it("keeps a command's text exactly, newlines and quotes included", () => {
@@ -168,7 +172,7 @@ describe("walking and streaming a transcript folder", () => {
     const out = [];
     expect(await main(["--transcripts", dir, "--census-only"], (l) => out.push(l))).toBe(0);
     expect(out).toContain("transcripts read: 3");
-    expect(out).toContain("tool-use lines not JSON: 1");
+    expect(out).toContain("records not JSON: 1");
     expect(out).toContain("distinct commands: 4 (real 4, probe 0)");
     expect(out.some((l) => l.startsWith("commands judged"))).toBe(false);
     const row = out.find((l) => l.startsWith("program command "));
@@ -1132,20 +1136,21 @@ describe("the command line", () => {
   // CLI check of be3d79a4b: a comparison that skipped a record it could not
   // parse compared part of the corpus, so it does not exit 0; a census still
   // prints its partial counts and exits 0.
-  it("exits 3 when a comparison skipped an unparsed tool-use record", async () => {
+  it("exits 3 when a comparison skipped an unparsed record", async () => {
     const owned = fs.mkdtempSync(path.join(os.tmpdir(), "replay-corpus-main-"));
     try {
       fs.mkdirSync(path.join(owned, "t"));
       fs.writeFileSync(
         path.join(owned, "t", "a.jsonl"),
-        `${line(toolUse("Bash", { command: "ls" }))}\n{broken tool_use\n`,
+        // Cut off before its tool use is named (CLI check of 8086892f8).
+        `${line(toolUse("Bash", { command: "ls" }))}\n{"type":"assistant","message":{"content":[{"type":"tool_\n`,
       );
       const args = ["--transcripts", path.join(owned, "t")];
       const out = [];
       const status = await main([...args, "--base", "HEAD"], (l) => out.push(l), { root: owned });
       expect(status, out.join("\n")).toBe(3);
-      expect(out).toContain("tool-use lines not JSON: 1");
-      expect(out.join("\n")).toMatch(/1 tool-use line did not parse/);
+      expect(out).toContain("records not JSON: 1");
+      expect(out.join("\n")).toMatch(/1 record did not parse/);
       expect(await main([...args, "--census-only"], () => {}, { root: owned })).toBe(0);
       expect(exitStatus({ differences: 1, threw: 0, unparsed: 1 })).toBe(1);
       expect(exitStatus({ differences: 0, threw: 1, unparsed: 1 })).toBe(3);
