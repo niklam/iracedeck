@@ -45,9 +45,9 @@ describe("unit-conversion", () => {
   });
 
   describe("re-exports the sim-neutral constants and conversions", () => {
-    it("is the same definition as @iracedeck/deck-core/display-units", async () => {
+    it("is the same definition as @iracedeck/app-constants", async () => {
       const units = await import("./unit-conversion.js");
-      const neutral = await import("@iracedeck/deck-core/display-units");
+      const neutral = await import("@iracedeck/app-constants");
 
       expect(units.LITERS_TO_GALLONS).toBe(neutral.LITERS_TO_GALLONS);
       expect(units.GALLONS_TO_LITERS).toBe(neutral.GALLONS_TO_LITERS);

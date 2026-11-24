@@ -5,7 +5,7 @@
  * iRacing internally uses metric units (liters, kPa, etc.) - these utilities convert for display only.
  *
  * The conversions themselves are sim-neutral and live in
- * `@iracedeck/deck-core/display-units`, keyed by a {@link UnitSystem} (#1662); what is iRacing's is
+ * `@iracedeck/app-constants`, keyed by a {@link UnitSystem} (#1662); what is iRacing's is
  * the `DisplayUnits` encoding, which {@link unitSystemOf} maps onto it. The
  * functions below keep their DisplayUnits signatures as thin wrappers.
  */
@@ -15,7 +15,7 @@ import {
   fuelToUnitSystem,
   fuelUnitSuffixFor,
   type UnitSystem,
-} from "@iracedeck/deck-core/display-units";
+} from "@iracedeck/app-constants";
 import { DisplayUnits } from "@iracedeck/iracing-sdk";
 
 export {
@@ -26,7 +26,7 @@ export {
   gallonsToLiters,
   LITERS_TO_GALLONS,
   litersToGallons,
-} from "@iracedeck/deck-core/display-units";
+} from "@iracedeck/app-constants";
 
 /**
  * Maps iRacing's DisplayUnits value onto the sim-neutral unit system: Metric is

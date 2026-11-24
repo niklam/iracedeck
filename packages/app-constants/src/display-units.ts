@@ -8,14 +8,9 @@
  * mapped by `unitSystemOf` in `@iracedeck/deck-iracing`), so a renderer that
  * draws fuel amounts can take a `UnitSystem` without importing a sim.
  *
- * Reached only as the `@iracedeck/deck-core/display-units` subpath, never
- * through the barrel, for two reasons. An action test that replaces the
- * `@iracedeck/deck-core` barrel with a `vi.mock` factory still gets the real
- * conversions here, through deck-iracing's wrappers and the dial renderers
- * alike, rather than an export its factory never declared. And the website's
- * icon gallery loads the fuel dial's drawing (`fuel-dial-render.ts`) without
- * the barrel's action and settings modules. One import path per name (#1351):
- * the barrel re-exports none of it.
+ * Constants, a type and pure functions over them, which is what this package
+ * admits. Every name has one import path, `@iracedeck/app-constants` (#1351):
+ * deck-iracing's DisplayUnits wrappers call these rather than re-export them.
  */
 
 /** The unit system a value is displayed in: metric (liters) or imperial (US gallons). */

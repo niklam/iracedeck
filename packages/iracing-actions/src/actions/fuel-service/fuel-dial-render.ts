@@ -10,8 +10,8 @@
  * the website's icon gallery draws its Fuel Service sample from it without
  * loading the iRacing SDK.
  */
+import { fuelToUnitSystem, fuelUnitSuffixFor, type UnitSystem } from "@iracedeck/app-constants";
 import { applyBindingWarning, type DialCanvasProfile } from "@iracedeck/deck-core";
-import { fuelToUnitSystem, fuelUnitSuffixFor, type UnitSystem } from "@iracedeck/deck-core/display-units";
 
 import { borderColorForState, type ToggleState } from "../../icons/status-bar.js";
 import { fitValueFontSize } from "../../shared/dial-fit.js";

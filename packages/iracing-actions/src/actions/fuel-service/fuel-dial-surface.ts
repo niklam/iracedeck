@@ -13,6 +13,7 @@
  * routes `IDeck*` dial events here and provides telemetry/session/binding
  * access through {@link FuelDialHost}.
  */
+import type { UnitSystem } from "@iracedeck/app-constants";
 import {
   createHoldPreview,
   type DeckTriggerDescription,
@@ -24,7 +25,6 @@ import {
   resolvePairedAction,
   svgToDataUri,
 } from "@iracedeck/deck-core";
-import type { UnitSystem } from "@iracedeck/deck-core/display-units";
 import {
   fuelFromDisplayUnits,
   fuelToDisplayUnits,

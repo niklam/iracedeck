@@ -8,6 +8,22 @@ export {
 // CPU profile capture status key (issue #1338)
 export { PROFILE_CAPTURE_STATUS_KEY } from "./cpu-profile-capture-constants.js";
 
+// Display units and the conversions between them and the internal metric units (issue #1662)
+export {
+  celsiusToFahrenheit,
+  formatFuelIn,
+  FUEL_UNIT_IMPERIAL,
+  FUEL_UNIT_METRIC,
+  fuelFromUnitSystem,
+  fuelToUnitSystem,
+  fuelUnitSuffixFor,
+  GALLONS_TO_LITERS,
+  gallonsToLiters,
+  LITERS_TO_GALLONS,
+  litersToGallons,
+  type UnitSystem,
+} from "./display-units.js";
+
 // Focus iRacing Window mode (issue #977)
 export {
   DEFAULT_FOCUS_IRACING_MODE,
