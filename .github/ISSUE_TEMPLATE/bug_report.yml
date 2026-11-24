@@ -24,11 +24,17 @@ body:
       label: Steps to reproduce
       description: How can we reproduce this?
       placeholder: |
-        1. Open Stream Deck...
-        2. Press the action...
+        1. Put the action on a key...
+        2. Press the key...
         3. See error...
     validations:
       required: true
+
+  - type: input
+    id: iracedeck-version
+    attributes:
+      label: iRaceDeck version
+      placeholder: e.g. 3.9.0
 
   - type: input
     id: iracing-version
@@ -39,14 +45,15 @@ body:
   - type: input
     id: stream-deck
     attributes:
-      label: Stream Deck model and software version
-      placeholder: e.g. Stream Deck MK.2, software 6.8
+      label: Deck model and host software version
+      description: A Stream Deck with the Stream Deck software, a Mirabox deck with HotSpot StreamDock or VSD Craft, or a Ulanzi Deck with UlanziStudio.
+      placeholder: e.g. Stream Deck MK.2, Stream Deck software 7.1
 
   - type: textarea
     id: logs
     attributes:
       label: Relevant logs
-      description: Paste any relevant logs from the Stream Deck plugin logs folder.
+      description: Paste any relevant lines from the iRaceDeck plugin's logs folder.
       render: text
 
   - type: textarea

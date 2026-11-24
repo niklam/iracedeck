@@ -61,11 +61,13 @@
 
 **Prerequisites:**
 
-- Windows 10+ (iRacing is Windows-only)
-- [Node.js](https://nodejs.org/) 24+
-- [pnpm](https://pnpm.io/) 10+ — it switches itself to the version pinned in `package.json`
-- Python 3.x and [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the C++ workload (for the native addon)
-- [Elgato Stream Deck](https://docs.elgato.com/sdk/) software
+- Windows 10+ to run the plugin (iRacing is Windows-only); install, build and test also work on macOS, with the native addons mocked
+- [Node.js](https://nodejs.org/) 24.21.0, pinned in `.nvmrc` (never 24.15.0, which crashes test workers)
+- [pnpm](https://pnpm.io/) 12.6.0, pinned in `package.json`; any pnpm 10 or later switches itself to it
+- Python 3.x and [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the C++ workload (Windows only, for the native addons)
+- [Elgato Stream Deck](https://www.elgato.com/stream-deck) software; HotSpot StreamDock or VSD Craft (Mirabox) and UlanziStudio only for those plugins
+
+[CONTRIBUTING.md](CONTRIBUTING.md) has the full setup and the checks to run before a pull request.
 
 ```bash
 git clone https://github.com/niklam/iracedeck.git
