@@ -295,6 +295,20 @@ describe("feature counts (#1271)", () => {
       expect(checkFeatureCounts(broken).join("\n")).toMatch(/keypad Mode select has EJS control flow other than/);
     });
 
+    it("an if with an else branch", () => {
+      const [broken, p] = withPage(page.slug);
+      p.ejs = replaceMatch(
+        p.ejs,
+        /(<sdpi-item label="Mode">\s*<sdpi-select\b[^>]*>)/,
+        `$1\n<% if (locals.platform?.features?.${onFlag} !== false) { %><option value="if-a">A</option>` +
+          '<% } else { %><option value="else-b">B</option><% } %>',
+      );
+      expect(checkFeatureCounts(broken).join("\n")).toMatch(/keypad Mode select has EJS control flow other than/);
+      // Neither branch is counted under the one condition.
+      expect(keypadModeParts(p.ejs).gated.map((g) => g.value)).not.toContain("else-b");
+      expect(keypadModeOptions(p.ejs, [], () => true)).toBe(pageModes);
+    });
+
     it("a Car Setup template that gains an Adjust option", () => {
       const [broken, p] = withPage(carPage.slug);
       const carBadge = badgeModes(carPage.text);

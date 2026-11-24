@@ -223,15 +223,21 @@ function visibleOptionValues(text) {
  * block; `gated`, those inside an `if` block, each with its condition;
  * `unread`, whether any other EJS control flow (a loop, an `else`) is left,
  * whose options the check cannot count. A hidden optgroup is dropped first,
- * so an `if` inside one never brings its options back.
+ * so an `if` inside one never brings its options back. An `if` whose body
+ * holds any other scriptlet (an `} else {`, a nested block) is unread as a
+ * whole: the block pattern would otherwise take both branches as one body and
+ * count them under the one condition.
  */
 function splitByEjs(input) {
   const text = input.replace(HIDDEN_OPTGROUP, "");
-  const gated = [...text.matchAll(EJS_IF_BLOCK)].flatMap((m) =>
-    visibleOptionValues(m[2]).map((value) => ({ value, condition: m[1] })),
-  );
+  const scriptlet = /<%(?![=-])/;
+  const blocks = [...text.matchAll(EJS_IF_BLOCK)];
+  const gated = blocks
+    .filter((m) => !scriptlet.test(m[2]))
+    .flatMap((m) => visibleOptionValues(m[2]).map((value) => ({ value, condition: m[1] })));
   const outside = text.replace(EJS_IF_BLOCK, "");
-  return { values: visibleOptionValues(outside), gated, unread: /<%(?![=-])/.test(outside) };
+  const unread = scriptlet.test(outside) || blocks.some((m) => scriptlet.test(m[2]));
+  return { values: visibleOptionValues(outside), gated, unread };
 }
 
 /** The keypad Mode item split by EJS (`splitByEjs`); `null` when there is none. */
