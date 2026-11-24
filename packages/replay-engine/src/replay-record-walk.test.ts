@@ -32,6 +32,7 @@ import {
   walkRecordedEntries,
   walkRecordedIndex,
 } from "./replay-record-walk.js";
+import { pendingReplaySearch, queueReplaySearch } from "./replay-search-queue.js";
 import { steppedReplayState, type SteppedReplayState } from "./replay-state.test-support.js";
 
 /** {@link walkRecordedEntries} over bare frames with no rule — the marker walk — reduced to where it lands. */
@@ -575,6 +576,48 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
 
     expect(order).toEqual(["a cursor 200000", "b target 250000"]);
     expect(sim.frame()).toBe(300_000);
+  });
+
+  it("waits for the dial's whole paced run, steps from its final landing, and leaves the run uncancelled", async () => {
+    setUp();
+    queueReplaySearch({ target: "session", ticks: 3, origin: "dial-1", owner: "replay-control-dial session" });
+
+    const order: string[] = [];
+    const jumps: Promise<unknown>[] = [];
+
+    // Into the run, past its first landing: between two of its searches nothing is on its way.
+    await vi.advanceTimersByTimeAsync(1_200);
+
+    expect(pendingReplaySearch()).not.toBeNull();
+    expect(resolveReplayWalkStart(readState(), sim.telemetry())).toEqual({
+      frame: null,
+      reason: "search on its way",
+    });
+
+    // A Replay Markers Next: its start, then a jump 50 000 frames on from it.
+    const a = awaitReplayWalkStart(
+      readState,
+      () => sim.telemetry(),
+      (start) => {
+        order.push(start.frame === null ? start.reason : `${start.from} ${start.frame}`);
+
+        if (start.frame === null) return;
+
+        const frame = start.frame + 50_000;
+        const jump = beginReplayJump("test-marker", sim.telemetry(), undefined, Date.now(), { frame });
+
+        jumps.push(runReplayJump(jump, { frame, readTelemetry: () => sim.telemetry() }).finally(() => jump.end()));
+      },
+    );
+
+    await vi.advanceTimersByTimeAsync(15_000);
+    await a;
+    await vi.advanceTimersByTimeAsync(5_000);
+    await Promise.all(jumps);
+
+    expect(order).toEqual(["cursor 400000"]);
+    expect(sim.calls.filter((call) => call === "nextSession")).toHaveLength(3);
+    expect(sim.frame()).toBe(450_000);
   });
 
   describe("press order across the gate's slot", () => {

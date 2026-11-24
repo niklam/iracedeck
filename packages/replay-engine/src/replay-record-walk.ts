@@ -44,6 +44,7 @@ import type { ReplayState, TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import { MARKER_NEXT_MIN_AHEAD_FRAMES, MARKER_PREVIOUS_MIN_BEHIND_FRAMES } from "@iracedeck/replay-store";
 
+import { pollUntil } from "./engine-clock.js";
 import {
   closeReplayGateWait,
   openReplayGateWait,
@@ -53,8 +54,8 @@ import {
   waitForReplaySearchLanding,
 } from "./replay-command-gate.js";
 import { engineLogger } from "./replay-engine-env.js";
-import { SEARCH_QUEUE_MAX } from "./replay-search-queue.js";
-import { REPLAY_JUMP_MAX_WAIT_MS } from "./replay-timing.js";
+import { pendingReplaySearch, SEARCH_QUEUE_MAX } from "./replay-search-queue.js";
+import { REPLAY_JUMP_MAX_WAIT_MS, REPLAY_JUMP_POLL_MS } from "./replay-timing.js";
 
 /** The two ways a walk goes: forward (Next, a clockwise turn) or back (Previous, counter-clockwise). */
 export type ReplayWalkDirection = "next" | "previous";
@@ -100,6 +101,39 @@ export type ReplayWalkStart = SettledReplayWalkStart | { readonly frame: null; r
  */
 let waitedOutSearchId: number | null = null;
 
+/**
+ * Whether the Replay Control dial's paced search is under way
+ * (`replay-search-queue.ts`, #801): between its searches it holds the
+ * reading, pauses or jumps back, with no search on its way, and a step's
+ * jump then would take the cursor from the run and drop its remaining
+ * detents. A start waits for the whole run as for one search (#1660).
+ */
+function pacedRunUnderWay(): boolean {
+  return pendingReplaySearch() !== null;
+}
+
+/**
+ * The longest a start waits for a paced run to end: every search of the
+ * longest run ({@link SEARCH_QUEUE_MAX}) sent twice, each waited for up to
+ * {@link REPLAY_JUMP_MAX_WAIT_MS}. The run ends itself long before; this only
+ * bounds the poll.
+ */
+const PACED_RUN_MAX_WAIT_MS = 2 * SEARCH_QUEUE_MAX * REPLAY_JUMP_MAX_WAIT_MS;
+
+/** Waits, on the engine clock, until no paced run is under way. Returns how the wait ended. */
+async function waitForPacedRun(): Promise<string> {
+  try {
+    const ended = await pollUntil(() => (pacedRunUnderWay() ? undefined : true), {
+      intervalMs: REPLAY_JUMP_POLL_MS,
+      timeoutMs: PACED_RUN_MAX_WAIT_MS,
+    });
+
+    return ended.kind === "done" ? "the paced run ended" : "the paced run outlasted the wait";
+  } catch (err) {
+    return `failed: ${String(err)}`;
+  }
+}
+
 /** The search of the gate's a start waits for: on its way, and not one a start has already waited out. */
 function searchToWaitFor(): ReplaySearchOnItsWay | null {
   const search = replaySearchOnItsWay();
@@ -116,10 +150,11 @@ function searchToWaitFor(): ReplaySearchOnItsWay | null {
  *    plugin's own jump is still headed there, as the gate holds too.
  * 2. **`search on its way`** while a search of the gate's may still be on its
  *    way (`replaySearchOnItsWay`: a lap, session or incident search or a go
- *    to start, never a go to end): its landing is where the replay is headed,
- *    but iRacing's search has no target the plugin can read, so the start is
- *    not known until it lands. A press waits for it through
- *    {@link awaitReplayWalkStart}; a view reads the cursor meanwhile.
+ *    to start, never a go to end), or while the dial's paced run is under
+ *    way, whose final landing counts as one search's: its landing is where
+ *    the replay is headed, but iRacing's search has no target the plugin can
+ *    read, so the start is not known until it lands. A press waits for it
+ *    through {@link awaitReplayWalkStart}; a view reads the cursor meanwhile.
  * 3. **`not in a replay`** outside one.
  * 4. **The cursor**, the state's {@link ReplayState.cursorFrame}: the frame a
  *    replay tick shows, or the frame the state holds through the exit grace
@@ -140,7 +175,7 @@ export function resolveReplayWalkStart(
 
   if (headed?.seeking === true) return { frame: headed.frame, from: "target" };
 
-  if (searchToWaitFor() !== null) return { frame: null, reason: "search on its way" };
+  if (pacedRunUnderWay() || searchToWaitFor() !== null) return { frame: null, reason: "search on its way" };
 
   return cursorStart(state);
 }
@@ -160,13 +195,14 @@ function isSettled(start: ReplayWalkStart): start is SettledReplayWalkStart {
 }
 
 /**
- * How many searches one waiting start waits through before it stops waiting
- * and reads the cursor: one full run of the paced search
- * ({@link SEARCH_QUEUE_MAX} searches) and one key's search behind it. Each
- * wait is bounded on its own; this bounds a chain of them that a dial kept
- * turning could otherwise make endless.
+ * How many waits one start makes before it stops waiting and reads the
+ * cursor. A wait is one search of a key's, or one whole paced run of the
+ * dial's however many searches it sends; a start waits again only when a new
+ * one has begun after the last ended. Each wait is bounded on its own; this
+ * bounds a chain of them that keys or a dial kept going could otherwise make
+ * endless.
  */
-const MAX_SEARCH_WAITS = SEARCH_QUEUE_MAX + 1;
+const MAX_SEARCH_WAITS = 8;
 
 /** A press waiting for its start, in press order. */
 interface WaitingStart {
@@ -212,8 +248,10 @@ function log(): ILogger {
  *   (`readState`, `readTelemetry`): a landing gives the cursor there, a
  *   search replaced by a jump gives that jump's target, a departure `not in
  *   a replay`, and a search that did not land the cursor, since it no longer
- *   counts. A new search on its way is waited for in turn, up to
- *   {@link MAX_SEARCH_WAITS}.
+ *   counts. While the dial's paced run is under way the press waits for the
+ *   whole run to end, through every search it sends and the pauses between
+ *   them, so its jump does not cancel the run. A new search or run on its
+ *   way is waited for in turn, up to {@link MAX_SEARCH_WAITS} waits.
  * - **Press order.** Waiting starts resolve in the order they were pressed,
  *   each read at its own turn, and each `act` runs to its first `await`
  *   before the next start is read. So `act` must do what the step decides
@@ -307,26 +345,34 @@ async function drainWaitingStarts(): Promise<void> {
 
       const start = resolveReplayWalkStart(head.readState(), head.readTelemetry());
 
-      if (!isSettled(start)) {
+      if (!isSettled(start) && waits < MAX_SEARCH_WAITS) {
+        waits++;
+
+        if (pacedRunUnderWay()) {
+          const outcome = await waitForPacedRun();
+
+          if (generation !== drainGeneration) return;
+
+          log().debug(`Replay step start: ${outcome}`);
+          continue;
+        }
+
         const search = searchToWaitFor();
 
         if (search !== null) {
-          waits++;
+          const outcome = await waitForSearch(search);
 
-          if (waits > MAX_SEARCH_WAITS) {
-            log().debug(`Replay step start: still searching after ${MAX_SEARCH_WAITS} searches; reading the cursor`);
-          } else {
-            const outcome = await waitForSearch(search);
+          if (generation !== drainGeneration) return;
 
-            if (generation !== drainGeneration) return;
-
-            log().debug(`Replay step start: the search on its way ended (${outcome})`);
-          }
-
+          log().debug(`Replay step start: the search on its way ended (${outcome})`);
           // Landed or not, it is no longer one to wait for: the start is read again from the top.
           waitedOutSearchId = search.id;
           continue;
         }
+      }
+
+      if (!isSettled(start)) {
+        log().debug(`Replay step start: still searching after ${MAX_SEARCH_WAITS} waits; reading the cursor`);
       }
 
       waitingStarts.shift();
