@@ -26,7 +26,7 @@
 
 ## Features
 
-**33 actions** with **287 modes** across 10 categories:
+**33 actions** with **288 modes** across 10 categories:
 
 | Category                | Actions | Modes | Examples                                                              |
 | ----------------------- | ------- | ----- | --------------------------------------------------------------------- |
