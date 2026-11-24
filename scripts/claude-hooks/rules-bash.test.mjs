@@ -5281,6 +5281,19 @@ describe("the stopping rule over a stream named through an expansion or a quoted
   );
 });
 
+// #1659 second read: a shell word glued to its redirection fed nothing.
+describe("a shell word glued to its redirection (#1659)", () => {
+  it.each([
+    [`bash<<<'gh pr merge 7 --squash'`, "from a here-string"],
+    [`bash<<EOF\ngh pr merge 7 --squash\nEOF`, "from a heredoc"],
+  ])("refuses %s (%s)", (c, form) => expect(stopped(c)).toContain(form));
+  it.each([`bash</dev/null -c 'gh pr merge 7 --squash'`, `sh>/dev/null -c 'gh pr merge 7 --squash'`])(
+    "judges the merge %s's string runs with the merge gate's own message",
+    (c) => expect(deny(c)).toMatch(/first word of a string `(?:ba)?sh` runs/),
+  );
+  it.each([`bash</dev/null x.sh`, `bash</dev/null -c 'pnpm build'`])("passes %s", (c) => passes(c));
+});
+
 describe("the lexer's stopping rule: a form it does not read is refused outright (#1659)", () => {
   const REFUSAL = /hands text to a shell in a form the hook does not read/;
   const refusal = (c, o = ctx()) => {

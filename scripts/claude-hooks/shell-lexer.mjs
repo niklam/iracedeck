@@ -375,7 +375,8 @@ const SHELL_NAMES = new Set([
   "cmd",
 ]);
 const SHELL_WORDS = String.raw`(?:${[...SHELL_NAMES].join("|")})(?:\.exe)?`;
-const SHELL_FED = new RegExp(String.raw`(?<=^|[\s;&|(\x60/])${SHELL_WORDS}(?=[\s;&|)\x60]|$)`, "gm");
+// A redirection may follow the word with no blank (`bash<<<'…'`, `bash</dev/null -c '…'`, #1659 second read).
+const SHELL_FED = new RegExp(String.raw`(?<=^|[\s;&|(\x60/])${SHELL_WORDS}(?=[\s;&|)\x60<>]|$)`, "gm");
 
 /** sudo's short options that take a value in the next word or attached (`-u me`, `-ume`). */
 const SUDO_VALUE_SHORT = "ughCDprtUT";
@@ -2200,7 +2201,8 @@ function fedStarts(command, text, fed, programs) {
 }
 
 /** A program word's name from where it starts ({@link fedStarts}): the rewritten text has it plain, right-aligned in its word. */
-const PROGRAM_WORD = /[^\s;&|()\x60'"]+/y;
+// A redirection glued to the name ends it, as bash reads it (`bash<<<'…'`, #1659 second read).
+const PROGRAM_WORD = /[^\s;&|()\x60'"<>]+/y;
 
 /** How a word at command position is the program: after a boundary and a {@link COMMAND_LEAD}. */
 const COMMAND = Object.freeze({ how: "command" });

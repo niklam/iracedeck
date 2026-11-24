@@ -2292,3 +2292,28 @@ describe("the stopping rule: a stream named through an expansion or a quoted ass
     `git commit -m "BASH_ENV=$F" -- x.md`,
   ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
 });
+
+// #1659 second read: a shell word glued to a redirection fed nothing.
+describe("the stopping rule: a shell word glued to its redirection (#1659 second read)", () => {
+  const MERGE = cmd(/gh\s+pr\s+merge\b/);
+  it.each([
+    [`bash<<<'gh pr merge 7 --squash'`, "a shell reading its script from a here-string"],
+    [`bash<<EOF\ngh pr merge 7\nEOF`, "a shell reading its script from a heredoc"],
+    [`sh<<-EOF\n\tgh pr merge 7\n\tEOF`, "a shell reading its script from a heredoc"],
+    [`bash< <(echo gh pr merge 7)`, "a shell reading its script from a process substitution"],
+    [`bash<&3`, "a shell reading its script from a descriptor"],
+    [`echo 'gh pr merge 7' | bash>/dev/null`, "a printer piped into a shell"],
+  ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+  it.each([
+    `bash</dev/null -c 'gh pr merge 7 --squash'`,
+    `bash>out.log -c 'gh pr merge 7 --squash'`,
+    `bash 2>/dev/null -c 'gh pr merge 7 --squash'`,
+  ])("reads the string of %s as one a shell runs", (c) => {
+    expect(lexer.refusedForms(c)).toEqual([]);
+    expect(lexer.has(c, MERGE)).toBe(true);
+    expect(lexer.view(c).programs.some((p) => p[4]?.how === "shell" && p[4]?.via === "bash")).toBe(true);
+  });
+  it.each([`bash</dev/null x.sh`, `bash>log x.sh`])("reads and refuses nothing in %s", (c) =>
+    expect(lexer.refusedForms(c)).toEqual([]),
+  );
+});
