@@ -18,11 +18,13 @@ import path from "node:path";
  *    working for old keys) are exactly the action pages under
  *    `docs/actions/<category>/<action>.md`, by name.
  * 2. Each page's mode badge (`"7 modes"`, `"13 modes + dial"`) states the
- *    options its action's keypad Mode select offers in the action's `.ejs`:
- *    an option marked `hidden`, inside a comment, or named in
- *    `RUNTIME_REMOVED_OPTIONS` is not one. A template with no Mode select is a
- *    single-mode action, whose badge says `1 mode` or which
- *    `SINGLE_MODE_PAGES` names.
+ *    options its action's keypad Mode select offers on the Stream Deck in the
+ *    action's `.ejs`: an option marked `hidden` or in a hidden optgroup, inside
+ *    a comment, or named in `RUNTIME_REMOVED_OPTIONS` is not one, and one
+ *    behind an EJS platform gate counts when the Stream Deck's
+ *    `platform-features.json` turns its flag on (`PLATFORM_GATED_OPTIONS`). A
+ *    template with no keypad Mode select is a single-mode action, whose badge
+ *    says `1 mode` or which `SINGLE_MODE_PAGES` names.
  * 3. Each category's modes are the sum of its pages' modes, except that Car
  *    Setup counts only the options of each action's `Adjust` optgroup,
  *    leaving out the "Display value" sub-modes its badges include — the
@@ -45,6 +47,7 @@ export const FEATURE_COUNT_PATHS = {
   home: "packages/website/src/content/docs/index.mdx",
   actionPages: "packages/website/src/content/docs/docs/actions",
   manifest: "packages/iracing-plugin-stream-deck/com.iracedeck.sd.core.sdPlugin/manifest.json",
+  platformFeatures: "packages/iracing-plugin-stream-deck/platform-features.json",
   actions: "packages/iracing-actions/src/actions",
 };
 
@@ -71,6 +74,24 @@ export const SINGLE_MODE_PAGES = new Set(["stream-deck/switch-profile"]);
 export const RUNTIME_REMOVED_OPTIONS = { "pit-crew": ["radar-volume"] };
 
 /**
+ * Keypad Mode options a template renders only behind an EJS `if` on a platform
+ * feature flag, by action: option value → the flag. Such an option is a
+ * Stream Deck mode when the flag is not `false` in the Stream Deck's committed
+ * `platform-features.json`, which is how every such gate is written
+ * (`locals.platform?.features?.<flag> !== false`). An option inside an `if`
+ * block that is not named here is a problem, so a new gate forces a decision.
+ *
+ * - `camera-focus` / `focus-select-car` and `race-admin` / `select-car`: the
+ *   car selector rides on Stream Deck profiles (`platform-feature-flags.md`).
+ *
+ * @type {Record<string, Record<string, string>>}
+ */
+export const PLATFORM_GATED_OPTIONS = {
+  "camera-focus": { "focus-select-car": "profiles" },
+  "race-admin": { "select-car": "profiles" },
+};
+
+/**
  * Reads every input the check needs from a repository checkout.
  *
  * @param {string} root the repository root
@@ -89,6 +110,7 @@ export function readFeatureCountInputs(root) {
       pages.push({
         category,
         slug,
+        file: `${FEATURE_COUNT_PATHS.actionPages}/${category}/${file}`,
         text: read(path.join(FEATURE_COUNT_PATHS.actionPages, category, file)),
         ejs: fs.existsSync(path.join(root, ejs)) ? read(ejs) : null,
       });
@@ -100,6 +122,7 @@ export function readFeatureCountInputs(root) {
     docsIndex: read(FEATURE_COUNT_PATHS.docsIndex),
     home: read(FEATURE_COUNT_PATHS.home),
     manifest: JSON.parse(read(FEATURE_COUNT_PATHS.manifest)),
+    platformFeatures: JSON.parse(read(FEATURE_COUNT_PATHS.platformFeatures)).features,
     pages,
   };
 }
@@ -128,47 +151,84 @@ export function badgeModes(pageText) {
 }
 
 /**
- * The template's first `<sdpi-item label="Mode">` — the keypad one; a dial
- * section's Mode select comes after it — with HTML comments removed. `null`
- * when the template has none, or never closes it.
+ * The keypad's `<sdpi-item label="Mode">`, with HTML and EJS comments removed
+ * from the whole template first, so a commented-out item is never the one
+ * found. A template with a `keypad-settings` section is searched from there,
+ * and the search stops at its `dial-settings` section, so a dial-only Mode
+ * select is never read as the keypad's. `null` when there is no keypad Mode
+ * item, or it is never closed.
  */
-function keypadModeItem(ejs) {
-  const start = ejs.indexOf('<sdpi-item label="Mode">');
+export function keypadModeItem(ejs) {
+  const text = ejs.replace(/<!--[\s\S]*?-->/g, "").replace(/<%#[\s\S]*?%>/g, "");
+  const keypad = text.indexOf('id="keypad-settings"');
+  let region = keypad >= 0 ? text.slice(keypad) : text;
+  const dial = region.indexOf('id="dial-settings"');
+  if (dial >= 0) region = region.slice(0, dial);
+  const start = region.indexOf('<sdpi-item label="Mode">');
   if (start < 0) return null;
-  const end = ejs.indexOf("</sdpi-item>", start);
+  const end = region.indexOf("</sdpi-item>", start);
   if (end < 0) return null;
-  return ejs.slice(start, end).replace(/<!--[\s\S]*?-->/g, "");
+  return region.slice(start, end);
 }
 
-/** The `value` of every option in some template text not marked `hidden`. */
+/** `<% if (condition) { %> … <% } %>`, one level deep: the only control flow a Mode item uses. */
+const EJS_IF_BLOCK = /<%\s*if\s*\(([^)]*)\)\s*\{\s*%>([\s\S]*?)<%\s*\}\s*%>/g;
+
+/**
+ * The `value` of every option in some template text a user can be offered:
+ * not marked `hidden`, and not inside an `<optgroup hidden>`.
+ */
 function visibleOptionValues(text) {
-  return [...text.matchAll(/<option\b[^>]*>/g)]
+  const shown = text.replace(/<optgroup\b[^>]*\shidden\b[^>]*>[\s\S]*?<\/optgroup>/g, "");
+  return [...shown.matchAll(/<option\b[^>]*>/g)]
     .map((m) => m[0])
     .filter((tag) => !/\shidden\b/.test(tag))
     .map((tag) => tag.match(/\svalue="([^"]*)"/)?.[1] ?? "");
 }
 
 /**
- * The options the keypad Mode select offers a new key: not `hidden`, not in a
- * comment, and not one the template's script removes. `null` when the
- * template has no keypad Mode select.
+ * The keypad Mode item split by EJS: `values`, the options outside any EJS
+ * block; `gated`, those inside an `if` block; `unread`, any other EJS control
+ * flow (a loop, an `else`), whose options the check cannot count. `null` when
+ * there is no keypad Mode item.
+ */
+export function keypadModeParts(ejs) {
+  const item = keypadModeItem(ejs);
+  if (item == null) return null;
+  const gated = [...item.matchAll(EJS_IF_BLOCK)].flatMap((m) => visibleOptionValues(m[2]));
+  const outside = item.replace(EJS_IF_BLOCK, "");
+  return {
+    values: visibleOptionValues(outside),
+    gated,
+    unread: /<%(?![=-])/.test(outside),
+  };
+}
+
+/**
+ * The options the keypad Mode select offers a new key on the Stream Deck: not
+ * `hidden`, not in a comment, not one the template's script removes, and an
+ * option inside an EJS `if` block only when `offeredGated` says so. `null` when
+ * the template has no keypad Mode select.
  *
  * @param {string} ejs
  * @param {string[]} [removed] option values the template's script removes
+ * @param {(value: string) => boolean} [offeredGated] whether a gated option is offered
  */
-export function keypadModeOptions(ejs, removed = []) {
-  const item = keypadModeItem(ejs);
-  if (item == null) return null;
-  return visibleOptionValues(item).filter((value) => !removed.includes(value)).length;
+export function keypadModeOptions(ejs, removed = [], offeredGated = () => false) {
+  const parts = keypadModeParts(ejs);
+  if (parts == null) return null;
+  return [...parts.values, ...parts.gated.filter(offeredGated)].filter((value) => !removed.includes(value)).length;
 }
 
 /**
  * The options a user can pick inside the `Adjust` optgroup of the keypad Mode
  * select. `null` when the template has no such optgroup.
  */
-export function adjustOptions(ejs) {
+export function adjustOptions(ejs, offeredGated = () => false) {
   const group = keypadModeItem(ejs)?.match(/<optgroup label="Adjust">([\s\S]*?)<\/optgroup>/);
-  return group ? visibleOptionValues(group[1]).length : null;
+  if (!group) return null;
+  const gated = [...group[1].matchAll(EJS_IF_BLOCK)].flatMap((m) => visibleOptionValues(m[2]));
+  return visibleOptionValues(group[1].replace(EJS_IF_BLOCK, "")).length + gated.filter(offeredGated).length;
 }
 
 const num = (s) => Number(s.trim());
@@ -242,13 +302,17 @@ export function checkFeatureCounts(inputs) {
   for (const slug of pageSlugs.filter((s) => !visible.includes(s))) {
     problems.push(`${P.actionPages}: page "${slug}" is not a visible action in ${P.manifest}`);
   }
+  for (const slug of new Set(pageSlugs.filter((s, i) => pageSlugs.indexOf(s) !== i))) {
+    const files = inputs.pages.filter((p) => p.slug === slug).map((p) => p.file ?? `${p.category}/${p.slug}`);
+    problems.push(`${P.actionPages}: action "${slug}" has more than one page (${files.join(", ")}); keep one`);
+  }
 
   // 2. Each page's badge against its action's template.
   /** @type {Map<string, { actions: number, modes: number }>} */
   const byCategory = new Map();
   for (const page of inputs.pages) {
     const id = `${page.category}/${page.slug}`;
-    const pageFile = `${P.actionPages}/${id}.md`;
+    const pageFile = page.file ?? `${P.actionPages}/${id}.md`;
     const ejsFile = `${P.actions}/${page.slug}/${page.slug}.ejs`;
     // Counted as an action whatever else is wrong with it, so one bad page is
     // not also reported as a wrong action count for its category.
@@ -266,10 +330,39 @@ export function checkFeatureCounts(inputs) {
         `RUNTIME_REMOVED_OPTIONS names "${page.slug}" / "${value}", which its keypad Mode select no longer has; remove it`,
       );
     }
+    const parts = keypadModeParts(page.ejs);
+    if (parts?.unread) {
+      problems.push(
+        `${ejsFile}: its keypad Mode select has EJS control flow other than \`<% if (…) { %> … <% } %>\`, which the count cannot read`,
+      );
+    }
+    const declared = PLATFORM_GATED_OPTIONS[page.slug] ?? {};
+    for (const value of parts?.gated ?? []) {
+      if (!(value in declared)) {
+        problems.push(
+          `${ejsFile}: keypad Mode option "${value}" is inside an EJS \`if\`; name the platform flag that gates it in PLATFORM_GATED_OPTIONS`,
+        );
+      }
+    }
+    for (const [value, flag] of Object.entries(declared)) {
+      if (!(parts?.gated ?? []).includes(value)) {
+        problems.push(
+          `PLATFORM_GATED_OPTIONS names "${page.slug}" / "${value}", which is not inside an EJS \`if\` in its keypad Mode select; remove it`,
+        );
+      } else if (!new RegExp(`features\\??\\.${flag}\\b`).test(page.ejs)) {
+        problems.push(
+          `PLATFORM_GATED_OPTIONS gates "${page.slug}" / "${value}" on "${flag}", which ${ejsFile} never reads`,
+        );
+      } else if (!(flag in inputs.platformFeatures)) {
+        problems.push(`PLATFORM_GATED_OPTIONS names flag "${flag}", which ${P.platformFeatures} does not declare`);
+      }
+    }
+    const offeredGated = (value) => value in declared && inputs.platformFeatures[declared[value]] !== false;
+
     // A badge that disagrees is reported, but the template's count still goes
     // into the category: it is the code, so the totals stay right and the red
     // run names only the badge.
-    const offered = keypadModeOptions(page.ejs, removed) ?? 1;
+    const offered = keypadModeOptions(page.ejs, removed, offeredGated) ?? 1;
     const badge = badgeModes(page.text);
     if (badge == null && !SINGLE_MODE_PAGES.has(id)) {
       problems.push(
@@ -283,7 +376,7 @@ export function checkFeatureCounts(inputs) {
 
     // 3. The category's count: Car Setup counts only its Adjust options.
     if (page.category === ADJUST_ONLY_CATEGORY) {
-      const adjust = adjustOptions(page.ejs);
+      const adjust = adjustOptions(page.ejs, offeredGated);
       if (adjust == null) {
         problems.push(`${ejsFile}: no "Adjust" optgroup in its keypad Mode select`);
         continue;
@@ -298,9 +391,14 @@ export function checkFeatureCounts(inputs) {
       problems.push(`SINGLE_MODE_PAGES names "${id}", which has no page; remove it`);
     }
   }
-  for (const slug of Object.keys(RUNTIME_REMOVED_OPTIONS)) {
-    if (!inputs.pages.some((p) => p.slug === slug)) {
-      problems.push(`RUNTIME_REMOVED_OPTIONS names "${slug}", which has no page; remove it`);
+  for (const [name, list] of [
+    ["RUNTIME_REMOVED_OPTIONS", RUNTIME_REMOVED_OPTIONS],
+    ["PLATFORM_GATED_OPTIONS", PLATFORM_GATED_OPTIONS],
+  ]) {
+    for (const slug of Object.keys(list)) {
+      if (!inputs.pages.some((p) => p.slug === slug)) {
+        problems.push(`${name} names "${slug}", which has no page; remove it`);
+      }
     }
   }
 
