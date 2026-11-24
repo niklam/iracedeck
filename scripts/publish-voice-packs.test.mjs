@@ -32,7 +32,7 @@ const TAG = "voices-default-1.0.0";
 const ASSET = "default-1.0.0.zip";
 const SHA = "6087bed024d50e80a0ac9fb84ae5567ea356232c60ee8f183a45809eb724f535";
 const BYTES = 7879224;
-const ARCHIVE_URL = `https://github.com/niklam/iracedeck/releases/download/${TAG}/${ASSET}`;
+const ARCHIVE_URL = `https://github.com/iracedeck/iracedeck/releases/download/${TAG}/${ASSET}`;
 const OUT_DIR = path.join("C:", "out");
 const SCRATCH_DIR = path.join("C:", "scratch");
 const ARCHIVE_PATH = path.join(SCRATCH_DIR, "pack", ASSET);
@@ -47,7 +47,7 @@ function freshEntry(pack) {
     version: pack.version,
     bytes: BYTES,
     sha256: SHA,
-    url: `https://github.com/niklam/iracedeck/releases/download/${tag}/${asset}`,
+    url: `https://github.com/iracedeck/iracedeck/releases/download/${tag}/${asset}`,
   };
 }
 
@@ -282,7 +282,7 @@ describe("publishVoicePacks — pack and verify", () => {
   // url that drifted from `archiveUrl(pack)` would go live pointing somewhere
   // this script never uploads to.
   it("fails when the committed url is not where the archive would be published, even with matching bytes", async () => {
-    const elsewhere = "https://github.com/niklam/iracedeck/releases/download/voices-default-0.9.0/default-0.9.0.zip";
+    const elsewhere = "https://github.com/iracedeck/iracedeck/releases/download/voices-default-0.9.0/default-0.9.0.zip";
     const deps = fakeDeps({ entry: committedEntry({ url: elsewhere }) });
 
     const message = await failure(run(deps, { publish: true }));

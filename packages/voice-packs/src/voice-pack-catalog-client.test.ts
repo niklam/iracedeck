@@ -12,7 +12,7 @@ const ENTRY = {
   voices: [{ id: "luca", label: "Luca" }],
   bytes: 13_107_200,
   sha256: SHA,
-  url: "https://github.com/niklam/iRaceDeck/releases/download/voices-luca-1.2.0/luca-1.2.0.zip",
+  url: "https://github.com/iracedeck/iracedeck/releases/download/voices-luca-1.2.0/luca-1.2.0.zip",
 };
 
 const BODY = { schema: 1, packs: [ENTRY] };
