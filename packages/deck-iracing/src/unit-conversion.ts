@@ -18,16 +18,6 @@ import {
 } from "@iracedeck/app-constants";
 import { DisplayUnits } from "@iracedeck/iracing-sdk";
 
-export {
-  celsiusToFahrenheit,
-  FUEL_UNIT_IMPERIAL,
-  FUEL_UNIT_METRIC,
-  GALLONS_TO_LITERS,
-  gallonsToLiters,
-  LITERS_TO_GALLONS,
-  litersToGallons,
-} from "@iracedeck/app-constants";
-
 /**
  * Maps iRacing's DisplayUnits value onto the sim-neutral unit system: Metric is
  * metric, anything else — English, or a value not yet known — is imperial.

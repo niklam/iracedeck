@@ -9,7 +9,7 @@
  * real reading is the translator's call (`getLastStopTireTemps()` in
  * `@iracedeck/sim-events-iracing`); this module only shows what it is handed.
  */
-import { celsiusToFahrenheit } from "@iracedeck/deck-iracing";
+import { celsiusToFahrenheit } from "@iracedeck/app-constants";
 import type { TireCorner } from "@iracedeck/event-bus";
 import { DisplayUnits } from "@iracedeck/iracing-sdk";
 import type { LastStopTireTemps, TireCornerTemps } from "@iracedeck/sim-events-iracing";

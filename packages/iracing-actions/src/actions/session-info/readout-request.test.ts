@@ -3,12 +3,13 @@ import { describe, expect, it, vi } from "vitest";
 
 import { type ReadoutItem, readoutKindFor, resolveReadoutFigure } from "./readout-request.js";
 
-// Real conversions: only the two helpers this module uses. A plain factory, because
-// the real barrel's SimIRacingAction extends a deck-core class this suite does not load.
+// The real fuel conversion, the one deck-iracing helper this module uses. A plain
+// factory, because the real barrel's SimIRacingAction extends a deck-core class this
+// suite does not load. celsiusToFahrenheit comes from @iracedeck/app-constants, unmocked.
 vi.mock("@iracedeck/deck-iracing", async () => {
   const units = await import("@iracedeck/deck-iracing/testing");
 
-  return { celsiusToFahrenheit: units.celsiusToFahrenheit, fuelToDisplayUnits: units.fuelToDisplayUnits };
+  return { fuelToDisplayUnits: units.fuelToDisplayUnits };
 });
 
 const METRIC = 1;

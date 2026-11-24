@@ -1,4 +1,5 @@
-import { celsiusToFahrenheit, fuelToDisplayUnits } from "@iracedeck/deck-iracing";
+import { celsiusToFahrenheit } from "@iracedeck/app-constants";
+import { fuelToDisplayUnits } from "@iracedeck/deck-iracing";
 import type { TelemetryReadoutKind, TelemetryReadoutRequest } from "@iracedeck/event-bus";
 import { DisplayUnits, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { FuelStats } from "@iracedeck/sim-events-iracing";

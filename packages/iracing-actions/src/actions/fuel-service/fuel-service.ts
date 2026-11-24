@@ -1,3 +1,4 @@
+import { gallonsToLiters } from "@iracedeck/app-constants";
 import {
   applyBindingWarning,
   assembleIcon,
@@ -26,7 +27,6 @@ import {
 } from "@iracedeck/deck-core";
 import {
   fuelToDisplayUnits,
-  gallonsToLiters,
   isAutofuelActive,
   isAutofuelEnabled,
   isFuelFillOn,

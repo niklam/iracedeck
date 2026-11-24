@@ -96,7 +96,6 @@ vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
   isFuelFillOn: (t: any) => !!t && t.PitSvFlags !== undefined && (t.PitSvFlags & 0x0010) === 0x0010,
   isAutofuelActive: (t: any) => !!t && t.dpFuelAutoFillActive !== undefined && t.dpFuelAutoFillActive !== 0,
   isAutofuelEnabled: (t: any) => (!t || t.dpFuelAutoFillEnabled === undefined ? true : t.dpFuelAutoFillEnabled !== 0),
-  gallonsToLiters: vi.fn((gallons: number) => gallons * 3.78541),
 }));
 
 vi.mock("@iracedeck/deck-core", async () => {

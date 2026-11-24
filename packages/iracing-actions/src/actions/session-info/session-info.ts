@@ -1,3 +1,4 @@
+import { litersToGallons } from "@iracedeck/app-constants";
 import {
   generateBorderParts,
   generateTitleText,
@@ -14,7 +15,7 @@ import {
   resolveTitleSettings,
   svgToDataUri,
 } from "@iracedeck/deck-core";
-import { litersToGallons, SimIRacingAction } from "@iracedeck/deck-iracing";
+import { SimIRacingAction } from "@iracedeck/deck-iracing";
 import {
   getEventBus,
   isEventBusInitialized,

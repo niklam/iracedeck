@@ -1,10 +1,9 @@
+import { FUEL_UNIT_IMPERIAL, FUEL_UNIT_METRIC } from "@iracedeck/app-constants";
 import { DisplayUnits } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
   formatFuelAmount,
-  FUEL_UNIT_IMPERIAL,
-  FUEL_UNIT_METRIC,
   fuelFromDisplayUnits,
   fuelToDisplayUnits,
   getFuelUnitSuffix,
@@ -41,21 +40,6 @@ describe("unit-conversion", () => {
     it("maps an unknown or undefined value to imperial, as every DisplayUnits function treats it", () => {
       expect(unitSystemOf(undefined)).toBe("imperial");
       expect(unitSystemOf(7)).toBe("imperial");
-    });
-  });
-
-  describe("re-exports the sim-neutral constants and conversions", () => {
-    it("is the same definition as @iracedeck/app-constants", async () => {
-      const units = await import("./unit-conversion.js");
-      const neutral = await import("@iracedeck/app-constants");
-
-      expect(units.LITERS_TO_GALLONS).toBe(neutral.LITERS_TO_GALLONS);
-      expect(units.GALLONS_TO_LITERS).toBe(neutral.GALLONS_TO_LITERS);
-      expect(units.FUEL_UNIT_METRIC).toBe(neutral.FUEL_UNIT_METRIC);
-      expect(units.FUEL_UNIT_IMPERIAL).toBe(neutral.FUEL_UNIT_IMPERIAL);
-      expect(units.litersToGallons).toBe(neutral.litersToGallons);
-      expect(units.gallonsToLiters).toBe(neutral.gallonsToLiters);
-      expect(units.celsiusToFahrenheit).toBe(neutral.celsiusToFahrenheit);
     });
   });
 
