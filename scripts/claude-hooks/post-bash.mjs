@@ -240,6 +240,7 @@ function afterMerge(merge, command, cwd, shell) {
  * this board by hand, and a home one is never lost behind a foreign URL.
  */
 function afterIssueCreate(stdout, creates, cwd) {
+  const found = createdIssues(stdout);
   let resolved;
   const homeCreate = () => {
     if (!resolved) {
@@ -251,12 +252,13 @@ function afterIssueCreate(stdout, creates, cwd) {
       };
       resolved = creates.map(({ repo, dir }) => (repo !== undefined ? repo : repoOf(dir)));
     }
-    // An unreadable or unresolvable repository may be home, and so may a former home GitHub redirects (#1799).
-    return resolved.some((t) => t == null || mayBeHome(t));
+    // An unreadable or unresolvable repository may be home, and so may a former home GitHub redirects (#1799)
+    // — unless gh printed an issue URL of that very repository, which means it exists and answered for itself.
+    const printedIn = new Set(found.map((issue) => issue.repo.toLowerCase()));
+    return resolved.some((t) => t == null || isHomeRepo(t) || (mayBeHome(t) && !printedIn.has(t.toLowerCase())));
   };
   const leftAlone = () =>
     `gh issue create ran in ${[...new Set(resolved.filter((t) => t != null))].join(", ")}, not ${HOME_REPO}: the Roadmap board is left alone.`;
-  const found = createdIssues(stdout);
   if (!found.length)
     return [
       homeCreate()

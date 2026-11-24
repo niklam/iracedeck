@@ -317,9 +317,10 @@ export function setsMilestone(edit) {
  */
 export function milestoneRemovedLine(edit, envRepo) {
   const targets = editTargets(edit, envRepo);
-  const maybeHome = targets.filter(({ repo }) => repo == null || mayBeHome(repo));
+  // Home only, not a former home (#1799): nothing is read back here, so a redirect cannot be told from a repository that took the old name.
+  const maybeHome = targets.filter(({ repo }) => repo == null || isHomeRepo(repo));
   const named = edit.repo !== undefined ? edit.repo : envRepo;
-  const elsewhere = named != null && !mayBeHome(normalizeRepo(named));
+  const elsewhere = named != null && !isHomeRepo(normalizeRepo(named));
   const unread = !edit.readable || !targets.length;
   if (!maybeHome.length && (!unread || elsewhere)) return undefined;
   const which = maybeHome.length

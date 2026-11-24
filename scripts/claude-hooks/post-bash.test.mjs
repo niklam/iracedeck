@@ -627,6 +627,16 @@ describe("post-bash.mjs acts on iracedeck/iracedeck only (#1527)", { timeout: 30
         );
         expect(filed(redirected.note), command).toEqual([home(1534)]);
       }
+      // Should a repository take the old name, gh prints its own URL: that create is foreign, with no hand move.
+      const taken = "https://github.com/niklam/iracedeck/issues/7";
+      const tookName = fireWithGh(
+        "gh issue create -R niklam/iracedeck --title x --body y",
+        { ...created(1534, justNow()), "api graphql": boardItem(null) },
+        { stdout: `${taken}\n` },
+      );
+      expect(tookName.note).toBe(
+        `[hook] Filed ${taken} in niklam/iracedeck, not iracedeck/iracedeck: the Roadmap board is left alone.`,
+      );
     });
 
     // CodeRabbit on #1535: a just-created iRaceDeck issue another command printed
@@ -774,7 +784,6 @@ describe("post-bash.mjs moves a milestoned issue to Planned (#1574)", { timeout:
       ["gh issue edit 5 --remove-milestone", "#5"],
       [`gh issue edit 5 ${home(6)} --remove-milestone 2>/dev/null`, `#5, ${home(6)}`],
       ["gh issue edit 5 -R iracedeck/iracedeck --remove-milestone", "#5"],
-      ["gh issue edit 5 -R niklam/iracedeck --remove-milestone", "#5"],
       ["gh issue edit $N --remove-milestone", "the issues it edited"],
       ["printf '%s\\n' 5 | xargs gh issue edit --remove-milestone", "the issues it edited"],
     ]) {
@@ -787,6 +796,8 @@ describe("post-bash.mjs moves a milestoned issue to Planned (#1574)", { timeout:
       "gh issue edit 5 -R lint-staged/lint-staged --remove-milestone",
       `gh issue edit 5 $N -R lint-staged/lint-staged --remove-milestone`,
       "GH_REPO=lint-staged/lint-staged gh issue edit $N --remove-milestone",
+      // #1799: a former home is not read back here, so it cannot be told from a repository that took its name.
+      "gh issue edit 5 -R niklam/iracedeck --remove-milestone",
     ])
       expect(fireWithGh(command, {}).note, command).toBeNull();
   });
