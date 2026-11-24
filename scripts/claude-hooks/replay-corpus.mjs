@@ -719,10 +719,15 @@ const isDirectory = (p) => {
 
 /**
  * The tool: returns its exit status, printing through `print`. `root` is the
- * checkout whose manifests and directory the context answers with; a test
- * may point it elsewhere (@internal).
+ * checkout whose manifests and directory the context answers with, and
+ * `onBaseCopy` hears the folder the base's copy is written to: a test may
+ * point the one elsewhere and track the other (@internal).
  */
-export async function main(argv, print = (line) => process.stdout.write(`${line}\n`), { root = REPO_ROOT } = {}) {
+export async function main(
+  argv,
+  print = (line) => process.stdout.write(`${line}\n`),
+  { root = REPO_ROOT, onBaseCopy } = {},
+) {
   const opts = parseCli(argv);
   if (opts.help) {
     print(USAGE);
@@ -764,6 +769,7 @@ export async function main(argv, print = (line) => process.stdout.write(`${line}
       head = await loadSide(headRoot);
       if (!opts.censusOnly) {
         base = extractScripts(REPO_ROOT, opts.base);
+        onBaseCopy?.(base.dir);
         Object.assign(base, await loadSide(base.dir));
       }
     } catch (e) {

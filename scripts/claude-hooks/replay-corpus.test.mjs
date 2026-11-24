@@ -535,16 +535,22 @@ describe("side effects while judging", () => {
   it("make a spawn or a file write throw until restored, through ESM bindings too", () => {
     const spawnSync = childProcess.spawnSync;
     const writeFileSync = fs.writeFileSync;
-    const restore = forbidSideEffects();
+    // A folder the test owns, removed whatever happens (CodeRabbit CLI round 2 on #1659).
+    const owned = fs.mkdtempSync(path.join(os.tmpdir(), "replay-corpus-write-"));
+    const never = path.join(owned, "never-written.txt");
     try {
-      expect(() => childProcess.spawnSync("git", ["--version"])).toThrow(/spawnSync was called while judging/);
-      expect(() => childProcess.execFileSync("git")).toThrow(/while judging/);
-      expect(() => fs.writeFileSync(path.join(os.tmpdir(), "replay-corpus-never-written.txt"), "x")).toThrow(
-        /writeFileSync was called while judging/,
-      );
-      expect(() => fs.readFileSync(path.join(import.meta.dirname, "pre-bash.mjs"), "utf8")).not.toThrow();
+      const restore = forbidSideEffects();
+      try {
+        expect(() => childProcess.spawnSync("git", ["--version"])).toThrow(/spawnSync was called while judging/);
+        expect(() => childProcess.execFileSync("git")).toThrow(/while judging/);
+        expect(() => fs.writeFileSync(never, "x")).toThrow(/writeFileSync was called while judging/);
+        expect(() => fs.readFileSync(path.join(import.meta.dirname, "pre-bash.mjs"), "utf8")).not.toThrow();
+      } finally {
+        restore();
+      }
+      expect(fs.existsSync(never)).toBe(false);
     } finally {
-      restore();
+      fs.rmSync(owned, { recursive: true, force: true });
     }
     expect(childProcess.spawnSync).toBe(spawnSync);
     expect(fs.writeFileSync).toBe(writeFileSync);
@@ -728,19 +734,26 @@ describe("the command line", () => {
   });
 
   // CodeRabbit CLI on #1659: the base copy is removed whatever stops the run once it exists.
+  // CodeRabbit CLI round 2 on #1659: the test proves it reached the
+  // workspace failure, and tracks the very copy the run made.
   it("removes the base copy when the workspace cannot be read", async () => {
-    const copies = () => fs.readdirSync(os.tmpdir()).filter((n) => /^replay-corpus-[A-Za-z0-9]{6}$/.test(n));
-    const before = new Set(copies());
     const owned = fs.mkdtempSync(path.join(os.tmpdir(), "replay-corpus-main-"));
     try {
       fs.mkdirSync(path.join(owned, "t"));
-      fs.mkdirSync(path.join(owned, "checkout", "packages", "odd", "package.json"), { recursive: true });
+      const manifest = path.join(owned, "checkout", "packages", "odd", "package.json");
+      fs.mkdirSync(manifest, { recursive: true });
       const out = [];
+      const copies = [];
       const status = await main(["--transcripts", path.join(owned, "t"), "--base", "HEAD"], (l) => out.push(l), {
         root: path.join(owned, "checkout"),
+        onBaseCopy: (dir) => copies.push({ dir, there: fs.existsSync(path.join(dir, "scripts")) }),
       });
       expect(status, out.join("\n")).toBe(3);
-      expect(copies().filter((n) => !before.has(n))).toEqual([]);
+      expect(out.join("\n")).toMatch(/could not read the workspace/);
+      expect(out.join("\n")).toContain(manifest);
+      expect(copies).toHaveLength(1);
+      expect(copies[0].there).toBe(true);
+      expect(fs.existsSync(copies[0].dir)).toBe(false);
     } finally {
       fs.rmSync(owned, { recursive: true, force: true });
     }
