@@ -2071,13 +2071,16 @@ function pipedCommands(command) {
   // words (`x=$( { bash; } <<< y )`, CLI check of 8086892f8).
   const inner = [];
   for (const [s, e] of liveSubs(command)) {
-    const from = command[s] === "$" ? s + 2 : s + 1;
+    const from = bodyStart(command, s);
     const host = read.find((c) => c.start <= s && s <= c.end);
     // Up to the closing `)` or backtick, which `e` is just past.
     const body = pipedCommands(command.slice(from, Math.max(from, e - 1)));
-    // Its shell is a subshell of the one running the command holding it.
+    // A `$( … )` or backtick body runs in a subshell of the one running the
+    // command holding it; bash 5.3's `${ …; }` and `${| …; }` run in that
+    // shell itself, so an `exec` in one sets what runs after it (CodeRabbit
+    // on 8863760d7).
     const at = (k) => k.replace(/\d+/g, (n) => String(Number(n) + from));
-    const sub = [host?.shell, `$${s}`].filter(Boolean).join("/");
+    const sub = funsubAt(command, s) ? (host?.shell ?? "") : [host?.shell, `$${s}`].filter(Boolean).join("/");
     for (const x of body)
       inner.push({
         start: x.start + from,
@@ -2555,7 +2558,7 @@ function fedStarts(command, text, fed, programs) {
     N.subCloses = new Set();
     const subs = (t, at) => {
       for (const [s, e] of liveSubs(t)) {
-        const from = t[s] === "$" ? s + 2 : s + 1;
+        const from = bodyStart(t, s);
         N.subCloses.add(at + e - 1);
         const body = t.slice(from, Math.max(from, e - 1));
         const B = level(body);
@@ -3281,6 +3284,15 @@ function liveSubs(t) {
   return commandSubs(sure ? masked : t);
 }
 
+/**
+ * Where the body of the substitution {@link commandSubs} found at `s` of `t`
+ * starts: past `$(`, a backtick, `${` or the `${|` whose `|` is no pipe.
+ */
+function bodyStart(t, s) {
+  if (t[s] !== "$") return s + 1;
+  return t[s + 1] === "{" && t[s + 2] === "|" ? s + 3 : s + 2;
+}
+
 /** Whether the `$` at `i` of `t` opens bash 5.3's `${ …; }` or `${| …; }`, which runs its text ({@link commandSubs}). */
 function funsubAt(t, i) {
   return t[i] === "$" && t[i + 1] === "{" && /^[\s|]/.test(t[i + 2] ?? "");
@@ -3292,8 +3304,8 @@ function funsubAt(t, i) {
  * a `$(( … ))` included, but not inside single quotes (#1606 review). Their
  * text runs, so the rewrite of a program word keeps it ({@link
  * normalisePrograms}). Bash 5.3's `${ …; }` and `${| …; }` (a `${` and a
- * blank or `|`) run their text too, so they are among them, their body from
- * `from + 2` as a `$( … )`'s is (#1659).
+ * blank or `|`) run their text too, so they are among them; each body starts
+ * where {@link bodyStart} says (#1659).
  */
 function commandSubs(w) {
   const subs = [];

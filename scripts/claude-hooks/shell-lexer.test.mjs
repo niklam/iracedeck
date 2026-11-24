@@ -3011,3 +3011,25 @@ describe("the stopping rule: startup names in one long word (#1659 PR review)", 
     expect(Date.now() - t).toBeLessThan(3000);
   });
 });
+
+// CodeRabbit on 8863760d7: bash 5.3 runs a `${ …; }` or `${| …; }` in the
+// current shell, so an `exec` in one sets the stdin of the commands after it;
+// a `$( … )` or backtick body is a subshell, whose exec reaches none.
+describe("the stopping rule: an exec in a function substitution (#1659 PR review)", () => {
+  const HERE_STRING = "a shell reading its script from a here-string";
+  it.each([
+    `x=\${ exec <<< 'gh pr merge 7 --squash'; }; bash`,
+    `x=\${| exec <<< 'gh pr merge 7 --squash'; }; bash`,
+    `{ x=\${ exec <<< 'gh pr merge 7 --squash'; }; bash; }`,
+    `echo \${ exec <<< 'gh pr merge 7 --squash'; }; bash`,
+    `x=\${ exec <<< 'gh pr merge 7 --squash'; }; echo $(bash)`,
+    `x=$(y=\${ exec <<< 'gh pr merge 7 --squash'; }; bash)`,
+  ])("refuses %s", (c) => expect(lexer.refusedForms(c)[0]?.form).toBe(HERE_STRING));
+  it.each([
+    `x=$(exec <<< ':'); bash`,
+    "x=`exec <<< ':'`; bash",
+    `x=$(y=\${ exec <<< ':'; }); bash`,
+    `x=\${ exec <<< ':'; } | cat; bash`,
+    `x=\${ exec <<< ':'; exec </dev/null; }; bash`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+});
