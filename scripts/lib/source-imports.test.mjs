@@ -11,7 +11,7 @@ import {
   moduleSources,
   packageOf,
   trackedPackageSources,
-  unclosedComment,
+  unreadStructure,
   VENDORED_SOURCES,
 } from "./source-imports.mjs";
 
@@ -265,7 +265,7 @@ describe("moduleSources (#1662)", () => {
         "./upper.js",
       ]);
       expect(joined(file, text)).not.toContain("commented");
-      expect(unclosedComment(file, text)).toBeUndefined();
+      expect(unreadStructure(file, text)).toEqual([]);
     });
 
     // A template expression is JavaScript: a "<!--" in one is a string or the like,
@@ -285,39 +285,100 @@ describe("moduleSources (#1662)", () => {
       ].join("\n");
 
       expect(specifiers(file, text)).toEqual(["./client.ts", "./after-quoted.js"]);
-      expect(unclosedComment(file, text)).toBeUndefined();
+      expect(unreadStructure(file, text)).toEqual([]);
     });
 
-    // An expression whose end this cannot find runs to the end of the file, so a "<!--" after it reads as no comment.
-    it("reads no comment after a template expression it cannot bound", () => {
+    // A template expression is read whole, JSX and all, so a comment after it is one (#1662).
+    it("reads a template expression whole, JSX and all, so a comment after it is one", () => {
       for (const expression of [
         '{a < b && "x"}',
+        "{a<b}",
         "{x && <b>bold</b>}",
         "{a / b}",
         "{/}/.test(s)}",
-        '{"never closed"',
+        '{x && <p class="a">Don\'t {x}</p>}',
+        "{x && <p class=plain><br><img src=a.png>text<!-- } --></p>}",
+        "{items.map((i) => { return <li key={i}>{i}</li>; })}",
+        "{<>a {b}</>}",
+        '{x && <Card load={() => "}"} />}',
       ]) {
-        const text = `${expression}\n<!-- <script>import "./after.js";</script> -->\n`;
+        const text = `${expression}\n<!-- <script>import "./commented.js";</script> -->\n<script>import "./after.js";</script>\n`;
 
         expect(specifiers(file, text), expression).toEqual(["./after.js"]);
+        expect(unreadStructure(file, text), expression).toEqual([]);
       }
-      // One it can bound ends where its brace closes, so a comment after it is one.
-      expect(specifiers(file, '{"}" + `${"{"}`}\n<!-- <script>import "./x.js";</script> -->\n')).toEqual([]);
     });
 
-    it("reads a script whose end tag never comes to the end of the file, as HTML does", () => {
+    // What it cannot read it reports, never reads on as something else: a comment after it may hide a script.
+    it("reports a template expression it cannot read, naming its line and what stopped it", () => {
+      for (const [expression, stop] of [
+        ['{"open', "a string that never closes, on line 2"],
+        ["{x && <p>a</div>}", "an end tag that closes no open <p>, on line 2"],
+        ["{x && <p>a } b</p>}", "a } in element text, on line 2"],
+        ["{x && <b>open}", "a } in element text, on line 2"],
+        ["{`never closed}", "a template literal that never closes, on line 2"],
+        ["{a /* never closed }", "a comment that never closes, on line 2"],
+      ]) {
+        const text = `<p>x</p>\n${expression}\n<p>y</p>\n`;
+
+        expect(unreadStructure(file, text), expression).toEqual([
+          `a template expression opened on line 2 that this check cannot read (${stop}), so what follows it is ` +
+            "not read either: write it so its end can be found",
+        ]);
+      }
+    });
+
+    // A <script> among an expression's JSX is one Astro renders; a "<script>" in its string or comment is not.
+    it("reads a <script> among a template expression's JSX, and none in its strings or comments", () => {
+      const text = [
+        "---",
+        "---",
+        '{show && <div><script>import "./in-jsx.js";</script></div>}',
+        "{\"<script>import './in-string.js';</script>\"} {/* <script>import './in-comment.js';</script> */}",
+        '<script>import "./after.js";</script>',
+        "",
+      ].join("\n");
+
+      expect(specifiers(file, text)).toEqual(["./in-jsx.js", "./after.js"]);
+      expect(unreadStructure(file, text)).toEqual([]);
+    });
+
+    // A quoted attribute value is text: a "{" or "<!--" in one opens nothing.
+    it("reads a start tag whole, so a brace or comment opener in a quoted value opens nothing", () => {
+      const text = [
+        "<p title=\"{\" data-x='<!--'>x</p>",
+        '<script>import "./after.js";</script>',
+        '<a href={`/x/${"}"}`} title="}">y</a><script src="./src.js"></script>',
+        "",
+      ].join("\n");
+
+      expect(specifiers(file, text)).toEqual(["./after.js", "./src.js"]);
+      expect(unreadStructure(file, text)).toEqual([]);
+    });
+
+    it("reports a script whose end tag never comes, and a self-closing one, and still reads them", () => {
       expect(specifiers(file, '<p>x</p>\n<script>\nimport "./open.js";\n')).toEqual(["./open.js"]);
+      expect(unreadStructure(file, '<p>x</p>\n<script>\nimport "./open.js";\n')).toEqual([
+        "a <script> element opened on line 2 that never closes, which hides the rest of the file: close it with " +
+          "</script> so what follows can be read",
+      ]);
+      expect(unreadStructure(file, '<p>x</p>\n<script src="./x.js" />\n<script>import "./y.js";</script>\n')).toEqual([
+        "a self-closing <script /> on line 2, whose end Astro and HTML may read differently: write it as " +
+          "<script …></script>",
+      ]);
     });
 
     it("names the line of a markup comment that never closes, and none for a closed one or a code file", () => {
       const open = '---\nconst a = 1;\n---\n<p>x</p>\n<!-- never closed <script>import "./hidden.js";</script>\n';
 
-      expect(unclosedComment(file, open)).toBe(5);
+      expect(unreadStructure(file, open)).toEqual([
+        "an HTML comment opened on line 5 that never closes, which hides the rest of the file: close it with --> " +
+          "so what follows can be read",
+      ]);
       expect(specifiers(file, open)).toEqual([]);
-      expect(unclosedComment(file, "<!-- closed --><p>x</p>")).toBeUndefined();
-      expect(unclosedComment(file, '<script>const s = "<!--";</script>')).toBeUndefined();
-      expect(unclosedComment("packages/x/src/a.ts", "const s = '<!--';")).toBeUndefined();
-      expect(unclosedComment("packages/x/src/a.mdx", "<!-- open")).toBeUndefined();
+      expect(unreadStructure(file, "<!-- closed --><p>x</p>")).toEqual([]);
+      expect(unreadStructure(file, '<script>const s = "<!--";</script>')).toEqual([]);
+      expect(unreadStructure("packages/x/src/a.ts", "const s = '<!--';")).toEqual([]);
     });
   });
 
@@ -393,9 +454,10 @@ describe("moduleSources (#1662)", () => {
       ]);
     });
 
-    it("opens no code span or fence after an .mdx expression it cannot bound, and still reads ESM there", () => {
+    // An expression read whole ends where MDX ends it: the code span and fence after it are Markdown again.
+    it("reads the code spans and fences after an .mdx expression it reads, and ESM there", () => {
       const text = [
-        "{a < b}",
+        "{a < b && <p>Don't</p>}",
         "",
         '`import("./span.js")`',
         "",
@@ -407,11 +469,9 @@ describe("moduleSources (#1662)", () => {
         "",
       ].join("\n");
 
-      expect(markupLoads(mdx, text)).toEqual([
-        { call: "import(", line: 3 },
-        { call: "require(", line: 6 },
-      ]);
+      expect(markupLoads(mdx, text)).toEqual([]);
       expect(specifiers(mdx, text)).toEqual(["@iracedeck/iracing-sdk"]);
+      expect(unreadStructure(mdx, text)).toEqual([]);
     });
 
     it("keeps an escaped brace and a code span holding braces as Markdown", () => {
@@ -555,12 +615,229 @@ describe("moduleSources (#1662)", () => {
 
       expect(source).toContain('import A from "./a.js";');
       expect(source).not.toContain("iracing-sdk");
+      // MDX fails to compile a block that does not parse, so it is reported, never read as code that runs.
+      expect(unreadStructure("packages/website/src/content/docs/ends.mdx", page)).toEqual([
+        "an import or export block on line 3 that does not parse as module code: fix it so it can be read",
+      ]);
     });
 
-    it("reads no import inside a block a shorter or other-character fence does not close", () => {
+    it("reads no import inside a block a shorter or other-character fence does not close, and reports it", () => {
       const text = ["````md", "```", 'import { y } from "@iracedeck/iracing-sdk";', "~~~~", "", "x", ""].join("\n");
 
       expect(specifiers("packages/website/src/content/docs/fences.mdx", text)).toEqual([]);
+      expect(unreadStructure("packages/website/src/content/docs/fences.mdx", text)).toEqual([
+        "a code fence opened on line 1 that never closes, which hides the rest of the page: close it so what " +
+          "follows can be read",
+      ]);
+    });
+
+    describe("its template expressions and JSX, read whole (#1662)", () => {
+      const page = "packages/website/src/content/docs/planted.mdx";
+      /** downloads.mdx line 19's shape: a flow expression holding JSX with an attribute and a nested expression. */
+      const badge = '{version && <p class="version-badge">Latest release: <strong>{version}</strong></p>}';
+      /** A fenced example after `head`, whose import line opens `opener`, then a real import. */
+      const fencedThenReal = (head, opener) =>
+        [
+          head,
+          "",
+          "```md",
+          `import { ECOSYSTEMS } from "../../data/brands"; ${opener}`,
+          "```",
+          "",
+          'import X from "@iracedeck/iracing-actions";',
+          "",
+        ].join("\n");
+
+      // qa's reproducers: the fence after an expression with JSX is a fence, so its comment, string or
+      // template opener hides nothing, and the real import after it is read.
+      it.each([
+        ["a comment opener", "/*"],
+        ["a string opener", '+ "'],
+        ["a single-quote string opener", "+ '"],
+        ["a template opener", "+ `"],
+      ])("reads the import after a fenced example holding %s, after an expression with JSX", (_name, opener) => {
+        const text = fencedThenReal(badge, opener);
+
+        expect(specifiers(page, text)).toEqual(["@iracedeck/iracing-actions"]);
+        expect(joined(page, text)).not.toContain("ECOSYSTEMS");
+        expect(unreadStructure(page, text)).toEqual([]);
+      });
+
+      it("reads no import inside a fence after an expression with JSX", () => {
+        const text = [badge, "", "```md", 'import { ECOSYSTEMS } from "../../data/brands";', "```", ""].join("\n");
+
+        expect(specifiers(page, text)).toEqual([]);
+        expect(markupLoads(page, text)).toEqual([]);
+        expect(unreadStructure(page, text)).toEqual([]);
+      });
+
+      it.each([
+        ["a comparison", "{a < b}"],
+        ["a comparison with no space", "{a<b}"],
+        ["an element alone", "{<b>x</b>}"],
+        ["an apostrophe and an expression in element text", `{v && <p class="x">Don't {v}</p>}`],
+        ["a quote in element text", '{v && <p>say "hi</p>}'],
+        ["a fragment", "{<>a {b} it's</>}"],
+        ["a self-closing element with an expression attribute", "{<Foo bar={1} />}"],
+        ["an element as an attribute value", "{<Foo icon=<b>x</b> />}"],
+        ["a regular expression and a division", "{/}/.test(s) && a / b}"],
+        ["an arrow function's block", "{items.map((i) => { return <li key={i}>{i}</li>; })}"],
+        ["a template literal holding a brace", "{`}${'{'}`}"],
+        ["a comment holding a brace", "{/* } */}"],
+        ["a JSX tag in prose with a brace in a quoted value", 'Some <A t="{" /> text.'],
+      ])("ends %s where MDX does, so the fenced example after it hides nothing", (_name, head) => {
+        const text = fencedThenReal(head, "/*");
+
+        expect(specifiers(page, text), head).toEqual(["@iracedeck/iracing-actions"]);
+        expect(unreadStructure(page, text), head).toEqual([]);
+      });
+
+      // An import line inside a multi-line expression is JavaScript's, never ESM.
+      it("reads no ESM inside an expression that spans lines", () => {
+        const text = [
+          "{`",
+          'import "./in-template.js"; /*',
+          "`}",
+          "",
+          'import X from "@iracedeck/iracing-actions";',
+          "",
+        ].join("\n");
+
+        expect(specifiers(page, text)).toEqual(["@iracedeck/iracing-actions"]);
+        expect(unreadStructure(page, text)).toEqual([]);
+      });
+
+      it.each([
+        [
+          "an end tag that closes another element",
+          "{v && <p>x</div>}",
+          "an end tag that closes no open <p>, on line 1",
+        ],
+        ["an element never closed", "{v && <p>x}", "a } in element text, on line 1"],
+        ["a string never closed", '{"open', "a string that never closes, on line 1"],
+        ["a template literal never closed", "{`open}", "a template literal that never closes, on line 1"],
+        ["a brace never closed", "{a", "an expression that never closes, on line 1"],
+        ["a < that is no element", "{a && < b}", "a < that opens neither a comparison nor an element, on line 1"],
+      ])("reports an expression it cannot read: %s", (_name, head, stop) => {
+        const text = `${head}\n\nProse.\n`;
+
+        expect(unreadStructure(page, text), head).toEqual([
+          `a template expression opened on line 1 that this check cannot read (${stop}), so what follows it is ` +
+            "not read either: write it so its end can be found",
+        ]);
+      });
+
+      it("reports a JSX tag in prose it cannot read", () => {
+        expect(unreadStructure(page, 'Some <A t="open /> text.\n')).toEqual([
+          "a JSX tag opened on line 1 that this check cannot read (an attribute value in a <A> tag that never " +
+            "closes, on line 1), so what follows it is not read either: write it so its end can be found",
+        ]);
+      });
+
+      // MDX ends a code span at the matching run anywhere in its paragraph, so a `{` in one may be no expression.
+      it("reports a code span that may run onto a later line, and reads one-line spans and lone backticks", () => {
+        const text = ["Text `a", '{` more {"}"} and', "", 'import X from "@iracedeck/iracing-actions";', ""].join("\n");
+
+        expect(unreadStructure(page, text)).toContain(
+          "a code span opened on line 1 that may run onto a later line, which this check does not read: keep each " +
+            "code span on one line",
+        );
+        expect(unreadStructure(page, "One ` lone backtick.\n\nAnother ` in the next paragraph.\n")).toEqual([]);
+        expect(unreadStructure(page, "A `span` and ``a ` span``.\n")).toEqual([]);
+      });
+    });
+
+    describe("what it cannot tell the block structure of (#1662)", () => {
+      const page = "packages/website/src/content/docs/planted.mdx";
+
+      // MDX reads ESM only where a block starts: straight after a line of text it is that paragraph's text,
+      // and reading it as code would let its comment opener hide the real import after it.
+      it("reports an import straight after a line of text, and still reads the real import after it", () => {
+        const text = [
+          "Some paragraph",
+          'import "./y.js"; /*',
+          "",
+          'import X from "@iracedeck/iracing-actions";',
+          "",
+        ].join("\n");
+
+        expect(unreadStructure(page, text)).toEqual([
+          "an import or export on line 2 straight after a line of text, which MDX may read as that text rather " +
+            "than as module code: put a blank line before it",
+        ]);
+        // It ends at the blank line, open or not, so the real import is read as a block of its own.
+        expect(specifiers(page, text)).toEqual(["./y.js", "@iracedeck/iracing-actions"]);
+      });
+
+      it("reads an import right after the frontmatter, a closing fence or another import as ESM", () => {
+        const text = [
+          "---",
+          "title: x",
+          "---",
+          'import A from "./a.js";',
+          'import B from "./b.js";',
+          "",
+          "```md",
+          "x",
+          "```",
+          'import C from "./c.js";',
+          "",
+        ].join("\n");
+
+        expect(specifiers(page, text)).toEqual(["./a.js", "./b.js", "./c.js"]);
+        expect(unreadStructure(page, text)).toEqual([]);
+      });
+
+      // A list item's fence ends where the item does, at a line indented less than its content.
+      it("reports an indented fence whose content is indented less than it", () => {
+        const text = ["- item", "  ```js", "  code", 'import X from "@iracedeck/iracing-actions";', "  ```", ""].join(
+          "\n",
+        );
+
+        expect(unreadStructure(page, text)).toEqual([
+          "a code fence opened on line 2, indented, whose line 4 is indented less, so a list or other block it " +
+            "sits in may end it there: indent its content as far as its fence",
+        ]);
+        expect(unreadStructure(page, ["- item", "  ```js", "  code", "  ```", ""].join("\n"))).toEqual([]);
+      });
+
+      it("reports an ESM block that never completes", () => {
+        const text = ['import "./a.js";', "", "export const s = `", "", "text", ""].join("\n");
+
+        expect(unreadStructure(page, text)).toEqual([
+          "an import or export block opened on line 3 that never completes, which hides the rest of the page: " +
+            "complete it so what follows can be read",
+        ]);
+      });
+
+      // A block that does not parse is reported and read apart, so its comment opener hides no block after it.
+      it("reads a block that does not parse apart from the rest, so it hides nothing after it", () => {
+        const text = ['import x y "./a.js"; /*', "", 'import X from "@iracedeck/iracing-actions";', ""].join("\n");
+
+        expect(specifiers(page, text)).toContain("@iracedeck/iracing-actions");
+        expect(moduleSources(page, text)).toHaveLength(2);
+        expect(unreadStructure(page, text)).toEqual([
+          "an import or export block on line 1 that does not parse as module code: fix it so it can be read",
+        ]);
+      });
+
+      // MDX compiles every block into one module: a binding one block makes is used in the next.
+      it("reads every ESM block as one module, so a binding carries from block to block", () => {
+        const text = [
+          'import { createRequire as cr } from "node:module";',
+          "",
+          "export const req = cr(import.meta.url);",
+          "",
+          'export const y = req("@iracedeck/iracing-actions");',
+          "",
+        ].join("\n");
+        const sources = moduleSources(page, text);
+
+        expect(sources).toHaveLength(1);
+        expect(sources[0]).toContain("cr(import.meta.url)");
+        expect(sources[0]).toContain('req("@iracedeck/iracing-actions")');
+        expect(sources[0]).toHaveLength(text.length);
+      });
     });
   });
 });

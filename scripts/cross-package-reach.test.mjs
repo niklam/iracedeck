@@ -84,7 +84,7 @@ import {
   moduleSources,
   packageOf,
   trackedPackageSources,
-  unclosedComment,
+  unreadStructure,
 } from "./lib/source-imports.mjs";
 import { trackedPackageDirs } from "./lib/workspace-packages.mjs";
 
@@ -919,9 +919,11 @@ const LITERAL_EXTENSION = /^[\w-]+$/;
  * `import(` or `require(` in an `.astro` component's or `.mdx` page's markup
  * (`markupLoads`), since Astro and MDX evaluate a template expression and this
  * does not parse one. An `.astro` `<script src>` that names a module is read as
- * the import of it (`moduleSources`), since Astro bundles what it names. An
- * `.astro` HTML comment that never closes fails too (`unclosedComment`), since
- * it hides the rest of the file.
+ * the import of it (`moduleSources`), since Astro bundles what it names. A
+ * structure the reader of an `.astro` component or `.mdx` page cannot read
+ * fails too (`unreadStructure`): an HTML comment, `<script>` or code fence that
+ * never closes, a template expression or tag whose end it cannot find, an
+ * `import` MDX may read as text, since each may hide what follows it.
  *
  * @param {object} input
  * @param {string} input.file repo-relative, `/`-separated
@@ -944,14 +946,7 @@ export function runtimeImports({ file, source: text }) {
         `the module code (an .astro frontmatter or <script>, an .mdx import) so it can be followed`,
     );
   }
-  const openComment = unclosedComment(file, text);
-
-  if (openComment !== undefined) {
-    unread.push(
-      `an HTML comment opened on line ${openComment} that never closes, which hides the rest of the file: close ` +
-        "it with --> so what follows can be read",
-    );
-  }
+  unread.push(...unreadStructure(file, text));
 
   return { loads, unread };
 }
@@ -2175,6 +2170,91 @@ describe("the runtime-closure check itself (positive controls, #1662)", () => {
         "load in the module code (an .astro frontmatter or <script>, an .mdx import) so it can be followed",
     ]);
     expect(walk({ [page]: 'Prose `import("./client.js")` in a code span.\n' }, page).problems).toEqual([]);
+  });
+
+  // qa's false negative: a fence after downloads.mdx's line-19 expression, which holds JSX, was read as module
+  // code, so the comment its example opened hid the real import after it (#1662).
+  describe("a fenced example after downloads.mdx's line-19 expression", () => {
+    const page = "packages/website/src/content/docs/planted.mdx";
+    const badge = readRepoFile("packages/website/src/content/docs/downloads.mdx")
+      .split(/\r?\n/)
+      .find((line) => line.startsWith("{version && <p "));
+    const planted = (tail) =>
+      [
+        "---",
+        "title: Planted",
+        "---",
+        "",
+        'export const version = "1.0.0";',
+        "",
+        badge,
+        "",
+        "```md",
+        'import { ECOSYSTEMS } from "../../data/brands"; /*',
+        "```",
+        ...tail,
+      ].join("\n");
+
+    it("copies the shape it guards: an expression holding an element with an attribute and an expression", () => {
+      expect(badge).toMatch(/^\{version && <p class="[^"]+">.*\{version\}.*<\/p>\}$/);
+    });
+
+    it("fails the real import after it, naming it, and passes the fenced one alone", () => {
+      expect(walk({ [page]: planted(["", 'import X from "@iracedeck/iracing-actions";', ""]) }, page).problems).toEqual(
+        [
+          expect.stringMatching(
+            /^packages\/website\/src\/content\/docs\/planted\.mdx imports @iracedeck\/iracing-actions: /,
+          ),
+        ],
+      );
+      expect(walk({ [page]: planted([""]) }, page)).toEqual({ visited: [page], problems: [] });
+    });
+
+    it("fails an expression it cannot read rather than read what follows it as code", () => {
+      const source = planted(["", 'import X from "@iracedeck/iracing-actions";', ""]).replace("</p>}", "</div>}");
+
+      expect(walk({ [page]: source }, page).problems).toContain(
+        `${page} makes a template expression opened on line 7 that this check cannot read (an end tag that closes ` +
+          "no open <p>, on line 7), so what follows it is not read either: write it so its end can be found",
+      );
+    });
+  });
+
+  // MDX reads ESM only where a block starts: straight after a line of text, an import line is that text.
+  it("fails an .mdx import straight after a line of text, which may hide the real import after it", () => {
+    const page = "packages/website/src/content/docs/planted.mdx";
+    const source = [
+      "Some paragraph",
+      'import "./y.js"; /*',
+      "",
+      'import X from "@iracedeck/iracing-actions";',
+      "",
+    ].join("\n");
+
+    expect(walk({ [page]: source, "packages/website/src/content/docs/y.js": "" }, page).problems).toEqual([
+      `${page} makes an import or export on line 2 straight after a line of text, which MDX may read as that text ` +
+        "rather than as module code: put a blank line before it",
+      expect.stringMatching(
+        /^packages\/website\/src\/content\/docs\/planted\.mdx imports @iracedeck\/iracing-actions: /,
+      ),
+    ]);
+  });
+
+  // MDX compiles its ESM blocks into one module, so a require function one block makes loads in the next.
+  it("follows a require function an .mdx block makes into the next block", () => {
+    const page = "packages/website/src/content/docs/planted.mdx";
+    const source = [
+      'import { createRequire as cr } from "node:module";',
+      "",
+      "export const req = cr(import.meta.url);",
+      "",
+      'export const sdk = req("@iracedeck/iracing-sdk");',
+      "",
+    ].join("\n");
+
+    expect(walk({ [page]: source }, page).problems).toEqual([
+      expect.stringMatching(/^packages\/website\/src\/content\/docs\/planted\.mdx imports @iracedeck\/iracing-sdk: /),
+    ]);
   });
 
   it("passes a missing data file, which loads nothing, and still fails a missing component or module", () => {
