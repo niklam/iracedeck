@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://coderabbit.ai"><img src="https://img.shields.io/coderabbit/prs/github/niklam/iracedeck?utm_source=oss&utm_medium=github&utm_campaign=niklam%2Firacedeck&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews" alt="CodeRabbit Pull Request Reviews"></a>
+  <a href="https://coderabbit.ai"><img src="https://img.shields.io/coderabbit/prs/github/iracedeck/iracedeck?utm_source=oss&utm_medium=github&utm_campaign=iracedeck%2Firacedeck&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews" alt="CodeRabbit Pull Request Reviews"></a>
   <a href="https://discord.gg/c6nRYywpah"><img src="https://img.shields.io/discord/1477659500851888219?logo=discord&logoColor=white&label=Discord&color=5865F2" alt="Discord"></a>
 </p>
 
@@ -70,7 +70,7 @@
 [CONTRIBUTING.md](CONTRIBUTING.md) has the full setup and the checks to run before a pull request.
 
 ```bash
-git clone https://github.com/niklam/iracedeck.git
+git clone https://github.com/iracedeck/iracedeck.git
 cd iracedeck
 pnpm install
 pnpm build

@@ -17,7 +17,7 @@ description: How to clone, build, and run iRaceDeck locally for development.
 
 ```bash
 # Clone the repository
-git clone https://github.com/niklam/iracedeck.git
+git clone https://github.com/iracedeck/iracedeck.git
 cd iracedeck
 
 # Install dependencies

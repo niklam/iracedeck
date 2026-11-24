@@ -113,4 +113,4 @@ The capture only records iRaceDeck itself, never iRacing or anything else on you
 ## Need more help?
 
 - **Discord**: [Join the community](https://discord.gg/c6nRYywpah) for real-time support
-- **GitHub Issues**: [Open an issue](https://github.com/niklam/iracedeck/issues/new) for bug reports or feature requests
+- **GitHub Issues**: [Open an issue](https://github.com/iracedeck/iracedeck/issues/new) for bug reports or feature requests
