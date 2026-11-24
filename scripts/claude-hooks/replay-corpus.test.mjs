@@ -518,12 +518,23 @@ describe("side effects while judging", () => {
 
   // #1659 review: the promise API, the async writers, the copy and link
   // writers, and an open for writing escaped the list.
-  const never = path.join(os.tmpdir(), "replay-corpus-never-written.txt");
-  // A writer that got through would leave its file: removed, so it fails once.
+  // Every fixture lives in a folder the test owns, and only that folder is
+  // cleaned (CodeRabbit CLI on #1659). A writer that got through would leave
+  // its file there, or write to the fixture the descriptor writers are given.
+  let owned;
+  let never;
+  let fixture;
+  beforeAll(() => {
+    owned = fs.mkdtempSync(path.join(os.tmpdir(), "replay-corpus-writers-"));
+    never = path.join(owned, "never-written.txt");
+    fixture = path.join(owned, "fixture.txt");
+  });
+  afterAll(() => fs.rmSync(owned, { recursive: true, force: true }));
   afterEach(async () => {
     await new Promise((r) => setTimeout(r, 0));
-    for (const p of [never, `${never}.2`]) fs.rmSync(p, { recursive: true, force: true });
+    for (const n of fs.readdirSync(owned)) fs.rmSync(path.join(owned, n), { recursive: true, force: true });
   });
+  const x = () => Buffer.from("x");
   it.each([
     ["fs.promises.writeFile", () => fs.promises.writeFile(never, "x")],
     ["fs.promises.appendFile", () => fs.promises.appendFile(never, "x")],
@@ -541,20 +552,30 @@ describe("side effects while judging", () => {
     ["fs.cp", () => fs.cp(never, `${never}.2`, () => {})],
     ["fs.cpSync", () => fs.cpSync(never, `${never}.2`)],
     ["fs.symlinkSync", () => fs.symlinkSync(never, `${never}.2`)],
-    ["fs.writeSync", () => fs.writeSync(1, "x")],
+    ["fs.writeSync", (fd) => fs.writeSync(fd, "x")],
+    ["fs.writevSync", (fd) => fs.writevSync(fd, [x()])],
+    ["fs.writev", (fd) => fs.writev(fd, [x()], () => {})],
     ["fs.openSync for writing", () => fs.openSync(never, "w")],
     ["fs.openSync for appending", () => fs.openSync(never, "a")],
     ["fs.openSync for reading and writing", () => fs.openSync(never, "r+")],
     ["fs.openSync with a numeric write flag", () => fs.openSync(never, fs.constants.O_WRONLY)],
     ["fs.openSync with a numeric create flag", () => fs.openSync(never, fs.constants.O_RDONLY | fs.constants.O_CREAT)],
-  ])("make %s throw while judging", (_, write) => {
-    const restore = forbidSideEffects();
+  ])("make %s throw while judging", async (_, write) => {
+    fs.writeFileSync(fixture, "");
+    const fd = fs.openSync(fixture, "r+");
     try {
-      expect(write).toThrow(/was called while judging|for writing while judging/);
+      const restore = forbidSideEffects();
+      try {
+        expect(() => write(fd)).toThrow(/was called while judging|for writing while judging/);
+      } finally {
+        restore();
+      }
+      await new Promise((r) => setTimeout(r, 0));
+      expect(fs.existsSync(never)).toBe(false);
+      expect(fs.readFileSync(fixture, "utf8")).toBe("");
     } finally {
-      restore();
+      fs.closeSync(fd);
     }
-    expect(fs.existsSync(never)).toBe(false);
   });
 
   it("tell an open's flags that write from those that read", () => {

@@ -517,9 +517,10 @@ const FS_WRITERS = Object.freeze({
     "symlinkSync",
     "linkSync",
     "writeSync",
+    "writevSync",
     "truncateSync",
   ],
-  callback: ["write", "truncate"],
+  callback: ["write", "writev", "truncate"],
 });
 
 /**
