@@ -1208,3 +1208,44 @@ describe("the census of a curly-quoted command", () => {
     expect(flags("Bash", "echo 'a\u2019; eval x; \u2018b' # pwsh")).not.toContain("refused");
   });
 });
+
+// CodeRabbit on 164de4f80: a read given a flag that writes opens the file for
+// writing on Node 24's fast path, past the open guard, and truncates it.
+describe("a read with a flag that writes, while judging", () => {
+  it.each([
+    ["fs.readFileSync", (f) => fs.readFileSync(f, { flag: "w+" })],
+    ["fs.readFileSync with an append flag", (f) => fs.readFileSync(f, { flag: "a+", encoding: "utf8" })],
+    ["fs.readFile", (f) => fs.readFile(f, { flag: "w+" }, () => {})],
+    ["fs.promises.readFile", (f) => fs.promises.readFile(f, { flag: "w+" })],
+    ["fs.createReadStream", (f) => fs.createReadStream(f, { flags: "w+" })],
+  ])("%s throws and the file keeps its contents", (_, read) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "replay-corpus-readflag-"));
+    const file = path.join(dir, "kept.txt");
+    try {
+      fs.writeFileSync(file, "original");
+      const restore = forbidSideEffects();
+      let threw;
+      try {
+        read(file);
+      } catch (e) {
+        threw = e;
+      } finally {
+        restore();
+      }
+      expect(threw?.message).toMatch(/for writing while judging/);
+      expect(fs.readFileSync(file, "utf8")).toBe("original");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  it("leaves a plain read alone", () => {
+    const restore = forbidSideEffects();
+    try {
+      expect(
+        fs.readFileSync(path.join(import.meta.dirname, "pre-bash.mjs"), { encoding: "utf8", flag: "r" }),
+      ).toContain("checkBash");
+    } finally {
+      restore();
+    }
+  });
+});

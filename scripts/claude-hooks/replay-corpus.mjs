@@ -686,7 +686,9 @@ export function opensForWriting(flags, constants) {
  * that reached past `ctx` would otherwise run git or gh, and differ by what
  * the machine answered. The writers are `fs`'s sync, callback, stream and
  * promise ones ({@link FS_WRITERS}), and an `open` whose flags write ({@link
- * opensForWriting}); an `open` for reading still works.
+ * opensForWriting}); an `open` for reading still works. So does a read, but
+ * one given a flag that writes (`readFileSync(f, { flag: "w+" })`), which
+ * Node 24 opens past `open` and truncates, throws (CodeRabbit on 164de4f80).
  */
 export function forbidSideEffects() {
   const require = createRequire(import.meta.url);
@@ -715,6 +717,17 @@ export function forbidSideEffects() {
   replace(fs, "openSync", opener("openSync", fs.openSync));
   replace(fs, "open", opener("open", fs.open));
   replace(fs.promises, "open", opener("fs.promises.open", fs.promises.open));
+  // A read passes through unless its options name a flag that writes.
+  const reader = (name, read, key) =>
+    function (path, options, ...rest) {
+      if (options && typeof options === "object" && opensForWriting(options[key], fs.constants))
+        throw new Error(`replay-corpus: ${name} opened a file for writing while judging`);
+      return read.call(this, path, options, ...rest);
+    };
+  replace(fs, "readFileSync", reader("readFileSync", fs.readFileSync, "flag"));
+  replace(fs, "readFile", reader("readFile", fs.readFile, "flag"));
+  replace(fs.promises, "readFile", reader("fs.promises.readFile", fs.promises.readFile, "flag"));
+  replace(fs, "createReadStream", reader("createReadStream", fs.createReadStream, "flags"));
   syncBuiltinESMExports();
   return () => {
     for (const [mod, name, fn] of saved.reverse()) mod[name] = fn;
