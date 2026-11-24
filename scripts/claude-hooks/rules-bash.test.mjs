@@ -5294,6 +5294,14 @@ describe("a shell word glued to its redirection (#1659)", () => {
   it.each([`bash</dev/null x.sh`, `bash</dev/null -c 'pnpm build'`])("passes %s", (c) => passes(c));
 });
 
+// CodeRabbit CLI on #1659: a later `exec` that surely runs resets the stdin.
+describe("an exec chain's last stdin (#1659)", () => {
+  it("passes a stdin the chain resets, and refuses one it may not", () => {
+    passes(`exec <<< ':' && exec </dev/null && bash`);
+    expect(stopped(`exec <<< 'gh pr merge 7 --squash' || exec </dev/null; bash`)).toContain("from a here-string");
+  });
+});
+
 // CodeRabbit CLI on #1659: a pipe that feeds another command beside a stdin
 // shell is no pipe into it; the enclosing redirection decides.
 describe("the pipe that feeds a stdin shell (#1659)", () => {

@@ -2412,3 +2412,22 @@ describe("the stopping rule: the pipe that feeds a stdin shell (#1659 CodeRabbit
     [`cat x | { case x in x) bash;; esac; }`, STDIN],
   ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
 });
+
+// CodeRabbit CLI on #1659: a later `exec` that surely runs, in the same
+// shell, resets the stdin an earlier one set.
+describe("the stopping rule: an exec chain's last stdin (#1659 CodeRabbit)", () => {
+  const HERE_STRING = "a shell reading its script from a here-string";
+  it.each([
+    `exec <<< ':' && exec </dev/null && bash`,
+    `exec <<< ':'; exec < in.txt; bash`,
+    `exec 0<<<x\nexec 0</dev/null\nbash`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+  it.each([
+    `exec <<< ':' || exec </dev/null; bash`,
+    `exec <<< ':'; ( exec </dev/null ); bash`,
+    `exec <<< ':'; { exec </dev/null; }; bash`,
+    `exec <<< ':'; if true; then exec </dev/null; fi; bash`,
+    `exec </dev/null; exec <<< ':'; bash`,
+    `exec <<< ':'; true | exec </dev/null; bash`,
+  ])("refuses %s", (c) => expect(lexer.refusedForms(c)[0]?.form).toBe(HERE_STRING));
+});

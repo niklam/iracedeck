@@ -1656,6 +1656,13 @@ function assignsAt(t, from, s) {
 const CLOSER = /(?:(?<=^|[\s;&|])(?:\}|done|fi|esac)|\))(?=[\s<0-9]|$)/g;
 /** An `exec` word, whose redirections with no program apply to the rest of its shell ({@link fedStarts}). */
 const EXEC_WORD = /(?<=^|[\s;&|(])exec(?=\s)/g;
+/**
+ * Text between two `exec`s across which the later one may not run, or not in
+ * the same shell (`fedStarts`' `stdinAround`): a pipe, `||`, a group, a
+ * subshell or a compound command's word.
+ */
+const UNSURE_CHAIN =
+  /[|(){}\x60]|\$\(|(?:^|[\s;&])(?:if|then|else|elif|fi|while|until|for|select|do|done|case|esac|function)(?=[\s;&]|$)/;
 /** The refused form of each stdin kind ({@link readCommand}) a stdin shell may not read its script from. */
 const STREAM_FORMS = Object.freeze({
   hereString: REFUSED.hereString,
@@ -2065,12 +2072,21 @@ function fedStarts(command, text, fed, programs) {
       const found = formOf(r.stdin, `${m[0]} <…`);
       if (found) return found;
     }
+    // The last `exec` that sets stdin wins, but one that resets it to a file
+    // only when it surely runs in the same shell after the one it overrides:
+    // nothing but `;`, `&&`, newlines and plain commands between them, no
+    // `|`, `||`, group, subshell or compound command (CodeRabbit CLI on #1659).
+    let found;
+    let after = 0;
     for (const m of text.slice(0, p).matchAll(EXEC_WORD)) {
       const r = commandOf(NO_OPTIONS, text, m.index + m[0].length, p);
-      const found = r.program === undefined && formOf(r.stdin, "exec <…;");
-      if (found) return found;
+      if (r.program !== undefined || r.stdin === "pipe") continue;
+      const stream = formOf(r.stdin, "exec <…;");
+      if (stream) found = stream;
+      else if (found && !UNSURE_CHAIN.test(text.slice(after, m.index))) found = undefined;
+      after = m.index + m[0].length;
     }
-    return undefined;
+    return found;
   };
   // The program word `[d, e)` of a string's level `L`: refused when it is not
   // its plain name, when it is `eval` (PowerShell's too, in its string) or a
