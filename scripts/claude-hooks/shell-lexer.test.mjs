@@ -2492,3 +2492,24 @@ describe("the stopping rule: an exec reset that surely runs in this shell (#1659
     `exec <<< x; ls; exec < in.txt; bash`,
   ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
 });
+
+// PR #1798 review: two input redirections glued together are two, and the
+// last one wins.
+describe("the stopping rule: glued redirections, the last one winning (#1659 PR review)", () => {
+  const HERE_STRING = "a shell reading its script from a here-string";
+  it.each([`bash <<<':'</dev/null`, `bash <<<"a<b"</dev/null`, `bash 0<<<':'0</dev/null`])(
+    "reads and refuses nothing in %s",
+    (c) => expect(lexer.refusedForms(c)).toEqual([]),
+  );
+  it.each([
+    [`bash </dev/null<<<'gh pr merge 7'`, HERE_STRING],
+    [`bash <<<'a<b'`, HERE_STRING],
+    [`bash </dev/null< <(echo gh pr merge 7)`, "a shell reading its script from a process substitution"],
+    [`bash <in.txt<&3`, "a shell reading its script from a descriptor"],
+  ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+  it("keeps a string after glued redirections in its place", () => {
+    const words = ["<<<':'</dev/null", "-c", "'gh pr merge 7'"];
+    let i = 0;
+    expect(lexer.readCommand(lexer.shellSpec("bash"), () => words[i++])).toMatchObject({ string: 2, stdin: "other" });
+  });
+});

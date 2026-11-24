@@ -5294,6 +5294,14 @@ describe("a shell word glued to its redirection (#1659)", () => {
   it.each([`bash</dev/null x.sh`, `bash</dev/null -c 'pnpm build'`])("passes %s", (c) => passes(c));
 });
 
+// PR #1798 review: two glued input redirections are two, the last one winning.
+describe("glued input redirections (#1659)", () => {
+  it("passes a here-string a file redirect overrides, and refuses the other order", () => {
+    passes(`bash <<<':'</dev/null`);
+    expect(stopped(`bash </dev/null<<<'gh pr merge 7 --squash'`)).toContain("from a here-string");
+  });
+});
+
 // CodeRabbit CLI round 2 on #1659: a word naming an inherited property threw
 // out of the lexer, which checkBash reported as a hook error.
 describe("a group holding a word an object inherits (#1659)", () => {

@@ -720,6 +720,8 @@ const WORD_REST = new RegExp(WORD_PIECES, "y");
 /** A redirection word ({@link commandOf}); {@link BARE_REDIRECTION} is one whose target is the next word. */
 const REDIRECTION = /^\d*(?:[<>]|&>)/;
 const BARE_REDIRECTION = /^\d*(?:[<>]{1,3}-?|[<>]&|&>>?|>\|)$/;
+/** A redirection word's operator, its descriptor included, ahead of its glued target ({@link readCommand}). */
+const REDIRECT_OPERATOR = /^\d*(?:<<<|<<-?|[<>]&|&>>?|>>|>\||<>|<|>)/;
 /** A process substitution, `<(…)` or `>(…)`: a word naming a stream, never a redirection (#1659). */
 const PROCESS_SUBSTITUTION = /^[<>]\(/;
 
@@ -787,6 +789,28 @@ function pathStream(p) {
   const fd = /^\/(?:dev|proc\/[^/]+)\/fd\/(.+)$/.exec(resolved);
   if (!fd) return undefined;
   return fd[1] === "0" ? "stdin" : "descriptor";
+}
+
+/**
+ * Where a redirection's `target` word ends when another redirection is glued
+ * to it (`':'</dev/null`, `/dev/null<<<'…'`; {@link readCommand}, PR #1798
+ * review): at its first `<` or `>` outside quotes, an escape, a command
+ * substitution and a process substitution, which stay whole; `-1` for one
+ * that runs to its end.
+ */
+function targetEnd(target) {
+  for (let i = 0; i < target.length;) {
+    const c = target[i];
+    if ((c === "<" || c === ">") && target[i + 1] === "(") i = closeAt(target, i + 2, "(");
+    else if (c === "<" || c === ">") {
+      if (i > 0) return i;
+      i++;
+    } else {
+      const e = pieceEnd(target, i);
+      i = e < 0 ? target.length : Math.max(e, i + 1);
+    }
+  }
+  return -1;
 }
 
 /**
@@ -876,7 +900,12 @@ export function readCommand(spec, next) {
   let tail = false;
   let scanned = 0;
   let k = -1;
+  // What is left of a word once a redirection target glued to another
+  // redirection is cut off it (`<<<':'</dev/null`), read before the next word
+  // and counted as part of the word it came from (PR #1798 review).
+  const rest = [];
   const take = () => {
+    if (rest.length) return rest.shift();
     const w = next();
     if (w !== undefined) k++;
     return w;
@@ -885,7 +914,13 @@ export function readCommand(spec, next) {
     const input = INPUT_REDIRECT.exec(w);
     if (input || (REDIRECTION.test(w) && !PROCESS_SUBSTITUTION.test(w))) {
       const bare = input ? input[0].length === w.length : BARE_REDIRECTION.test(w);
-      const target = bare ? take() : w.slice(input ? input[0].length : 0);
+      let target = bare ? take() : w.slice((input ?? REDIRECT_OPERATOR.exec(w))?.[0].length ?? 0);
+      // The target ends at the next unquoted operator: the last redirection wins.
+      const end = target === undefined ? -1 : targetEnd(target);
+      if (end >= 0) {
+        rest.unshift(target.slice(end));
+        target = target.slice(0, end);
+      }
       if (input) out.stdin = stdinFrom(input[1], target, out.stdin);
       if (target === undefined) break;
       continue;
