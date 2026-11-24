@@ -84,8 +84,8 @@ describe("editTargets", () => {
       { ref: "5", repo: undefined },
       { ref: url, repo: "other/repo" },
     ]);
-    expect(editTargets(edit({ issues: ["5", url], repo: "niklam/iracedeck" }), "x/y")).toEqual([
-      { ref: "5", repo: "niklam/iracedeck" },
+    expect(editTargets(edit({ issues: ["5", url], repo: "iracedeck/iracedeck" }), "x/y")).toEqual([
+      { ref: "5", repo: "iracedeck/iracedeck" },
       { ref: url, repo: "other/repo" },
     ]);
     expect(editTargets(edit({ issues: ["5"] }), "git@github.com:Other/Repo.git")).toEqual([
@@ -103,8 +103,8 @@ describe("editTargets", () => {
 
 describe("issueNumberOfUrl", () => {
   it("reads the number of an issue URL only", () => {
-    expect(issueNumberOfUrl("https://github.com/niklam/iracedeck/issues/1574")).toBe(1574);
-    expect(issueNumberOfUrl("https://github.com/niklam/iracedeck/pull/1574")).toBeUndefined();
+    expect(issueNumberOfUrl("https://github.com/iracedeck/iracedeck/issues/1574")).toBe(1574);
+    expect(issueNumberOfUrl("https://github.com/iracedeck/iracedeck/pull/1574")).toBeUndefined();
     expect(issueNumberOfUrl(undefined)).toBeUndefined();
   });
 });

@@ -148,13 +148,15 @@ describe("post rules", () => {
 
   describe("repository scoping (#1527)", () => {
     it("reads the repository of an issue or PR URL, any case, and nothing else", () => {
-      expect(repoOfUrl("https://github.com/niklam/iracedeck/issues/1527")).toBe("niklam/iracedeck");
+      expect(repoOfUrl("https://github.com/iracedeck/iracedeck/issues/1527")).toBe("iracedeck/iracedeck");
       expect(repoOfUrl("https://github.com/Other/Repo/pull/5/files")).toBe("Other/Repo");
       expect(repoOfUrl("5")).toBeUndefined();
       expect(repoOfUrl("feature/5-x")).toBeUndefined();
       expect(repoOfUrl(undefined)).toBeUndefined();
-      expect(isHomeRepo("NiklaM/iRaceDeck")).toBe(true);
-      expect(isHomeRepo("niklam/iracedeck-fork")).toBe(false);
+      expect(isHomeRepo("IRaceDeck/iRaceDeck")).toBe(true);
+      // The home before the move to the organization (#1799): GitHub redirects it, but it is not home.
+      expect(isHomeRepo("niklam/iracedeck")).toBe(false);
+      expect(isHomeRepo("iracedeck/iracedeck-fork")).toBe(false);
       expect(isHomeRepo(undefined)).toBe(false);
     });
 
@@ -262,10 +264,12 @@ describe("post rules", () => {
       expect(mergeRepo({ ref: "5" }, "")).toBeUndefined();
       expect(mergeRepo({ repo: "github.com/c/d" })).toBe("c/d");
       expect(mergeRepo({ repo: "https://github.com/c/d.git" })).toBe("c/d");
-      expect(mergeRepo({ repo: "git@github.com:niklam/iracedeck.git" })).toBe("niklam/iracedeck");
-      expect(mergeRepo({ repo: "ssh://git@github.com/niklam/iracedeck.git" })).toBe("niklam/iracedeck");
-      expect(mergeRepo({ repo: "git@ghe.example.com:niklam/iracedeck.git" })).toBe("ghe.example.com/niklam/iracedeck");
-      expect(mergeRepo({ repo: "ghe.example.com/niklam/iracedeck" })).toBe("ghe.example.com/niklam/iracedeck");
+      expect(mergeRepo({ repo: "git@github.com:iracedeck/iracedeck.git" })).toBe("iracedeck/iracedeck");
+      expect(mergeRepo({ repo: "ssh://git@github.com/iracedeck/iracedeck.git" })).toBe("iracedeck/iracedeck");
+      expect(mergeRepo({ repo: "git@ghe.example.com:iracedeck/iracedeck.git" })).toBe(
+        "ghe.example.com/iracedeck/iracedeck",
+      );
+      expect(mergeRepo({ repo: "ghe.example.com/iracedeck/iracedeck" })).toBe("ghe.example.com/iracedeck/iracedeck");
     });
 
     it("moves only the closing issues of the home repository", () => {
@@ -278,7 +282,7 @@ describe("post rules", () => {
       expect(
         boardIssues({
           title,
-          closingIssuesReferences: [ref("niklam", "iracedeck", 1527), ref("lint-staged", "lint-staged", 1865)],
+          closingIssuesReferences: [ref("iracedeck", "iracedeck", 1527), ref("lint-staged", "lint-staged", 1865)],
         }),
       ).toEqual({ issues: [1527], foreign: ["lint-staged/lint-staged#1865"] });
       // Only foreign closing issues: the title's own (#n) is the card, as with none.
@@ -291,7 +295,7 @@ describe("post rules", () => {
       expect(
         boardIssues({
           title: "x",
-          closingIssuesReferences: [{ number: 3, repository: { name: "IRaceDeck", owner: { login: "niklam" } } }],
+          closingIssuesReferences: [{ number: 3, repository: { name: "IRaceDeck", owner: { login: "IRACEDECK" } } }],
         }),
       ).toEqual({ issues: [3], foreign: [] });
     });

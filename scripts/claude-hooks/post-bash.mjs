@@ -6,7 +6,7 @@
  * A PowerShell command (#1520) is read as the pre-hook reads it, through
  * `powershellAsBash`, so the same triggers find it.
  *
- * Every board move is for an issue of niklam/iracedeck only (#1527): a card is
+ * Every board move is for an issue of iracedeck/iracedeck only (#1527): a card is
  * found by number, so a filing, a merge or a worktree in another repository
  * would move the iRaceDeck card that shares its number. Those get one line
  * saying the hook left the board alone.

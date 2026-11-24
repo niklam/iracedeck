@@ -122,7 +122,7 @@ export function missingWorkflows(runs) {
  * would move the iRaceDeck card that shares its number: the post-hook acts
  * on this one only.
  */
-export const HOME_REPO = "niklam/iracedeck";
+export const HOME_REPO = "iracedeck/iracedeck";
 
 /** Whether `slug` (`owner/repo`) is {@link HOME_REPO}; GitHub's names are case-insensitive. */
 export const isHomeRepo = (slug) => typeof slug === "string" && slug.toLowerCase() === HOME_REPO;
@@ -211,7 +211,7 @@ export function assignedGhRepo(command, masked = command) {
 /**
  * The plain value starting at `at` in `raw` — a bare word or a quote that
  * expands nothing, ending the word — or `null`. A value that runs on into an
- * expansion or another quote (`niklam/iracedeck$SUFFIX`) is not plain: its
+ * expansion or another quote (`iracedeck/iracedeck$SUFFIX`) is not plain: its
  * literal prefix is not what the shell passes.
  */
 function plainValueAt(raw, at) {

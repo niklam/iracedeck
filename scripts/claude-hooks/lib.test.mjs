@@ -588,45 +588,45 @@ describe("requiredStatusChecks", () => {
       { type: "pull_request", parameters: {} },
       checks("ESLint check", "Typecheck"),
     ]);
-    expect(requiredStatusChecks("niklam/iracedeck", "master", root)).toEqual({
+    expect(requiredStatusChecks("iracedeck/iracedeck", "master", root)).toEqual({
       ok: true,
       contexts: ["ESLint check", "Run tests", "Typecheck"],
     });
     const [cmd, args] = vi.mocked(spawnSync).mock.calls.at(-1);
     expect(cmd).toBe("gh");
-    expect(args).toEqual(["api", "repos/niklam/iracedeck/rules/branches/master?per_page=100"]);
+    expect(args).toEqual(["api", "repos/iracedeck/iracedeck/rules/branches/master?per_page=100"]);
   });
 
   it("keeps a branch's slashes as path segments and encodes the rest", () => {
     answer([checks("Typecheck")]);
-    requiredStatusChecks("niklam/iracedeck", "release/3.9 x", root);
+    requiredStatusChecks("iracedeck/iracedeck", "release/3.9 x", root);
     expect(vi.mocked(spawnSync).mock.calls.at(-1)[1]).toContain(
-      "repos/niklam/iracedeck/rules/branches/release/3.9%20x?per_page=100",
+      "repos/iracedeck/iracedeck/rules/branches/release/3.9%20x?per_page=100",
     );
   });
 
   it("fails for a rule set it cannot read whole, and answers an empty list for one that requires no check", () => {
     answer({}, 1);
-    expect(requiredStatusChecks("niklam/iracedeck", "master", root)).toEqual({
+    expect(requiredStatusChecks("iracedeck/iracedeck", "master", root)).toEqual({
       ok: false,
       reason: "gh could not read the rules of master",
     });
     answer({ message: "Not Found" });
-    expect(requiredStatusChecks("niklam/iracedeck", "master", root)).toMatchObject({ ok: false });
+    expect(requiredStatusChecks("iracedeck/iracedeck", "master", root)).toMatchObject({ ok: false });
     // None required is an answer, not a failure: the gate decides what it means.
     answer([{ type: "deletion" }, checks()]);
-    expect(requiredStatusChecks("niklam/iracedeck", "release/3.9", root)).toEqual({ ok: true, contexts: [] });
+    expect(requiredStatusChecks("iracedeck/iracedeck", "release/3.9", root)).toEqual({ ok: true, contexts: [] });
     answer([]);
-    expect(requiredStatusChecks("niklam/iracedeck", "release/3.9", root)).toEqual({ ok: true, contexts: [] });
+    expect(requiredStatusChecks("iracedeck/iracedeck", "release/3.9", root)).toEqual({ ok: true, contexts: [] });
     answer(Array.from({ length: 100 }, () => checks("Typecheck")));
-    expect(requiredStatusChecks("niklam/iracedeck", "master", root)).toEqual({
+    expect(requiredStatusChecks("iracedeck/iracedeck", "master", root)).toEqual({
       ok: false,
       reason: "master has more rules than one page holds",
     });
     const calls = vi.mocked(spawnSync).mock.calls.length;
-    expect(requiredStatusChecks("niklam/iracedeck/x", "master", root)).toMatchObject({ ok: false });
+    expect(requiredStatusChecks("iracedeck/iracedeck/x", "master", root)).toMatchObject({ ok: false });
     expect(requiredStatusChecks(undefined, "master", root)).toMatchObject({ ok: false });
-    expect(requiredStatusChecks("niklam/iracedeck", "", root)).toMatchObject({ ok: false });
+    expect(requiredStatusChecks("iracedeck/iracedeck", "", root)).toMatchObject({ ok: false });
     expect(vi.mocked(spawnSync).mock.calls.length).toBe(calls);
   });
 });
@@ -749,6 +749,8 @@ describe("the board's Next lane and positions", () => {
   };
   const json = (o) => ({ status: 0, stdout: JSON.stringify(o), stderr: "" });
   const UNREADABLE = 19; // its card lookup fails in gh
+  const ON_OLD_BOARD_ONLY = 20; // a card on users/niklam/projects/1 alone
+  const ON_BOTH_BOARDS = 21; // a Done card there, a Backlog card on the org board
   const calls = () => vi.mocked(spawnSync).mock.calls.map(([, args]) => args);
   const mutations = () => calls().filter((a) => a.some((x) => /mutation|item-edit/.test(x)));
   let mutationOk;
@@ -765,9 +767,18 @@ describe("the board's Next lane and positions", () => {
             : { status: 1, stdout: "", stderr: "HTTP 403" };
         const n = Number(args.find((a) => a.startsWith("n="))?.slice(2));
         if (n === UNREADABLE) return { status: 1, stdout: "", stderr: "HTTP 502" };
-        if (!(n in lanes)) return json({ data: { repository: { issue: { projectItems: { nodes: [] } } } } });
-        const node = { id: `PVTI_${n}`, project: { number: 1 }, fieldValueByName: lanes[n] && { name: lanes[n] } };
-        return json({ data: { repository: { issue: { projectItems: { nodes: [node] } } } } });
+        const card = (id, login, lane) => ({
+          id,
+          project: { number: 1, owner: { login } },
+          fieldValueByName: lane && { name: lane },
+        });
+        const items = (nodes) => json({ data: { repository: { issue: { projectItems: { nodes } } } } });
+        // #1799: the user board the org board replaced is project 1 too.
+        if (n === ON_OLD_BOARD_ONLY) return items([card("PVTI_old", "niklam", "Backlog")]);
+        if (n === ON_BOTH_BOARDS)
+          return items([card("PVTI_old", "niklam", "Done"), card("PVTI_org", "IRaceDeck", "Backlog")]);
+        if (!(n in lanes)) return items([]);
+        return items([card(`PVTI_${n}`, "iracedeck", lanes[n])]);
       });
   });
   afterEach(() => {
@@ -819,6 +830,15 @@ describe("the board's Next lane and positions", () => {
     expect(mutations()).toEqual([]);
   });
 
+  // #1799: both boards are project 1, so a card is the board's only when its owner is too.
+  it("takes the org board's card, never the old user board's of the same number", () => {
+    vi.stubEnv("IRACEDECK_HOOKS_DRY_RUN", "1");
+    expect(setBoardStatus(ON_OLD_BOARD_ONLY, "Planned", root)).toBe("board: #20 is not on the Roadmap board");
+    expect(moveBoardItemAfter(ON_OLD_BOARD_ONLY, null, root)).toBe("board: #20 is not on the Roadmap board");
+    expect(setBoardStatus(ON_BOTH_BOARDS, "Planned", root)).toBe("board (dry run): would move #21 Backlog → Planned");
+    expect(mutations()).toEqual([]);
+  });
+
   // #1574: with a raw lane edit refused, the release step's move needs the helper.
   it("lets a card into Done from Testing only", () => {
     expect(BOARD_MOVES.Done).toEqual(["Testing"]);
@@ -844,6 +864,12 @@ describe("the board's Next lane and positions", () => {
     expect(setBoardStatus(10, "Planned", root)).toBe("board: #10 moved Backlog → Planned");
     const edit = calls().find((a) => a[0] === "project" && a[1] === "item-edit");
     expect(edit).toEqual(expect.arrayContaining(["--id", "PVTI_10", "--single-select-option-id", "opt_Planned"]));
+    // #1799: the board is the organization's, and an issue also on the old user board moves its org card.
+    for (const a of calls().filter((x) => x[0] === "project" && x.includes("--owner")))
+      expect(a[a.indexOf("--owner") + 1]).toBe("iracedeck");
+    expect(setBoardStatus(ON_BOTH_BOARDS, "Planned", root)).toBe("board: #21 moved Backlog → Planned");
+    const edits = calls().filter((a) => a[0] === "project" && a[1] === "item-edit");
+    expect(edits.at(-1)).toEqual(expect.arrayContaining(["--id", "PVTI_org"]));
   });
 
   // #1574 second read: a hook moving fifteen cards read the project and its
