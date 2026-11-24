@@ -94,7 +94,6 @@ export {
   type RecordedSpanRule,
   type RecordedWalkResult,
   type ReplayWalkDirection,
-  resolveReplayWalkAnchor,
   resolveReplayWalkStart,
   type ReplayWalkStart,
   type SettledReplayWalkStart,

@@ -35,7 +35,6 @@ import {
   type ReplayContextResult,
   type ReplayContextSource,
   resolveJumpTarget,
-  resolveMarkerJumpAnchor,
   resolveMarkerViewStart,
   walkMarkers,
 } from "./replay-markers-ops.js";
@@ -450,7 +449,24 @@ function resetJumpState(): void {
   vi.mocked(getCommands).mockReset();
 }
 
-describe("the replay's pending target is the anchor (#1230, #1430)", () => {
+/**
+ * Where a view measures a step from (#1660) with the cursor at `cursor` and
+ * the sim's reading `telemetry`, in a replay with no search on its way: the
+ * pending target while it stands, else the cursor.
+ */
+function viewStartAt(cursor: number, telemetry: TelemetryData): number | null {
+  return resolveMarkerViewStart({
+    ok: true,
+    telemetry,
+    inReplay: true,
+    frame: cursor,
+    cursorFrame: cursor,
+    store: {} as ReplaySessionStore,
+    scope: undefined,
+  });
+}
+
+describe("the replay's pending target is where a step starts (#1230, #1430, #1660)", () => {
   beforeEach(resetJumpState);
 
   afterEach(() => {
@@ -465,7 +481,7 @@ describe("the replay's pending target is the anchor (#1230, #1430)", () => {
 
     expect(sim.replay.setPlayPosition).toHaveBeenCalledExactlyOnceWith(ReplayPosMode.Begin, 4_000);
     expect(pendingReplayTarget()).toMatchObject({ frame: 4_000 });
-    expect(resolveMarkerJumpAnchor(500, sim.read())).toBe(4_000);
+    expect(viewStartAt(500, sim.read())).toBe(4_000);
   });
 
   it("a moving replay's jump anchors on its marker before its seek goes out", () => {
@@ -475,7 +491,7 @@ describe("the replay's pending target is the anchor (#1230, #1430)", () => {
 
     // Only the pause is out; the next detent already measures from the marker.
     expect(sim.calls).toEqual(["speed 0"]);
-    expect(resolveMarkerJumpAnchor(500, sim.read())).toBe(4_000);
+    expect(viewStartAt(500, sim.read())).toBe(4_000);
   });
 
   it("a jump still seeking anchors on its marker however long it takes", async () => {
@@ -485,28 +501,28 @@ describe("the replay's pending target is the anchor (#1230, #1430)", () => {
     void jumpToMarkerFrame("dial-next", 4_000, sim.read);
     await vi.advanceTimersByTimeAsync(2_500);
 
-    expect(resolveMarkerJumpAnchor(500, sim.read())).toBe(4_000);
+    expect(viewStartAt(500, sim.read())).toBe(4_000);
   });
 
-  it("the anchor is the live frame once the target has read back, so a later drift cannot revive it", async () => {
+  it("the start is the cursor once the target has read back, so a later drift cannot revive it", async () => {
     const sim = fakeSim(PAUSED);
 
     await settled(jumpToMarkerFrame("next", 4_000, sim.read), 200);
 
-    expect(resolveMarkerJumpAnchor(4_000, sim.read())).toBe(4_000);
+    expect(viewStartAt(4_000, sim.read())).toBe(4_000);
     expect(pendingReplayTarget()).toBeNull();
 
     sim.moveTo(4_500);
 
-    expect(resolveMarkerJumpAnchor(4_500, sim.read())).toBe(4_500);
+    expect(viewStartAt(4_500, sim.read())).toBe(4_500);
   });
 
-  it("any surface's jump is the anchor, a dial's frame move included: the replay is headed there", () => {
+  it("any surface's jump is the start, a dial's frame move included: the replay is headed there", () => {
     const sim = fakeSim(PAUSED);
 
     pressReplayCommand({ kind: "jump", frame: 9_000 }, { by: "dial-frame-jog" });
 
-    expect(resolveMarkerJumpAnchor(500, sim.read())).toBe(9_000);
+    expect(viewStartAt(500, sim.read())).toBe(9_000);
   });
 
   it("a cursor take by a key that sends no replay command leaves a sent target standing", () => {
@@ -515,7 +531,7 @@ describe("the replay's pending target is the anchor (#1230, #1430)", () => {
     void jumpToMarkerFrame("next", 4_000, sim.read);
     cancelReplayCursorOwner("jump-to-my-car");
 
-    expect(resolveMarkerJumpAnchor(500, sim.read())).toBe(4_000);
+    expect(viewStartAt(500, sim.read())).toBe(4_000);
   });
 
   it("a jump that was not sent leaves no target, whatever stood before it", async () => {
@@ -532,7 +548,7 @@ describe("the replay's pending target is the anchor (#1230, #1430)", () => {
     });
 
     expect(pendingReplayTarget()).toBeNull();
-    expect(resolveMarkerJumpAnchor(500, sim.read())).toBe(500);
+    expect(viewStartAt(500, sim.read())).toBe(500);
     await expect(settled(first)).resolves.toEqual({ kind: "cancelled", by: "next" });
   });
 });

@@ -25,7 +25,6 @@ import {
   recordedIndexAt,
   type ReplayJumpOutcome,
   type ReplayWalkDirection,
-  resolveReplayWalkAnchor,
   resolveReplayWalkStart,
   runReplayJump,
   type SettledReplayWalkStart,
@@ -283,16 +282,6 @@ export function markerIndexAt(markers: readonly ReplayMarker[], frame: number): 
     frame,
   );
 }
-
-/**
- * The shared walk's anchor (`resolveReplayWalkAnchor`, moved to the shared
- * `replay-record-walk.ts` in #1426, in `replay-engine` since #1467): the
- * replay's one pending target while it stands, else `liveFrame`. No Replay
- * Markers surface measures a step from it since #1660: they read
- * {@link resolveMarkerViewStart} and {@link awaitMarkerStepStart}, which
- * start from the same target.
- */
-export const resolveMarkerJumpAnchor = resolveReplayWalkAnchor;
 
 /**
  * Where a view — a greyed Next / Previous key, the dial's side marks and its
