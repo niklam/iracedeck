@@ -192,6 +192,38 @@ describe("moduleSource (#1662)", () => {
         expect(source, mention).not.toContain(mention);
       }
     });
+
+    // CommonMark's closing rule: a fence line that is indented four spaces, carries
+    // an info string, is shorter or uses the other character is the block's
+    // content, so the block ends where a reader sees it end and the import after it is read.
+    it.each([
+      ["an indented fence and one with an info string", ["```md", "    ```bash", "```ts", "    ```", "```"]],
+      ["an indented fence alone", ["```md", "    ```bash", "echo hi", "```"]],
+      ["a fence with an info string alone", ["```md", "```ts", "const x = 1;", "```"]],
+      ["a longer opening fence", ["````md", "```", "```ts", "```", "````"]],
+      ["a closing fence followed by text", ["```md", "``` not a close", "```"]],
+      ["tilde fences", ["~~~md", "    ~~~", "```", "~~~ not a close", "~~~"]],
+      ["a tilde fence inside a backtick block", ["```md", "~~~", "```"]],
+    ])("closes a code block as CommonMark does: %s", (_name, block) => {
+      const lines = [
+        ...block.slice(0, -1),
+        'import { y } from "@iracedeck/iracing-sdk";',
+        block.at(-1),
+        "",
+        'import X from "@iracedeck/iracing-actions";',
+        "",
+      ];
+
+      expect(specifiers("packages/website/src/content/docs/fences.mdx", lines.join("\n"))).toEqual([
+        "@iracedeck/iracing-actions",
+      ]);
+    });
+
+    it("reads no import inside a block a shorter or other-character fence does not close", () => {
+      const text = ["````md", "```", 'import { y } from "@iracedeck/iracing-sdk";', "~~~~", "", "x", ""].join("\n");
+
+      expect(specifiers("packages/website/src/content/docs/fences.mdx", text)).toEqual([]);
+    });
   });
 });
 

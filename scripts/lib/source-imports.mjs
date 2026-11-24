@@ -155,8 +155,25 @@ function astroModuleSource(text) {
   return keepOnly(text, ranges);
 }
 
-/** A fenced code block's opening line in Markdown: up to three spaces, then three or more backticks or tildes. */
-const CODE_FENCE = /^ {0,3}(`{3,}|~{3,})/;
+/**
+ * A fenced code block's opening line, as CommonMark reads one: up to three
+ * spaces, then three or more backticks followed by no backtick (the info
+ * string may not hold one), or three or more tildes followed by anything.
+ */
+const CODE_FENCE = /^ {0,3}(?:(`{3,})[^`]*|(~{3,}).*)$/;
+
+/**
+ * True when `line` closes the code block `fence` opened, as CommonMark reads a
+ * closing fence: up to three spaces, then a run of the fence's own character at
+ * least as long as the opening one, then only spaces or tabs. An indented
+ * fence, one with an info string, or a shorter one is the block's content, so a
+ * ```` ```md ```` example that shows a ```` ```bash ```` fence stays one block.
+ */
+function closesFence(line, fence) {
+  const close = /^ {0,3}(`+|~+)[ \t]*$/.exec(line);
+
+  return close !== null && close[1][0] === fence[0] && close[1].length >= fence.length;
+}
 
 /** A line that opens an MDX ESM block: `import` or `export` at the left margin, then a space, `{` or `*`. */
 const ESM_LINE = /^(import|export)[\s{*]/;
@@ -186,14 +203,16 @@ function mdxModuleSource(text) {
     const blank = line.trim() === "";
 
     if (codeFence !== null) {
-      if (line.trimStart().startsWith(codeFence)) codeFence = null;
+      if (closesFence(line, codeFence)) codeFence = null;
     } else if (esmStart !== -1) {
       if (blank) {
         ranges.push([esmStart, at]);
         esmStart = -1;
       }
     } else if (CODE_FENCE.test(line)) {
-      codeFence = CODE_FENCE.exec(line)[1];
+      const open = CODE_FENCE.exec(line);
+
+      codeFence = open[1] ?? open[2];
     } else if (ESM_LINE.test(line)) {
       esmStart = at;
     }
