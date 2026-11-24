@@ -2850,3 +2850,32 @@ describe("the stopping rule: PowerShell's call operator on a quoted name (#1659 
     (c) => expect(ps(c)).toEqual([]),
   );
 });
+
+// The regression the CLI check of 8086892f8 led to: every body that runs
+// commands is read as the typed level is, a double-quoted one too.
+describe("the stopping rule: inside command substitutions and under coproc (#1659)", () => {
+  it.each([
+    [`echo "$(eval ls)"`, "eval"],
+    [`echo "$(bash <<< x)"`, "a shell reading its script from a here-string"],
+    [`x=$(echo y | bash)`, "a shell reading its script from stdin"],
+    [`x="$(echo y | bash)"`, "a shell reading its script from stdin"],
+    ["echo `echo y | bash`", "a printer piped into a shell"],
+    [`coproc bash`, "a shell reading its script from stdin"],
+    [`coproc NAME { bash; }`, "a shell reading its script from stdin"],
+    [`coproc bash <<< x`, "a shell reading its script from a here-string"],
+    [`tee >(bash) < x.txt`, "a shell reading its script from stdin"],
+    [`echo \${ bash <<< x; }`, "a shell reading its script from a here-string"],
+    [`bash -c 'echo "$(eval ls)"'`, "eval"],
+    [`bash -c 'x=$(echo y | bash)'`, "a string inside a string"],
+  ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+  it.each([
+    `echo "$(date)"`,
+    `echo '$(eval x)'`,
+    String.raw`echo "a \$(eval x)"`,
+    `echo $((1 + 2))`,
+    `coproc sleep 1`,
+    `tee >(cat) < x.txt`,
+    `echo \${x:-y}`,
+    `bash -c 'x=$(date)'`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+});

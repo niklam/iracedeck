@@ -4059,15 +4059,16 @@ describe("the mask is set aside only where a shell is fed (#1607)", () => {
     // #1607 second read.
     'f() { bash; }; printf "cd x; gh pr merge 5" | f',
     'function f { sh; }; echo "cd x; gh pr merge 5" | f',
-    'exec > >(bash); echo "cd x; gh pr merge 5"',
-    'exec 3> >(bash); echo "cd x; gh pr merge 5" >&3',
-    'coproc bash; echo "cd x; gh pr merge 5" >&"${COPROC[1]}"',
   ])("still gates a merge piped into a shell however the element is spelled: %s", (command) =>
     expect(deny(command)).toMatch(REAL),
   );
   // #1659: a shell reading the pipe, in any element spelling, and a sudo that
   // runs a shell are refused outright, before the merge gate reads anything.
   it.each([
+    // A shell an output process substitution or a coproc runs reads that pipe.
+    'exec > >(bash); echo "cd x; gh pr merge 5"',
+    'exec 3> >(bash); echo "cd x; gh pr merge 5" >&3',
+    'coproc bash; echo "cd x; gh pr merge 5" >&"${COPROC[1]}"',
     "echo 'ls; gh pr merge 5 --squash' | { cd x && bash; }",
     "echo 'ls; gh pr merge 5 --squash' | (cd x && bash)",
     "echo 'ls; gh pr merge 5 --squash' | if true; then bash; fi",
@@ -5719,4 +5720,70 @@ describe("a PowerShell here-string (#1659)", () => {
     passes(`$s = @'\nit's\niex x\n'@`, ps());
     expect(stopped(`$s = @"\n$(iex x)\n"@`, ps())).toContain("(eval)");
   });
+});
+
+// The regression the CLI check of 8086892f8 led to: a shell word inside a
+// command substitution, inside double quotes or not, in the typed text or in
+// a string, and one `coproc` runs, went unread, so these merges passed.
+describe("a shell inside a command substitution or under coproc (#1659)", () => {
+  const M = "gh pr merge 7 --squash";
+  // A pipe the hook reads as a printer's, or as any command's.
+  const PIPED = /printer piped into a shell|from stdin/;
+  it.each([
+    [`echo "$(eval '${M}')"`, "(eval)"],
+    [`echo "$(bash <<< '${M}')"`, "from a here-string"],
+    [`echo "$(echo '${M}' | bash)"`, PIPED],
+    [`echo $(echo '${M}' | bash)`, PIPED],
+    [`x=$(echo '${M}' | bash)`, PIPED],
+    ["echo `echo '" + M + "' | bash`", PIPED],
+    [`echo "a $(eval '${M}')"`, "(eval)"],
+    [`echo "\${X:-$(eval '${M}')}"`, "(eval)"],
+    [`echo "$(printf '%s' "a"; eval '${M}')"`, "(eval)"],
+    [`coproc bash <<< '${M}'`, "from a here-string"],
+    [`coproc { bash; } <<< '${M}'`, "from a here-string"],
+    [`coproc bash`, "from stdin"],
+    [`coproc NAME { bash; }`, "from stdin"],
+    [`coproc ( bash )`, "from stdin"],
+    [`tee >(bash) < x.txt`, "from stdin"],
+    [`bash -c 'echo "$(eval ls)"'`, "eval"],
+    [`bash -c 'x=$(bash -c ls)'`, "a string inside a string"],
+    [`bash -c 'x=$(echo y | bash)'`, "a string inside a string"],
+    ["bash -c 'echo `eval ls`'", "eval"],
+    [`cat <(echo '${M}' | bash)`, PIPED],
+    [`diff <(bash <<< '${M}') y.txt`, "from a here-string"],
+    // Bash 5.3's `${ …; }` and `${| …; }` run their text as `$( … )` does.
+    [`echo \${ bash <<< '${M}'; }`, "from a here-string"],
+    [`x=\${ eval '${M}'; }`, "(eval)"],
+    [`echo "\${ echo '${M}' | bash; }"`, PIPED],
+    [`echo \${| bash <<< '${M}'; }`, "from a here-string"],
+    [`bash -c 'echo \${ eval ls; }'`, "eval"],
+    // A substitution inside arithmetic, a parameter's default or an unquoted heredoc body runs too.
+    [`echo $(( $(echo '${M}' | bash) ))`, PIPED],
+    [`echo "\${x:-$(echo '${M}' | bash)}"`, PIPED],
+    [`cat <<EOF\n$(eval '${M}')\nEOF`, "(eval)"],
+  ])("refuses %s (%s)", (c, form) => expect(stopped(c)).toMatch(form));
+  it.each([
+    `x="$(bash -c '${M}')"`,
+    `echo "$(bash -c '${M}')"`,
+    `coproc bash -c '${M}'`,
+    `echo "\${ bash -c '${M}'; }"`,
+  ])("judges the merge %s carries with the merge gate's own message", (c) =>
+    expect(deny(c)).toMatch(/first word of a string `bash` runs/),
+  );
+  it.each([
+    `echo "$(date)"`,
+    `x=$(git rev-parse HEAD)`,
+    `echo "$(bash -c 'echo hi')"`,
+    `coproc sleep 1`,
+    `coproc NAME { sleep 1; }`,
+    `echo \${x} \${x:-y} \${#x} "\${x// /_}"`,
+    `echo \${ date; }`,
+    `tee >(cat) < x.txt`,
+    `cat <<'EOF'\n$(eval x)\nEOF`,
+    String.raw`echo "a \$(eval x)"`,
+    `echo '$(eval x)'`,
+    `echo $((1 + 2))`,
+    `x=$(( $(git rev-list --count HEAD) + 1 ))`,
+    String.raw`printf '%s\n' 'example; eval echo hello; end' > notes.txt; bash -c true`,
+  ])("passes %s", (c) => passes(c));
 });

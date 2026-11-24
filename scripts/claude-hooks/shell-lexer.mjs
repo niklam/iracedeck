@@ -1154,6 +1154,62 @@ function pipelinesOf(command, a, b) {
   return { quotes, pipelines, pipes };
 }
 
+/**
+ * 1 at each character of `[a, b)` of `t` that a quote makes literal text,
+ * past its opening quote: inside `'…'` and `$'…'`, and inside `"…"` but for
+ * the `$( … )` and backtick substitutions it holds, whose text runs as code
+ * however deep, with quotes of its own (#1659). A word starting at a marked
+ * character is a mention, never a program word; one inside `"$(eval …)"` is
+ * not, which reading every quoted string's whole span as text made one.
+ */
+function literalQuoted(t, a, b) {
+  const mask = new Uint8Array(t.length + 1);
+  // A substitution's body from `i`, to just past its close at `close`.
+  const sub = (i, close) => {
+    code(i, close - 1);
+    return close;
+  };
+  // A double-quoted string's text from `i`, to just past its closing quote.
+  const quoted = (i, end) => {
+    while (i < end && t[i] !== '"') {
+      const c = t[i];
+      if (c === "\x60") {
+        mask[i] = 1;
+        i = sub(i + 1, Math.min(tickEnd(t, i), end));
+      } else if (c === "$" && ((t[i + 1] === "(" && t[i + 2] !== "(") || funsubAt(t, i))) {
+        mask.fill(1, i, i + 2);
+        i = sub(i + 2, Math.min(closeAt(t, i + 2, t[i + 1]), end));
+      } else {
+        const n = c === "\\" ? 2 : 1;
+        mask.fill(1, i, Math.min(i + n, end));
+        i += n;
+      }
+    }
+    if (i < end) mask[i] = 1;
+    return i + 1;
+  };
+  // Code from `i` to `end`: only its quotes make literal text.
+  const code = (i, end) => {
+    while (i < end) {
+      const c = t[i];
+      if (c === "\\") i += 2;
+      else if (c === "'") {
+        let k = i + 1;
+        if (ansiOpen(t, i)) while (k < end && t[k] !== "'") k += t[k] === "\\" ? 2 : 1;
+        else while (k < end && t[k] !== "'") k++;
+        mask.fill(1, i + 1, Math.min(k, end) + 1);
+        i = k + 1;
+      } else if (c === '"') i = quoted(i + 1, end);
+      else if (c === "\x60") i = sub(i + 1, Math.min(tickEnd(t, i), end));
+      else if (c === "$" && ((t[i + 1] === "(" && t[i + 2] !== "(") || funsubAt(t, i)))
+        i = sub(i + 2, Math.min(closeAt(t, i + 2, t[i + 1]), end));
+      else i++;
+    }
+  };
+  code(a, b);
+  return mask;
+}
+
 /** A redirection that gives a command its stdin: `<`, `<<`, `<<<`, `<&`, `<>`, with an optional fd 0. Group 1 is the operator. */
 const INPUT_REDIRECT = /^0?(<<<|<<-?|<&|<>|<)(?!\()/;
 
@@ -1242,6 +1298,18 @@ function optionValueEnd(t, i) {
 
 /** The lead's keywords, the wrappers whose options the lead steps over, and the options of each that take a value ({@link leadStep}). */
 const LEAD_KEYWORDS = new Set(["if", "then", "do", "else", "elif", "while", "until", "!", "{"]);
+
+/**
+ * Where what a `coproc` runs starts, from `k` of `t` past its blanks: past a
+ * name when a `{` group or a `(` subshell follows it (`coproc NAME { … }`),
+ * else at `k` (#1659).
+ */
+function coprocProgram(t, k) {
+  const name = /^[A-Za-z_]\w*/.exec(t.slice(k, k + 256))?.[0];
+  if (!name) return k;
+  const next = blanksFrom(t, k + name.length);
+  return next > k + name.length && (t[next] === "(" || (t[next] === "{" && /\s/.test(t[next + 1] ?? ""))) ? next : k;
+}
 // A Map, as it is keyed by a command word: an object would answer `constructor` (#1646).
 const WRAPPER_VALUES = ["-u", "-C", "-S", "-a", "--unset", "--chdir", "--split-string"];
 const LEAD_VALUE_OPTIONS = new Map([
@@ -1280,6 +1348,9 @@ function leadStep(t, i) {
   if (e <= i || !/\s/.test(t[e] ?? "")) return undefined;
   const word = t.slice(i, e);
   if (LEAD_KEYWORDS.has(word)) return { end: blanksFrom(t, e), wrapper: "keyword" };
+  // `coproc` runs the command after it, past the name `coproc NAME { … }`
+  // or `coproc NAME ( … )` gives (#1659).
+  if (word === "coproc") return { end: coprocProgram(t, blanksFrom(t, e)), wrapper: "keyword" };
   const values = LEAD_VALUE_OPTIONS.get(word);
   if (!values) return undefined;
   let k = blanksFrom(t, e);
@@ -1916,8 +1987,12 @@ function pipedCommands(command) {
   // its stdin.
   const pop = (kinds, at, from, to) => {
     if (!frames.length || !kinds.includes(frames.at(-1).kind)) return;
+    const frame = frames.pop();
+    // A process substitution's `)` ends a word of the command holding it, so
+    // what follows redirects that command, not the substitution (#1659).
+    if (frame.substitution) return void (frame.close = at);
     closers.push({ at, from });
-    Object.assign(frames.pop(), { close: at, redirected: commandOf(NO_OPTIONS, command, from, to).stdin !== "pipe" });
+    Object.assign(frame, { close: at, redirected: commandOf(NO_OPTIONS, command, from, to).stdin !== "pipe" });
   };
   let pending = false;
   for (const c of commands) {
@@ -1934,7 +2009,12 @@ function pipedCommands(command) {
         cur = false;
       } else if (["then", "do", "else", "elif"].includes(w)) cur = false;
       else if (Object.hasOwn(CLOSES, w)) pop(CLOSES[w], i, e, end);
-      else if (w !== "!" && w !== "time") break;
+      else if (w === "coproc") {
+        // What a coproc runs reads the coproc's pipe (#1659).
+        cur = true;
+        i = coprocProgram(command, blanksFrom(command, e));
+        continue;
+      } else if (w !== "!" && w !== "time") break;
       i = e;
     }
     out.push({ start: c, end, own: cur, chain: frames.slice() });
@@ -1942,7 +2022,9 @@ function pipedCommands(command) {
     const blank = !text || text.startsWith("#");
     const b = command[end];
     if (b === "(") {
-      frames.push({ kind: "(", piped: cur });
+      // An output process substitution's commands read its pipe (`tee >(bash)`, #1659).
+      const substitution = command[end - 1] === ">" || command[end - 1] === "<";
+      frames.push({ kind: "(", piped: cur || command[end - 1] === ">", substitution });
       pending = false;
     } else if (b === ")") {
       pop(["("], end, end + 1, command.length);
@@ -1966,19 +2048,32 @@ function pipedCommands(command) {
     end,
     piped: own || fed(chain),
     closes: chain.map((f) => f.close).filter((x) => x !== undefined),
+    top: true,
   }));
-  // The closing words inside each command substitution too, read as its own
-  // command list (`x=$( { bash; } <<< y )`), since a raw scan once found them
-  // there (CLI check of 8086892f8). Their commands are not listed: a shell
-  // inside one then finds no enclosing closer, which ends no search early.
+  // Each command substitution's body is a command list of its own, however
+  // deep and inside double quotes too (#1659): its commands, each piped as it
+  // is there or when the command holding the substitution is (a pipe into
+  // that command is the stdin its substitutions inherit), and its closing
+  // words (`x=$( { bash; } <<< y )`, CLI check of 8086892f8).
+  const inner = [];
   for (const [s, e] of commandSubs(command)) {
     const from = command[s] === "$" ? s + 2 : s + 1;
+    const host = read.find((c) => c.start <= s && s <= c.end);
     // Up to the closing `)` or backtick, which `e` is just past.
-    for (const x of pipedCommands(command.slice(from, Math.max(from, e - 1))).closers)
-      closers.push({ at: x.at + from, from: x.from + from });
+    const body = pipedCommands(command.slice(from, Math.max(from, e - 1)));
+    for (const x of body)
+      inner.push({
+        start: x.start + from,
+        end: x.end + from,
+        piped: x.piped || Boolean(host?.piped),
+        closes: x.closes.map((c) => c + from),
+        top: false,
+      });
+    for (const x of body.closers) closers.push({ at: x.at + from, from: x.from + from });
   }
   closers.sort((x, y) => x.at - y.at);
-  return Object.assign(read, { closers });
+  const all = inner.length ? [...read, ...inner].sort((x, y) => x.start - y.start) : read;
+  return Object.assign(all, { closers });
 }
 
 /**
@@ -2138,8 +2233,16 @@ function fedStarts(command, text, fed, programs) {
       if (fedCommands[mid].start <= p) lo = mid;
       else hi = mid - 1;
     }
-    const at = fedCommands[lo];
-    return at && at.start <= p && p <= at.end ? at : undefined;
+    // A substitution's commands lie inside the one holding it, so the
+    // innermost holding `p` is the nearest before it that reaches it.
+    // A top-level command that does not reach it ends the search: those are
+    // disjoint, and each holds its substitutions' commands.
+    for (let k = lo; k >= 0; k--) {
+      const at = fedCommands[k];
+      if (at.start <= p && p <= at.end) return at;
+      if (at.top) break;
+    }
+    return undefined;
   };
   const pipeFeeds = (p) => Boolean(fedCommandAt(p)?.piped);
   // The xargs that runs the program word at `p` of the typed text, as `{
@@ -2267,7 +2370,8 @@ function fedStarts(command, text, fed, programs) {
   const inLevel = (L, d, e) => {
     if (L.file) return;
     // A `case` pattern (`MERGED*)`, `"a b"*)`) ends at its `)`: no program.
-    if (L.text[e] === ")" && !/\(\s*$/.test(L.text.slice(0, d))) return;
+    // One a substitution's `)` ends is no pattern (`x=$(echo y | bash)`).
+    if (L.text[e] === ")" && !L.subCloses?.has(e) && !/\(\s*$/.test(L.text.slice(0, d))) return;
     const ps = POWERSHELLS.has(L.via);
     // PowerShell ends a command's name at a brace or a paren (`?{…}`).
     const raw = ps ? L.text.slice(d, e).replace(/[{(][\s\S]*$/, "") : L.text.slice(d, e);
@@ -2365,6 +2469,26 @@ function fedStarts(command, text, fed, programs) {
       while (N.text[e] === " " || N.text[e] === "\t") e++;
       jobs.push([N, e, k ? COMMAND : kind]);
     });
+    // The commands of each command substitution a POSIX shell's string holds,
+    // however deep and inside its double quotes too, are its commands as well
+    // (`bash -c 'echo "$(eval ls)"'`, #1659); PowerShell's `$(…)` is read by
+    // its own scan ({@link powershellStatementEvals}), cmd.exe has none.
+    if (POWERSHELLS.has(N.via) || N.via === "cmd") return;
+    // Where each one closes, so a word its `)` ends is no `case` pattern.
+    N.subCloses = new Set();
+    const subs = (t, at) => {
+      for (const [s, e] of commandSubs(t)) {
+        const from = t[s] === "$" ? s + 2 : s + 1;
+        N.subCloses.add(at + e - 1);
+        const body = t.slice(from, Math.max(from, e - 1));
+        for (const c of level(body).commands) {
+          const k = blanksFrom(body, c);
+          if (k < body.length) jobs.push([N, at + from + k, COMMAND]);
+        }
+        subs(body, at + from);
+      }
+    };
+    subs(N.text, 0);
   };
   // The string the word at `d` of the typed text starts (`join`: with the
   // words after it), read as the shell it is handed to reads it, and each of
@@ -2390,6 +2514,8 @@ function fedStarts(command, text, fed, programs) {
     const own = pipelinesOf(command, a, b);
     quotes.push(...own.quotes);
     for (const [open, close] of own.quotes) closes.set(open, close);
+    // The span's literal quoted text, read once a shell word asks.
+    let literal;
     // What feeds the shell word at `p` its stdin through a pipe in the span: a
     // printer in the stage before it (`echo '…' | bash`), or any other command.
     // Whether it refused one.
@@ -2423,9 +2549,10 @@ function fedStarts(command, text, fed, programs) {
           // shell is handed is a mention, which a raw view widened by another
           // element shows as a program word (`printf '…; eval x' > f; bash -c
           // true`, PR #1798 review); a quoted program word (`"bash"`) is its
-          // own quote.
+          // own quote, and one in a substitution a double-quoted string holds
+          // runs (`echo "$(eval …)"`, {@link literalQuoted}).
           const s = wordStarts[p] >= 0 ? wordStarts[p] : p;
-          if (L === base && own.quotes.some(([open, close]) => open < s && s < close)) return;
+          if (L === base && (literal ??= literalQuoted(command, a, b))[s]) return;
           const d = levelIndex(L, p + via.length);
           const limit = L === base ? b : L.text.length;
           if (via === "sudo") {
@@ -2980,7 +3107,8 @@ export function trustedIn(command, a, b) {
  */
 function* programPositions(text) {
   for (let p = 0; p <= text.length; p++) {
-    if (p > 0 && !"\n|;&()\x60".includes(text[p - 1])) continue;
+    // Bash 5.3's `${ …; }` opens a command list as a `(` does (#1659).
+    if (p > 0 && !"\n|;&()\x60".includes(text[p - 1]) && !funsubAt(text, p - 2)) continue;
     // A redirect's own `&` (`2>&1`, `&>log`) ends no command.
     if (text[p - 1] === "&" && (text[p] === ">" || /[<>]/.test(text[p - 2] ?? ""))) continue;
     const { end, env } = leadEnd(text, p);
@@ -3056,12 +3184,19 @@ function closeAt(w, i, open) {
   return w.length;
 }
 
+/** Whether the `$` at `i` of `t` opens bash 5.3's `${ …; }` or `${| …; }`, which runs its text ({@link commandSubs}). */
+function funsubAt(t, i) {
+  return t[i] === "$" && t[i + 1] === "{" && /^[\s|]/.test(t[i + 2] ?? "");
+}
+
 /**
  * The outermost command substitutions in a word, `$( … )` and backticks, as
  * `[from, to)` offsets: wherever they sit, inside double quotes, a `${ … }` or
  * a `$(( … ))` included, but not inside single quotes (#1606 review). Their
  * text runs, so the rewrite of a program word keeps it ({@link
- * normalisePrograms}).
+ * normalisePrograms}). Bash 5.3's `${ …; }` and `${| …; }` (a `${` and a
+ * blank or `|`) run their text too, so they are among them, their body from
+ * `from + 2` as a `$( … )`'s is (#1659).
  */
 function commandSubs(w) {
   const subs = [];
@@ -3073,8 +3208,8 @@ function commandSubs(w) {
     else if (!quoted && c === "'") {
       const e = w.indexOf("'", i + 1);
       i = e < 0 ? w.length : e;
-    } else if (c === "$" && w[i + 1] === "(" && w[i + 2] !== "(") {
-      const end = closeAt(w, i + 2, "(");
+    } else if (c === "$" && ((w[i + 1] === "(" && w[i + 2] !== "(") || funsubAt(w, i))) {
+      const end = closeAt(w, i + 2, w[i + 1]);
       subs.push([i, end]);
       i = end - 1;
     } else if (c === "\x60") {
@@ -4691,7 +4826,8 @@ function leadToken(open) {
   // character but a blank, a quote, `;`, `&`, `|`, `<` or `>` plain — so the
   // value pattern, repeated for three wrappers, stays short (#1646).
   const value = String.raw`(?!-)(?:[^\s"'\\;&|<>]|"(?:[^"\\]|\\[\s\S])*"|'[^']*'|\\[\s\S])+`;
-  return String.raw`(?:(?:if|then|do|else|elif|while|until|!|\{)\s+|${open}time|command|exec|env|nohup)(?:\s+(?:-[uCSa]|--unset|--chdir|--split-string)\s+${value}|\s+-\S+)*\s+|${open}timeout)(?:\s+(?:-[ks]|--kill-after|--signal)\s+${value}|\s+-\S+)*\s+\d[\d.]*[smhd]?\s+|${open}xargs)(?:\s+-[IdEeLnPs]\s+${value}|\s+-\S+)*\s+|[A-Za-z_]\w*(?:\[[^\]\s]*\])?\+?=${ANGLED_PIECE}*\s+|\d*(?:<<<|[<>]&|&>>?|>>|>\||<>|<|>)\s*${WORD_PIECE}+\s+)`;
+  // `coproc`, and the name a `coproc NAME { … }` or `coproc NAME ( … )` gives (#1659).
+  return String.raw`(?:(?:if|then|do|else|elif|while|until|!|\{)\s+|coproc\s+(?:[A-Za-z_]\w*\s+(?=[{(]))?|${open}time|command|exec|env|nohup)(?:\s+(?:-[uCSa]|--unset|--chdir|--split-string)\s+${value}|\s+-\S+)*\s+|${open}timeout)(?:\s+(?:-[ks]|--kill-after|--signal)\s+${value}|\s+-\S+)*\s+\d[\d.]*[smhd]?\s+|${open}xargs)(?:\s+-[IdEeLnPs]\s+${value}|\s+-\S+)*\s+|[A-Za-z_]\w*(?:\[[^\]\s]*\])?\+?=${ANGLED_PIECE}*\s+|\d*(?:<<<|[<>]&|&>>?|>>|>\||<>|<|>)\s*${WORD_PIECE}+\s+)`;
 }
 
 /**
@@ -4785,7 +4921,8 @@ const BOUNDARY_AMP = String.raw`(?<![<>])&(?!>)`;
 export function cmd(re) {
   const flags = new Set([...re.flags, "m"]);
   const anchored = new RegExp(
-    String.raw`(?:^[ \t]*|(?:[|;()\x60]|${BOUNDARY_AMP})\s*)${COMMAND_LEAD}(?:${re.source})`,
+    // Bash 5.3's `${ …; }` opens a command list as a `(` does (#1659).
+    String.raw`(?:^[ \t]*|(?:[|;()\x60]|\$\{(?=\s)|${BOUNDARY_AMP})\s*)${COMMAND_LEAD}(?:${re.source})`,
     [...flags].join(""),
   );
   // Read by `has`: an anchored regex is tested on the trusted-masked text.
