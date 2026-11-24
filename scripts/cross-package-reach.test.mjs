@@ -583,6 +583,171 @@ export function reachProblems(found, allowed, files, namedNotOpened = {}) {
   return problems;
 }
 
+/** The modules `createRequire` comes from. */
+const CREATE_REQUIRE_MODULES = new Set(["module", "node:module"]);
+
+/** The methods of a function that call it, and so would load through a require function. */
+const CALLING_METHODS = new Set(["call", "apply", "bind"]);
+
+/** `node` and the parentheses, `as`, `satisfies` and `!` around it, outermost. */
+function wrapped(node) {
+  while (
+    node.parent &&
+    (ts.isParenthesizedExpression(node.parent) ||
+      ts.isAsExpression(node.parent) ||
+      ts.isNonNullExpression(node.parent) ||
+      ts.isSatisfiesExpression(node.parent))
+  ) {
+    node = node.parent;
+  }
+
+  return node;
+}
+
+/**
+ * The require functions of `sf` (#1662): the names that load the module their
+ * call names — `require` itself and every name the file binds to the result of
+ * a `createRequire(…)` call — and a test for such a call. `createRequire` is the
+ * name, or the alias of one imported from `node:module` or `module` (or taken
+ * from it by destructuring), or any `.createRequire` property, so
+ * `module.createRequire(…)` counts. Names are file-wide, not scoped: a shadowing
+ * name reads as the require function too, which can only fail a file, never pass one.
+ */
+function requireFunctions(sf) {
+  const createRequireNames = new Set(["createRequire"]);
+  const findCreateRequire = (node) => {
+    if (
+      ts.isImportDeclaration(node) &&
+      ts.isStringLiteral(node.moduleSpecifier) &&
+      CREATE_REQUIRE_MODULES.has(node.moduleSpecifier.text) &&
+      node.importClause?.namedBindings &&
+      ts.isNamedImports(node.importClause.namedBindings)
+    ) {
+      for (const element of node.importClause.namedBindings.elements) {
+        if ((element.propertyName ?? element.name).text === "createRequire") createRequireNames.add(element.name.text);
+      }
+    }
+    if (
+      ts.isBindingElement(node) &&
+      ts.isIdentifier(node.name) &&
+      (node.propertyName ?? node.name).getText(sf) === "createRequire"
+    ) {
+      createRequireNames.add(node.name.text);
+    }
+    ts.forEachChild(node, findCreateRequire);
+  };
+
+  findCreateRequire(sf);
+  const isCreateRequire = (node) => {
+    if (!ts.isCallExpression(node)) return false;
+    const callee = unwrap(node.expression);
+
+    return (
+      (ts.isIdentifier(callee) && createRequireNames.has(callee.text)) ||
+      (ts.isPropertyAccessExpression(callee) && callee.name.text === "createRequire")
+    );
+  };
+  const requireNames = new Set(["require"]);
+  const findHolders = (node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer &&
+      isCreateRequire(unwrap(node.initializer))
+    ) {
+      requireNames.add(node.name.text);
+    }
+    ts.forEachChild(node, findHolders);
+  };
+
+  findHolders(sf);
+
+  return { requireNames, isCreateRequire };
+}
+
+/**
+ * True when a `createRequire(…)` call's result is used only in a way the walk
+ * reads: held by a variable of a plain name (a require name then), called on
+ * the spot, or asked for a property other than one that calls it
+ * (`createRequire(…).resolve(…)` loads nothing).
+ */
+function heldOrCalled(call) {
+  const outer = wrapped(call);
+  const parent = outer.parent;
+
+  return (
+    (ts.isVariableDeclaration(parent) && parent.initializer === outer && ts.isIdentifier(parent.name)) ||
+    (ts.isCallExpression(parent) && parent.expression === outer) ||
+    (ts.isPropertyAccessExpression(parent) && parent.expression === outer && !CALLING_METHODS.has(parent.name.text))
+  );
+}
+
+/**
+ * True when a reference to a require name hands the function on rather than
+ * calling it — passed, returned, assigned, shorthand into an object, exported —
+ * so a load through it cannot be read. A call, a property other than one that
+ * calls it (`require.resolve`, `require.main`), `typeof`, a type position and
+ * the name's own declaration are not.
+ */
+function escapes(id) {
+  const parent = id.parent;
+
+  if (ts.isShorthandPropertyAssignment(parent) || ts.isExportSpecifier(parent)) return true;
+  if (parent.name === id || parent.propertyName === id) return false;
+  for (let at = parent; at !== undefined; at = at.parent) if (ts.isTypeNode(at)) return false;
+  const outer = wrapped(id);
+  const user = outer.parent;
+
+  if (ts.isCallExpression(user) && user.expression === outer) return false;
+  if (ts.isPropertyAccessExpression(user) && user.expression === outer) return CALLING_METHODS.has(user.name.text);
+
+  return !ts.isTypeOfExpression(user);
+}
+
+/** A Vite import query that hands over a file's text or URL rather than running it. */
+const DATA_QUERY = /^\?(raw|url)$/;
+
+/**
+ * True when a Vite `import.meta.glob(…)` call loads no module code, so it is a
+ * leaf as a `.json` or `.svg` import is (#1662): its patterns are string
+ * literals, and either its `query` option is `?raw` or `?url`, or every pattern
+ * that is not an exclusion (`!…`) ends in an extension, or a `{a,b}` set of
+ * them, that holds no module code (`isDataSpecifier`). The website's
+ * components glob their images and brand marks this way. Any other glob is one
+ * this check does not expand.
+ */
+function isDataGlob(call) {
+  const [patterns, options] = call.arguments.map(unwrap);
+  const literals = patterns && ts.isArrayLiteralExpression(patterns) ? patterns.elements.map(unwrap) : [patterns];
+
+  if (literals.length === 0 || !literals.every((pattern) => pattern && ts.isStringLiteralLike(pattern))) return false;
+  const query =
+    options &&
+    ts.isObjectLiteralExpression(options) &&
+    options.properties.find(
+      (property) =>
+        ts.isPropertyAssignment(property) &&
+        property.name.getText() === "query" &&
+        ts.isStringLiteralLike(property.initializer),
+    );
+
+  if (query && DATA_QUERY.test(query.initializer.text)) return true;
+
+  const included = literals.map((pattern) => pattern.text).filter((pattern) => !pattern.startsWith("!"));
+
+  return (
+    included.length > 0 &&
+    included.every((pattern) => {
+      const extensions = /\.(?:\{([^{}/]+)\}|([^./{}*]+))$/.exec(pattern);
+
+      return (
+        extensions !== null &&
+        (extensions[1]?.split(",") ?? [extensions[2]]).every((extension) => isDataSpecifier(`./x.${extension.trim()}`))
+      );
+    })
+  );
+}
+
 /**
  * The module specifiers `source` loads when it runs, and the module references
  * it makes that this cannot follow (#1662). Read from TypeScript's syntax tree,
@@ -590,7 +755,10 @@ export function reachProblems(found, allowed, files, namedNotOpened = {}) {
  *
  * What loads: `import … from`, `export … from` (`export *` included), a
  * side-effect `import "x"`, `import x = require("x")`, and a dynamic
- * `import("x")` or `require("x")` with a literal specifier. What does not:
+ * `import("x")` or `require("x")` with a literal specifier, where `require` is
+ * any require function of the file (`requireFunctions`): `require` itself, a
+ * name holding a `createRequire(…)` result whatever it is called, or that
+ * result called on the spot. What does not:
  * `import type`, `export type`, `import type x = require()` and the type
  * `import("x").T`, which TypeScript and esbuild drop whatever the config.
  *
@@ -608,7 +776,11 @@ export function reachProblems(found, allowed, files, namedNotOpened = {}) {
  * A dynamic import or `require` whose specifier is not a literal cannot be
  * followed, so it is reported rather than skipped, and so is any module
  * reference `ts.preProcessFile` finds that the tree walk did not classify:
- * an edge this cannot read fails instead of passing unseen. So does an
+ * an edge this cannot read fails instead of passing unseen. So does a require
+ * function handed on rather than called (`escapes`, `heldOrCalled`), since a
+ * load through it is out of sight, a Vite `import.meta.glob(…)` of module
+ * code, which this does not expand (one of data files is a leaf,
+ * `isDataGlob`), and an
  * `import(` or `require(` in an `.astro` component's or `.mdx` page's markup
  * (`markupLoads`), since Astro and MDX evaluate a template expression and this
  * does not parse one. An `.astro` `<script src>` that names a module is read as
@@ -630,8 +802,41 @@ export function runtimeImports({ file, source: text }) {
     loads.push(literal.text);
   };
   const typeOnly = (literal) => classified.add(literal.getStart(sf));
+  const { requireNames, isCreateRequire } = requireFunctions(sf);
+  const spelled = (node) => node.getText(sf).replace(/\s+/g, " ");
+  /** True when `node` is a function that loads its argument: a require name, or a createRequire call's result. */
+  const isRequire = (node) => {
+    const callee = unwrap(node);
+
+    return (ts.isIdentifier(callee) && requireNames.has(callee.text)) || isCreateRequire(callee);
+  };
 
   const visit = (node) => {
+    if (isCreateRequire(node) && !heldOrCalled(node)) {
+      unread.push(
+        `${spelled(node)}, a require function used other than by a call or a const that holds it: bind it to a ` +
+          "const and call that with a string literal so it can be followed",
+      );
+    }
+    if (ts.isIdentifier(node) && requireNames.has(node.text) && escapes(node)) {
+      unread.push(
+        `a reference to ${node.text}, a require function, used other than by a call: call it with a string ` +
+          "literal so it can be followed",
+      );
+    }
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      ts.isMetaProperty(node.expression.expression) &&
+      node.expression.name.text.startsWith("glob") &&
+      !isDataGlob(node)
+    ) {
+      unread.push(
+        `${spelled(node)}, a Vite glob import, which this check does not expand: import each module by a ` +
+          "string literal so it can be followed",
+      );
+    }
+
     if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
       (node.importClause?.isTypeOnly ? typeOnly : load)(node.moduleSpecifier);
     } else if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
@@ -646,17 +851,12 @@ export function runtimeImports({ file, source: text }) {
       typeOnly(node.argument.literal);
     } else if (
       ts.isCallExpression(node) &&
-      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
-        (ts.isIdentifier(node.expression) && node.expression.text === "require"))
+      (node.expression.kind === ts.SyntaxKind.ImportKeyword || isRequire(node.expression))
     ) {
       const [specifier] = node.arguments;
 
       if (specifier && ts.isStringLiteralLike(specifier)) load(specifier);
-      else {
-        unread.push(
-          `${node.getText(sf).replace(/\s+/g, " ")}, whose specifier is not a string literal: write it so it can be followed`,
-        );
-      }
+      else unread.push(`${spelled(node)}, whose specifier is not a string literal: write it so it can be followed`);
     }
     ts.forEachChild(node, visit);
   };
@@ -1285,6 +1485,80 @@ describe("the runtime-closure check itself (positive controls, #1662)", () => {
     ]) {
       expect(only(source).problems, source).toEqual([expect.stringContaining("imports @iracedeck/iracing-sdk")]);
     }
+  });
+
+  it("follows a createRequire result as require under any name, however createRequire is reached", () => {
+    const sim = 'load("@iracedeck/iracing-sdk");';
+
+    for (const source of [
+      `import { createRequire } from "node:module";\nconst load = createRequire(import.meta.url);\n${sim}`,
+      `import { createRequire } from "module";\nconst load = createRequire(import.meta.url);\n${sim}`,
+      `import { createRequire as make } from "node:module";\nconst load = make(import.meta.url);\n${sim}`,
+      `import module from "node:module";\nconst load = module.createRequire(import.meta.url);\n${sim}`,
+      `import * as nodeModule from "module";\nconst load = (nodeModule.createRequire(import.meta.url) as NodeRequire);\n${sim}`,
+      `const { createRequire: make } = await import("node:module");\nconst load = make(import.meta.url);\n${sim}`,
+      'import { createRequire } from "node:module";\ncreateRequire(import.meta.url)("@iracedeck/iracing-sdk");',
+    ]) {
+      expect(only(source).problems, source).toEqual([expect.stringContaining("imports @iracedeck/iracing-sdk")]);
+    }
+  });
+
+  it("fails a require function it cannot follow: a computed specifier, one handed on, and a glob import", () => {
+    const made = 'import { createRequire } from "node:module";\nconst load = createRequire(import.meta.url);\n';
+    const cases = {
+      [`${made}load(name);`]: "load(name), whose specifier is not a string literal",
+      [`${made}use(load);`]: "a reference to load, a require function, used other than by a call",
+      [`${made}load.call(null, "@iracedeck/iracing-sdk");`]: "a reference to load, a require function",
+      [`${made}export default { load };`]: "a reference to load, a require function",
+      'import { createRequire } from "node:module";\nuse(createRequire(import.meta.url));':
+        "createRequire(import.meta.url), a require function used other than by a call or a const that holds it",
+      "const r = require;": "a reference to require, a require function, used other than by a call",
+      'const modules = import.meta.glob("./*.ts", { eager: true });': "a Vite glob import",
+    };
+
+    for (const [source, message] of Object.entries(cases)) {
+      expect(only(source).problems, source).toEqual([expect.stringContaining(message)]);
+    }
+  });
+
+  // The website's components glob their images; a glob of module code is one the walk does not expand.
+  it("passes a Vite glob of data files or by a ?raw or ?url query, and fails a glob of module code", () => {
+    for (const source of [
+      'import.meta.glob("../assets/*.png", { eager: true });',
+      'import.meta.glob<string>("../assets/*.{svg, png,webp}", { eager: true, query: "?url", import: "default" });',
+      'import.meta.glob(["./*.json", "!./skip.json"]);',
+      'import.meta.glob("./*.ts", { query: "?raw" });',
+    ]) {
+      expect(only(source).problems, source).toEqual([]);
+    }
+    for (const source of [
+      'import.meta.glob("./*.ts");',
+      'import.meta.glob(["./**/*.ts", "!./**/*.test.ts"], { eager: true });',
+      'import.meta.glob("./*.{svg,mjs}");',
+      'import.meta.glob("./**/*");',
+      'import.meta.glob(["!./*.png"]);',
+      "import.meta.glob(pattern);",
+      'import.meta.glob("./*.ts", { query: "?worker" });',
+      'import.meta.globEager("./*.ts");',
+    ]) {
+      expect(only(source).problems, source).toEqual([expect.stringContaining("a Vite glob import")]);
+    }
+  });
+
+  it("passes what a require function does without loading: resolve, main, typeof, a type, a property name", () => {
+    const source = [
+      'import { createRequire } from "node:module";',
+      "const load = createRequire(import.meta.url);",
+      'const where = load.resolve("@iracedeck/iracing-sdk");',
+      'const there = createRequire(import.meta.url).resolve("@iracedeck/iracing-sdk");',
+      "const isMain = require.main === module;",
+      'const hasRequire = typeof require === "function";',
+      "type R = typeof require;",
+      "const holder = { require: 1, load() {} };",
+      "holder.require;",
+    ].join("\n");
+
+    expect(only(source)).toEqual({ visited: [ROOT_FILE], problems: [] });
   });
 
   it("fails an import whose every name is marked type, as tsx keeps it under the website's verbatimModuleSyntax", () => {
