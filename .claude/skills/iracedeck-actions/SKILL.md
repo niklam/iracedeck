@@ -169,7 +169,7 @@ When actions are added, removed, or modified (new modes, renamed settings, chang
 6. **`packages/website/astro.config.mjs`** — add new action slugs to the sidebar if a new action was created
 7. **`README.md`** and **`packages/website/src/content/docs/docs/index.md`** — the headline totals, and the README's Features table
 
-`scripts/readme-feature-counts.test.mjs` (#1271) checks the counts in items 3, 4 and 7 against the Stream Deck manifest's visible actions and the action pages' mode badges (Car Setup: the `Adjust` optgroup of each `.ejs`), and names every number that disagrees.
+`scripts/readme-feature-counts.test.mjs` (#1271) checks the counts in items 3, 4 and 7, and every action page's mode badge, against the Stream Deck manifest's visible actions and each action's keypad Mode options in its `.ejs` (Car Setup's category count: the `Adjust` optgroup), and names every number that disagrees.
 
 ## Key Project Files
 
