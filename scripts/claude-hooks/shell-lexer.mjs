@@ -1341,7 +1341,7 @@ const clip = (w) => (w.length > 40 ? `${w.slice(0, 40)}…` : w);
  * outer expansions (`'…'"$VAR"'…'`) is one plain level, read with bash's quote
  * removal ({@link readLevel}): agents type it, so the stopping rule's
  * re-opening clause reads it (#1659). A splice inside a program word of the
- * string is refused where that word is read ({@link fedStarts}).
+ * string is refused by the spliced-program deny ({@link respelledIn}).
  */
 function stringForm(t, d, stop, join) {
   for (let i = d; i < stop;) {
@@ -1396,7 +1396,10 @@ function levelChars(raw, via, outer) {
  * around its path, are plain; an expansion in its directory part is not in
  * its name. A glob or a brace expansion is no such form: it is judged by the
  * stand-ins every program word that globs gets (`unreadablePrograms`), as at
- * the typed level.
+ * the typed level. A word that ends in a path separator names no program its
+ * shell could run, so its text is not its name either: PowerShell splicing
+ * `"& \"` and `C:\…\gh.exe\"` hands bash such a word, whose program the
+ * PowerShell tool then runs unread (#1787 item 3).
  */
 function wordForm(chars, raw, subst) {
   if (chars.some((x) => x.live && x.c === "$" && subst(x))) return REFUSED.substitution;
@@ -1405,7 +1408,7 @@ function wordForm(chars, raw, subst) {
     if (!x.live && (x.c === "/" || x.c === "\\")) sep = k;
   });
   const name = chars.slice(sep + 1);
-  if (!name.length) return undefined;
+  if (!name.length) return chars.length ? REFUSED.program : undefined;
   if (name.some((x) => x.live && x.c === "$")) return REFUSED.program;
   return /['"\\]/.test(raw.slice(name[0].from, name.at(-1).end)) ? REFUSED.program : undefined;
 }
@@ -1549,9 +1552,8 @@ function fedStarts(command, text, fed, programs) {
     if (ps && !outer(0) && /^[$'"[(@{\d-]/.test(raw) && !/(?:^|[^&])&\s*$/.test(L.text.slice(0, d))) return;
     const shape = () => `${L.via} … ${clip(command.slice(L.at[d], L.end[d + raw.length - 1]))} …`;
     // A word whose characters come from several quoted pieces of the raw text
-    // (`bash -c 'g'"h"' pr merge 7'`): no raw text spells its name in place.
-    for (let k = d + 1; k < d + raw.length; k++)
-      if (L.at[k] !== L.at[k - 1] && L.at[k] !== L.end[k - 1]) return refuse(REFUSED.program, shape());
+    // (`bash -c 'g'"h"' pr merge 7'`) is refused by the spliced-program deny,
+    // as before #1659 (`respelledIn`, `checkBash`): no raw text spells its name.
     const chars = levelChars(raw, L.via, outer);
     const subst = (x) => /^(?:\$\(|\x60)/.test(outer(x.at) ? command.slice(L.at[d + x.at]) : raw.slice(x.at));
     const form = wordForm(chars, raw, subst);

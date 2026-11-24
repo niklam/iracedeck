@@ -4790,7 +4790,7 @@ describe("a carried merge or tag push behind a quoted lead value (#1646)", () =>
     `bash -c 'X="a b" g'"h"' pr merge 7'`,
     `bash -c 'echo hi; g'"h"' pr merge 7'`,
   ])("refuses a program spliced from quoted pieces: %s", (c) =>
-    expect(refused(c)).toMatch(/a program word that is not its plain name/),
+    expect(refused(c)).toMatch(/spliced from quoted pieces/),
   );
 
   it.each([
@@ -5228,11 +5228,17 @@ describe("the lexer's stopping rule: a form it does not read is refused outright
     [`sudo bash -c 'ls -la'`, "a sudo that runs a shell"],
     [String.raw`bash -c $'ls\x20-la'`, "an ANSI-C string"],
     [`bash -c $"ls -la"`, "a locale string"],
-    [`bash -c 'l'"s"' -la'`, "a program word that is not its plain name"],
     [`bash -c "sh -c 'ls -la'"`, "a string inside a string"],
     [`bash -c "$(echo ls) -la"`, "a substitution at command position"],
     [String.raw`bash -c 'l\s -la'`, "a program word that is not its plain name"],
   ])("refuses %s (%s)", (c, form) => expect(refusal(c)).toContain(form));
+
+  // A splice inside the program word of a string, its string read whole since
+  // the re-opening: refused by the spliced-program deny, as before #1659.
+  it.each([`bash -c 'l'"s"' -la'`, `timeout 60 bash -c 'sleep 5; /usr/'"bin"'/gh pr view 5'`])(
+    "refuses a program word spliced from quoted pieces: %s",
+    (c) => expect(deny(c)).toMatch(/spliced from quoted pieces/),
+  );
 
   it("names the shape it refused", () => {
     expect(refusal(`echo 'ls -la' | sh`)).toContain("`echo … | sh`");

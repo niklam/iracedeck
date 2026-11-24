@@ -1510,9 +1510,11 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
     `bash -c 'g'"h"' pr merge 7'`,
     `bash -c 'X="a b" g'"h"' pr merge 7'`,
     `bash -c 'echo hi; g'"h"' pr merge 7'`,
-  ])("refuses a program spliced from quoted pieces rather than read it (#1659): %s", (c) =>
-    expect(lexer.refusedForms(c).map((r) => r.form)).toEqual(["a program word that is not its plain name"]),
-  );
+    `bash -c 'echo hi; /usr/'"bin"'/gh pr merge 7'`,
+  ])("lists a program spliced from quoted pieces, its string read whole (#1659): %s", (c) => {
+    expect(lexer.refusedForms(c)).toEqual([]);
+    expect(lexer.respelledPrograms(c).spliced).toHaveLength(1);
+  });
 
   it.each([
     "bash -c 'gh pr merge 7'",
@@ -1864,9 +1866,9 @@ describe("the stopping rule: a form the lexer does not read is found, and refuse
     [String.raw`bash -c $'cd\x20../ir-5; pnpm test'`, ANSI],
     [String.raw`pwsh -Command $'gh\x20pr merge 7'`, ANSI],
     [`bash -c $"gh pr merge 7"`, LOCALE],
-    [`bash -c 'g'"h"' pr merge 7'`, PROGRAM],
-    [`bash -c 'echo hi; /usr/'"bin"'/gh pr merge 7'`, PROGRAM],
-    [`pwsh -Command '& g''h pr merge 7'`, PROGRAM],
+    // A program word that ends in a path separator names no program (#1787 item 3's shape).
+    [`pwsh -Command "& /"C:/tools/gh.exe/" pr merge 7"`, PROGRAM],
+    [`bash -c 'ls; ./tools/ pr merge 7'`, PROGRAM],
     [`bash -c "sh -c 'X=\\"a b\\" gh pr merge 7'"`, NESTED],
     [`bash -c "sh -c 'nice env X=\\"a;b\\" gh pr merge 7'"`, NESTED],
     [`winpty bash.exe -c "cmd.exe /c gh pr merge 7"`, NESTED],
