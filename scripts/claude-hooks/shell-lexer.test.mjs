@@ -2879,3 +2879,18 @@ describe("the stopping rule: inside command substitutions and under coproc (#165
     `bash -c 'x=$(date)'`,
   ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
 });
+
+// Where a substitution in a string runs: never in a comment or a quoted
+// heredoc's body, and in an unquoted heredoc's body to its own end (#1659).
+describe("the stopping rule: substitutions only where they run (#1659)", () => {
+  it.each([
+    `bash -c 'ls # $(echo y | bash)'`,
+    "bash -c 'ls # `eval x`'",
+    `bash -c 'echo "x" # $(eval y)'`,
+    `bash -c 'cat <<"EOF"\n$(eval y)\nEOF\n'`,
+  ])("reads and refuses nothing in %j", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+  it.each([
+    [`bash -c 'cat <<EOF\n$(eval y)\nEOF\n'`, "eval"],
+    [`bash -c 'ls # x\necho $(eval y)'`, "eval"],
+  ])("refuses %j (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+});

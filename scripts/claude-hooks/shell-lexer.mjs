@@ -2056,7 +2056,7 @@ function pipedCommands(command) {
   // that command is the stdin its substitutions inherit), and its closing
   // words (`x=$( { bash; } <<< y )`, CLI check of 8086892f8).
   const inner = [];
-  for (const [s, e] of commandSubs(command)) {
+  for (const [s, e] of liveSubs(command)) {
     const from = command[s] === "$" ? s + 2 : s + 1;
     const host = read.find((c) => c.start <= s && s <= c.end);
     // Up to the closing `)` or backtick, which `e` is just past.
@@ -2477,11 +2477,15 @@ function fedStarts(command, text, fed, programs) {
     // Where each one closes, so a word its `)` ends is no `case` pattern.
     N.subCloses = new Set();
     const subs = (t, at) => {
-      for (const [s, e] of commandSubs(t)) {
+      for (const [s, e] of liveSubs(t)) {
         const from = t[s] === "$" ? s + 2 : s + 1;
         N.subCloses.add(at + e - 1);
         const body = t.slice(from, Math.max(from, e - 1));
-        for (const c of level(body).commands) {
+        const B = level(body);
+        // Its commands end where they end in it, not where the command holding
+        // it does, nor nowhere, as a heredoc body's characters did.
+        for (let k = 0; k < body.length; k++) N.ends[at + from + k] = at + from + B.ends[k];
+        for (const c of B.commands) {
           const k = blanksFrom(body, c);
           if (k < body.length) jobs.push([N, at + from + k, COMMAND]);
         }
@@ -3187,6 +3191,17 @@ function closeAt(w, i, open) {
     else if (c === close && depth-- === 0) return j + 1;
   }
   return w.length;
+}
+
+/**
+ * {@link commandSubs} of a command's text where they run: never in a quoted
+ * heredoc's body, a comment or a single-quoted string, which {@link
+ * maskInert} masks (a script fed to `node - <<'EOF'` holds `$(` and
+ * backticks of its own, #1659); in the raw text when the mask is unsure.
+ */
+function liveSubs(t) {
+  const { masked, sure } = maskInert(t);
+  return commandSubs(sure ? masked : t);
 }
 
 /** Whether the `$` at `i` of `t` opens bash 5.3's `${ …; }` or `${| …; }`, which runs its text ({@link commandSubs}). */
