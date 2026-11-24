@@ -1612,6 +1612,42 @@ const SCRIPT_READERS = new Set([...STDIN_SHELLS, "source", "."]);
  * (any non-interactive bash) and POSIX `ENV` (an interactive `sh`).
  */
 const STARTUP_NAME = /ENV/g;
+/** The builtins and the wrapper whose arguments are assignments ({@link assignsAt}). */
+const DECLARERS = new Set(["env", "export", "declare", "typeset", "local", "readonly"]);
+/** The words that lead a command without being its program ({@link assignsAt}). */
+const ASSIGNMENT_LEADS = new Set(["if", "then", "do", "else", "elif", "while", "until", "!", "{", "time"]);
+
+/**
+ * Whether the word at `s` of `t`, in the command that starts at `from`, is an
+ * assignment bash makes (#1659, CodeRabbit CLI): every word ahead of it a
+ * keyword that leads a command, a redirection or another assignment, or the
+ * first other word one of the {@link DECLARERS} (`export`, `env -u X`),
+ * whose arguments are assignments in any quoting.
+ */
+function assignsAt(t, from, s) {
+  let i = from;
+  for (;;) {
+    while (i < s && /\s/.test(t[i])) i++;
+    if (i >= s) return true;
+    if (/^[A-Za-z_]\w*=/.test(t.slice(i, i + 256))) {
+      i = wordEnd(t, i, true);
+      if (i < 0 || i > s) return false;
+      continue;
+    }
+    const redirect = LEAD_REDIRECT.exec(t.slice(i, i + 8));
+    if (redirect) {
+      i = wordEnd(t, blanksFrom(t, i + redirect[0].length));
+      if (i < 0 || i > s) return false;
+      continue;
+    }
+    const e = wordEnd(t, i);
+    if (e <= i || e > s) return false;
+    const name = wordValue(t.slice(i, e));
+    if (DECLARERS.has(name)) return true;
+    if (!ASSIGNMENT_LEADS.has(name)) return false;
+    i = e;
+  }
+}
 /**
  * The closing word of a compound command, whose redirections set the stdin of
  * every command inside it ({@link fedStarts}' `stdinAround`, #1659): `}`,
@@ -1873,11 +1909,17 @@ function fedStarts(command, text, fed, programs) {
   // read).
   const startupFiles = (found, read) => {
     const seen = new Set();
+    let starts;
     for (const m of found.matchAll(STARTUP_NAME)) {
       let s = m.index;
       while (s > 0 && !/[\s;&|(\x60]/.test(found[s - 1])) s--;
       if (seen.has(s)) continue;
       seen.add(s);
+      // Only where an assignment is made: a command's prefix, or an argument
+      // of a declaring builtin or `env` — never a search pattern or a printed
+      // word (`grep -F BASH_ENV=/dev/stdin x`; CodeRabbit CLI on #1659).
+      starts ??= level(found).commands;
+      if (!assignsAt(read, starts.findLast((c) => c <= s) ?? 0, s)) continue;
       const e = wordEnd(read, s, true);
       const raw = read.slice(s, e < 0 ? undefined : e);
       const chars = decodeWord(raw);

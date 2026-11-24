@@ -5294,6 +5294,14 @@ describe("a shell word glued to its redirection (#1659)", () => {
   it.each([`bash</dev/null x.sh`, `bash</dev/null -c 'pnpm build'`])("passes %s", (c) => passes(c));
 });
 
+// CodeRabbit CLI on #1659: a `BASH_ENV=` that is a search pattern is no assignment.
+describe("a startup-file assignment only where one is made (#1659)", () => {
+  it("passes a pattern and refuses an assignment", () => {
+    passes(`grep -F BASH_ENV=/dev/stdin config.txt`);
+    expect(stopped(`export BASH_ENV=/dev/stdin; bash -c :`)).toContain("a shell startup file");
+  });
+});
+
 // CodeRabbit CLI on #1659: an interactive bash runs its startup file before
 // its `-c` string, so one that expands is judged against its stdin.
 describe("an expanding startup file beside a string (#1659)", () => {

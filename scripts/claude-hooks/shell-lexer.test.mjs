@@ -2355,3 +2355,31 @@ describe("the stopping rule: an expanding startup file beside a string (#1659 Co
     (c) => expect(lexer.refusedForms(c)).toEqual([]),
   );
 });
+
+// CodeRabbit CLI on #1659: only an assignment sets a startup file, so a
+// `BASH_ENV=` that is a search pattern or a printed word is no stream.
+describe("the stopping rule: a startup-file assignment only where one is made (#1659 CodeRabbit)", () => {
+  const STARTUP = "a shell startup file read from stdin, a descriptor or a process substitution";
+  it.each([
+    `export BASH_ENV=/dev/stdin; bash -c :`,
+    `env BASH_ENV=/dev/stdin bash -c :`,
+    `env -u X BASH_ENV=$F bash -c :`,
+    `BASH_ENV=$F bash -c :`,
+    `X=1 BASH_ENV=$F bash -c :`,
+    `2>/dev/null BASH_ENV=$F bash -c :`,
+    `declare -x BASH_ENV=$F`,
+    `local ENV=$F`,
+    `readonly BASH_ENV=/dev/fd/3`,
+    `typeset BASH_ENV=$X`,
+    `export A=1 "BASH_ENV=/dev/stdin"; bash -c :`,
+    `if true; then BASH_ENV=$F bash -c :; fi`,
+    `bash -c 'BASH_ENV=<(echo ls) node x.js'`,
+  ])("refuses %s", (c) => expect(lexer.refusedForms(c)[0]?.form).toBe(STARTUP));
+  it.each([
+    `grep -F BASH_ENV=/dev/stdin config.txt`,
+    `echo ENV=$F`,
+    `printf '%s\n' BASH_ENV=$X`,
+    `rg -n "x" BASH_ENV=<(ls)`,
+    `cat .env | grep ENV=$F`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+});
