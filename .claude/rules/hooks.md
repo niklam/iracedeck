@@ -9,7 +9,7 @@ The scripts live in `scripts/claude-hooks/` — Node, because `jq` is not instal
 | Event | Matcher | Script | Does |
 | --- | --- | --- | --- |
 | SessionStart | startup, resume | `session-start.mjs` | Prints the worktrees with dirty state, where each deck host's plugin link points, whether `origin/master` is behind the remote, and any running watchers. |
-| PreToolUse | Bash, PowerShell | `pre-bash.mjs` → `rules-bash.mjs` (+ `shell-lexer.mjs`, `script-runs.mjs`) | The command guards below; a PowerShell command skips the bash-syntax traps. |
+| PreToolUse | Bash, PowerShell | `pre-bash.mjs` → `rules-bash.mjs` (+ `shell-lexer.mjs`, `script-runs.mjs`, `merge-gate.mjs`, `spec-sections.mjs`) | The command guards below; a PowerShell command skips the bash-syntax traps. |
 | PreToolUse | Skill, Agent, AskUserQuestion, Edit, Write | `pre-tools.mjs` → `rules-tools.mjs` | `/code-review` must name a level, target an `ir-<issue>` tree and never carry `--fix`; an Agent spawn must choose its `model` (`fork` exempt) and never `isolation: "worktree"`; AskUserQuestion options name the actor as "Claude …" / "You …", never "I …"; an Edit or Write carries no raw control byte other than tab, LF and CR (#1103). |
 | PostToolUse | Edit, Write | `post-edit.mjs` → `rules-post.mjs` | Runs the generator whose source was edited (changelog or fragment, getting-started page, icon SVGs, comms catalog, Elgato manifest profiles, voice configs) and reports what changed — for a fragment that run is its validation; injects reminders for `global-settings.ts`, the catalog / bundled script, and rule files. |
 | PostToolUse | Bash, PowerShell | `post-bash.mjs` | Moves Roadmap cards: into Backlog after `gh issue create`, Planned after a milestone is set, In progress after `git worktree add ../ir-<n>`, Testing after `gh pr merge` (and lists the four post-merge CI runs); `iracedeck/iracedeck` only (`roadmap-board.md`). After `sed -i`: prints `git diff --stat`. |
@@ -23,13 +23,14 @@ A **deny** refuses the call and tells the model why. An **ask** forces the permi
 | `git push` of a tag | ask | a tag cuts a release |
 | `git push` of the `integration` branch | deny | that branch is local (#1520) |
 | `gh pr create` | deny on a title that is not `<type>(<scope>): … (#<issue>)` | PR title discipline |
-| `gh pr merge` | deny unless OPEN, `--squash` (`--merge` for a `release/*` head), APPROVED, every check green, not BLOCKED/DIRTY and CodeRabbit reviewed the current head; one plain merge per command, in `iracedeck/iracedeck` only; `--admin` passes only a prose-only or wholly-Dependabot PR (`build-and-commit.md` *Merging*), else asks or refuses. Mechanics: `hook-internals.md` | approval and checks are head-specific |
+| `gh pr merge` | deny unless OPEN, `--squash` (`--merge` for a `release/*` head), APPROVED, every check green, not BLOCKED/DIRTY and CodeRabbit reviewed the current head; one plain merge per command, in `iracedeck/iracedeck` only; `--admin` passes only a prose-only or wholly-Dependabot PR (`build-and-commit.md` *Merging*), else asks or refuses. Mechanics: `hook-merge-gate.md` | approval and checks are head-specific |
 | `git commit` with a spec on a non-master branch | deny | specs commit to master only |
 | `git commit` ADDING a spec with no header block, no Out-of-scope section or no Testing/Verification section | deny | the required sections (`specs-and-plans.md`); forward-only |
 | `git commit` of any spec carrying a raw control byte other than tab, LF and CR | deny, naming the line | a spec-only push runs no CI (#1466) |
 | `git worktree add ../ir-<n>` where `origin/master` carries no `docs/superpowers/specs/*-issue-<n>-*.md` | ask, unless the issue's labels are readable and carry no `enhancement` | a feature gets its spec before its worktree |
 | `git commit` with a `package.json` while `pnpm-lock.yaml` is dirty and not included | deny | CI's frozen lockfile |
 | a program word that expands or globs (`$GH pr merge`, `$(which git) push`) | deny when any guard would act on it as `gh` or `git` | the hook cannot tell what runs (#1606) |
+| text handed to a shell in a form the lexer does not read: piped into a shell, a here-string or heredoc a shell runs, `eval`, `sudo -s`, a `$'…'` string, a string in a string | deny, before any rule | the lexer reads only the forms agents type (#1659) |
 | `git commit`, `git worktree add` or a push of the current branch under `--git-dir` / `GIT_DIR` (a commit also under a moved work tree or index) | deny, asking for `git -C <dir>` | the repository is not the tree the hook reads (#1606) |
 | `git commit` recording the Elgato `manifest.json` with a `Debug` key in its `Nodejs` block | deny, naming `pnpm debug:plugin off` | the local inspector switch never ships (#1338) |
 | `git worktree add` anywhere but a sibling of the main checkout, not named `ir-<issue>` or `ir-integration`, or from a stale `origin/master` | deny | sibling worktrees; verify the base commit |

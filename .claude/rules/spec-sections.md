@@ -6,7 +6,7 @@ paths:
 
 # The required spec sections — what the commit check reads
 
-The heading grammar behind *Required sections* in `@.claude/rules/specs-and-plans.md`, for whoever writes a spec or edits the spec-commit rule in `rules-bash.mjs`. Moved out of it in #1658 to keep the always-loaded set inside its budget.
+The heading grammar behind *Required sections* in `@.claude/rules/specs-and-plans.md`, for whoever writes a spec or edits the grammar in `spec-sections.mjs`, which the spec-commit rule in `rules-bash.mjs` reads. Moved out of it in #1658 to keep the always-loaded set inside its budget.
 
 Beyond the header block, two sections are checked at the commit (#1193). A section is an ATX heading at level 2 or below (`##` to `######`; a setext `---` underline is not read), or a line that is bold from end to end; the level-1 heading is the spec's title and never counts, a paragraph that merely opens in bold is prose, and so is anything inside a code fence (closed or not) or an HTML comment, a list item's included. The heading must **be** the section's name, not mention it (#1391): inline HTML aside (an anchor, a `<!-- TODO -->`), an optional number (`5. Testing`), then the name, then at most a parenthetical, an issue reference (`#1391`) and one tail — a dash, or a comma, colon, semicolon or full stop followed by a space or ending the heading — or a word or second name joined by `and`, `&` or `/` (`Testing (TDD)`, `Verification — results`, `Testing & verification`, `Code and tests`, `Out of scope and testing`, which counts as both). `Test position` and a title such as `The Background Test plays a frame` are not test plans. The spellings already in use are all accepted:
 
