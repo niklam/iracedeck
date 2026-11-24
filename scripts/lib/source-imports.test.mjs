@@ -11,6 +11,7 @@ import {
   moduleSource,
   packageOf,
   trackedPackageSources,
+  unclosedComment,
   VENDORED_SOURCES,
 } from "./source-imports.mjs";
 
@@ -165,6 +166,14 @@ describe("moduleSource (#1662)", () => {
         '<script src="//cdn.example.com/y.js"></script>',
         '<script type="application/json" src="./z.json"></script>',
         '<!-- <script src="./commented.js"></script> -->',
+        // Left for the browser to fetch from the served site, its body still read as ESLint reads it.
+        '<script is:inline src="/diagram-zoom.js"></script>',
+        '<script src="./inline-relative.js" is:inline>import "./inline-body.js";</script>',
+        "<script IS:INLINE src='./inline-upper.js'></script>",
+        // A processed script's root-absolute src is read, for the walk to refuse as an absolute path.
+        '<script src="/root-absolute.js"></script>',
+        // A look-alike attribute is not the directive.
+        '<script data-is:inline src="./not-inline.js"></script>',
         "",
       ].join("\n");
       const source = moduleSource(file, scripts);
@@ -179,6 +188,9 @@ describe("moduleSource (#1662)", () => {
         "@iracedeck/iracing-sdk",
         "./body.js",
         "./data-type.js",
+        "./inline-body.js",
+        "/root-absolute.js",
+        "./not-inline.js",
       ]);
       const quoteOf = (specifier) =>
         moduleReferences(source).find((reference) => reference.specifier === specifier).pos;
@@ -187,9 +199,66 @@ describe("moduleSource (#1662)", () => {
       expect(quoteOf("./single.ts")).toBe(scripts.indexOf("'./single.ts'"));
       // An unquoted value has no quote of its own: its synthetic one sits two characters before it, on its line.
       expect(quoteOf("./unquoted.js")).toBe(scripts.indexOf("./unquoted.js") - 2);
-      for (const mention of ["not-src", "cdn.example.com", "z.json", "commented"]) {
+      for (const mention of [
+        "not-src",
+        "cdn.example.com",
+        "z.json",
+        "commented",
+        "diagram-zoom",
+        "inline-relative",
+        "inline-upper",
+      ]) {
         expect(source, mention).not.toContain(mention);
       }
+    });
+
+    // A <script> or <style> body is raw text up to its end tag: a "<!--" in it opens no
+    // comment, so it hides neither the end tag nor anything after it.
+    it("reads a comment opener inside a <script> or <style> body as text, and a comment in markup as a comment", () => {
+      const text = [
+        "---",
+        'const fm = "<!--";',
+        "---",
+        "<script>",
+        '  const marker = "<!--";',
+        '  const later = await import("./later.js");',
+        "</script>",
+        '<style>.a::before { content: "<!--"; }</style>',
+        '<script>import "./after-style.js";</script>',
+        '<!-- <script>import "./commented.js";</script> -->',
+        '<!--><script>import "./after-abrupt.js";</script>',
+        '<!---><script>import "./after-abrupt-dash.js";</script>',
+        '<!-- a --!><script>import "./after-bang.js";</script>',
+        '<!-- <script>const s = "-->"; import "./after-early-close.js";</script> -->',
+        "<SCRIPT>import './upper.js';</SCRIPT >",
+        "",
+      ].join("\n");
+
+      expect(specifiers(file, text)).toEqual([
+        "./later.js",
+        "./after-style.js",
+        "./after-abrupt.js",
+        "./after-abrupt-dash.js",
+        "./after-bang.js",
+        "./upper.js",
+      ]);
+      expect(moduleSource(file, text)).not.toContain("commented");
+      expect(unclosedComment(file, text)).toBeUndefined();
+    });
+
+    it("reads a script whose end tag never comes to the end of the file, as HTML does", () => {
+      expect(specifiers(file, '<p>x</p>\n<script>\nimport "./open.js";\n')).toEqual(["./open.js"]);
+    });
+
+    it("names the line of a markup comment that never closes, and none for a closed one or a code file", () => {
+      const open = '---\nconst a = 1;\n---\n<p>{"<!--"}</p>\n<script>import "./hidden.js";</script>\n';
+
+      expect(unclosedComment(file, open)).toBe(4);
+      expect(specifiers(file, open)).toEqual([]);
+      expect(unclosedComment(file, "<!-- closed --><p>x</p>")).toBeUndefined();
+      expect(unclosedComment(file, '<script>const s = "<!--";</script>')).toBeUndefined();
+      expect(unclosedComment("packages/x/src/a.ts", "const s = '<!--';")).toBeUndefined();
+      expect(unclosedComment("packages/x/src/a.mdx", "<!-- open")).toBeUndefined();
     });
   });
 
@@ -314,6 +383,49 @@ describe("moduleSource (#1662)", () => {
       expect(specifiers("packages/website/src/content/docs/fences.mdx", lines.join("\n"))).toEqual([
         "@iracedeck/iracing-actions",
       ]);
+    });
+
+    // MDX's ESM parser reads on past a blank line while the declaration is still open.
+    it("keeps an ESM block open across a blank line until its declaration is complete", () => {
+      const page = [
+        'import Gallery from "./Gallery.astro";',
+        "import {",
+        "  A,",
+        "",
+        "  B,",
+        '} from "../../../../../iracing-actions/src/rows.js";',
+        "export const meta = {",
+        "",
+        '  load: () => import("./meta.js"),',
+        "};",
+        "",
+        'Prose after the block, naming "../not-read.js".',
+        "",
+      ].join("\n");
+
+      expect(specifiers("packages/website/src/content/docs/blank.mdx", page)).toEqual([
+        "./Gallery.astro",
+        "../../../../../iracing-actions/src/rows.js",
+        "./meta.js",
+      ]);
+      expect(moduleSource("packages/website/src/content/docs/blank.mdx", page)).not.toContain("Prose");
+    });
+
+    it("ends a block at a blank line when it is complete, or malformed before its end", () => {
+      const page = [
+        'import A from "./a.js";',
+        "",
+        "import the profile into Stream Deck.",
+        "",
+        "```ts",
+        'import { y } from "@iracedeck/iracing-sdk";',
+        "```",
+        "",
+      ].join("\n");
+      const source = moduleSource("packages/website/src/content/docs/ends.mdx", page);
+
+      expect(source).toContain('import A from "./a.js";');
+      expect(source).not.toContain("iracing-sdk");
     });
 
     it("reads no import inside a block a shorter or other-character fence does not close", () => {
