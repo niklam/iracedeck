@@ -39,7 +39,7 @@ readonly hostApplication: HostApplication | undefined;
 ```
 
 - **Elgato** fills it from the SDK's registration info (`streamDeck.info.application.version`), name `Stream Deck`.
-- **Mirabox** fills it from the registration info JSON VSD Craft passes in `argv[9]` (`application.version` when present), name `VSD Craft`. `parseConnectionParams` reads no `argv[9]` today. The field has not been seen in a capture; the manual test below reads it, and a host that leaves it out gives `version: null`.
+- **Mirabox** fills it from the registration info JSON VSD Craft passes in `argv[9]` (`application.version` when present), name `VSD Craft`. `parseConnectionParams` reads no `argv[9]` today. Measured on 2026-11-23 (#1678's test): StreamDock passes it, as its internal version (`3.10.188.226`, not the executable's `3.10.203`). A host that leaves it out still gives `version: null`.
 - **Ulanzi** gives `{ name: "UlanziStudio", version: null }`: the adapter knows its host, and UlanziStudio's launch arguments carry an address, a port and a language but no version.
 - **The two fakes** (`scenario-harness`' mock platform adapter, `plugin-runtime`'s `test-support/fake-host.ts`) set it explicitly.
 
