@@ -1030,10 +1030,12 @@ describe("post-bash.mjs reads a mention beside a shell feed as a mention (#1607)
     expect(fire(command, { withoutGh: true })).toMatch(/could not read the PR back/),
   );
 
-  // CodeRabbit on PR #1632: bash runs the string it reads on stdin.
-  it("reads back the PR of a merge a shell reads on stdin", () => {
+  // CodeRabbit on PR #1632: bash runs the string it reads on stdin. Since #1659
+  // the pre-hook refuses a printer piped into a shell, so no such command runs
+  // and the lexer reads none: the post-hook reads no PR back for it.
+  it("reads back no PR of a merge a shell reads on stdin, a form the pre-hook refuses", () => {
     const { calls } = fireWithGh("echo 'gh pr merge 1603 --squash' | bash", {});
-    expect(calls.map((c) => c.args.slice(0, 3))).toEqual([["pr", "view", "1603"]]);
+    expect(calls).toEqual([]);
   });
 
   it("reads back the real merge's PR, not the one a quoted mention ahead of it names", () => {

@@ -44,17 +44,16 @@ import {
   powershellAsBash,
   programStart,
   ranges,
+  refusedForms,
   resolveDir,
   respelledPrograms,
   segmentTokens,
   stringBounds,
   stringEnd,
-  stringKind,
   takeDecodedHits,
   trustedIn,
   trustedMask,
   unclosedLead,
-  unprintable,
   unreadablePrograms,
   unsettled,
   view,
@@ -177,7 +176,7 @@ function pipedPnpm(c, text, m, piped) {
   if (/pipefail/.test(text.slice(0, from))) return false;
   const after = /^(?:>&\d|&>|[^;&\n])*/.exec(text.slice(close + 1))[0];
   const pipes = (after.match(/(?<!\|)\|(?!\|)/g) ?? []).length;
-  return pipes >= (stringKind(c, m.program)?.piped ? 2 : 1);
+  return pipes > 0;
 }
 
 /** `gh issue edit` flags that take a value, so a value is never read as an issue or a flag. */
@@ -686,9 +685,8 @@ export const rules = [
     // the one after the pnpm in its own command — inside the string a shell runs
     // it from, `bash -c 'pnpm test | tee x'` — or, for a pnpm inside such a
     // string, the one after the string's close, which pipes the shell on (`sh -c
-    // 'pnpm test' | tail`; for a script a shell reads on stdin the first pipe
-    // after the string feeds the shell and only a second hides it: `echo 'pnpm
-    // test' | bash` passes, `… | bash | tail` does not) (#1634 review).
+    // 'pnpm test' | tail`) (#1634 review). A script a shell reads on stdin is
+    // refused before any rule (#1659).
     // A pipefail excuses only the shell that has it (#1634 second read): a pipe
     // inside the string is the inner shell's, excused by a `set -o pipefail`
     // inside that string ahead of the pnpm or by the shell's own `-o pipefail`
@@ -1304,15 +1302,27 @@ function manifestSources(command, commit, ctx, dir) {
  *
  * A program word a string handed to a shell spells so the text cannot show
  * the name it runs (#1646, `respelledPrograms` in `shell-lexer.mjs`): one
- * spliced from quoted pieces (`bash -c 'g'"h"' pr merge 7'`) is refused,
- * naming it; one escaped within its string (`bash -c "\"gh\" pr merge 7"`,
- * pwsh's `& \"C:\…\gh.exe\"`) is judged with the name its shell runs in its
- * place, and that verdict stands.
+ * spliced from quoted pieces is refused, naming it; one whose quotes the
+ * string's own quoting escapes (`bash -c "\"gh\" pr merge 7"`, pwsh's `&
+ * \"C:\…\gh.exe\"`) is judged with the name its shell runs in its place, and
+ * that verdict stands.
+ *
+ * First of all, a command that hands text to a shell in a form the hook does
+ * not read — a printer or any command piped into a shell, a here-string or
+ * heredoc a shell runs, `eval`, a `sudo` that runs a shell, a string that is
+ * not one plain level, a string inside a string, a program word in a string
+ * that is not its plain name (`refusedForms` in `shell-lexer.mjs`, #1659) —
+ * is refused outright, before any rule's verdict and never as an ask: the
+ * lexer's stopping rule reads only the forms agents type here.
  */
 export function checkBash(command, ctx) {
   const powershell = ctx.shell === POWERSHELL;
   return checkText(powershell ? powershellAsBash(command) : command, ctx, powershell, 0);
 }
+
+/** The deny of a form the lexer refuses rather than reads ({@link checkBash}, #1659). */
+const stoppingRefusal = ({ form, shape }) =>
+  `This command hands text to a shell in a form the hook does not read (${form}): \`${shape}\`. Type the commands directly, or write them to a script file and run it.`;
 
 /**
  * The first deny of the rules marked `occurrence` — those that fire on any
@@ -1330,35 +1340,20 @@ function occurrences(text, ctx, powershell) {
 
 /** {@link checkBash} over the command read as bash (`text`); `depth` counts the re-judges with a respelled name in place. */
 function checkText(text, ctx, powershell, depth) {
-  const { respelled, spliced, reprinted } = respelledPrograms(text);
+  // A form the lexer refuses rather than reads, wherever it sits: before any
+  // rule, so no ask or pass of theirs can stand in for it (#1659).
+  const [refused] = refusedForms(text, powershell ? POWERSHELL : BASH);
+  if (refused) return stoppingRefusal(refused);
+  const { respelled, spliced } = respelledPrograms(text);
   if (spliced.length)
     return `The program \`${spliced[0].word}\` in a string this command hands to a shell is spliced from quoted pieces, so the hook cannot read which program it runs. Spell the program as one plain word.`;
-  if (reprinted.length || respelled.length) {
+  if (respelled.length) {
     if (depth > 0)
-      return `A program in a string this command hands to a shell is quoted, escaped or printed so the hook cannot read it in place${respelled.length ? ` (\`${respelled[0].word}\`)` : ""}. Spell the program as a plain word.`;
+      return `A program in a string this command hands to a shell is quoted or escaped so the hook cannot read it in place (\`${respelled[0].word}\`). Spell the program as a plain word.`;
     // The rules that fire on any occurrence of a text read this command's own
-    // first: a re-judge reads a rebuilt text, which drops a printer's operands
-    // (`printf '%d%.0s\n' 5 '<marker>'`, CodeRabbit on PR #1788).
+    // first: a re-judge reads a rebuilt text (CodeRabbit on PR #1788).
     const occurrence = occurrences(text, ctx, powershell);
     if (occurrence) return occurrence;
-  }
-  if (reprinted.length) {
-    // An echo -e or printf whose output holds a word its raw text cannot spell
-    // is judged as printing that output plainly, from the last, so the earlier
-    // ones keep their indices (#1646). Its redirections inside the span it
-    // replaces go with it, so a substitution in one is still judged
-    // (`printf '%d\n' >"$(gh pr merge 7)" 5 | bash`, CodeRabbit CLI).
-    let plain = text;
-    const seen = new Set();
-    for (const { from, to, text: out, kept } of [...reprinted].sort((x, y) => y.from - x.from)) {
-      if (seen.has(from)) continue;
-      seen.add(from);
-      const redirs = kept?.length ? ` ${kept.join(" ")}` : "";
-      plain = `${plain.slice(0, from)}printf '%s' '${out.replace(/'/g, "'\\''")}'${redirs}${plain.slice(to)}`;
-    }
-    return checkText(plain, ctx, powershell, depth + 1);
-  }
-  if (respelled.length) {
     // Each word replaced by the name its shell runs, from the last, so the
     // earlier ones keep their indices; and once more by the name its raw text
     // spells, where that differs, the stricter verdict standing.
@@ -1385,9 +1380,6 @@ function checkText(text, ctx, powershell, depth) {
   // command is refused whole rather than passed on a guess (#1646).
   if (unclosedLead(text))
     return "A command this one hands to a shell (`bash -c`, `eval`, a piped script …) starts with a quote that never closes, or has a heredoc with no delimiter, so the hook cannot read which program it runs. Close the quote, or run the inner command directly.";
-  // printf output piped to a shell that the hook cannot work out (#1646).
-  if (unprintable(text))
-    return "This command pipes `printf` output to a shell, and part of that output cannot be known here — a `*` width, a number that is no literal, an argument that expands — so the hook cannot read which program the shell runs. Run the inner command directly.";
   const verdict = judge(text, ctx, powershell);
   if (typeof verdict === "string") return verdict;
   // An ask the command carries anyway, from another command of the chain, is
@@ -1454,8 +1446,9 @@ function judge(text, ctx, powershell) {
     takeDecodedHits(text);
     const v = rule.test(text, ctx);
     // A rule that found its command in what a shell reads from a string, but
-    // reads its arguments from raw text that differs (an escape it decodes,
-    // words `eval` or `printf` join), never passes on them (#1646; reading
+    // reads its arguments from raw text that differs (a quote the string's
+    // quoting escapes, words cmd.exe or PowerShell join; eval, printers and
+    // ANSI-C strings are refused before this, #1659), never passes on them (#1646; reading
     // them as that shell does is #1783). A rule that read that command as
     // its shell does excused its match (`excuseDecodedHit`). Nor does it ask
     // on them: an ask the rule raised over another command of the chain says
