@@ -29,6 +29,7 @@ import {
   readCommands,
   readWorkspace,
   transcriptFiles,
+  USAGE,
   verdictKind,
   verdictOf,
 } from "./replay-corpus.mjs";
@@ -754,6 +755,24 @@ describe("the command line", () => {
       expect(copies).toHaveLength(1);
       expect(copies[0].there).toBe(true);
       expect(fs.existsSync(copies[0].dir)).toBe(false);
+    } finally {
+      fs.rmSync(owned, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  // CodeRabbit CLI round 2 on #1659: a comparison that judged nothing (a
+  // mistyped --match) proves nothing, so it says so and exits 4.
+  it("exits 4 when a comparison judges no command, and 0 for an empty census", async () => {
+    const owned = fs.mkdtempSync(path.join(os.tmpdir(), "replay-corpus-main-"));
+    try {
+      fs.mkdirSync(path.join(owned, "t"));
+      fs.writeFileSync(path.join(owned, "t", "a.jsonl"), `${line(toolUse("Bash", { command: "ls" }))}\n`);
+      const out = [];
+      const args = ["--transcripts", path.join(owned, "t"), "--match", "no-such-folder"];
+      expect(await main([...args, "--base", "HEAD"], (l) => out.push(l), { root: owned })).toBe(4);
+      expect(out.join("\n")).toMatch(/no commands judged/);
+      expect(await main([...args, "--census-only"], () => {}, { root: owned })).toBe(0);
+      expect(USAGE).toMatch(/\b4\b.*no command/);
     } finally {
       fs.rmSync(owned, { recursive: true, force: true });
     }

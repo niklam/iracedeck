@@ -20,7 +20,9 @@
  *
  * Exit status: 0 when every verdict is identical, 1 when one differs, 2 on a
  * usage error, 3 when the run could not be made (the base unreadable, a
- * module that does not load).
+ * module that does not load, a corpus or manifest it cannot read), 4 when a
+ * comparison judged no command at all (a `--match` naming no folder), which
+ * proves nothing (USAGE).
  */
 import {
   createReadStream,
@@ -59,7 +61,10 @@ export const USAGE = `Usage: node scripts/claude-hooks/replay-corpus.mjs --trans
   --census-only         print the census, judge nothing
   --show-commands       print each differing command's text and its verdicts' full text
                         (otherwise only each verdict's kind)
-  --help                print this`;
+  --help                print this
+
+Exit status: 0 every verdict identical, 1 one differs, 2 a usage error,
+3 the run could not be made, 4 a comparison judged no command (no commands judged).`;
 
 // ---------------------------------------------------------------------------
 // Reading the transcripts
@@ -825,6 +830,11 @@ export async function main(
     print(`context: cwd ${root}, ${workspace.manifests.length} package manifests`);
     if (!opts.censusOnly) {
       print(`base: ${opts.base} (${base.sha})`);
+      // A comparison over nothing proves nothing (CodeRabbit CLI round 2 on #1659).
+      if (!judged) {
+        print("replay-corpus: no commands judged: check --transcripts and --match");
+        return 4;
+      }
       print(`commands judged: ${judged}`);
       print(`identical verdicts: ${identical}`);
       print(differenceSummary(differences));
