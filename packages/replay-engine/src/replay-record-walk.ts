@@ -346,12 +346,29 @@ async function drainWaitingStarts(): Promise<void> {
   }
 }
 
-/** @internal For tests, through `_resetReplayEngine`: no start waiting, none waited out. */
+/** Why a waiting start's promise rejects when the engine is reset under it: its `act` never runs. */
+export class ReplayWalkStartDropped extends Error {
+  constructor() {
+    super("The replay engine was reset while the step's start waited for a search to land");
+    this.name = "ReplayWalkStartDropped";
+  }
+}
+
+/**
+ * @internal For tests, through `_resetReplayEngine`: no start waiting, none
+ * waited out. Every start still waiting is settled, rejected with
+ * {@link ReplayWalkStartDropped} without running its `act`, so a press
+ * awaited across a reset does not hang.
+ */
 export function _resetReplayRecordWalk(): void {
+  const dropped = waitingStarts;
+
   drainGeneration++;
   waitingStarts = [];
   draining = false;
   waitedOutSearchId = null;
+
+  for (const start of dropped) start.reject(new ReplayWalkStartDropped());
 }
 
 /**

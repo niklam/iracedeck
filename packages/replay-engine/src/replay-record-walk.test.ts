@@ -25,6 +25,7 @@ import {
   recordedIndexAt,
   type RecordedSpanRule,
   type ReplayWalkDirection,
+  ReplayWalkStartDropped,
   resolveReplayWalkAnchor,
   resolveReplayWalkStart,
   type SettledReplayWalkStart,
@@ -684,9 +685,12 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
     setUp();
     search("nextSession");
 
-    const { starts } = awaitStart(ORIGIN);
+    const { starts, done } = awaitStart(ORIGIN);
 
     resetEngine();
+
+    // Settled, never left hanging, and its act never runs.
+    await expect(done).rejects.toBeInstanceOf(ReplayWalkStartDropped);
     await vi.advanceTimersByTimeAsync(3_000);
 
     expect(starts).toEqual([]);
