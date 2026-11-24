@@ -1576,6 +1576,11 @@ function releaseOnLanding(current: Slot, telemetry: TelemetryData | null, now: n
   );
   const reheld = slot as Slot | null;
 
+  // A go to end `decide` sent leaves the replay for live, as one `goOut` sends does: the controller drops its grace.
+  if (result.kind === "sent" && result.ok && current.command.kind === "go-to" && current.command.end === "end") {
+    engineReads().leftForLive();
+  }
+
   if (result.kind === "held" && reheld !== null) {
     // Still the same press: its place in press order and its waiting fact's start stay.
     slot = { ...reheld, pressedAt: current.pressedAt, order: current.order };

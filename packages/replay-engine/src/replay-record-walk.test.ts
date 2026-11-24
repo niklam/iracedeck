@@ -330,6 +330,8 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
   let state: SteppedReplayState;
   /** False once the test leaves the replay: the debounced state and the engine read it as gone. */
   let onScreen: boolean;
+  /** The engine's word to the controller that the plugin left the replay for live. */
+  let leftForLive: ReturnType<typeof vi.fn<() => void>>;
   const ORIGIN = "key-1";
 
   /** The debounced state as a press reads it: the stepped tracker's, or nothing on screen once the replay is left. */
@@ -355,12 +357,14 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
     });
     state = steppedReplayState(() => sim.telemetry());
     onScreen = true;
+    leftForLive = vi.fn(() => state.noteReplayLeftForLive());
     resetEngine({
       replay: () => sim.replay,
       readTelemetry: () => sim.telemetry(),
       inReplay: () => onScreen && state.getReplayState().inReplay,
       connected: () => true,
       seekHold: (hold) => state.noteReplaySeekHold(hold),
+      leftForLive,
       now: () => Date.now(),
     });
   }
@@ -718,6 +722,34 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
       expect(sim.calls).toEqual(["nextSession", "nextSession", "nextIncident"]);
       expect(sim.frame()).toBe(330_000);
       expect(sim.thrown).toBe(0);
+    });
+
+    it("a go to end held back for a start, then sent against the start's jump, still tells the controller it left for live", async () => {
+      setUp();
+      search("nextSession");
+
+      const order: string[] = [];
+      const jumps: Promise<unknown>[] = [];
+      const a = jumpPress("a", order, jumps);
+
+      // Jump to Live, held behind the search on its way.
+      expect(pressReplayCommand({ kind: "go-to", end: "end" }, { by: "test-live", origin: "key-live" })).toEqual({
+        kind: "held",
+      });
+
+      await vi.advanceTimersByTimeAsync(3_000);
+      await a;
+
+      expect(order).toEqual(["a cursor 200000"]);
+      expect(sim.calls.filter((call) => call !== "pause")).toEqual([
+        "nextSession",
+        "setPlayPosition 0 250000",
+        "goToEnd",
+      ]);
+      expect(leftForLive).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      await Promise.allSettled(jumps);
     });
 
     it("when the start that went first sends nothing, the slot's command goes out before the next start reads", async () => {
