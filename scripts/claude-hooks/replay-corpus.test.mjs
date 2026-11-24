@@ -944,6 +944,16 @@ describe("side effects while judging", () => {
 });
 
 describe("the command line", () => {
+  // CLI check of 8086892f8: both sides' code runs in this process, and the
+  // write guard is no sandbox, so the help says so.
+  it("says both sides must be trusted code, the guard being no sandbox", () => {
+    const usage = USAGE.replace(/\s+/g, " ");
+    expect(usage).toContain("--base and --head-dir must name trusted code");
+    expect(usage).toContain("is not a sandbox");
+    expect(usage).toContain("not the methods of a FileHandle already open");
+    expect(usage).toContain("imported before the guard is installed");
+  });
+
   it("reads its options, with the defaults", () => {
     expect(parseCli(["--transcripts", "d"])).toEqual({
       transcripts: "d",

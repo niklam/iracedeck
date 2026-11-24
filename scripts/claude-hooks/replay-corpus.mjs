@@ -18,6 +18,10 @@
  * writing a file throws, so a rule that reaches past `ctx` shows as a THROW
  * verdict on that side rather than running anything.
  *
+ * That guard is no sandbox (USAGE): `--base` and `--head-dir` must name
+ * trusted code, since both sides are imported, their top level unguarded,
+ * and run in this process.
+ *
  * Both sides judge with one context, whose `cwd` and package manifests are
  * the head checkout's (`--head-dir`, or this one).
  *
@@ -66,6 +70,12 @@ export const USAGE = `Usage: node scripts/claude-hooks/replay-corpus.mjs --trans
   --show-commands       print each differing command's text and its verdicts' full text
                         (otherwise only each verdict's kind)
   --help                print this
+
+--base and --head-dir must name trusted code: both sides' scripts are imported and
+run in this process. The guard that makes a spawn or file write throw while judging
+is not a sandbox: it replaces the fs and child_process exports, not the methods of a
+FileHandle already open, and each side's modules are imported before the guard is
+installed, so their top-level code runs unguarded.
 
 Exit status:
   0  every pair gave the same completed verdict
