@@ -136,7 +136,7 @@ export const OUTPUT_DIR = path.join(audioAssetsPath, "dist", "voice-packs");
  * `voices-<id>-<version>`, holding one asset `<id>-<version>.zip` — the two
  * helpers below are the only place that convention is spelled out.
  */
-export const RELEASE_DOWNLOAD_BASE = "https://github.com/niklam/iracedeck/releases/download";
+export const RELEASE_DOWNLOAD_BASE = "https://github.com/iracedeck/iracedeck/releases/download";
 
 /**
  * @typedef {import("../src/build/voice-packs.mjs").VoicePackDefinition} VoicePackDefinition

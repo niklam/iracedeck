@@ -82,7 +82,7 @@ export default defineConfig({
         {
           icon: "github",
           label: "GitHub",
-          href: "https://github.com/niklam/iracedeck",
+          href: "https://github.com/iracedeck/iracedeck",
         },
         {
           icon: "discord",
@@ -311,7 +311,7 @@ export default defineConfig({
             },
             {
               label: "GitHub",
-              link: "https://github.com/niklam/iracedeck",
+              link: "https://github.com/iracedeck/iracedeck",
               attrs: { target: "_blank", rel: "noopener noreferrer" },
             },
             {

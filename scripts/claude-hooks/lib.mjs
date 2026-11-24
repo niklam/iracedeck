@@ -32,7 +32,14 @@ export const MAIN_BRANCH = "master";
 /** The one permanent worktree the deck links to for combined manual tests, and its local, never-pushed branch (#1520). */
 export const INTEGRATION_TREE = "ir-integration";
 export const INTEGRATION_BRANCH = "integration";
-export const BOARD = { number: 1, owner: "niklam", statusField: "Status" };
+/**
+ * The Roadmap board: the `iracedeck` organization's project 1 since the move
+ * on 2026-11-24 (#1799). `gh project … --owner` takes an organization as it
+ * takes a user. The user board it replaced, `users/niklam/projects/1`, is
+ * number 1 too, so a card is matched by owner as well as number
+ * ({@link boardItemForIssue}).
+ */
+export const BOARD = { number: 1, owner: "iracedeck", statusField: "Status" };
 
 // ---------------------------------------------------------------------------
 // Hook I/O
@@ -685,7 +692,10 @@ function boardProjectId(cwd) {
  * answer (a failed call, unparsable output), so a caller can tell "not on the
  * board" from "could not look" (#1574). The number is always read as a
  * home-repository issue, so a caller holding another repository's number must
- * not pass it (#1527).
+ * not pass it (#1527). A card is {@link BOARD}'s when its project has the
+ * board's number AND owner: an issue may sit on another owner's project 1 as
+ * well — the user board the org board replaced (#1799) — and a card picked by
+ * number alone could be that one.
  */
 export function boardItemForIssue(issueNumber, cwd) {
   const [owner, name] = HOME_REPO.split("/");
@@ -694,11 +704,17 @@ export function boardItemForIssue(issueNumber, cwd) {
     owner +
     '",name:"' +
     name +
-    '"){issue(number:$n){projectItems(first:10){nodes{id project{number} fieldValueByName(name:"Status"){... on ProjectV2ItemFieldSingleSelectValue{name}}}}}}}';
+    '"){issue(number:$n){projectItems(first:20){nodes{id project{number owner{... on Organization{login} ... on User{login}}} fieldValueByName(name:"Status"){... on ProjectV2ItemFieldSingleSelectValue{name}}}}}}}';
   const data = ghJson(["api", "graphql", "-f", `query=${query}`, "-F", `n=${issueNumber}`], cwd);
   if (!data?.data?.repository) return null;
-  const node = data.data.repository.issue?.projectItems?.nodes?.find((n) => n.project?.number === BOARD.number);
-  if (!node) return undefined;
+  const numbered = (data.data.repository.issue?.projectItems?.nodes ?? []).filter(
+    (n) => n?.project?.number === BOARD.number,
+  );
+  const node = numbered.find(
+    (n) => typeof n.project.owner?.login === "string" && n.project.owner.login.toLowerCase() === BOARD.owner,
+  );
+  // A project 1 whose owner gh could not name may be the board's card: "could not look", not "not on it".
+  if (!node) return numbered.some((n) => typeof n.project.owner?.login !== "string") ? null : undefined;
   return { itemId: node.id, status: node.fieldValueByName?.name ?? "(none)" };
 }
 

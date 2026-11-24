@@ -129,7 +129,13 @@ const boardItem = (lane) => ({
     repository: {
       issue: {
         projectItems: {
-          nodes: [{ id: "PVTI_fake", project: { number: 1 }, fieldValueByName: lane ? { name: lane } : null }],
+          nodes: [
+            {
+              id: "PVTI_fake",
+              project: { number: 1, owner: { login: "iracedeck" } },
+              fieldValueByName: lane ? { name: lane } : null,
+            },
+          ],
         },
       },
     },
@@ -238,13 +244,13 @@ describe("post-bash.mjs triggers", { timeout: 30_000 }, () => {
 // #1527: a card is found by issue number alone, so a filing or a merge in
 // another repository moved the iRaceDeck card that shares its number.
 // Each case spawns the hook, several to a test: measured up to 2.1 s under the full suite (#1542).
-describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", { timeout: 30_000 }, () => {
+describe("post-bash.mjs acts on iracedeck/iracedeck only (#1527)", { timeout: 30_000 }, () => {
   const FOREIGN = "https://github.com/lint-staged/lint-staged/issues/1865";
 
   it("names an iRaceDeck issue it cannot date rather than file it", () => {
     // Without gh the issue's creation time is unknown, so it may not be the one
     // the create made; the filing with gh answering is the positive control below.
-    const url = "https://github.com/niklam/iracedeck/issues/1527";
+    const url = "https://github.com/iracedeck/iracedeck/issues/1527";
     expect(fire("gh issue create --title x --body y", { stdout: `${url}\n`, withoutGh: true })).toBe(
       `[hook] gh issue create: could not tell whether ${url} was just filed; add any that was to the Roadmap board by hand (Backlog).`,
     );
@@ -262,7 +268,7 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", { timeout: 30_00
         withoutGh: true,
       });
       expect(note, command).toBe(
-        `[hook] Filed ${FOREIGN} in lint-staged/lint-staged, not niklam/iracedeck: the Roadmap board is left alone.`,
+        `[hook] Filed ${FOREIGN} in lint-staged/lint-staged, not iracedeck/iracedeck: the Roadmap board is left alone.`,
       );
     }
     const ps = fire("gh issue create -R lint-staged/lint-staged --title x --body y", {
@@ -276,9 +282,9 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", { timeout: 30_00
   // CodeRabbit on #1535: a create that prints no URL was always sent to this board by hand.
   it("sends a foreign create that printed no URL nowhere, and a home one to the board by hand", () => {
     expect(fire("gh issue create -R lint-staged/lint-staged --web", { withoutGh: true })).toBe(
-      "[hook] gh issue create ran in lint-staged/lint-staged, not niklam/iracedeck: the Roadmap board is left alone.",
+      "[hook] gh issue create ran in lint-staged/lint-staged, not iracedeck/iracedeck: the Roadmap board is left alone.",
     );
-    for (const command of ["gh issue create -R niklam/iracedeck --web", `gh issue create -R "$R" --web`])
+    for (const command of ["gh issue create -R iracedeck/iracedeck --web", `gh issue create -R "$R" --web`])
       expect(fire(command, { withoutGh: true }), command).toBe(
         "[hook] gh issue create: no issue URL in the output; add the card to the Roadmap board by hand (Backlog).",
       );
@@ -298,10 +304,10 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", { timeout: 30_00
     ]) {
       // Without gh on PATH a read-back would say "could not read the PR back".
       const note = fire(command, { withoutGh: true });
-      expect(note, command).toMatch(/gh pr merge ran in other\/repo, not niklam\/iracedeck: no Roadmap card moved/i);
+      expect(note, command).toMatch(/gh pr merge ran in other\/repo, not iracedeck\/iracedeck: no Roadmap card moved/i);
     }
-    expect(fire("gh pr merge 5 --repo ghe.example.com/niklam/iracedeck --squash", { withoutGh: true })).toMatch(
-      /ran in ghe\.example\.com\/niklam\/iracedeck, not niklam\/iracedeck/,
+    expect(fire("gh pr merge 5 --repo ghe.example.com/iracedeck/iracedeck --squash", { withoutGh: true })).toMatch(
+      /ran in ghe\.example\.com\/iracedeck\/iracedeck, not iracedeck\/iracedeck/,
     );
     for (const command of [
       "$env:GH_REPO = 'other/repo'; gh pr merge 5 --squash",
@@ -313,12 +319,12 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", { timeout: 30_00
   it("still reads an iRaceDeck merge back, however it names the repository", () => {
     for (const command of [
       "gh pr merge 5 --squash",
-      "gh pr merge 5 -R niklam/iracedeck --squash",
-      "gh pr merge 5 --repo NIKLAM/IRACEDECK --squash",
-      "gh pr merge https://github.com/niklam/iracedeck/pull/5 --squash",
-      "GH_REPO=niklam/iracedeck gh pr merge 5 --squash",
+      "gh pr merge 5 -R iracedeck/iracedeck --squash",
+      "gh pr merge 5 --repo iracedeck/iracedeck --squash",
+      "gh pr merge https://github.com/iracedeck/iracedeck/pull/5 --squash",
+      "GH_REPO=iracedeck/iracedeck gh pr merge 5 --squash",
       // The flag beats the environment, as in gh.
-      "GH_REPO=other/repo gh pr merge 5 -R niklam/iracedeck --squash",
+      "GH_REPO=other/repo gh pr merge 5 -R iracedeck/iracedeck --squash",
     ])
       expect(fire(command, { withoutGh: true }), command).toMatch(/could not read the PR back/);
   });
@@ -328,8 +334,8 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", { timeout: 30_00
       `gh pr merge 5 -R "$REPO" --squash`,
       "GH_REPO=$REPO gh pr merge 5 --squash",
       // The literal prefix is not what the shell passes (CodeRabbit on #1535).
-      "GH_REPO=niklam/iracedeck$SUFFIX gh pr merge 5 --squash",
-      "gh pr merge 5 -R niklam/iracedeck$SUFFIX --squash",
+      "GH_REPO=iracedeck/iracedeck$SUFFIX gh pr merge 5 --squash",
+      "gh pr merge 5 -R iracedeck/iracedeck$SUFFIX --squash",
     ])
       expect(fire(command, { withoutGh: true }), command).toMatch(/a --repo or GH_REPO the hook cannot read/);
   });
@@ -344,17 +350,17 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", { timeout: 30_00
       "api graphql": boardItem("In progress"),
     });
 
-    it("moves the closing issues of niklam/iracedeck and names the others — the positive control", () => {
+    it("moves the closing issues of iracedeck/iracedeck and names the others — the positive control", () => {
       const { note, calls } = fireWithGh(
         "gh pr merge 1529 --squash",
-        merged("https://github.com/niklam/iracedeck/pull/1529", [
-          issueRef("niklam/iracedeck", 1527),
+        merged("https://github.com/iracedeck/iracedeck/pull/1529", [
+          issueRef("iracedeck/iracedeck", 1527),
           issueRef("lint-staged/lint-staged", 1865),
         ]),
       );
       expect(note).toContain("board (dry run): would move #1527 In progress → Testing");
       expect(note).toContain(
-        "Closing issues outside niklam/iracedeck have no Roadmap card: lint-staged/lint-staged#1865.",
+        "Closing issues outside iracedeck/iracedeck have no Roadmap card: lint-staged/lint-staged#1865.",
       );
       expect(graphqlFor(calls)).toEqual(["n=1527"]);
     });
@@ -362,7 +368,7 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", { timeout: 30_00
     it("moves the title's card when every closing issue is in another repository", () => {
       const { note, calls } = fireWithGh(
         "gh pr merge 1529 --squash",
-        merged("https://github.com/niklam/iracedeck/pull/1529", [issueRef("lint-staged/lint-staged", 1865)]),
+        merged("https://github.com/iracedeck/iracedeck/pull/1529", [issueRef("lint-staged/lint-staged", 1865)]),
       );
       expect(note).toContain("would move #1527 In progress → Testing");
       expect(graphqlFor(calls)).toEqual(["n=1527"]);
@@ -375,13 +381,13 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", { timeout: 30_00
         merged("https://github.com/lint-staged/lint-staged/pull/1529", [issueRef("lint-staged/lint-staged", 1527)]),
       );
       expect(note).toBe(
-        "[hook] gh pr merge: PR https://github.com/lint-staged/lint-staged/pull/1529 is in lint-staged/lint-staged, not niklam/iracedeck: no Roadmap card moved and no post-merge runs listed.",
+        "[hook] gh pr merge: PR https://github.com/lint-staged/lint-staged/pull/1529 is in lint-staged/lint-staged, not iracedeck/iracedeck: no Roadmap card moved and no post-merge runs listed.",
       );
       expect(calls.map((c) => c.args.slice(0, 2).join(" "))).toEqual(["pr view"]);
     });
 
     const open = {
-      "pr view": { number: 5, state: "OPEN", title: "x", url: "https://github.com/niklam/iracedeck/pull/5" },
+      "pr view": { number: 5, state: "OPEN", title: "x", url: "https://github.com/iracedeck/iracedeck/pull/5" },
     };
     /** The one gh call a merge's read-back made, for a home PR that is still open. */
     const readBack = (command) => {
@@ -393,13 +399,15 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", { timeout: 30_00
 
     it("reads the PR back from the repository the merge used", () => {
       // No PR argument: gh refuses --repo without one, so the repository goes as GH_REPO.
-      const bare = readBack("GH_REPO=niklam/iracedeck gh pr merge --squash");
-      expect(bare.GH_REPO).toBe("niklam/iracedeck");
+      const bare = readBack("GH_REPO=iracedeck/iracedeck gh pr merge --squash");
+      expect(bare.GH_REPO).toBe("iracedeck/iracedeck");
       expect(bare.args.slice(0, 3)).toEqual(["pr", "view", "--json"]);
-      expect(readBack("gh pr merge 5 -R NIKLAM/IRACEDECK --squash")).toMatchObject({ GH_REPO: "NIKLAM/IRACEDECK" });
-      const byUrl = readBack("gh pr merge https://github.com/niklam/iracedeck/pull/5");
+      expect(readBack("gh pr merge 5 -R iracedeck/iracedeck --squash")).toMatchObject({
+        GH_REPO: "iracedeck/iracedeck",
+      });
+      const byUrl = readBack("gh pr merge https://github.com/iracedeck/iracedeck/pull/5");
       expect(byUrl.GH_REPO).toBeUndefined();
-      expect(byUrl.args).toContain("https://github.com/niklam/iracedeck/pull/5");
+      expect(byUrl.args).toContain("https://github.com/iracedeck/iracedeck/pull/5");
       // An assignment that never reaches the merge is not the merge's: after it,
       // in a body, a prefix of another command, or not exported.
       for (const command of [
@@ -409,7 +417,9 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", { timeout: 30_00
         "GH_REPO=other/repo; gh pr merge 5 --squash",
       ])
         expect(readBack(command).GH_REPO, command).toBeUndefined();
-      expect(readBack("export GH_REPO=niklam/iracedeck; gh pr merge 5 --squash").GH_REPO).toBe("niklam/iracedeck");
+      expect(readBack("export GH_REPO=iracedeck/iracedeck; gh pr merge 5 --squash").GH_REPO).toBe(
+        "iracedeck/iracedeck",
+      );
     });
 
     it("reads the PR back in the directory the merge ran in", () => {
@@ -434,8 +444,8 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", { timeout: 30_00
         "cd ../ir-7 && cd .; gh pr merge 5 --squash",
         // A named repository picks the repository, never the branch: a merge
         // with no PR is still the checkout's (CodeRabbit on PR #1788, round 3).
-        "cd ../ir-7 && cd .; GH_REPO=niklam/iracedeck gh pr merge --squash",
-        "cd ../ir-7 && cd .; gh pr merge -R niklam/iracedeck --squash",
+        "cd ../ir-7 && cd .; GH_REPO=iracedeck/iracedeck gh pr merge --squash",
+        "cd ../ir-7 && cd .; gh pr merge -R iracedeck/iracedeck --squash",
       ]) {
         const { note, calls } = fireWithGh(command, open);
         expect(note, command).toMatch(/directory unknown, so the hook cannot tell which repository's or branch's PR/);
@@ -444,13 +454,13 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", { timeout: 30_00
     });
 
     it("still reads a PR back where the merge's directory is unknown but the PR names its repository", () => {
-      const url = "https://github.com/niklam/iracedeck/pull/5";
+      const url = "https://github.com/iracedeck/iracedeck/pull/5";
       expect(readBack(`cd ../ir-7 && cd .; gh pr merge ${url} --squash`).args).toContain(url);
-      expect(readBack("cd ../ir-7 && cd .; gh pr merge 5 -R niklam/iracedeck --squash").GH_REPO).toBe(
-        "niklam/iracedeck",
+      expect(readBack("cd ../ir-7 && cd .; gh pr merge 5 -R iracedeck/iracedeck --squash").GH_REPO).toBe(
+        "iracedeck/iracedeck",
       );
-      expect(readBack("cd ../ir-7 && cd .; GH_REPO=niklam/iracedeck gh pr merge 5 --squash").GH_REPO).toBe(
-        "niklam/iracedeck",
+      expect(readBack("cd ../ir-7 && cd .; GH_REPO=iracedeck/iracedeck gh pr merge 5 --squash").GH_REPO).toBe(
+        "iracedeck/iracedeck",
       );
     });
 
@@ -462,7 +472,7 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", { timeout: 30_00
         "api graphql": boardItem("Backlog"),
       });
       expect(note).toBe(
-        "[hook] Worktree ir-1321 created in a checkout of lint-staged/lint-staged, not niklam/iracedeck: no Roadmap card moved.",
+        "[hook] Worktree ir-1321 created in a checkout of lint-staged/lint-staged, not iracedeck/iracedeck: no Roadmap card moved.",
       );
       expect(calls).toHaveLength(1);
       expect(path.resolve(calls[0].cwd).toLowerCase()).toBe(path.resolve(checkout).toLowerCase());
@@ -473,7 +483,7 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", { timeout: 30_00
       const { calls } = fireWithGh(
         "git worktree add ../ir-1321 -b fix/1321-x",
         {
-          "issue view": { url: "https://github.com/niklam/iracedeck/issues/1321" },
+          "issue view": { url: "https://github.com/iracedeck/iracedeck/issues/1321" },
           "api graphql": boardItem("Backlog"),
         },
         { env: { GH_REPO: "lint-staged/lint-staged" } },
@@ -484,20 +494,22 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", { timeout: 30_00
 
     it("moves the card of a worktree added in the iRaceDeck checkout — the positive control", () => {
       const { note } = fireWithGh("git worktree add ../ir-1321 -b fix/1321-x", {
-        "issue view": { url: "https://github.com/niklam/iracedeck/issues/1321" },
+        "issue view": { url: "https://github.com/iracedeck/iracedeck/issues/1321" },
         "api graphql": boardItem("Backlog"),
       });
       expect(note).toMatch(/^\[hook\] board \(dry run\): would move #1321 Backlog → In progress\./);
     });
 
-    const home = (n, tail = "") => `https://github.com/niklam/iracedeck/issues/${n}${tail}`;
+    const home = (n, tail = "") => `https://github.com/iracedeck/iracedeck/issues/${n}${tail}`;
     /** The fake gh's answer to the hook's age lookup of `repo`#`n`. */
-    const created = (n, at, repo = "niklam/iracedeck") => ({
+    const created = (n, at, repo = "iracedeck/iracedeck") => ({
       [`api repos/${repo}/issues/${n}`]: { created_at: new Date(at).toISOString() },
     });
     const justNow = () => Date.now() - 60_000;
     /** The fake gh's answer to `gh repo view`: the repository of the checkout a create ran in. */
     const checkout = (nameWithOwner) => ({ "repo view": { nameWithOwner } });
+    /** gh's answer for the former home's name (#1799): the repository GitHub resolves it to. */
+    const redirect = (nameWithOwner) => ({ "repo view niklam/iracedeck": { nameWithOwner } });
     const OLD = "2026-09-01T00:00:00Z";
     const filed = (note) => [...note.matchAll(/Added (\S+) to the Roadmap board/g)].map((m) => m[1]);
 
@@ -554,7 +566,7 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", { timeout: 30_00
         "repo view": {
           byDir: {
             "co-lint": { nameWithOwner: "lint-staged/lint-staged" },
-            "co-home": { nameWithOwner: "niklam/iracedeck" },
+            "co-home": { nameWithOwner: "iracedeck/iracedeck" },
           },
         },
       });
@@ -567,7 +579,7 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", { timeout: 30_00
         "repo view": { byDir: { "co-lint": { nameWithOwner: "lint-staged/lint-staged" } } },
       });
       expect(bothForeign.note).toBe(
-        "[hook] gh issue create ran in lint-staged/lint-staged, not niklam/iracedeck: the Roadmap board is left alone.",
+        "[hook] gh issue create ran in lint-staged/lint-staged, not iracedeck/iracedeck: the Roadmap board is left alone.",
       );
       expect(bothForeign.calls).toHaveLength(1); // asked once per directory
     });
@@ -577,11 +589,11 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", { timeout: 30_00
       // A foreign view's URL beside a home `--web` create: the home card still needs a hand.
       const homeWeb = fireWithGh(
         "gh issue view 1865 -R lint-staged/lint-staged --json url --jq .url && gh issue create --web",
-        checkout("niklam/iracedeck"),
+        checkout("iracedeck/iracedeck"),
         { stdout: `${foreign}\n` },
       );
       expect(homeWeb.note).toBe(
-        `[hook] Filed ${foreign} in lint-staged/lint-staged, not niklam/iracedeck: the Roadmap board is left alone.\n` +
+        `[hook] Filed ${foreign} in lint-staged/lint-staged, not iracedeck/iracedeck: the Roadmap board is left alone.\n` +
           "[hook] gh issue create: no issue in the output was just created; add the card to the Roadmap board by hand (Backlog).",
       );
       // The same output from a create run in a lint-staged checkout: no hand move.
@@ -589,22 +601,58 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", { timeout: 30_00
         stdout: `${foreign}\n`,
       });
       expect(elsewhere.note).toBe(
-        `[hook] Filed ${foreign} in lint-staged/lint-staged, not niklam/iracedeck: the Roadmap board is left alone.`,
+        `[hook] Filed ${foreign} in lint-staged/lint-staged, not iracedeck/iracedeck: the Roadmap board is left alone.`,
       );
       // A create in this checkout files its issue; one naming this repository needs no ask.
       const filedHome = fireWithGh(
         "gh issue create --title x --body y",
-        { ...checkout("niklam/iracedeck"), ...created(1534, justNow()), "api graphql": boardItem(null) },
+        { ...checkout("iracedeck/iracedeck"), ...created(1534, justNow()), "api graphql": boardItem(null) },
         { stdout: `${home(1534)}\n` },
       );
       expect(filed(filedHome.note)).toEqual([home(1534)]);
       const named = fireWithGh(
-        "gh issue create -R niklam/iracedeck --title x --body y",
+        "gh issue create -R iracedeck/iracedeck --title x --body y",
         { ...created(1534, justNow()), "api graphql": boardItem(null) },
         { stdout: `${home(1534)}\n` },
       );
       expect(filed(named.note)).toEqual([home(1534)]);
       expect(named.calls.some((c) => c.args[0] === "repo")).toBe(false);
+      // #1799: a create naming the former home lands here through GitHub's redirect, and gh prints the new URL.
+      for (const command of [
+        "gh issue create -R niklam/iracedeck --title x --body y",
+        "GH_REPO=niklam/iracedeck gh issue create --title x --body y",
+      ]) {
+        const redirected = fireWithGh(
+          command,
+          { ...redirect("iracedeck/iracedeck"), ...created(1534, justNow()), "api graphql": boardItem(null) },
+          { stdout: `${home(1534)}\n` },
+        );
+        expect(filed(redirected.note), command).toEqual([home(1534)]);
+      }
+      // Should a repository take the old name, gh prints its own URL: that create is foreign, with no hand move.
+      const taken = "https://github.com/niklam/iracedeck/issues/7";
+      const tookName = fireWithGh(
+        "gh issue create -R niklam/iracedeck --title x --body y",
+        { ...redirect("niklam/iracedeck"), ...created(1534, justNow()), "api graphql": boardItem(null) },
+        { stdout: `${taken}\n` },
+      );
+      expect(tookName.note).toBe(
+        `[hook] Filed ${taken} in niklam/iracedeck, not iracedeck/iracedeck: the Roadmap board is left alone.`,
+      );
+      // CodeRabbit: an unrelated old-name URL earlier in the chain does not decide; gh's answer about the name does.
+      const chained = fireWithGh(
+        `echo ${taken} && gh issue create -R niklam/iracedeck --title x --body y`,
+        { ...redirect("iracedeck/iracedeck"), ...created(1534, justNow()), "api graphql": boardItem(null) },
+        { stdout: `${taken}\n${home(1534)}\n` },
+      );
+      expect(filed(chained.note)).toEqual([home(1534)]);
+      // A name gh cannot resolve may be home: the create's own URL is still filed.
+      const unresolved = fireWithGh(
+        "gh issue create -R niklam/iracedeck --title x --body y",
+        { ...created(1534, justNow()), "api graphql": boardItem(null) },
+        { stdout: `${home(1534)}\n` },
+      );
+      expect(filed(unresolved.note)).toEqual([home(1534)]);
     });
 
     // CodeRabbit on #1535: a just-created iRaceDeck issue another command printed
@@ -620,7 +668,7 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", { timeout: 30_00
         },
       );
       expect(named.note).toBe(
-        "[hook] gh issue create ran in lint-staged/lint-staged, not niklam/iracedeck: the Roadmap board is left alone.",
+        "[hook] gh issue create ran in lint-staged/lint-staged, not iracedeck/iracedeck: the Roadmap board is left alone.",
       );
       expect(named.calls).toEqual([]);
       // The same when the checkout, not a flag, says so.
@@ -630,23 +678,24 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", { timeout: 30_00
         { stdout: `${home(1534)}\n` },
       );
       expect(filed(byCheckout.note)).toEqual([]);
-      expect(byCheckout.note).toMatch(/ran in lint-staged\/lint-staged, not niklam\/iracedeck/);
+      expect(byCheckout.note).toMatch(/ran in lint-staged\/lint-staged, not iracedeck\/iracedeck/);
     });
 
     it("names the candidates rather than guess when it cannot read their ages", () => {
       const note = fire("gh issue edit 1483 --add-label x && gh issue create --title y --body z", {
-        stdout: "https://github.com/niklam/iracedeck/issues/1483\nhttps://github.com/niklam/iracedeck/issues/1534\n",
+        stdout:
+          "https://github.com/iracedeck/iracedeck/issues/1483\nhttps://github.com/iracedeck/iracedeck/issues/1534\n",
         withoutGh: true,
       });
       expect(note).toBe(
-        "[hook] gh issue create: could not tell whether https://github.com/niklam/iracedeck/issues/1483, https://github.com/niklam/iracedeck/issues/1534 were just filed; add any that was to the Roadmap board by hand (Backlog).",
+        "[hook] gh issue create: could not tell whether https://github.com/iracedeck/iracedeck/issues/1483, https://github.com/iracedeck/iracedeck/issues/1534 were just filed; add any that was to the Roadmap board by hand (Backlog).",
       );
     });
 
     it("files an iRaceDeck issue into Backlog — the positive control — and asks gh nothing for another repository's", () => {
       for (const [url, repo] of [
-        [home(1527), "niklam/iracedeck"],
-        ["https://github.com/Niklam/iRaceDeck/issues/1527", "Niklam/iRaceDeck"],
+        [home(1527), "iracedeck/iracedeck"],
+        ["https://github.com/iracedeck/iracedeck/issues/1527", "iracedeck/iracedeck"],
       ]) {
         const { note } = fireWithGh(
           "gh issue create --title x --body y",
@@ -671,7 +720,7 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", { timeout: 30_00
 // edit that gives it one moves its card there. Every case reads the issue back
 // through the fake gh, and the board runs dry.
 describe("post-bash.mjs moves a milestoned issue to Planned (#1574)", { timeout: 30_000 }, () => {
-  const home = (n) => `https://github.com/niklam/iracedeck/issues/${n}`;
+  const home = (n) => `https://github.com/iracedeck/iracedeck/issues/${n}`;
   /** The fake gh's read-back of `ref`: the issue at `url`, its milestone (or none) and its state. */
   const viewed = (ref, url, milestone = "3.8.0", state = "OPEN") => ({
     [`issue view ${ref}`]: { url, milestone: milestone ? { number: 1, title: milestone } : null, state },
@@ -750,7 +799,7 @@ describe("post-bash.mjs moves a milestoned issue to Planned (#1574)", { timeout:
     for (const [command, which] of [
       ["gh issue edit 5 --remove-milestone", "#5"],
       [`gh issue edit 5 ${home(6)} --remove-milestone 2>/dev/null`, `#5, ${home(6)}`],
-      ["gh issue edit 5 -R niklam/iracedeck --remove-milestone", "#5"],
+      ["gh issue edit 5 -R iracedeck/iracedeck --remove-milestone", "#5"],
       ["gh issue edit $N --remove-milestone", "the issues it edited"],
       ["printf '%s\\n' 5 | xargs gh issue edit --remove-milestone", "the issues it edited"],
     ]) {
@@ -763,6 +812,8 @@ describe("post-bash.mjs moves a milestoned issue to Planned (#1574)", { timeout:
       "gh issue edit 5 -R lint-staged/lint-staged --remove-milestone",
       `gh issue edit 5 $N -R lint-staged/lint-staged --remove-milestone`,
       "GH_REPO=lint-staged/lint-staged gh issue edit $N --remove-milestone",
+      // #1799: a former home is not read back here, so it cannot be told from a repository that took its name.
+      "gh issue edit 5 -R niklam/iracedeck --remove-milestone",
     ])
       expect(fireWithGh(command, {}).note, command).toBeNull();
   });
@@ -804,7 +855,7 @@ describe("post-bash.mjs moves a milestoned issue to Planned (#1574)", { timeout:
     ]) {
       const { note, calls } = fireWithGh(command, { ...viewed(5, home(5)), "api graphql": boardItem("Backlog") });
       expect(note, command).toBe(
-        "[hook] gh issue edit milestoned lint-staged/lint-staged#5, not in niklam/iracedeck: the Roadmap board is left alone.",
+        "[hook] gh issue edit milestoned lint-staged/lint-staged#5, not in iracedeck/iracedeck: the Roadmap board is left alone.",
       );
       expect(calls, command).toEqual([]);
     }
@@ -814,7 +865,7 @@ describe("post-bash.mjs moves a milestoned issue to Planned (#1574)", { timeout:
       "api graphql": boardItem("Backlog"),
     });
     expect(byUrl.note).toBe(
-      `${planned(6)}\n[hook] gh issue edit milestoned ${url}, not in niklam/iracedeck: the Roadmap board is left alone.`,
+      `${planned(6)}\n[hook] gh issue edit milestoned ${url}, not in iracedeck/iracedeck: the Roadmap board is left alone.`,
     );
     // No flag named it: gh resolved the checkout's repository, and the read-back says which.
     const byCheckout = fireWithGh("gh issue edit 5 --milestone 3.8.0", {
@@ -822,7 +873,7 @@ describe("post-bash.mjs moves a milestoned issue to Planned (#1574)", { timeout:
       "api graphql": boardItem("Backlog"),
     });
     expect(byCheckout.note).toBe(
-      `[hook] gh issue edit milestoned ${url}, not in niklam/iracedeck: the Roadmap board is left alone.`,
+      `[hook] gh issue edit milestoned ${url}, not in iracedeck/iracedeck: the Roadmap board is left alone.`,
     );
     expect(graphqlFor(byCheckout.calls)).toEqual([]);
   });
@@ -831,9 +882,13 @@ describe("post-bash.mjs moves a milestoned issue to Planned (#1574)", { timeout:
     const elsewhere = path.join(SCRATCH, "edit-cwd");
     mkdirSync(elsewhere, { recursive: true });
     const replies = { ...viewed(5, home(5)), "api graphql": boardItem("Backlog") };
-    const named = fireWithGh("gh issue edit 5 -R NIKLAM/IRACEDECK --milestone 3.8.0", replies);
+    const named = fireWithGh("gh issue edit 5 -R iracedeck/iracedeck --milestone 3.8.0", replies);
     expect(named.note).toBe(planned(5));
-    expect(named.calls[0].GH_REPO).toBe("NIKLAM/IRACEDECK");
+    expect(named.calls[0].GH_REPO).toBe("iracedeck/iracedeck");
+    // #1799: the former home is read back through its redirect, and the URL gh returns decides.
+    const redirected = fireWithGh("gh issue edit 5 -R niklam/iracedeck --milestone 3.8.0", replies);
+    expect(redirected.note).toBe(planned(5));
+    expect(redirected.calls[0].GH_REPO).toBe("niklam/iracedeck");
     const moved = fireWithGh(`cd ${elsewhere.replaceAll("\\", "/")} && gh issue edit 5 --milestone 3.8.0`, replies);
     expect(path.resolve(moved.calls[0].cwd).toLowerCase()).toBe(path.resolve(elsewhere).toLowerCase());
     expect(moved.calls[0].GH_REPO).toBeUndefined();
@@ -937,7 +992,7 @@ describe("post-bash.mjs moves a milestoned issue to Planned (#1574)", { timeout:
 // ran the after-merge steps, and moved #1559's card for a PR nobody merged.
 describe("post-bash.mjs reads a mention beside a shell feed as a mention (#1607)", { timeout: 30_000 }, () => {
   // The two commands from #1393's transcripts.
-  const SED = String.raw`Q=/c/q; sed -e 's#^const cases = \[#const cases = [\n  ["A23b", "url", "Bash", "gh pr merge 1603 --squash", "deny: PR is in cli/cli, not niklam/iracedeck", TREE, { GH_REPO: "cli/cli" }],\n];\nconst _orig = [#' $Q/run-a.mjs > $Q/run-a2.mjs; grep -n "cases = \|_orig" $Q/run-a2.mjs; timeout 300 node $Q/run-a2.mjs $Q/a2-results.json 2>&1 | tee $Q/a2-summary.txt`;
+  const SED = String.raw`Q=/c/q; sed -e 's#^const cases = \[#const cases = [\n  ["A23b", "url", "Bash", "gh pr merge 1603 --squash", "deny: PR is in cli/cli, not iracedeck/iracedeck", TREE, { GH_REPO: "cli/cli" }],\n];\nconst _orig = [#' $Q/run-a.mjs > $Q/run-a2.mjs; grep -n "cases = \|_orig" $Q/run-a2.mjs; timeout 300 node $Q/run-a2.mjs $Q/a2-results.json 2>&1 | tee $Q/a2-summary.txt`;
   const GREP = `set -o pipefail; cd /c/x/ir-1393 && grep -rnE "(&&|;) *gh pr merge" .claude docs/superpowers/specs README.md scripts --include=*.md 2>/dev/null | grep -v "^docs/superpowers/specs" | head; timeout 200 pnpm test scripts/claude-rules-frontmatter.test.mjs --reporter=verbose > "/c/x/fm.log" 2>&1; grep -iE "headroom|budget|Tests " "/c/x/fm.log" | head`;
 
   it.each([

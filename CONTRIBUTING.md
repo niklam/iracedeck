@@ -6,7 +6,7 @@ Contributions are welcome. This guide is everything you need to go from an issue
 
 Every pull request fixes one issue. Features, refactors and bug fixes all start there.
 
-1. Check the [existing issues](https://github.com/niklam/iracedeck/issues) to see whether your bug or idea is already tracked.
+1. Check the [existing issues](https://github.com/iracedeck/iracedeck/issues) to see whether your bug or idea is already tracked.
 2. If it is not, open one with the bug report or feature request template. A new feature is worth discussing in the issue before you build it: it is cheaper to hear that something does not fit before the code exists than after.
 3. **Pick any issue that is not assigned to anyone.** Comment on it to say you are taking it, and it gets assigned to you. An issue that is already assigned is someone else's; choose another, or ask in its comments.
 
@@ -33,12 +33,12 @@ Keep even these to small, focused pull requests.
 - **Python 3 and [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the C++ workload**, on Windows only, to build the two native addons (`iracing-native` and `audio-native`). On macOS the build skips them.
 - **A deck host** to try your change on: the [Elgato Stream Deck](https://www.elgato.com/stream-deck) software 7.1 or later. HotSpot StreamDock or VSD Craft (Mirabox) and UlanziStudio (Ulanzi Deck) are only needed if you work on those plugins.
 
-[Fork the repository](https://github.com/niklam/iracedeck/fork) first, then clone your fork, so `origin` is a remote you can push to, and add the main repository as `upstream` to fetch from:
+[Fork the repository](https://github.com/iracedeck/iracedeck/fork) first, then clone your fork, so `origin` is a remote you can push to, and add the main repository as `upstream` to fetch from:
 
 ```bash
 git clone https://github.com/<your-user>/iracedeck.git
 cd iracedeck
-git remote add upstream https://github.com/niklam/iracedeck.git
+git remote add upstream https://github.com/iracedeck/iracedeck.git
 pnpm install
 pnpm build
 ```
@@ -126,7 +126,7 @@ The repository carries its own [Claude Code](https://docs.claude.com/en/docs/cla
 - A subagent spawn must name its model, and may not ask for its own worktree.
 - Shell-command guards refuse a set of known mistakes and give the correction: `pnpm exec vitest` (use `pnpm test <path>`), `pnpm build --force`, a piped `pnpm build` or `pnpm test` without `pipefail`, `jq`, `git diff master..<branch>`, `IRACEDECK_MOCK=0` and a few more. Linking, relinking or restarting a deck host asks first.
 
-The hooks that move cards on the maintainer's project board and check merges act on `niklam/iracedeck` only, and need access a contributor doesn't have; a note from one that it could not do something is harmless.
+The hooks that move cards on the maintainer's project board and check merges act on `iracedeck/iracedeck` only, and need access a contributor doesn't have; a note from one that it could not do something is harmless.
 
 ## Contributor license
 

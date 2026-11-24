@@ -3,8 +3,8 @@
 ## Getting Help
 
 - **Questions & discussion** — join the [iRaceDeck Discord](https://discord.gg/c6nRYywpah)
-- **Bug reports** — [open an issue](https://github.com/niklam/iracedeck/issues/new?template=bug_report.yml)
-- **Feature requests** — [open an issue](https://github.com/niklam/iracedeck/issues/new?template=feature_request.yml)
+- **Bug reports** — [open an issue](https://github.com/iracedeck/iracedeck/issues/new?template=bug_report.yml)
+- **Feature requests** — [open an issue](https://github.com/iracedeck/iracedeck/issues/new?template=feature_request.yml)
 - **Security vulnerabilities** — report them privately, as [SECURITY.md](SECURITY.md) describes
 
 ## What Not to Do

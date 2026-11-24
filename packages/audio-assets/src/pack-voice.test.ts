@@ -467,7 +467,7 @@ describe("packVoice", () => {
       voices: [{ id: "testvoice", label: "Test Voice" }],
       bytes: statSync(first.archivePath).size,
       sha256: sha256(archive),
-      url: "https://github.com/niklam/iracedeck/releases/download/voices-testvoice-1.2.3/testvoice-1.2.3.zip",
+      url: "https://github.com/iracedeck/iracedeck/releases/download/voices-testvoice-1.2.3/testvoice-1.2.3.zip",
     });
     expect(entry.url).toBe(archiveUrl(pack));
     expect(raw).not.toContain("\r");

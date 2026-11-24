@@ -33,7 +33,7 @@ function validEntry(overrides = {}) {
     voices: [{ id: "luca", label: "Luca" }],
     bytes: 13107200,
     sha256: "a".repeat(64),
-    url: "https://github.com/niklam/iracedeck/releases/download/voices-luca-1.2.0/luca-1.2.0.zip",
+    url: "https://github.com/iracedeck/iracedeck/releases/download/voices-luca-1.2.0/luca-1.2.0.zip",
     minPluginVersion: "3.2.0",
     ...overrides,
   };

@@ -8,7 +8,7 @@ Only the latest release receives security fixes. There is no backporting to olde
 
 **Do not open a public issue for security vulnerabilities.**
 
-Please report vulnerabilities through [GitHub's private vulnerability reporting](https://github.com/niklam/iracedeck/security/advisories/new). You'll receive an acknowledgment within 48 hours and a follow-up with next steps within a week.
+Please report vulnerabilities through [GitHub's private vulnerability reporting](https://github.com/iracedeck/iracedeck/security/advisories/new). You'll receive an acknowledgment within 48 hours and a follow-up with next steps within a week.
 
 ## Scope
 

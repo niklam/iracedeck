@@ -11,7 +11,7 @@
 export const DISCORD_API_BASE = "https://discord.com/api/v10";
 
 /** Discord asks bots to identify with this shape. */
-const DEFAULT_USER_AGENT = "DiscordBot (https://github.com/niklam/iracedeck, 1.0)";
+const DEFAULT_USER_AGENT = "DiscordBot (https://github.com/iracedeck/iracedeck, 1.0)";
 
 export class DiscordApiError extends Error {
   constructor({ method, path, status, code, message }) {

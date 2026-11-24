@@ -12,7 +12,7 @@ The scripts live in `scripts/claude-hooks/` — Node, because `jq` is not instal
 | PreToolUse | Bash, PowerShell | `pre-bash.mjs` → `rules-bash.mjs` (+ `shell-lexer.mjs`, `script-runs.mjs`) | The command guards below; a PowerShell command skips the bash-syntax traps. |
 | PreToolUse | Skill, Agent, AskUserQuestion, Edit, Write | `pre-tools.mjs` → `rules-tools.mjs` | `/code-review` must name a level, target an `ir-<issue>` tree and never carry `--fix`; an Agent spawn must choose its `model` (`fork` exempt) and never `isolation: "worktree"`; AskUserQuestion options name the actor as "Claude …" / "You …", never "I …"; an Edit or Write carries no raw control byte other than tab, LF and CR (#1103). |
 | PostToolUse | Edit, Write | `post-edit.mjs` → `rules-post.mjs` | Runs the generator whose source was edited (changelog or fragment, getting-started page, icon SVGs, comms catalog, Elgato manifest profiles, voice configs) and reports what changed — for a fragment that run is its validation; injects reminders for `global-settings.ts`, the catalog / bundled script, and rule files. |
-| PostToolUse | Bash, PowerShell | `post-bash.mjs` | Moves Roadmap cards: into Backlog after `gh issue create`, Planned after a milestone is set, In progress after `git worktree add ../ir-<n>`, Testing after `gh pr merge` (and lists the four post-merge CI runs); `niklam/iracedeck` only (`roadmap-board.md`). After `sed -i`: prints `git diff --stat`. |
+| PostToolUse | Bash, PowerShell | `post-bash.mjs` | Moves Roadmap cards: into Backlog after `gh issue create`, Planned after a milestone is set, In progress after `git worktree add ../ir-<n>`, Testing after `gh pr merge` (and lists the four post-merge CI runs); `iracedeck/iracedeck` only (`roadmap-board.md`). After `sed -i`: prints `git diff --stat`. |
 
 ## The Bash guards
 
@@ -23,7 +23,7 @@ A **deny** refuses the call and tells the model why. An **ask** forces the permi
 | `git push` of a tag | ask | a tag cuts a release |
 | `git push` of the `integration` branch | deny | that branch is local (#1520) |
 | `gh pr create` | deny on a title that is not `<type>(<scope>): … (#<issue>)` | PR title discipline |
-| `gh pr merge` | deny unless OPEN, `--squash` (`--merge` for a `release/*` head), APPROVED, every check green, not BLOCKED/DIRTY and CodeRabbit reviewed the current head; one plain merge per command, in `niklam/iracedeck` only; `--admin` passes only a prose-only or wholly-Dependabot PR (`build-and-commit.md` *Merging*), else asks or refuses. Mechanics: `hook-internals.md` | approval and checks are head-specific |
+| `gh pr merge` | deny unless OPEN, `--squash` (`--merge` for a `release/*` head), APPROVED, every check green, not BLOCKED/DIRTY and CodeRabbit reviewed the current head; one plain merge per command, in `iracedeck/iracedeck` only; `--admin` passes only a prose-only or wholly-Dependabot PR (`build-and-commit.md` *Merging*), else asks or refuses. Mechanics: `hook-internals.md` | approval and checks are head-specific |
 | `git commit` with a spec on a non-master branch | deny | specs commit to master only |
 | `git commit` ADDING a spec with no header block, no Out-of-scope section or no Testing/Verification section | deny | the required sections (`specs-and-plans.md`); forward-only |
 | `git commit` of any spec carrying a raw control byte other than tab, LF and CR | deny, naming the line | a spec-only push runs no CI (#1466) |

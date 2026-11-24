@@ -43,7 +43,7 @@ A spec covering several issues is named for the primary one and lists the rest i
 ## Header
 
 ```markdown
-> **Issue:** [#1035](https://github.com/niklam/iracedeck/issues/1035) · **Supersedes:** _none_ · **Superseded by:** _none_
+> **Issue:** [#1035](https://github.com/iracedeck/iracedeck/issues/1035) · **Supersedes:** _none_ · **Superseded by:** _none_
 >
 > Point-in-time design record. The code and `.claude/rules/` are the truth; this is not documentation.
 ```

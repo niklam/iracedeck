@@ -5,17 +5,17 @@
     "redirects": [
       {
         "source": "/downloads/plugin/latest/streamdeck",
-        "destination": "https://github.com/niklam/iracedeck/releases/latest/download/com.iracedeck.sd.core.streamDeckPlugin",
+        "destination": "https://github.com/iracedeck/iracedeck/releases/latest/download/com.iracedeck.sd.core.streamDeckPlugin",
         "type": 302
       },
       {
         "source": "/downloads/plugin/latest/mirabox",
-        "destination": "https://github.com/niklam/iracedeck/releases/latest/download/com.iracedeck.sd.core.sdPlugin",
+        "destination": "https://github.com/iracedeck/iracedeck/releases/latest/download/com.iracedeck.sd.core.sdPlugin",
         "type": 302
       },
       {
         "source": "/downloads/plugin/latest/ulanzi",
-        "destination": "https://github.com/niklam/iracedeck/releases/latest/download/com.ulanzi.iracedeck.ulanziPlugin.zip",
+        "destination": "https://github.com/iracedeck/iracedeck/releases/latest/download/com.ulanzi.iracedeck.ulanziPlugin.zip",
         "type": 302
       },
       {

@@ -122,10 +122,25 @@ export function missingWorkflows(runs) {
  * would move the iRaceDeck card that shares its number: the post-hook acts
  * on this one only.
  */
-export const HOME_REPO = "niklam/iracedeck";
+export const HOME_REPO = "iracedeck/iracedeck";
 
 /** Whether `slug` (`owner/repo`) is {@link HOME_REPO}; GitHub's names are case-insensitive. */
 export const isHomeRepo = (slug) => typeof slug === "string" && slug.toLowerCase() === HOME_REPO;
+
+/** The repository's earlier homes (#1799): GitHub redirects each to {@link HOME_REPO}, so gh resolves a command naming one to it. */
+export const FORMER_HOME_REPOS = ["niklam/iracedeck"];
+
+/**
+ * Whether a command that names `slug` may have acted on {@link HOME_REPO}:
+ * home itself, or a former home GitHub redirects there (#1799). Never a
+ * verdict of home on its own: the caller then reads the issue back, or takes
+ * the URL gh printed, and checks that with {@link isHomeRepo}. It only stops
+ * a redirected command from being dismissed as another repository's before
+ * that read. The merge gate does not use it: a merge naming a former home is
+ * refused, as any other repository's is.
+ */
+export const mayBeHome = (slug) =>
+  isHomeRepo(slug) || (typeof slug === "string" && FORMER_HOME_REPOS.includes(slug.toLowerCase()));
 
 /** `owner/repo` of a github.com issue or pull request URL, or `undefined`. */
 export function repoOfUrl(url) {
@@ -211,7 +226,7 @@ export function assignedGhRepo(command, masked = command) {
 /**
  * The plain value starting at `at` in `raw` — a bare word or a quote that
  * expands nothing, ending the word — or `null`. A value that runs on into an
- * expansion or another quote (`niklam/iracedeck$SUFFIX`) is not plain: its
+ * expansion or another quote (`iracedeck/iracedeck$SUFFIX`) is not plain: its
  * literal prefix is not what the shell passes.
  */
 function plainValueAt(raw, at) {
@@ -302,6 +317,7 @@ export function setsMilestone(edit) {
  */
 export function milestoneRemovedLine(edit, envRepo) {
   const targets = editTargets(edit, envRepo);
+  // Home only, not a former home (#1799): nothing is read back here, so a redirect cannot be told from a repository that took the old name.
   const maybeHome = targets.filter(({ repo }) => repo == null || isHomeRepo(repo));
   const named = edit.repo !== undefined ? edit.repo : envRepo;
   const elsewhere = named != null && !isHomeRepo(normalizeRepo(named));

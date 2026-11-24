@@ -28,7 +28,7 @@ function pack(id: string, overrides: Partial<VoicePackCatalogEntry> = {}): Voice
     voices: [{ id, label: id }],
     bytes: 1000,
     sha256: SHA_A,
-    url: `https://github.com/niklam/iRaceDeck/releases/download/voices-${id}-1.0.0/${id}-1.0.0.zip`,
+    url: `https://github.com/iracedeck/iracedeck/releases/download/voices-${id}-1.0.0/${id}-1.0.0.zip`,
     ...overrides,
   };
 }

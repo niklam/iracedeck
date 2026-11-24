@@ -16,7 +16,9 @@ import {
 /**
  * Real summary comment bodies, verbatim except the change-stack link's
  * token-shaped `scope` value, with the PR's final head and the comment's
- * real timestamps as `gh api graphql` reported them on 2026-10-10.
+ * real timestamps as `gh api graphql` reported them on 2026-10-10. Their
+ * links name the repository's home at the time, `niklam/iracedeck`, and keep
+ * it after the move to `iracedeck/iracedeck` (#1799): they are recordings.
  */
 const REAL = {
   1290: {

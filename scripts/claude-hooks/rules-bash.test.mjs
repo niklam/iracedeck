@@ -341,7 +341,7 @@ describe("gh pr merge", () => {
   const head = "1111111111111111111111111111111111111111";
   const green = () => ({
     number: 7,
-    url: "https://github.com/niklam/iracedeck/pull/7",
+    url: "https://github.com/iracedeck/iracedeck/pull/7",
     state: "OPEN",
     headRefOid: head,
     headRefName: "ir-7",
@@ -399,7 +399,7 @@ describe("gh pr merge", () => {
     pr.reviews = [{ author: { login: "niklam" }, state: "COMMENTED", commit: { oid: head } }];
     expect(deny("gh pr merge 7 --squash", ctx({ prView: () => pr }))).toMatch(/no CodeRabbit review/);
   });
-  // #1393 (with #1534): the gate judges a niklam/iracedeck PR only, and the PR it
+  // #1393 (with #1534): the gate judges a iracedeck/iracedeck PR only, and the PR it
   // reads is the one gh will merge — never this repository's PR of the same number.
   describe("the repository the merge is in", () => {
     /** A green home PR, recording every read as `[ref, dir, repo]`. */
@@ -417,22 +417,22 @@ describe("gh pr merge", () => {
 
     it("passes a merge that names this repository, in every spelling gh takes", () => {
       for (const command of [
-        "gh pr merge 7 --squash -R niklam/iracedeck",
-        "gh pr merge 7 --squash --repo NikLam/iRaceDeck",
-        "gh pr merge 7 --squash --repo=niklam/iracedeck",
-        "gh pr merge 7 --squash -Rniklam/iracedeck",
-        "gh pr merge 7 --squash -R github.com/niklam/iracedeck",
-        "gh pr merge 7 --squash -R https://github.com/niklam/iracedeck.git",
-        "gh pr merge 7 --squash -R 'niklam/iracedeck'",
-        "gh pr merge 7 -dsR niklam/iracedeck",
-        "GH_REPO=niklam/iracedeck gh pr merge 7 --squash",
-        "env GH_REPO=niklam/iracedeck gh pr merge 7 --squash",
+        "gh pr merge 7 --squash -R iracedeck/iracedeck",
+        "gh pr merge 7 --squash --repo iracedeck/iracedeck",
+        "gh pr merge 7 --squash --repo=iracedeck/iracedeck",
+        "gh pr merge 7 --squash -Riracedeck/iracedeck",
+        "gh pr merge 7 --squash -R github.com/iracedeck/iracedeck",
+        "gh pr merge 7 --squash -R https://github.com/iracedeck/iracedeck.git",
+        "gh pr merge 7 --squash -R 'iracedeck/iracedeck'",
+        "gh pr merge 7 -dsR iracedeck/iracedeck",
+        "GH_REPO=iracedeck/iracedeck gh pr merge 7 --squash",
+        "env GH_REPO=iracedeck/iracedeck gh pr merge 7 --squash",
         "timeout 120 gh pr merge 7 --squash",
         "gh pr merge 7 --squash 2>&1",
         "gh pr merge 7 --squash && git pull || echo failed",
-        "cd ../ir-7 && gh pr merge 7 --squash -R niklam/iracedeck",
-        "cd ../ir-7; GH_REPO=niklam/iracedeck gh pr merge 7 --squash",
-        "gh pr merge https://github.com/niklam/iracedeck/pull/7 --squash",
+        "cd ../ir-7 && gh pr merge 7 --squash -R iracedeck/iracedeck",
+        "cd ../ir-7; GH_REPO=iracedeck/iracedeck gh pr merge 7 --squash",
+        "gh pr merge https://github.com/iracedeck/iracedeck/pull/7 --squash",
       ]) {
         const { c } = arrange();
         expect(checkBash(command, c), command).toBeNull();
@@ -441,11 +441,11 @@ describe("gh pr merge", () => {
 
     it("hands the named repository to the read as GH_REPO, and a URL reads as itself", () => {
       const named = arrange();
-      passes("GH_REPO=niklam/iracedeck gh pr merge --squash", named.c);
-      expect(named.reads).toEqual([[undefined, MASTER, "niklam/iracedeck"]]);
+      passes("GH_REPO=iracedeck/iracedeck gh pr merge --squash", named.c);
+      expect(named.reads).toEqual([[undefined, MASTER, "iracedeck/iracedeck"]]);
       const url = arrange();
-      passes("gh pr merge https://github.com/niklam/iracedeck/pull/7 --squash -R niklam/iracedeck", url.c);
-      expect(url.reads).toEqual([["https://github.com/niklam/iracedeck/pull/7", MASTER, undefined]]);
+      passes("gh pr merge https://github.com/iracedeck/iracedeck/pull/7 --squash -R iracedeck/iracedeck", url.c);
+      expect(url.reads).toEqual([["https://github.com/iracedeck/iracedeck/pull/7", MASTER, undefined]]);
       const bare = arrange();
       passes("gh pr merge 7 --squash", bare.c);
       expect(bare.reads).toEqual([["7", MASTER, undefined]]);
@@ -458,8 +458,8 @@ describe("gh pr merge", () => {
         "gh pr merge 7 --squash --repo someone/other",
         "gh pr merge 7 --squash --repo=someone/other",
         "gh pr merge 7 --squash -Rsomeone/other",
-        "gh pr merge 7 --squash -R ghe.example.com/niklam/iracedeck",
-        "gh pr merge 7 --squash -R niklam/iracedeck -R someone/other",
+        "gh pr merge 7 --squash -R ghe.example.com/iracedeck/iracedeck",
+        "gh pr merge 7 --squash -R iracedeck/iracedeck -R someone/other",
         // pflag's combined short flags: -d (delete-branch), then -R and its value.
         "gh pr merge 7 --squash -dR someone/other",
         "gh pr merge 7 --squash -dRsomeone/other",
@@ -470,7 +470,7 @@ describe("gh pr merge", () => {
         "GH_REPO=someone/other gh pr merge 7 --squash -R ''",
         "gh pr merge https://github.com/someone/other/pull/7 --squash",
         // A URL wins over --repo, as it does in gh.
-        "gh pr merge https://github.com/someone/other/pull/7 --squash -R niklam/iracedeck",
+        "gh pr merge https://github.com/someone/other/pull/7 --squash -R iracedeck/iracedeck",
       ]) {
         const { c, reads } = arrange();
         expect(deny(command, c), command).toMatch(/targets someone\/other|targets ghe\.example\.com/);
@@ -496,9 +496,9 @@ describe("gh pr merge", () => {
     it("refuses anything but a plain cd ahead of the merge, before reading any PR", () => {
       for (const command of [
         "export GH_REPO=someone/other; gh pr merge 7 --squash",
-        "export GH_REPO=niklam/iracedeck && gh pr merge 7 --squash",
+        "export GH_REPO=iracedeck/iracedeck && gh pr merge 7 --squash",
         // An exported variable stays exported when assigned again.
-        "export GH_REPO=niklam/iracedeck; GH_REPO=someone/other; gh pr merge 7 --squash",
+        "export GH_REPO=iracedeck/iracedeck; GH_REPO=someone/other; gh pr merge 7 --squash",
         "export A=1 GH_REPO=someone/other; gh pr merge 7 --squash",
         "declare -gx GH_REPO=someone/other; gh pr merge 7 --squash",
         "export -- GH_REPO=someone/other; gh pr merge 7 --squash",
@@ -532,7 +532,7 @@ describe("gh pr merge", () => {
     it("refuses a PowerShell environment write or directory change ahead of the merge", () => {
       for (const command of [
         "$env:GH_REPO = 'someone/other'; gh pr merge 7 --squash",
-        "$env:GH_REPO = 'niklam/iracedeck'; gh pr merge 7 --squash",
+        "$env:GH_REPO = 'iracedeck/iracedeck'; gh pr merge 7 --squash",
         "${env:GH_REPO} = 'someone/other'; gh pr merge 7 --squash",
         "Set-Item Env:GH_REPO someone/other; gh pr merge 7 --squash",
         "[Environment]::SetEnvironmentVariable('GH_REPO', 'someone/other'); gh pr merge 7 --squash",
@@ -547,8 +547,8 @@ describe("gh pr merge", () => {
 
     it("refuses a host, a working directory, a git variable or a wrapper's option in the merge's own prefix", () => {
       for (const command of [
-        "GH_HOST=ghe.example.com gh pr merge 7 --squash -R niklam/iracedeck",
-        "GH_REPO=niklam/iracedeck GH_HOST=ghe.example.com gh pr merge 7 --squash",
+        "GH_HOST=ghe.example.com gh pr merge 7 --squash -R iracedeck/iracedeck",
+        "GH_REPO=iracedeck/iracedeck GH_HOST=ghe.example.com gh pr merge 7 --squash",
         "env -C ../other gh pr merge 7 --squash",
         "env -C../other gh pr merge 7 --squash",
         "env --chdir=../other gh pr merge 7 --squash",
@@ -571,13 +571,13 @@ describe("gh pr merge", () => {
     it("refuses a flag between `gh` and `merge`, which hid the merge from the gate", () => {
       for (const command of [
         "gh pr -R someone/other merge 7 --squash",
-        "gh pr --repo niklam/iracedeck merge 7 --squash",
+        "gh pr --repo iracedeck/iracedeck merge 7 --squash",
         "gh pr --repo=someone/other merge 7",
-        "gh -R niklam/iracedeck pr merge 5 --squash",
+        "gh -R iracedeck/iracedeck pr merge 5 --squash",
         "gh --repo someone/other pr merge 5 --squash",
       ])
         expect(deny(command, arrange().c), command).toMatch(/every flag after `merge`/);
-      passes("gh pr -R niklam/iracedeck view 7 --json url");
+      passes("gh pr -R iracedeck/iracedeck view 7 --json url");
     });
 
     it("reads the PR where the merge runs, so a chained cd moves the read", () => {
@@ -589,7 +589,7 @@ describe("gh pr merge", () => {
     it("refuses a PR gh read in another repository — an inherited GH_REPO or another checkout", () => {
       const foreign = () => ({ ...green(), url: "https://github.com/someone/other/pull/7" });
       expect(deny("gh pr merge 7 --squash", arrange(foreign).c)).toMatch(
-        /someone\/other\/pull\/7 is in someone\/other, not niklam\/iracedeck/,
+        /someone\/other\/pull\/7 is in someone\/other, not iracedeck\/iracedeck/,
       );
       expect(deny("cd ../other && gh pr merge --squash", arrange(foreign).c)).toMatch(/is in someone\/other/);
       const unknown = () => ({ ...green(), url: undefined });
@@ -641,7 +641,7 @@ describe("gh pr merge", () => {
       passes(pinned, c);
       expect(calls.replay).toEqual([{ reviewed: reviewedOid, head, base: baseOid, dir: MASTER }]);
       // The timeline is asked of the repository the PR's URL proved (#1393 review).
-      expect(calls.timeline).toEqual([[7, "2026-10-03T10:00:00Z", MASTER, "niklam/iracedeck"]]);
+      expect(calls.timeline).toEqual([[7, "2026-10-03T10:00:00Z", MASTER, "iracedeck/iracedeck"]]);
     });
 
     it("refuses a short --match-head-commit prefix — GitHub takes only a full sha", () =>
@@ -938,8 +938,8 @@ describe("gh pr merge", () => {
       // comment reviewed 9fe7aa1a5..4d33e1f32, and 9fe7aa1a5 is the approval.
       const { c, calls } = arrange({ replay: { ...clean, differing: ["a.ts"] } });
       passes(pinned1290, c);
-      expect(calls.comments).toEqual([[1290, MASTER, "niklam/iracedeck"]]);
-      expect(calls.timeline).toEqual([[1290, "2026-09-30T18:38:58Z", MASTER, "niklam/iracedeck"]]);
+      expect(calls.comments).toEqual([[1290, MASTER, "iracedeck/iracedeck"]]);
+      expect(calls.timeline).toEqual([[1290, "2026-09-30T18:38:58Z", MASTER, "iracedeck/iracedeck"]]);
       expect(calls.replay).toHaveLength(0);
     });
 
@@ -1130,7 +1130,7 @@ describe("gh pr merge", () => {
         passes(pinned, c);
         expect(calls.replay).toEqual([{ reviewed: S, head, base, dir: MASTER }]);
         // The base-moved check keeps the review object's own, earlier time.
-        expect(calls.timeline).toEqual([[1290, "2026-09-30T18:38:58Z", MASTER, "niklam/iracedeck"]]);
+        expect(calls.timeline).toEqual([[1290, "2026-09-30T18:38:58Z", MASTER, "iracedeck/iracedeck"]]);
       });
 
       it("names S in a refusal, saying it came from the summary", () =>
@@ -1323,7 +1323,7 @@ describe("gh pr merge", () => {
       const { c, calls, ruleReads } = arrange();
       passes(pinned, c);
       expect(calls).toEqual([{ head, base, dir: MASTER }]);
-      expect(ruleReads).toEqual([["niklam/iracedeck", "master", MASTER]]);
+      expect(ruleReads).toEqual([["iracedeck/iracedeck", "master", MASTER]]);
     });
 
     it("passes it whatever the merge state, UNKNOWN and CLEAN included", () => {
@@ -4258,8 +4258,10 @@ describe("gh issue and the board", () => {
       `gh api -X POST graphql -f query='mutation{${FIELD_VALUE}(input:{}){clientMutationId}}'`,
       // A REST write to a Projects v2 item.
       "gh api -X PATCH /orgs/o/projectsV2/1/items/5 -f status=x",
+      "gh api --method=DELETE orgs/iracedeck/projectsV2/1/items/5",
+      "gh api orgs/iracedeck/projectsV2/1/items -f id=I",
+      // #1799: the user board the org board replaced still exists.
       "gh api --method=DELETE users/niklam/projectsV2/1/items/5",
-      "gh api users/niklam/projectsV2/1/items -f id=I",
       "gh api --method 'patch' orgs/o/projectsV2/1/items/5",
     ];
     it.each(shapes)("denies %s, as a Bash and as a PowerShell command", (c) => {
@@ -4274,16 +4276,17 @@ describe("gh issue and the board", () => {
         ),
       ).toMatch(/Niklas's, in the board UI/));
     it("passes a REST read of a Projects v2 item", () => {
-      passes("gh api users/niklam/projectsV2/1/items");
-      passes("gh api -X GET users/niklam/projectsV2/1/items -f per_page=50");
+      passes("gh api orgs/iracedeck/projectsV2/1/items");
+      passes("gh api -X GET orgs/iracedeck/projectsV2/1/items -f per_page=50");
       passes("gh api --method GET orgs/o/projectsV2/1/items/5");
+      passes("gh api users/niklam/projectsV2/1/items");
     });
     it("passes the helpers, a read and a mention", () => {
       for (const c of [
         `node -e "import('./scripts/claude-hooks/lib.mjs').then(m=>console.log(m.setBoardStatus(1,'Planned',process.cwd())))"`,
         `node -e "import('./scripts/claude-hooks/lib.mjs').then(m=>console.log(m.moveBoardItemAfter(1,null,process.cwd())))"`,
-        "gh project item-list 1 --owner niklam --format json",
-        "gh project field-list 1 --owner niklam --format json",
+        "gh project item-list 1 --owner iracedeck --format json",
+        "gh project field-list 1 --owner iracedeck --format json",
         `grep -rn "gh project item-edit" .claude`,
         `echo 'gh project item-edit --id I'`,
         `git commit -m "refuse gh project item-edit outside the helpers"`,
@@ -4326,7 +4329,7 @@ describe("issueEdits", () => {
   });
 
   it("reads several issues, numbers and URLs", () => {
-    const url = "https://github.com/niklam/iracedeck/issues/7";
+    const url = "https://github.com/iracedeck/iracedeck/issues/7";
     expect(one(`gh issue edit 5 ${url}/ 6 --milestone 3.8.0`)).toMatchObject({
       issues: ["5", url, "6"],
       readable: true,
@@ -4358,7 +4361,7 @@ describe("issueEdits", () => {
       `gh issue edit "$N" --milestone x`,
       "gh issue edit $(gh issue list -q .x) --milestone x",
       "gh issue edit 5 foo --milestone x",
-      "gh issue edit https://github.com/niklam/iracedeck/pull/5 --milestone x",
+      "gh issue edit https://github.com/iracedeck/iracedeck/pull/5 --milestone x",
     ])
       expect(one(c).readable, c).toBe(false);
   });
@@ -4546,7 +4549,7 @@ describe("the mask fails closed (#1321 review)", () => {
   const linked = ctx({ linkTargets: () => [{ host: "Stream Deck", target: tree("ir-1013", "plugin") }] });
   const green = () => ({
     number: 7,
-    url: "https://github.com/niklam/iracedeck/pull/7",
+    url: "https://github.com/iracedeck/iracedeck/pull/7",
     state: "OPEN",
     headRefOid: "1".repeat(40),
     headRefName: "ir-7",
@@ -4850,7 +4853,7 @@ describe("every spelling of a program reaches the guards that name it (#1606)", 
   const head = "1111111111111111111111111111111111111111";
   const green = () => ({
     number: 7,
-    url: "https://github.com/niklam/iracedeck/pull/7",
+    url: "https://github.com/iracedeck/iracedeck/pull/7",
     state: "OPEN",
     headRefOid: head,
     headRefName: "ir-7",
@@ -5133,7 +5136,7 @@ describe("the program-word rewrite's review round (#1606)", () => {
   const head = "1111111111111111111111111111111111111111";
   const green = () => ({
     number: 5,
-    url: "https://github.com/niklam/iracedeck/pull/5",
+    url: "https://github.com/iracedeck/iracedeck/pull/5",
     state: "OPEN",
     headRefOid: head,
     headRefName: "ir-5",
@@ -5365,7 +5368,7 @@ describe("the program-word rewrite's second read (#1606)", () => {
         branch: () => "fix/5-x",
         prView: () => ({
           number: 5,
-          url: "https://github.com/niklam/iracedeck/pull/5",
+          url: "https://github.com/iracedeck/iracedeck/pull/5",
           state: "OPEN",
           headRefOid: sha,
           headRefName: "fix/5-x",
@@ -5496,7 +5499,7 @@ describe("the program-word rewrite's second read (#1606)", () => {
 // command's words are read through it where it stands over that command.
 describe("the mask is set aside only where a shell is fed (#1607)", () => {
   // The two commands from #1393's transcripts that the post-hook misread.
-  const SED = String.raw`Q=/c/q; sed -e 's#^const cases = \[#const cases = [\n  ["A23b", "url", "Bash", "gh pr merge 1603 --squash", "deny: PR is in cli/cli, not niklam/iracedeck", TREE, { GH_REPO: "cli/cli" }],\n];\nconst _orig = [#' $Q/run-a.mjs > $Q/run-a2.mjs; grep -n "cases = \|_orig" $Q/run-a2.mjs; timeout 300 node $Q/run-a2.mjs $Q/a2-results.json 2>&1 | tee $Q/a2-summary.txt`;
+  const SED = String.raw`Q=/c/q; sed -e 's#^const cases = \[#const cases = [\n  ["A23b", "url", "Bash", "gh pr merge 1603 --squash", "deny: PR is in cli/cli, not iracedeck/iracedeck", TREE, { GH_REPO: "cli/cli" }],\n];\nconst _orig = [#' $Q/run-a.mjs > $Q/run-a2.mjs; grep -n "cases = \|_orig" $Q/run-a2.mjs; timeout 300 node $Q/run-a2.mjs $Q/a2-results.json 2>&1 | tee $Q/a2-summary.txt`;
   const GREP = `set -o pipefail; cd /c/x/ir-1393 && grep -rnE "(&&|;) *gh pr merge" .claude docs/superpowers/specs README.md scripts --include=*.md 2>/dev/null | grep -v "^docs/superpowers/specs" | head; timeout 200 pnpm test scripts/claude-rules-frontmatter.test.mjs --reporter=verbose > "/c/x/fm.log" 2>&1; grep -iE "headroom|budget|Tests " "/c/x/fm.log" | head`;
   const REAL = /refusing to merge blind|Could not isolate|Could not read this|One `gh pr merge`|as its own command/;
 
@@ -5568,7 +5571,7 @@ describe("the mask is set aside only where a shell is fed (#1607)", () => {
     ["bash </dev/null <<< 'gh pr merge 5 --squash'", "gh"],
     [`echo "gh pr merge 5 --squash" | sudo bash -x`, "gh"],
     ["echo 'gh pr merge 5 --squash' | sh -s -- a", "gh"],
-    ["echo 'GH_REPO=niklam/iracedeck gh pr merge 5 --squash' | bash", "gh"],
+    ["echo 'GH_REPO=iracedeck/iracedeck gh pr merge 5 --squash' | bash", "gh"],
     ["ls; gh pr merge 5 --squash", "gh"],
     ["ls && gh pr merge 5 --squash", "gh"],
     ["cd scripts && gh pr merge 5 --squash", "gh"],
@@ -5584,7 +5587,7 @@ describe("the mask is set aside only where a shell is fed (#1607)", () => {
     [`grep 'gh pr merge 6' f; "/usr/bin/gh" pr merge 5 --squash`, `"/usr/bin/gh"`],
     [`bash -c 'echo "gh pr merge 6"'; cd scripts && gh pr merge 5 --squash`, "gh"],
     // #1607 second read: past a COMMAND_LEAD in the string, and past sudo's valued options.
-    ["bash -c 'GH_REPO=niklam/iracedeck gh pr merge 5 --squash'", "gh"],
+    ["bash -c 'GH_REPO=iracedeck/iracedeck gh pr merge 5 --squash'", "gh"],
     ["bash -c 'timeout 600 gh pr merge 5 --squash'", "gh"],
     ["timeout 600 bash -c 'exec gh pr merge 5 --squash'", "gh"],
     ["sudo -u me gh pr merge 5 --squash", "gh"],
@@ -5695,7 +5698,7 @@ describe("a trap word that starts a shell-fed string reaches every guard (#1634)
   const head = "1".repeat(40);
   const green = () => ({
     number: 7,
-    url: "https://github.com/niklam/iracedeck/pull/7",
+    url: "https://github.com/iracedeck/iracedeck/pull/7",
     state: "OPEN",
     headRefOid: head,
     headRefName: "ir-7",
@@ -5719,7 +5722,7 @@ describe("a trap word that starts a shell-fed string reaches every guard (#1634)
     "env A=1 bash -c 'gh pr merge 7 --squash'",
     "nice gh pr merge 7 --squash",
     "bash -c 'gh.exe pr merge 7 --squash'",
-    "bash -c 'GH_REPO=niklam/iracedeck gh pr merge 7 --squash'",
+    "bash -c 'GH_REPO=iracedeck/iracedeck gh pr merge 7 --squash'",
     "cd scripts && sudo gh pr merge 7 --squash",
   ];
 
@@ -5811,7 +5814,7 @@ describe("the #1634 review round: value options, string closes and program posit
   const head = "1".repeat(40);
   const green = () => ({
     number: 7,
-    url: "https://github.com/niklam/iracedeck/pull/7",
+    url: "https://github.com/iracedeck/iracedeck/pull/7",
     state: "OPEN",
     headRefOid: head,
     headRefName: "ir-7",
@@ -5875,7 +5878,7 @@ describe("the #1634 second read: the piped pnpm's exemptions, nested wrappers, a
   const head = "1".repeat(40);
   const green = () => ({
     number: 7,
-    url: "https://github.com/niklam/iracedeck/pull/7",
+    url: "https://github.com/iracedeck/iracedeck/pull/7",
     state: "OPEN",
     headRefOid: head,
     headRefName: "ir-7",
@@ -6016,7 +6019,7 @@ describe("the lexer and the deck-host reader read a shell's options from one spe
   const head = "1".repeat(40);
   const green = () => ({
     number: 7,
-    url: "https://github.com/niklam/iracedeck/pull/7",
+    url: "https://github.com/iracedeck/iracedeck/pull/7",
     state: "OPEN",
     headRefOid: head,
     headRefName: "ir-7",
@@ -6113,7 +6116,7 @@ describe("a carried merge is refused before the PR is read (#1634)", () => {
     reads.push(args);
     return {
       number: 7,
-      url: "https://github.com/niklam/iracedeck/pull/7",
+      url: "https://github.com/iracedeck/iracedeck/pull/7",
       state: "OPEN",
       headRefOid: head,
       headRefName: "ir-7",
@@ -6186,7 +6189,7 @@ describe("a carried merge or tag push behind a quoted lead value (#1646)", () =>
     reads.push(args);
     return {
       number: 7,
-      url: "https://github.com/niklam/iracedeck/pull/7",
+      url: "https://github.com/iracedeck/iracedeck/pull/7",
       state: "OPEN",
       headRefOid: head,
       headRefName: "ir-7",

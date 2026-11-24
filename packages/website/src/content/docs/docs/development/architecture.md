@@ -112,7 +112,7 @@ fuel.lapsLeft.crossed       → { count: number, lapsLeft: number }
 overtake.completed          → { position, previousPosition, gapBehindMeters?, isLeader, … }
 ```
 
-The canonical, always-current list — every event name and its exact payload — is the `SimEventMap` type in [`event-bus/src/event-catalog.ts`](https://github.com/niklam/iracedeck/blob/master/packages/event-bus/src/event-catalog.ts). This page deliberately doesn't reproduce it: the types are the source of truth, and they change too often to mirror by hand.
+The canonical, always-current list — every event name and its exact payload — is the `SimEventMap` type in [`event-bus/src/event-catalog.ts`](https://github.com/iracedeck/iracedeck/blob/master/packages/event-bus/src/event-catalog.ts). This page deliberately doesn't reproduce it: the types are the source of truth, and they change too often to mirror by hand.
 
 ## Outbound: reactions to devices, commands to iRacing
 

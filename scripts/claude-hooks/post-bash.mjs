@@ -6,7 +6,7 @@
  * A PowerShell command (#1520) is read as the pre-hook reads it, through
  * `powershellAsBash`, so the same triggers find it.
  *
- * Every board move is for an issue of niklam/iracedeck only (#1527): a card is
+ * Every board move is for an issue of iracedeck/iracedeck only (#1527): a card is
  * found by number, so a filing, a merge or a worktree in another repository
  * would move the iRaceDeck card that shares its number. Those get one line
  * saying the hook left the board alone.
@@ -34,6 +34,7 @@ import {
   isHomeRepo,
   issueCreateRepos,
   issueNumberOfUrl,
+  mayBeHome,
   mergeRepo,
   milestoneRemovedLine,
   missingWorkflows,
@@ -248,7 +249,19 @@ function afterIssueCreate(stdout, creates, cwd) {
           checkoutRepo.set(dir, ghJson(["repo", "view", "--json", "nameWithOwner"], dir)?.nameWithOwner ?? null);
         return checkoutRepo.get(dir);
       };
-      resolved = creates.map(({ repo, dir }) => (repo !== undefined ? repo : repoOf(dir)));
+      // A former home (#1799) is asked of gh, which follows GitHub's redirect: it answers HOME_REPO while the
+      // redirect stands, and the old name itself once a repository has taken it.
+      const canonical = new Map();
+      const resolve = (repo) => {
+        if (repo == null || isHomeRepo(repo) || !mayBeHome(repo)) return repo;
+        if (!canonical.has(repo.toLowerCase()))
+          canonical.set(
+            repo.toLowerCase(),
+            ghJson(["repo", "view", repo, "--json", "nameWithOwner"], cwd)?.nameWithOwner ?? null,
+          );
+        return canonical.get(repo.toLowerCase());
+      };
+      resolved = creates.map(({ repo, dir }) => (repo !== undefined ? resolve(repo) : repoOf(dir)));
     }
     // An unreadable or unresolvable repository may be home.
     return resolved.some((t) => t == null || isHomeRepo(t));
@@ -345,7 +358,8 @@ function afterMilestone(edit, envRepo, cwd) {
       );
       continue;
     }
-    if (repo && !isHomeRepo(repo)) {
+    // A former home is read back like home (#1799): gh follows the redirect, and the URL it returns decides.
+    if (repo && !mayBeHome(repo)) {
       foreign.push(repoOfUrl(ref) ? ref : `${repo}#${ref}`);
       continue;
     }

@@ -131,8 +131,8 @@ describe("settings-window-support.ejs (#1303)", () => {
         SUPPORT_URL,
         MEMBERSHIP_URL,
         "https://discord.gg/c6nRYywpah",
-        "https://github.com/niklam/iracedeck/issues",
-        "https://github.com/niklam/iracedeck",
+        "https://github.com/iracedeck/iracedeck/issues",
+        "https://github.com/iracedeck/iracedeck",
       ]);
     });
 
