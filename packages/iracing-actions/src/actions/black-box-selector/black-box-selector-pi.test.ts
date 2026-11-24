@@ -3,12 +3,12 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ROTATIONS } from "./black-box-selector-dial-settings.js";
 import {
   DialSettings,
   GESTURE_ACTIONS,
   resolveGestures,
   ROTATION_GESTURE_DEFAULTS,
-  ROTATIONS,
 } from "./black-box-selector-dial-surface.js";
 
 /**

@@ -14,7 +14,7 @@ import { applyBindingWarning, type DialCanvasProfile } from "@iracedeck/deck-cor
 import type { DialBoxColors } from "../../shared/dial-box.js";
 import { KNOB_BOX_HEIGHT, KNOB_BOX_WIDTH } from "../../shared/dial-knob-box.js";
 import { renderPendingBar } from "../../shared/dial-preview.js";
-import type { DialRotation, SwitchableRotation } from "./black-box-selector-dial-surface.js";
+import type { DialRotation, SwitchableRotation } from "./black-box-selector-dial-settings.js";
 
 /** What every dial-screen drawing takes. */
 export interface BlackBoxDrawingArgs {

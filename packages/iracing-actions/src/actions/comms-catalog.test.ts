@@ -4,11 +4,11 @@ import { describe, expect, it } from "vitest";
 
 import { BLACK_BOX_SELECTED_CONTROL_KEYS, BLACK_BOX_SELECTED_CONTROLS } from "../shared/black-box.js";
 import { DIAL_CATEGORIES, DIAL_PRESS_ACTIONS } from "./audio-controls/audio-controls-settings.js";
+import { ROTATIONS as BLACK_BOX_ROTATIONS } from "./black-box-selector/black-box-selector-dial-settings.js";
 import {
   GESTURE_ACTIONS as BLACK_BOX_DIAL_GESTURES,
   GESTURE_CONTROL_KEYS as BLACK_BOX_GESTURE_CONTROL_KEYS,
   ROTATION_KEYS as BLACK_BOX_ROTATION_KEYS,
-  ROTATIONS as BLACK_BOX_ROTATIONS,
 } from "./black-box-selector/black-box-selector-dial-surface.js";
 import { type ActionCommMeta, COMMS_CATALOG } from "./comms-catalog.js";
 import { REPLAY_DIAL_GESTURES, REPLAY_DIAL_MODES } from "./replay-control/replay-control-dial-settings.js";

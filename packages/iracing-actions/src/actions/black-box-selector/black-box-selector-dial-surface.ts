@@ -81,20 +81,18 @@ import { persistDialPatch } from "../../shared/dial-persist.js";
 import { classifyDialReleaseForHost } from "../../shared/dial-release.js";
 import { type DialGestures, ReleaseDialSurfaceBase } from "../../shared/dial-surface-base.js";
 import { renderBlackBoxFor } from "./black-box-selector-dial-render.js";
+import {
+  type DialRotation,
+  ROTATIONS,
+  type SwitchableRotation,
+  SWITCHED_ROTATION,
+} from "./black-box-selector-dial-settings.js";
 
 /** Cap on binding taps dispatched for one rotate event (a fast spin coalesces ticks). */
 const MAX_TAPS_PER_EVENT = 5;
 
 /** iRacing's Toggle Black Box Size binding — the key the keypad Toggle Size mode uses (#1238). */
 const TOGGLE_SIZE_KEY = BLACK_BOX_CONTROL_KEYS.toggleSize;
-
-/**
- * What a turn of the dial does (#1585): step through the boxes, walk the open
- * box's controls, or change the selected control. `boxes` is first and the
- * default, so a dial stored before the choice existed keeps cycling boxes.
- */
-export const ROTATIONS = ["boxes", "select-control", "adjust-control"] as const;
-export type DialRotation = (typeof ROTATIONS)[number];
 
 /**
  * The two bindings each rotation taps, clockwise and counter-clockwise — the
@@ -152,19 +150,6 @@ export const GESTURE_ACTIONS = [
   "none",
 ] as const;
 export type GestureSlot = (typeof GESTURE_ACTIONS)[number];
-
-/** The rotations Switch Select / Adjust moves between: every rotation but `boxes`. */
-export type SwitchableRotation = Exclude<DialRotation, "boxes">;
-
-/**
- * The rotation `switch-rotation` takes each rotation to (#1585): Select Control
- * and Adjust Control swap. `boxes` has no entry, so the gesture does nothing on
- * a dial that cycles boxes — it never takes a dial to or from `boxes`.
- */
-export const SWITCHED_ROTATION: Partial<Record<DialRotation, SwitchableRotation>> = {
-  "select-control": "adjust-control",
-  "adjust-control": "select-control",
-};
 
 /**
  * What a Press and a Long Press do on a dial whose slot the user never stored,

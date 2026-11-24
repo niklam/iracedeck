@@ -13,6 +13,7 @@ import {
   renderSelectControlPendingStrip,
   renderSelectControlStrip,
 } from "./black-box-selector-dial-render.js";
+import { ROTATIONS, SWITCHED_ROTATION } from "./black-box-selector-dial-settings.js";
 import {
   buildTriggerDescription,
   DialSettings,
@@ -21,8 +22,6 @@ import {
   pendingRotationPreview,
   resolveGestures,
   ROTATION_GESTURE_DEFAULTS,
-  ROTATIONS,
-  SWITCHED_ROTATION,
 } from "./black-box-selector-dial-surface.js";
 import { BlackBoxSelector, BlackBoxSelectorSettings } from "./black-box-selector.js";
 
