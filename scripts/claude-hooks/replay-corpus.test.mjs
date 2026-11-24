@@ -696,15 +696,24 @@ describe("side effects while judging", () => {
           Promise.all([settled, callback]),
           new Promise((r) => setTimeout(() => r(late), 5000)),
         ]);
-        // Still pending: this case's folder stays, and nothing else is in it.
-        if (outcome === late) unsettled = true;
+        // Still pending: this case's descriptor and folder stay until the
+        // write settles, so the OS cannot hand that descriptor to a later
+        // case while the write is queued on it (PR #1798 review).
+        if (outcome === late) {
+          unsettled = true;
+          const dir = owned;
+          Promise.all([settled, callback]).then(() => {
+            fs.closeSync(fd);
+            fs.rmSync(dir, { recursive: true, force: true });
+          });
+        }
       }
       expect(threw?.message).toMatch(/was called while judging|for writing while judging/);
       expect(fs.existsSync(never)).toBe(false);
       expect(fs.readFileSync(fixture, "utf8")).toBe("");
       expect(fs.readdirSync(owned)).toEqual(["fixture.txt"]);
     } finally {
-      fs.closeSync(fd);
+      if (!unsettled) fs.closeSync(fd);
     }
   });
 
