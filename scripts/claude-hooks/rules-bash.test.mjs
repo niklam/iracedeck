@@ -5888,3 +5888,24 @@ describe("the shell an exec runs in (#1659)", () => {
     passes(`( exec <<< ':' ); bash -s`);
   });
 });
+
+// CodeRabbit on 164de4f80: the two curly-quote readings merge their asks, and
+// a Bash command reads the second way only when it runs PowerShell.
+describe("the two curly-quote readings (#1659)", () => {
+  it("asks every ask either reading raises, in one prompt", () => {
+    const both = asks(
+      `Write-Host 'a\u2019; git push origin v1.2.3; echo \u2018x'; $v = \${\u2018}; pnpm link:stream-deck; $w = \${\u2018}`,
+      ctx({ shell: POWERSHELL }),
+    );
+    expect(both).toMatch(/Pushing a tag cuts a release/);
+    expect(both).toMatch(/links, unlinks or relinks a deck host/);
+  });
+  it("reads a Bash command the second way only where it runs pwsh", () => {
+    passes(`printf '%s\n' 'today\u2019s notes; pnpm exec vitest; tomorrow\u2019s notes' # pwsh`);
+    passes(`echo 'pwsh \u2018x; pnpm exec vitest; \u2019y'`);
+    expect(stopped(`bash -c 'pwsh -c "Write-Host a\u2019; gh pr merge 7 --squash; echo \u2018b"'`)).toContain(
+      "a string inside a string",
+    );
+    expect(deny(`pwsh -c "Write-Host 'a\u2019; gh pr merge 7 --squash; echo \u2018x'"`)).toBeTruthy();
+  });
+});

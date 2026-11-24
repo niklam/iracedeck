@@ -1327,12 +1327,27 @@ export function checkBash(command, ctx) {
   const read = (c) => checkText(powershell ? powershellAsBash(c) : c, ctx, powershell, 0);
   // PowerShell takes a curly quote as a plain one, except in a braced
   // variable name, a block comment, a here-string or after `--%`, where it is
-  // a plain character. A command holding one, typed to PowerShell or handing
-  // a string to it, is judged both ways and the stricter verdict stands, as a
-  // respelled program word is (a judge on 15ce351a1).
-  if (!CURLY_QUOTE.test(command) || (!powershell && !/(?:pwsh|powershell)/i.test(command))) return read(command);
+  // a plain character. A command holding one, typed to PowerShell or running
+  // pwsh as a program, is judged both ways and the stricter verdict stands, as
+  // a respelled program word is (a judge on 15ce351a1): a deny first, else
+  // every ask either reading raises, in one prompt, as `judge` joins its rules'
+  // (CodeRabbit on 164de4f80). A Bash command that only mentions pwsh, in a
+  // comment or an argument, is read one way.
+  if (!CURLY_QUOTE.test(command) || (!powershell && !runsPowershell(command))) return read(command);
   const verdicts = [read(command), read(straightQuotes(command))];
-  return verdicts.find((v) => typeof v === "string") ?? verdicts.find((v) => v) ?? null;
+  const deny = verdicts.find((v) => typeof v === "string");
+  if (deny) return deny;
+  const raised = verdicts.filter((v) => v);
+  if (raised.length < 2) return raised[0] ?? null;
+  const all = [...new Set(raised.flatMap((v) => v.asks ?? [v.ask]))];
+  return all.length === 1 ? raised[0] : { ask: all.join("\n\n"), asks: all };
+}
+
+/** Whether `command`, read as bash, runs pwsh or powershell as a program, in a string a shell runs too ({@link checkBash}). */
+function runsPowershell(command) {
+  const v = view(command);
+  for (const p of v.byName.keys()) if (/^(?:pwsh|powershell)(?![\w.-])/i.test(v.text.slice(p, p + 11))) return true;
+  return false;
 }
 
 /**
