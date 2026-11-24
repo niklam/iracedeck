@@ -5347,7 +5347,13 @@ describe("fish's init command (#1659)", () => {
   ])("judges the merge in %s with the merge gate's own message", (c) =>
     expect(deny(c)).toMatch(/first word of a string `fish` runs/),
   );
-  it.each([`fish -C 'set -x A 1' -c 'pnpm build'`, `fish -d 3 x.fish`])("passes %s", (c) => passes(c));
+  it.each([`fish -C 'set -x A 1' -c 'pnpm build'`, `fish -d 3 x.fish`, `fish -C 'source "$HOME/x.fish"' -c true`])(
+    "passes %s",
+    (c) => passes(c),
+  );
+  // CodeRabbit CLI round 2: its `-C` string hears the stdin the shell is given.
+  it("refuses a sourced script that expands in it when stdin is a here-string", () =>
+    expect(stopped(`fish -C 'source "$F"' -c true <<< 'gh pr merge 7 --squash'`)).toContain("from a here-string"));
 });
 
 describe("the lexer's stopping rule: a form it does not read is refused outright (#1659)", () => {

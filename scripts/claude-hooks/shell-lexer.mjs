@@ -2306,14 +2306,13 @@ function fedStarts(command, text, fed, programs) {
               fill.replace === undefined ? join !== undefined : readLevel(base, runs, join).text.includes(fill.replace);
             if (filled) return refuse(REFUSED.filled, `${fill.by} … ${via} …`, FILLED_ADVICE);
           }
-          if (r.program !== undefined) stringAt(r.program, kind, join, FILE_RUNNERS.has(via));
-          if (r.string !== undefined) {
-            const N = stringAt(r.string, r.attached ? { ...kind, attached: true } : kind, join);
-            // What the string's shell was given on stdin, for a script word in it that expands.
-            if (N) Object.assign(N, { outerStdin: r.stdin, outerPiped: pipeFeeds(p) });
-          }
-          // fish's `-C` / `--init-command` string, read as its `-c` one is (#1659 second read).
-          for (const x of r.extras) stringAt(x, kind, join);
+          // Each level the shell runs hears what the shell was given on stdin,
+          // for a script word in it that expands: its `-c` string, fish's `-C`
+          // / `--init-command` one (#1659 second read; CodeRabbit CLI round 2).
+          const handed = (N) => N && Object.assign(N, { outerStdin: r.stdin, outerPiped: pipeFeeds(p) });
+          if (r.program !== undefined) handed(stringAt(r.program, kind, join, FILE_RUNNERS.has(via)));
+          if (r.string !== undefined) handed(stringAt(r.string, r.attached ? { ...kind, attached: true } : kind, join));
+          for (const x of r.extras) handed(stringAt(x, kind, join));
         },
       ]);
     }

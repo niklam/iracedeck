@@ -2444,3 +2444,17 @@ describe("the stopping rule: a lookup table answers only its own keys (#1659 Cod
       "a shell reading its script from a here-string",
     ));
 });
+
+// CodeRabbit CLI round 2 on #1659: fish's `-C` string is handed the same
+// stdin as its `-c` one, so a script word that expands in it is judged
+// against that stdin.
+describe("the stopping rule: fish's init command and its stdin (#1659 CodeRabbit)", () => {
+  it.each([`fish -C 'source "$HOME/x.fish"' -c true`, `fish -C '. $F' -c true`])(
+    "reads and refuses nothing in %s",
+    (c) => expect(lexer.refusedForms(c)).toEqual([]),
+  );
+  it.each([
+    [`fish -C 'source "$F"' -c true <<< 'gh pr merge 7'`, "a shell reading its script from a here-string"],
+    [`fish -C 'source "$F"' -c true < in.txt`, "a shell reading its script from stdin"],
+  ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+});
