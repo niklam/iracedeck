@@ -84,6 +84,7 @@ import {
   moduleSource,
   packageOf,
   trackedPackageSources,
+  unclosedComment,
 } from "./lib/source-imports.mjs";
 import { trackedPackageDirs } from "./lib/workspace-packages.mjs";
 
@@ -668,6 +669,37 @@ function wrapped(node) {
   return node;
 }
 
+/** The spellings of the file's own location, as a `createRequire` base: its path or its URL. */
+const OWN_LOCATION = new Set(["import.meta.url", "import.meta.filename", "__filename"]);
+
+/** The functions that turn a path into a URL or back, which keep a base the file's own. */
+const LOCATION_CONVERTERS = new Set(["pathToFileURL", "fileURLToPath"]);
+
+/**
+ * True when `node`, a `createRequire` argument, is literally the file's own
+ * location (#1662): `import.meta.url`, `import.meta.filename`, `__filename`,
+ * either passed through `pathToFileURL` or `fileURLToPath` (by name or as a
+ * property, `url.pathToFileURL(…)`), or the `.href` of such a URL. A require
+ * function made from it resolves a relative load beside the file, where the
+ * walk resolves it. Any other base — another file's URL, a directory such as
+ * `import.meta.dirname` (which `createRequire` reads as a file, so its relative
+ * loads resolve from the parent) or a computed one — is not.
+ */
+function isOwnBase(node) {
+  node = unwrap(node);
+  if (OWN_LOCATION.has(node.getText().replace(/\s+/g, ""))) return true;
+  if (ts.isPropertyAccessExpression(node) && node.name.text === "href") return isOwnBase(node.expression);
+  if (!ts.isCallExpression(node) || node.arguments.length !== 1) return false;
+  const callee = unwrap(node.expression);
+  const name = ts.isIdentifier(callee)
+    ? callee.text
+    : ts.isPropertyAccessExpression(callee)
+      ? callee.name.text
+      : undefined;
+
+  return LOCATION_CONVERTERS.has(name) && isOwnBase(node.arguments[0]);
+}
+
 /**
  * The require functions of `sf` (#1662): the names that load the module their
  * call names — `require` itself and every name the file binds to the result of
@@ -676,6 +708,11 @@ function wrapped(node) {
  * from it by destructuring), or any `.createRequire` property, so
  * `module.createRequire(…)` counts. Names are file-wide, not scoped: a shadowing
  * name reads as the require function too, which can only fail a file, never pass one.
+ *
+ * `requireNames` maps each name to whether its base is the file's own
+ * location (`isOwnBase`; `require` itself always is), so a relative load
+ * through it resolves where the walk looks. A name bound more than once is
+ * own-based only if every binding is.
  */
 function requireFunctions(sf) {
   const createRequireNames = new Set(["createRequire"]);
@@ -711,7 +748,9 @@ function requireFunctions(sf) {
       (ts.isPropertyAccessExpression(callee) && callee.name.text === "createRequire")
     );
   };
-  const requireNames = new Set(["require"]);
+  /** True when a `createRequire(…)` call's base is the file's own location. */
+  const madeHere = (call) => call.arguments.length === 1 && isOwnBase(call.arguments[0]);
+  const requireNames = new Map([["require", true]]);
   const findHolders = (node) => {
     if (
       ts.isVariableDeclaration(node) &&
@@ -719,14 +758,16 @@ function requireFunctions(sf) {
       node.initializer &&
       isCreateRequire(unwrap(node.initializer))
     ) {
-      requireNames.add(node.name.text);
+      const here = madeHere(unwrap(node.initializer));
+
+      requireNames.set(node.name.text, (requireNames.get(node.name.text) ?? true) && here);
     }
     ts.forEachChild(node, findHolders);
   };
 
   findHolders(sf);
 
-  return { requireNames, isCreateRequire };
+  return { requireNames, isCreateRequire, madeHere };
 }
 
 /**
@@ -822,7 +863,11 @@ function isDataGlob(call) {
  * `import("x")` or `require("x")` with a literal specifier, where `require` is
  * any require function of the file (`requireFunctions`): `require` itself, a
  * name holding a `createRequire(…)` result whatever it is called, or that
- * result called on the spot. What does not:
+ * result called on the spot. A relative load through a require function made
+ * from another base than the file's own location (`isOwnBase`) is reported
+ * rather than followed, since it resolves somewhere else; a package name loaded
+ * through one is read as loading that package, since the base can change only
+ * which copy of it resolves, not which package it is. What does not:
  * `import type`, `export type`, `import type x = require()` and the type
  * `import("x").T`, which TypeScript and esbuild drop whatever the config.
  *
@@ -848,7 +893,9 @@ function isDataGlob(call) {
  * `import(` or `require(` in an `.astro` component's or `.mdx` page's markup
  * (`markupLoads`), since Astro and MDX evaluate a template expression and this
  * does not parse one. An `.astro` `<script src>` that names a module is read as
- * the import of it (`moduleSource`), since Astro bundles what it names.
+ * the import of it (`moduleSource`), since Astro bundles what it names. An
+ * `.astro` HTML comment that never closes fails too (`unclosedComment`), since
+ * it hides the rest of the file.
  *
  * @param {object} input
  * @param {string} input.file repo-relative, `/`-separated
@@ -866,13 +913,23 @@ export function runtimeImports({ file, source: text }) {
     loads.push(literal.text);
   };
   const typeOnly = (literal) => classified.add(literal.getStart(sf));
-  const { requireNames, isCreateRequire } = requireFunctions(sf);
+  const { requireNames, isCreateRequire, madeHere } = requireFunctions(sf);
   const spelled = (node) => node.getText(sf).replace(/\s+/g, " ");
-  /** True when `node` is a function that loads its argument: a require name, or a createRequire call's result. */
-  const isRequire = (node) => {
+  /**
+   * What `node` is as a function that loads its argument: undefined when it is
+   * none, `"here"` when it is a require name or a createRequire call's result
+   * whose base is the file's own location, `"elsewhere"` when its base is not.
+   */
+  const requireKind = (node) => {
     const callee = unwrap(node);
+    const here =
+      ts.isIdentifier(callee) && requireNames.has(callee.text)
+        ? requireNames.get(callee.text)
+        : isCreateRequire(callee)
+          ? madeHere(callee)
+          : undefined;
 
-    return (ts.isIdentifier(callee) && requireNames.has(callee.text)) || isCreateRequire(callee);
+    return here === undefined ? undefined : here ? "here" : "elsewhere";
   };
 
   const visit = (node) => {
@@ -915,12 +972,22 @@ export function runtimeImports({ file, source: text }) {
       typeOnly(node.argument.literal);
     } else if (
       ts.isCallExpression(node) &&
-      (node.expression.kind === ts.SyntaxKind.ImportKeyword || isRequire(node.expression))
+      (node.expression.kind === ts.SyntaxKind.ImportKeyword || requireKind(node.expression) !== undefined)
     ) {
       const [specifier] = node.arguments;
 
-      if (specifier && ts.isStringLiteralLike(specifier)) load(specifier);
-      else unread.push(`${spelled(node)}, whose specifier is not a string literal: write it so it can be followed`);
+      if (!specifier || !ts.isStringLiteralLike(specifier)) {
+        unread.push(`${spelled(node)}, whose specifier is not a string literal: write it so it can be followed`);
+      } else if (requireKind(node.expression) === "elsewhere" && RELATIVE_SPECIFIER.test(specifier.text)) {
+        // Resolved from another base than this file, so not where the walk would look: reported, not loaded.
+        classified.add(specifier.getStart(sf));
+        unread.push(
+          `${spelled(node)}, a relative load through a require function made from another base than this file: ` +
+            "make it with createRequire(import.meta.url), or load by package name, so it can be followed",
+        );
+      } else {
+        load(specifier);
+      }
     }
     ts.forEachChild(node, visit);
   };
@@ -939,6 +1006,14 @@ export function runtimeImports({ file, source: text }) {
     unread.push(
       `an ${call} call in its markup (line ${line}), where a template expression is not read: make the load in ` +
         `the module code (an .astro frontmatter or <script>, an .mdx import) so it can be followed`,
+    );
+  }
+  const openComment = unclosedComment(file, text);
+
+  if (openComment !== undefined) {
+    unread.push(
+      `an HTML comment opened on line ${openComment} that never closes, which hides the rest of the file: close ` +
+        "it with --> so what follows can be read",
     );
   }
 
@@ -962,20 +1037,28 @@ const SOURCE_EXTENSIONS = {
 const EXTENSIONLESS = [".ts", ".tsx", ".js", ".jsx"];
 
 /**
- * The repo-relative file a relative `specifier` in `fromFile` loads, or
- * undefined when none exists (or the path climbs out of the repository): the
- * first candidate `read` returns text for, in TypeScript's order. A specifier
- * spelling another extension (`.ts`, `.mts`, `.json`) is tried as written first,
- * then as extensionless, then as a folder holding an `index`.
+ * Every repo-relative file a relative `specifier` in `fromFile` may load, in
+ * TypeScript's order, so the first is the one it resolves to: each candidate
+ * `read` returns text for. Empty when none exists, or the path climbs out of
+ * the repository. A specifier spelling another extension (`.ts`, `.mts`,
+ * `.json`) is tried as written first, then as extensionless, then as a folder
+ * holding an `index`.
+ *
+ * Every existing candidate is returned, not only the first, because which one
+ * runs depends on the loader: plain Node loads `./helper.cjs` as written, while
+ * TypeScript and tsx may take a `helper.cts` beside it, and Vite tries an
+ * extensionless `./a` as `.js` before `.ts`. A walk that followed one would let
+ * the other hide a load (#1662).
  *
  * @param {string} fromFile
  * @param {string} specifier
  * @param {(file: string) => string | undefined} read
+ * @returns {string[]}
  */
-export function resolveRuntimeFile(fromFile, specifier, read) {
+export function resolveRuntimeFiles(fromFile, specifier, read) {
   const target = P.normalize(P.join(P.dirname(fromFile), specifier));
 
-  if (target === ".." || target.startsWith("../") || P.isAbsolute(target)) return undefined;
+  if (target === ".." || target.startsWith("../") || P.isAbsolute(target)) return [];
   const ext = P.extname(target);
   const candidates = SOURCE_EXTENSIONS[ext]?.map((to) => target.slice(0, -ext.length) + to) ?? [
     target,
@@ -983,7 +1066,7 @@ export function resolveRuntimeFile(fromFile, specifier, read) {
     ...EXTENSIONLESS.map((to) => `${target}/index${to}`),
   ];
 
-  return candidates.find((candidate) => read(candidate) !== undefined);
+  return candidates.filter((candidate) => read(candidate) !== undefined);
 }
 
 /** A specifier with a URL scheme or an absolute path, which this cannot follow; `node:` is a builtin. */
@@ -996,18 +1079,27 @@ const UNFOLLOWABLE = /^(\/|\\|[a-z][a-z\d+.-]*:)/i;
  */
 const ASTRO_VIRTUAL = /^astro:/;
 
+/** A Vite query or a fragment on a relative specifier: `?worker`, `?url`, `#x`. */
+const QUERY = /[?#]/;
+
 /**
- * True when a relative specifier names a file that holds no module code by its
- * extension (`.json`, `.svg`, `.png`), so it is a leaf whether or not it
- * exists: a generated, gitignored data file such as the website's
- * `src/data/icon-gallery.json` loads nothing on a fresh clone either. A code
- * extension, `.astro`, `.mdx`, none at all, or a query (`?worker` runs code)
- * must resolve to a file.
+ * True when a relative specifier loads no module code, so it is a leaf whether
+ * or not its file exists: it names a file that holds none by its extension
+ * (`.json`, `.svg`, `.png`) — a generated, gitignored data file such as the
+ * website's `src/data/icon-gallery.json` loads nothing on a fresh clone either
+ * — or it carries exactly the Vite query `?url` or `?raw` (`DATA_QUERY`), which
+ * hands over the file's URL or text instead of running it, whatever the file
+ * (`./x.ts?raw`). A code extension, `.astro`, `.mdx` or none at all must
+ * resolve to a file, and any other query (`?worker` runs code, `?inline`,
+ * `?worker&url`) is one this check does not follow.
  */
 function isDataSpecifier(specifier) {
+  const query = QUERY.exec(specifier);
+
+  if (query !== null) return DATA_QUERY.test(specifier.slice(query.index));
   const ext = P.extname(specifier);
 
-  return ext !== "" && !/[?#]/.test(specifier) && !isModuleSource(specifier) && !Object.hasOwn(SOURCE_EXTENSIONS, ext);
+  return ext !== "" && !isModuleSource(specifier) && !Object.hasOwn(SOURCE_EXTENSIONS, ext);
 }
 
 /** `runtimeImports` by file and text, so walks over the same tree parse each file once. */
@@ -1033,12 +1125,14 @@ ${source}`;
  *   * Only what loads at runtime is an edge, as `runtimeImports` reads it; an
  *     `.astro` component and an `.mdx` page are read by their module code
  *     (`moduleSource`), so a walk passes through the website's pages too.
- *   * A relative specifier is followed file by file, resolved as tsx would
- *     (`resolveRuntimeFile`), across package boundaries too. One that resolves
- *     to no file is a failure, not a skip: an instrument that drops what it
- *     cannot read passes vacuously. A file that holds no module code (`.json`,
- *     `.svg`) is a leaf, and need not exist (`isDataSpecifier`): a gitignored
- *     generated data file loads nothing either way.
+ *   * A relative specifier is followed file by file, to every file it may
+ *     load (`resolveRuntimeFiles`: TypeScript, tsx, Node and Vite can pick
+ *     different ones), across package boundaries too. One that resolves to no
+ *     file is a failure, not a skip: an instrument that drops what it cannot
+ *     read passes vacuously. A file that holds no module code (`.json`,
+ *     `.svg`), or one imported by `?raw` or `?url`, is a leaf, and need not
+ *     exist (`isDataSpecifier`): a gitignored generated data file loads
+ *     nothing either way. Any other query fails.
  *   * A workspace package's specifier (`@iracedeck/<name>[/sub]`) is checked by
  *     the package's directory, mapped through each package.json's `name`, and is
  *     not descended into. A non-sim-neutral one is the failure. A sim-neutral
@@ -1049,7 +1143,9 @@ ${source}`;
  *     scope but no workspace package fails.
  *   * A bare third-party specifier (`zod`), an Astro virtual module
  *     (`astro:assets`) and a Node builtin (`node:fs`, `fs`) are ignored; an
- *     absolute path or other URL scheme cannot be followed and fails.
+ *     absolute path or other URL scheme cannot be followed and fails, and so
+ *     does a `#subpath` of a package.json `imports` map, which this does not
+ *     read (no package defines one).
  * Each failure names the chain of files from a root to the importing one, the
  * first chain the breadth-first walk met, so it says where to cut.
  *
@@ -1083,15 +1179,32 @@ export function runtimeClosure({ roots, read, packageDirs, neutral }) {
 
     for (const specifier of loads) {
       if (RELATIVE_SPECIFIER.test(specifier)) {
-        const target = resolveRuntimeFile(file, specifier, read);
+        if (QUERY.test(specifier) && !isDataSpecifier(specifier)) {
+          problems.push(
+            `${chain(file)} imports ${specifier}, whose query this check does not follow: only ?raw and ?url, ` +
+              "which load no code, pass; import the module itself so it can be followed",
+          );
+          continue;
+        }
+        const targets = QUERY.test(specifier) ? [] : resolveRuntimeFiles(file, specifier, read);
 
-        if (target === undefined && isDataSpecifier(specifier)) continue;
-        if (target === undefined) {
+        if (targets.length === 0 && isDataSpecifier(specifier)) continue;
+        if (targets.length === 0) {
           problems.push(`${chain(file)} imports ${specifier}, which resolves to no file in the repository`);
-        } else if (!from.has(target)) {
+        }
+        for (const target of targets) {
+          if (from.has(target)) continue;
           from.set(target, file);
           queue.push(target);
         }
+        continue;
+      }
+
+      if (specifier.startsWith("#")) {
+        problems.push(
+          `${chain(file)} imports ${specifier}, a package.json "imports" subpath: this check does not follow ` +
+            "package.json imports; import by relative path or package name",
+        );
         continue;
       }
 
@@ -1599,6 +1712,59 @@ describe("the runtime-closure check itself (positive controls, #1662)", () => {
     }
   });
 
+  // A relative load resolves against the require function's base, which only the file's own location makes this file.
+  it("follows a relative load only through a require function made from the file's own location", () => {
+    const tree = (source) => ({
+      [ROOT_FILE]: `import { createRequire } from "node:module";\nimport url, { pathToFileURL, fileURLToPath } from "node:url";\n${source}`,
+      "packages/website/scripts/x.js": 'import "@iracedeck/iracing-sdk";',
+    });
+    const followed = `${ROOT_FILE} → packages/website/scripts/x.js imports @iracedeck/iracing-sdk`;
+
+    for (const base of [
+      "import.meta.url",
+      "import.meta.filename",
+      "__filename",
+      "pathToFileURL(__filename)",
+      "pathToFileURL(__filename).href",
+      "url.pathToFileURL(import.meta.filename).href",
+      "fileURLToPath(import.meta.url)",
+      "(import.meta.url as string)",
+    ]) {
+      for (const source of [
+        `const load = createRequire(${base});\nload("./x.js");`,
+        `createRequire(${base})("./x.js");`,
+      ]) {
+        expect(walk(tree(source)).problems, source).toEqual([expect.stringContaining(followed)]);
+      }
+    }
+    for (const base of [
+      'new URL("../package.json", import.meta.url)',
+      "import.meta.dirname",
+      "__dirname",
+      "somewhere",
+      'pathToFileURL("/elsewhere/x.js")',
+    ]) {
+      for (const source of [
+        `const load = createRequire(${base});\nload("./x.js");`,
+        `createRequire(${base})("./x.js");`,
+        // A name bound twice is own-based only if every binding is.
+        `let load = createRequire(import.meta.url);\nvar load = createRequire(${base});\nload("./x.js");`,
+      ]) {
+        expect(walk(tree(source)).problems, source).toEqual([
+          expect.stringContaining(
+            "a relative load through a require function made from another base than this file: make it with " +
+              "createRequire(import.meta.url), or load by package name, so it can be followed",
+          ),
+        ]);
+      }
+      // A package name names the same package from any base, so it is still checked as one.
+      expect(
+        walk(tree(`const load = createRequire(${base});\nload("@iracedeck/iracing-sdk");`)).problems,
+        base,
+      ).toEqual([expect.stringContaining(`${ROOT_FILE} imports @iracedeck/iracing-sdk: packages/iracing-sdk/`)]);
+    }
+  });
+
   it("fails a require function it cannot follow: a computed specifier, one handed on, and a glob import", () => {
     const made = 'import { createRequire } from "node:module";\nconst load = createRequire(import.meta.url);\n';
     const cases = {
@@ -1826,15 +1992,108 @@ describe("the runtime-closure check itself (positive controls, #1662)", () => {
       `${card} makes an import( call in its markup (line 3), where a template expression is not read: make the load ` +
         "in the module code (an .astro frontmatter or <script>, an .mdx import) so it can be followed",
     ]);
-    // The browser's own fetch is no module of the repository's.
+    // The browser's own fetch is no module of the repository's, and nor is an is:inline script's src.
     expect(walk({ [card]: '<script src="https://cdn.example.com/x.js"></script>' }, card).problems).toEqual([]);
+    expect(walk({ [card]: '<script is:inline src="/diagram-zoom.js"></script>' }, card)).toEqual({
+      visited: [card],
+      problems: [],
+    });
+    // A processed script's root-absolute src is an absolute path the walk cannot follow.
+    expect(walk({ [card]: '<script src="/diagram-zoom.js"></script>' }, card).problems).toEqual([
+      `${card} imports /diagram-zoom.js, an absolute path or URL this check cannot follow`,
+    ]);
+  });
+
+  it("reads a <script> body past a comment opener in it, and fails a markup comment that never closes", () => {
+    const card = "packages/website/src/components/Card.astro";
+    const script = '<script>\n  const marker = "<!--";\n  await import("@iracedeck/iracing-sdk");\n</script>\n';
+
+    expect(walk({ [card]: script }, card).problems).toEqual([
+      expect.stringContaining(`${card} imports @iracedeck/iracing-sdk: `),
+    ]);
+    expect(walk({ [card]: `<!-- ${script} -->` }, card).problems).toEqual([]);
+    expect(walk({ [card]: `<p>{"<!--"}</p>\n${script}` }, card).problems).toEqual([
+      `${card} makes an HTML comment opened on line 1 that never closes, which hides the rest of the file: close it ` +
+        "with --> so what follows can be read",
+    ]);
   });
 
   it("passes a missing data file, which loads nothing, and still fails a missing component or module", () => {
     expect(only('import data from "./generated.json";\nimport logo from "./logo.svg";').problems).toEqual([]);
-    for (const specifier of ["./Missing.astro", "./missing.mdx", "./missing", "./missing.mjs", "./data.json?worker"]) {
+    for (const specifier of ["./Missing.astro", "./missing.mdx", "./missing", "./missing.mjs"]) {
       expect(only(`import x from "${specifier}";`).problems, specifier).toEqual([
         expect.stringContaining(`imports ${specifier}, which resolves to no file`),
+      ]);
+    }
+  });
+
+  // Vite hands over a ?url import's URL and a ?raw import's text: no module code runs.
+  it("passes a ?url or ?raw import of any file as a leaf, and fails every other query, the file there or not", () => {
+    const tree = {
+      "packages/website/scripts/x.ts": 'import "@iracedeck/iracing-sdk";',
+      "packages/website/scripts/x.json": "{}",
+      "packages/website/scripts/x.css": "a {}",
+    };
+
+    for (const specifier of ["./logo.svg?url", "./x.ts?raw", "./x.ts?url", "./missing.mts?raw"]) {
+      expect(walk({ ...tree, [ROOT_FILE]: `import x from "${specifier}";` }), specifier).toEqual({
+        visited: [ROOT_FILE],
+        problems: [],
+      });
+    }
+    for (const specifier of [
+      "./x.ts?worker",
+      "./x.ts?worker&url",
+      "./x.ts?url&worker",
+      "./x.css?inline",
+      "./x.ts?raw&x",
+      "./x.json?worker",
+      "./x.ts?",
+      "./x.ts#frag",
+    ]) {
+      expect(walk({ ...tree, [ROOT_FILE]: `import x from "${specifier}";` }).problems, specifier).toEqual([
+        `${ROOT_FILE} imports ${specifier}, whose query this check does not follow: only ?raw and ?url, which load ` +
+          "no code, pass; import the module itself so it can be followed",
+      ]);
+    }
+  });
+
+  // Plain Node loads ./helper.cjs as written; TypeScript and tsx may take helper.cts beside it.
+  it("follows every file a relative specifier may load, so neither of two candidates can hide a load", () => {
+    const sim = 'import "@iracedeck/iracing-sdk";';
+    const dir = "packages/website/scripts";
+
+    for (const [specifier, a, b] of [
+      ["./helper.cjs", "helper.cjs", "helper.cts"],
+      ["./helper.mjs", "helper.mjs", "helper.mts"],
+      ["./helper.js", "helper.js", "helper.ts"],
+      ["./helper", "helper.js", "helper.ts"],
+      ["./helper", "helper.ts", "helper/index.ts"],
+    ]) {
+      for (const [dirty, clean] of [
+        [a, b],
+        [b, a],
+      ]) {
+        const { visited, problems } = walk({
+          [ROOT_FILE]: `import "${specifier}";`,
+          [`${dir}/${dirty}`]: sim,
+          [`${dir}/${clean}`]: "export const clean = 1;",
+        });
+
+        expect(visited, `${specifier}: ${dirty}`).toEqual(expect.arrayContaining([`${dir}/${a}`, `${dir}/${b}`]));
+        expect(problems, `${specifier}: ${dirty}`).toEqual([
+          expect.stringContaining(`${ROOT_FILE} → ${dir}/${dirty} imports @iracedeck/iracing-sdk`),
+        ]);
+      }
+    }
+  });
+
+  it("fails a #subpath specifier, since it does not follow a package.json imports map", () => {
+    for (const source of ['import x from "#internal/x.js";', 'const y = require("#y");', 'await import("#z");']) {
+      expect(only(source).problems, source).toEqual([
+        expect.stringMatching(
+          /imports #\S+, a package.json "imports" subpath: this check does not follow package\.json imports; import by relative path or package name$/,
+        ),
       ]);
     }
   });
