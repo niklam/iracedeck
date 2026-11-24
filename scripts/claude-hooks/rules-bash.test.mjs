@@ -5294,6 +5294,15 @@ describe("a shell word glued to its redirection (#1659)", () => {
   it.each([`bash</dev/null x.sh`, `bash</dev/null -c 'pnpm build'`])("passes %s", (c) => passes(c));
 });
 
+// CodeRabbit CLI on #1659: an interactive bash runs its startup file before
+// its `-c` string, so one that expands is judged against its stdin.
+describe("an expanding startup file beside a string (#1659)", () => {
+  it("refuses one given a here-string, and reads a plain -c one", () => {
+    expect(stopped(`bash --rcfile "$F" -i -c 'true' <<< 'gh pr merge 7 --squash'`)).toContain("from a here-string");
+    passes(`bash -c 'true' <<< data`);
+  });
+});
+
 // #1659 second read: fish's `-C` / `--init-command` string ran unread.
 describe("fish's init command (#1659)", () => {
   it.each([
