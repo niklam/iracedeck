@@ -4046,7 +4046,6 @@ describe("the mask is set aside only where a shell is fed (#1607)", () => {
   // group, a substitution or a backtick, or a newline the list goes on over,
   // ends nothing.
   it.each([
-    "exec 3< <(echo 'ls; gh pr merge 5 --squash'); bash <&3",
     // #1607 second read.
     'f() { bash; }; printf "cd x; gh pr merge 5" | f',
     'function f { sh; }; echo "cd x; gh pr merge 5" | f',
@@ -4074,6 +4073,8 @@ describe("the mask is set aside only where a shell is fed (#1607)", () => {
     "git fetch; time -p { echo a; printf '%s' \"cd x; gh pr merge 5\"; } | bash",
     'X="cd x; gh pr merge 5"; sudo -s "$X"',
     'X="cd x; gh pr merge 5"; sudo -i "$X"',
+    // A shell reading its script from a descriptor another element opened.
+    "exec 3< <(echo 'ls; gh pr merge 5 --squash'); bash <&3",
   ])("refuses a merge piped into a shell however the element is spelled (#1659): %s", (command) => stopped(command));
 
   it.each([
@@ -5265,6 +5266,53 @@ describe("the lexer's stopping rule: a form it does not read is refused outright
     refusal(`'dir' | powershell -Command -`, pwshCtx());
     // PowerShell splices `"& \"` and `C:\…\gh.exe\"`: the program word is spliced (#1787 item 3).
     deny(String.raw`pwsh -Command "& \"C:\tools\gh.exe\" pr merge 7"`, pwshCtx());
+  });
+
+  // Review findings on #1659: each passed every rule, here and on master.
+  describe("a shell reading its script from a stream it names", () => {
+    it.each([
+      [`echo 'gh pr merge 7 --squash' | bash /dev/stdin`, "a printer piped into a shell"],
+      [`echo 'gh pr merge 7 --squash' | bash /proc/self/fd/0`, "a printer piped into a shell"],
+      [`echo 'gh pr merge 7 --squash' | bash /dev/fd/0`, "a printer piped into a shell"],
+      [`echo 'gh pr merge 7 --squash' | bash < /dev/stdin`, "a printer piped into a shell"],
+      [`echo 'gh pr merge 7 --squash' | bash 0</dev/stdin`, "a printer piped into a shell"],
+      [`bash <(echo gh pr merge 7 --squash)`, "from a process substitution"],
+      [`sh <(echo gh pr merge 7 --squash)`, "from a process substitution"],
+      [`bash < <(echo gh pr merge 7 --squash)`, "from a process substitution"],
+      [`exec 3<<<'gh pr merge 7'; bash <&3`, "from a descriptor"],
+      [`bash <&3 3<<<'gh pr merge 7'`, "from a descriptor"],
+      [`echo 'gh pr merge 7 --squash' | pwsh -`, "a printer piped into a shell"],
+      [`pwsh -File -`, "a shell reading its script from stdin"],
+    ])("refuses %s (%s)", (c, form) => expect(refusal(c)).toContain(form));
+
+    it.each([
+      `'gh pr merge 7 --squash' | pwsh -`,
+      `'gh pr merge 7 --squash' | pwsh -NoProfile -`,
+      `'gh pr merge 7 --squash' | powershell -`,
+    ])("refuses PowerShell's bare `-` from the PowerShell tool: %s", (c) =>
+      expect(refusal(c, pwshCtx())).toContain("a shell reading its script from stdin"),
+    );
+
+    it("names the stream it refused", () => {
+      expect(refusal(`bash /dev/fd/3`)).toContain("`bash /dev/fd/3`");
+      expect(refusal(`bash <(echo ls)`)).toContain("`bash <(…)`");
+      expect(refusal(`pwsh -NoProfile -`)).toContain("`pwsh -`");
+    });
+
+    it.each([
+      `bash x.sh`,
+      `bash scripts/x.sh arg`,
+      `sh -e .husky/pre-commit`,
+      `bash < file.sh`,
+      `cat file | sh -c 'wc -l'`,
+    ])("passes a shell running a file or a string: %s", (c) => passes(c));
+    it.each([`pwsh -File x.ps1`, `diff <(ls a) <(ls b)`])("passes %s from the PowerShell tool and bash", (c) => {
+      passes(c);
+      passes(c, pwshCtx());
+    });
+
+    it("reads a shell's string past a value an option takes from a substitution", () =>
+      expect(deny(`bash --rcfile $(x) -c 'gh pr merge 7 --squash'`)).toMatch(/first word of a string `bash` runs/));
   });
 
   describe("every read form is still read and judged", () => {

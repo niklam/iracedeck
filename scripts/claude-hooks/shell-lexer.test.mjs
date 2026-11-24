@@ -1952,8 +1952,112 @@ describe("the stopping rule: a form the lexer does not read is found, and refuse
     expect(read(["<<EOF"])).toBe("heredoc");
     expect(read(["<<-", "EOF"])).toBe("heredoc");
     expect(read(["<", "f"])).toBe("other");
-    expect(read(["<&3"])).toBe("other");
-    expect(read(["<<<", "'x'"])).toEqual({ index: 1, offset: 0 });
+    expect(read(["<<<", "'x'"])).toBe("hereString");
+    expect(read(["<<<"])).toBe("hereString");
     expect(read([])).toBe("pipe");
+  });
+
+  // Review findings on #1659: a shell reading its script from stdin by a path
+  // or a descriptor, or from a process substitution, passed every rule.
+  describe("a shell reading its script from a stream it names", () => {
+    const PROCESS = "a shell reading its script from a process substitution";
+    const DESCRIPTOR = "a shell reading its script from a descriptor";
+
+    it.each([
+      [`echo 'gh pr merge 7 --squash' | bash /dev/stdin`, PRINTER],
+      [`echo 'gh pr merge 7 --squash' | bash /proc/self/fd/0`, PRINTER],
+      [`echo 'gh pr merge 7 --squash' | bash /dev/fd/0`, PRINTER],
+      [`echo 'gh pr merge 7 --squash' | sh "/dev/stdin"`, PRINTER],
+      [`echo 'gh pr merge 7 --squash' | bash //dev/./stdin`, PRINTER],
+      [`echo 'gh pr merge 7 --squash' | bash < /dev/stdin`, PRINTER],
+      [`echo 'gh pr merge 7 --squash' | bash 0</dev/stdin`, PRINTER],
+      [`echo 'gh pr merge 7 --squash' | bash -O extglob /proc/$$/fd/0`, PRINTER],
+      [`cat steps.txt | bash /dev/stdin`, STDIN],
+      [`bash /dev/stdin`, STDIN],
+      [`bash /dev/stdin <<< 'gh pr merge 7'`, HERE_STRING],
+      [`bash /dev/fd/3`, DESCRIPTOR],
+      [`bash /proc/self/fd/9 3<x`, DESCRIPTOR],
+      [`bash <(echo gh pr merge 7 --squash)`, PROCESS],
+      [`sh <(echo gh pr merge 7 --squash)`, PROCESS],
+      [`bash -O extglob <(echo gh pr merge 7)`, PROCESS],
+      [`bash < <(echo gh pr merge 7 --squash)`, PROCESS],
+      [`bash 0< <(echo gh pr merge 7 --squash)`, PROCESS],
+      [`exec 3<<<'gh pr merge 7'; bash <&3`, DESCRIPTOR],
+      [`bash <&3 3<<<'gh pr merge 7'`, DESCRIPTOR],
+      [`bash 0<&3`, DESCRIPTOR],
+      [`bash <& 3`, DESCRIPTOR],
+      [`bash <&"$FD"`, DESCRIPTOR],
+      [`bash -c 'bash <(echo ls)'`, PROCESS],
+      [`bash -c 'sh /dev/fd/3'`, DESCRIPTOR],
+      // PowerShell reads its command from stdin for a bare `-` (pwsh's `-File -`,
+      // powershell.exe's `-Command -`), whatever comes before it.
+      [`'gh pr merge 7 --squash' | pwsh -`, STDIN],
+      [`'gh pr merge 7 --squash' | pwsh -NoProfile -`, STDIN],
+      [`'gh pr merge 7 --squash' | powershell -`, STDIN],
+      [`echo 'gh pr merge 7 --squash' | pwsh -`, PRINTER],
+      [`pwsh -`, STDIN],
+      [`pwsh -File -`, STDIN],
+      [`powershell -NoProfile -f -`, STDIN],
+      [`powershell -Command -`, STDIN],
+      [`bash -c 'pwsh -'`, NESTED],
+    ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+
+    it.each([
+      `bash x.sh`,
+      `bash scripts/x.sh arg`,
+      `sh -e .husky/pre-commit`,
+      `bash < file.sh`,
+      `bash /dev/null`,
+      `bash ./dev/stdin`,
+      `cat file | sh -c 'wc -l'`,
+      `diff <(ls a) <(ls b)`,
+      `bash -c 'diff <(ls a) <(ls b)'`,
+      `bash x.sh <(ls)`,
+      `bash <&0`,
+      `bash <&-`,
+      `pwsh -File x.ps1`,
+      `pwsh -NoProfile -File scripts/x.ps1 -`,
+    ])("reads and refuses nothing where the script is a file or a string: %s", (c) =>
+      expect(lexer.refusedForms(c)).toEqual([]),
+    );
+
+    it("reads a shell's string past a value an option takes from a substitution", () => {
+      const MERGE = cmd(/gh\s+pr\s+merge\b/);
+      expect(lexer.has(`bash --rcfile $(x) -c 'gh pr merge 7 --squash'`, MERGE)).toBe(true);
+      expect(lexer.has(`bash -o \`x\` -c 'gh pr merge 7 --squash'`, MERGE)).toBe(true);
+      expect(lexer.has(`bash --rcfile <(x) -c 'gh pr merge 7 --squash'`, MERGE)).toBe(true);
+    });
+
+    it("tells the stream a shell's stdin is redirected from", () => {
+      const read = (words) => {
+        let i = 0;
+        return lexer.readCommand(lexer.shellSpec("bash"), () => words[i++]).stdin;
+      };
+      expect(read(["<&3"])).toBe("descriptor");
+      expect(read(["0<&", "3"])).toBe("descriptor");
+      expect(read(["<&0"])).toBe("pipe");
+      expect(read(["<&-"])).toBe("other");
+      expect(read(["<", "/dev/stdin"])).toBe("pipe");
+      expect(read(["<<<", "x", "<", "/dev/fd/0"])).toBe("hereString");
+      expect(read(["<", "/dev/fd/4"])).toBe("descriptor");
+      expect(read(["<", "<(echo x)"])).toBe("substitution");
+      expect(read(["<", "x.sh"])).toBe("other");
+    });
+
+    it("tells the stream a shell's script file names", () => {
+      const read = (name, words) => {
+        let i = 0;
+        return lexer.readCommand(lexer.shellSpec(name), () => words[i++]).script;
+      };
+      expect(read("bash", ["<(echo x)"])).toBe("substitution");
+      expect(read("bash", ["/dev/stdin"])).toBe("stdin");
+      expect(read("bash", ["'/proc/self/fd/0'"])).toBe("stdin");
+      expect(read("bash", ["/dev/fd/5"])).toBe("descriptor");
+      expect(read("bash", ["x.sh"])).toBeUndefined();
+      expect(read("pwsh", ["-NoProfile", "-"])).toBe("stdin");
+      expect(read("pwsh", ["-File", "-"])).toBe("stdin");
+      expect(read("pwsh", ["-File", "x.ps1"])).toBeUndefined();
+      expect(read("powershell", ["-Command", "-"])).toBe("stdin");
+    });
   });
 });

@@ -11,7 +11,8 @@
  * #1606), the first word of each string a shell runs among them (#1634,
  * {@link fedStarts}), one level deep. A form that hands text to a shell the
  * lexer does not read — a printer or any command piped into a shell, a
- * here-string or heredoc a shell runs, `eval`, a `sudo` that runs a shell, a
+ * here-string, heredoc, process substitution or descriptor a shell reads its
+ * script from, `eval`, a `sudo` that runs a shell, a
  * string that is not one plain level, a string inside a string, a program
  * word in a string that is not its plain name — is listed by {@link
  * refusedForms}, and `checkBash` refuses it before any rule (#1659, the
@@ -487,9 +488,13 @@ const spells = (p, full, min) => p.length >= min && full.startsWith(p);
  * the next word. `-Command` (`-c`, `-CommandWithArgs`) makes the first word
  * after it the string; `-File` runs a file and `-EncodedCommand` a base64
  * string, neither of which the lexer can read, so nothing after them counts.
+ * A bare `-` reads the command from stdin (#1659): pwsh's default parameter
+ * is `-File` and powershell.exe's `-Command`, and either given `-` reads
+ * stdin, so it is no word that starts a command line.
  */
 const PS_OPTIONS = {
   read(w) {
+    if (wordValue(w) === "-") return { stdinScript: true };
     // A value attached with `:`, or a quoted string glued to `-c` / `-Command`
     // (`pwsh -c"gh …"`): what pwsh makes of the latter is not certain, so it is
     // read as the string, erring to deny (#1634 second read).
@@ -683,12 +688,98 @@ function readOption(spec, w) {
  * One word of a command from where it is tried, sticky, past blanks: quotes and
  * escapes kept whole, ending at an operator character ({@link commandOf}) — a
  * redirect's own `&` (`<&3`, `2>&1`, `&>log`) is part of its word, not a
- * background job's.
+ * background job's. {@link commandWordEnd} carries a word on through a
+ * substitution, which this stops at.
  */
-const COMMAND_WORD = /[ \t]*((?:"(?:[^"\\]|\\[\s\S])*"|'[^']*'|\\[\s\S]|[<>]&|&>|[^\s"'\\;&|()\x60])+)/y;
+const WORD_PIECES = String.raw`(?:"(?:[^"\\]|\\[\s\S])*"|'[^']*'|\\[\s\S]|[<>]&|&>|[^\s"'\\;&|()\x60])+`;
+const COMMAND_WORD = new RegExp(String.raw`[ \t]*(${WORD_PIECES})`, "y");
+/** The rest of a word from where it is tried, sticky, no blanks first ({@link commandWordEnd}). */
+const WORD_REST = new RegExp(WORD_PIECES, "y");
 /** A redirection word ({@link commandOf}); {@link BARE_REDIRECTION} is one whose target is the next word. */
 const REDIRECTION = /^\d*(?:[<>]|&>)/;
 const BARE_REDIRECTION = /^\d*(?:[<>]{1,3}-?|[<>]&|&>>?|>\|)$/;
+/** A process substitution, `<(…)` or `>(…)`: a word naming a stream, never a redirection (#1659). */
+const PROCESS_SUBSTITUTION = /^[<>]\(/;
+
+/**
+ * Where the command word that starts at `i` of `text` ends, past blanks
+ * before it, as `{ start, end }`, or `undefined` where none starts (#1659):
+ * the {@link COMMAND_WORD} pieces, and a command substitution (`$( … )`, a
+ * backtick one) or a process substitution (`<( … )`, `>( … )`) taken whole
+ * wherever it sits in the word, so a word such as `$(x)` or `<(x)` no longer
+ * ends the reading of a command at its paren: `bash --rcfile $(x) -c '…'`
+ * reaches its string.
+ */
+function commandWordEnd(text, i) {
+  while (text[i] === " " || text[i] === "\t") i++;
+  const start = i;
+  for (;;) {
+    WORD_REST.lastIndex = i;
+    if (WORD_REST.exec(text)) i = WORD_REST.lastIndex;
+    if (text[i] === "\x60") i = tickEnd(text, i);
+    else if (text[i] === "(" && i > start && /[$<>]/.test(text[i - 1]) && !escapedAt(text, i - 1))
+      i = closeAt(text, i + 1, "(");
+    else break;
+  }
+  return i > start ? { start, end: i } : undefined;
+}
+
+/** Whether the character at `i` of `t` is escaped: an odd run of backslashes before it. */
+function escapedAt(t, i) {
+  let n = 0;
+  for (let k = i - 1; k >= 0 && t[k] === "\\"; k--) n++;
+  return n % 2 === 1;
+}
+
+/** A word's text as bash reads it, quotes removed and escapes applied, an expansion one `$` ({@link decodeWord}). */
+const wordValue = (w) =>
+  decodeWord(w)
+    .map((x) => x.c)
+    .join("");
+
+/**
+ * The stream a word names that a shell could read its script from (#1659),
+ * or `undefined` for any other word — a file, which the hook does not read:
+ * `"substitution"` for a process substitution (`<(…)`, `>(…)`), `"stdin"` for
+ * stdin by its path (`/dev/stdin`, `/dev/fd/0`, `/proc/<pid>/fd/0`, the path
+ * read with its `.`, `..` and doubled separators resolved), `"descriptor"`
+ * for any other descriptor by its path (`/dev/fd/3`, `/proc/self/fd/$FD`).
+ */
+function streamOf(word) {
+  if (PROCESS_SUBSTITUTION.test(word)) return "substitution";
+  const p = wordValue(word);
+  if (!p.startsWith("/")) return undefined;
+  const parts = [];
+  for (const s of p.split("/"))
+    if (s === "..") parts.pop();
+    else if (s && s !== ".") parts.push(s);
+  const resolved = `/${parts.join("/")}`;
+  if (resolved === "/dev/stdin") return "stdin";
+  const fd = /^\/(?:dev|proc\/[^/]+)\/fd\/(.+)$/.exec(resolved);
+  if (!fd) return undefined;
+  return fd[1] === "0" ? "stdin" : "descriptor";
+}
+
+/**
+ * A shell's stdin once the input redirection `op` with its `target` word is
+ * read, where it was `previous` ({@link readCommand}, #1659): a here-string or
+ * a heredoc by its operator; for `<&`, `previous` for descriptor 0, `"other"`
+ * for a closed one (`<&-`) and `"descriptor"` for any other; for `<` and `<>`
+ * the stream the target names ({@link streamOf}) — `previous` for stdin itself
+ * (`< /dev/stdin` re-opens what stdin already is) — or `"other"` for a file.
+ * A target that cannot be read leaves `previous`.
+ */
+function stdinFrom(op, target, previous) {
+  if (op === "<<<") return "hereString";
+  if (op.startsWith("<<")) return "heredoc";
+  if (target === undefined) return previous;
+  if (op === "<&") {
+    const fd = wordValue(target);
+    return fd === "0" ? previous : fd === "-" ? "other" : "descriptor";
+  }
+  const stream = streamOf(target);
+  return stream === "stdin" ? previous : (stream ?? "other");
+}
 
 /**
  * What the command whose program word ends at `from` in `text` runs, read
@@ -711,10 +802,14 @@ const BARE_REDIRECTION = /^\d*(?:[<>]{1,3}-?|[<>]&|&>>?|>\|)$/;
  * character of the string word where an attached string starts (`cmd /c"…"`,
  * `su -c'…'`), `attached` whether it is one, `stop` the word after which
  * nothing can be read (pwsh's `-File`, `-EncodedCommand`), and `stdin` where
- * a shell with no string and no file would read its script: `"pipe"`, the
- * here-string word as `{ index, offset }`, `"heredoc"`, or `"other"` for a
- * file or descriptor — the last input redirection wins, an output redirection
- * changes nothing. A value option takes its value, a redirection its target, `--` ends
+ * a shell with no string and no file would read its script: `"pipe"`,
+ * `"hereString"`, `"heredoc"`, `"descriptor"` (`<&3`, `< /dev/fd/3`),
+ * `"substitution"` (`< <(…)`), or `"other"` for a file — the last input
+ * redirection wins (`< /dev/stdin` changes nothing, {@link stdinFrom}), an
+ * output redirection changes nothing. `script` is the stream the script file
+ * names ({@link streamOf}: `bash /dev/stdin`, `bash <(…)`), or `"stdin"` for
+ * PowerShell's bare `-` or `-File -`, at the word `dash` (#1659). A value
+ * option takes its value, a redirection its target, `--` ends
  * the options, a positional switch (bash's `-s`) makes the later plain words
  * arguments rather than a script file, and past the program the words are
  * still read for a string option, {@link SCANNED_WORDS} at most, so an option
@@ -733,6 +828,8 @@ export function readCommand(spec, next) {
     attached: false,
     switch: undefined,
     stdin: "pipe",
+    script: undefined,
+    dash: undefined,
     dirs: [],
     stop: undefined,
   };
@@ -750,19 +847,26 @@ export function readCommand(spec, next) {
   };
   for (let w = take(); w !== undefined; w = take()) {
     const input = INPUT_REDIRECT.exec(w);
-    if (input || REDIRECTION.test(w)) {
+    if (input || (REDIRECTION.test(w) && !PROCESS_SUBSTITUTION.test(w))) {
       const bare = input ? input[0].length === w.length : BARE_REDIRECTION.test(w);
-      let target = { index: k, offset: input ? input[0].length : 0 };
-      if (bare) {
-        if (take() === undefined) break;
-        target = { index: k, offset: 0 };
-      }
-      if (input) out.stdin = input[1] === "<<<" ? target : input[1].startsWith("<<") ? "heredoc" : "other";
+      const target = bare ? take() : w.slice(input ? input[0].length : 0);
+      if (input) out.stdin = stdinFrom(input[1], target, out.stdin);
+      if (target === undefined) break;
       continue;
     }
     const o = options ? readOption(spec, w) : null;
+    // PowerShell's bare `-`, alone or as `-Command`'s string: the command is read from stdin.
+    if (o?.stdinScript) {
+      Object.assign(out, { script: "stdin", dash: k });
+      break;
+    }
     if (o?.stop) {
       out.stop = { index: k, ...o };
+      // `-File -` reads the command from stdin too.
+      if (o.file) {
+        const file = take();
+        if (file !== undefined && wordValue(file) === "-") Object.assign(out, { script: "stdin", dash: k });
+      }
       break;
     }
     if (o?.end) {
@@ -788,7 +892,7 @@ export function readCommand(spec, next) {
       Object.assign(out, { string: k, switch: stringSwitch });
       break;
     }
-    if (!positional && out.program === undefined) out.program = k;
+    if (!positional && out.program === undefined) Object.assign(out, { program: k, script: streamOf(w) });
     if (!scansOn || ++scanned > SCANNED_WORDS) break;
   }
   return out;
@@ -796,27 +900,31 @@ export function readCommand(spec, next) {
 
 /**
  * {@link readCommand} over the text of a command whose program word ends at
- * `from`, its words read up to `limit` ({@link COMMAND_WORD}): the same
- * result with text positions in place of word indices, and `stop` as a
- * boolean. Reading stops at a `;`, `&`, `|`, paren, backtick or newline, as
- * the command does.
+ * `from`, its words read up to `limit` ({@link commandWordEnd}, so a
+ * substitution is part of its word): the same result with text positions in
+ * place of word indices (`scriptAt` where the script word or PowerShell's
+ * `-` starts), and `stop` as a boolean. Reading stops at a `;`, `&`, `|`, a
+ * paren no substitution opens, or a newline, as the command does.
  */
 function commandOf(spec, text, from, limit) {
-  COMMAND_WORD.lastIndex = from;
+  let i = from;
   const ats = [];
   const next = () => {
-    const m = COMMAND_WORD.exec(text);
-    if (!m || COMMAND_WORD.lastIndex > limit) return undefined;
-    ats.push(COMMAND_WORD.lastIndex - m[1].length);
-    return m[1];
+    const w = commandWordEnd(text, i);
+    if (!w || w.end > limit) return undefined;
+    ats.push(w.start);
+    i = w.end;
+    return text.slice(w.start, w.end);
   };
   const r = readCommand(spec, next);
-  const at = (i, offset = 0) => (i === undefined ? undefined : ats[i] + offset);
+  const at = (k, offset = 0) => (k === undefined ? undefined : ats[k] + offset);
   return {
     program: at(r.program),
     string: at(r.string, r.offset),
     attached: r.attached,
-    stdin: typeof r.stdin === "object" ? at(r.stdin.index, r.stdin.offset) : r.stdin,
+    stdin: r.stdin,
+    script: r.script,
+    scriptAt: at(r.dash ?? r.program),
     stop: r.stop !== undefined,
     file: Boolean(r.stop?.file),
   };
@@ -1313,6 +1421,8 @@ const REFUSED = Object.freeze({
   stdin: "a shell reading its script from stdin",
   hereString: "a shell reading its script from a here-string",
   heredoc: "a shell reading its script from a heredoc",
+  processSubstitution: "a shell reading its script from a process substitution",
+  descriptor: "a shell reading its script from a descriptor",
   eval: "eval",
   sudo: "a sudo that runs a shell",
   ansi: "an ANSI-C string",
@@ -1329,6 +1439,44 @@ const POWERSHELLS = new Set(["pwsh", "powershell"]);
 const PS_EVAL = new Set(["iex", "invoke-expression"]);
 /** The shell words whose first word that is no option is a file to run or a user, never a string ({@link fedStarts}). */
 const FILE_RUNNERS = new Set(["bash", "sh", "zsh", "dash", "ksh", "fish", "su", "source"]);
+/**
+ * The words that read a script from a file or from stdin ({@link
+ * scriptStream}): the {@link STDIN_SHELLS}, and `source` and `.`, which run a
+ * file in the shell itself and read stdin only when the file names it.
+ */
+const SCRIPT_READERS = new Set([...STDIN_SHELLS, "source", "."]);
+
+/**
+ * Where the {@link SCRIPT_READERS} word `name`, its words read in `t` as
+ * {@link commandOf} gives `r`, takes its script from, when that is a stream
+ * the hook does not read (#1659): `{ form, shape }` for a process
+ * substitution or a descriptor its script file names (`bash <(…)`, `bash
+ * /dev/fd/3`), and for a here-string, a heredoc, a process substitution or a
+ * descriptor its stdin is (`bash < <(…)`, `bash <&3`) where it reads its
+ * script from stdin; `{ piped, named, shape }` where it reads its script from
+ * stdin as the command leaves it, a pipe if any, `named` when the command
+ * names stdin itself (`bash /dev/stdin`, PowerShell's `-`); `undefined` where
+ * it runs a string, a file, or nothing the hook could tell. A shell with no
+ * string and no file reads stdin; `source` and `.` read it only through its
+ * name.
+ */
+function scriptStream(name, r, t) {
+  if (r.string !== undefined) return undefined;
+  const word = () => {
+    const w = r.scriptAt === undefined ? undefined : commandWordEnd(t, r.scriptAt);
+    return w ? clip(t.slice(w.start, w.end)) : "…";
+  };
+  if (r.script === "substitution") return { form: REFUSED.processSubstitution, shape: `${name} <(…)` };
+  if (r.script === "descriptor") return { form: REFUSED.descriptor, shape: `${name} ${word()}` };
+  const named = r.script === "stdin";
+  if (!named && (r.program !== undefined || r.stop || !STDIN_SHELLS.has(name))) return undefined;
+  if (r.stdin === "hereString") return { form: REFUSED.hereString, shape: `${name} <<< …` };
+  if (r.stdin === "heredoc") return { form: REFUSED.heredoc, shape: `${name} <<…` };
+  if (r.stdin === "substitution") return { form: REFUSED.processSubstitution, shape: `${name} < <(…)` };
+  if (r.stdin === "descriptor") return { form: REFUSED.descriptor, shape: `${name} <&…` };
+  if (r.stdin === "pipe") return { piped: true, named, shape: named ? `${name} ${word()}` : name };
+  return undefined;
+}
 
 /** A word of a command cut for a refusal's shape. */
 const clip = (w) => (w.length > 40 ? `${w.slice(0, 40)}…` : w);
@@ -1417,11 +1565,13 @@ function wordForm(chars, raw, subst) {
  * Whether the shell word `name`, its words read as {@link commandOf} gives
  * `r`, runs text it is handed rather than a file (#1659): a string switch's
  * string; the words `watch`, `parallel` and `trap` run, and the command
- * PowerShell runs without `-Command`; or, for a shell that reads its script
- * from stdin ({@link STDIN_SHELLS}), no string and no file, so its stdin.
+ * PowerShell runs without `-Command`; a script read from a stream it names
+ * (`bash /dev/stdin`, `bash <(…)`, PowerShell's `-`, {@link scriptStream});
+ * or, for a shell that reads its script from stdin ({@link STDIN_SHELLS}), no
+ * string and no file, so its stdin.
  */
 function feedsText(name, r) {
-  if (name === "eval" || r.string !== undefined) return true;
+  if (name === "eval" || r.string !== undefined || r.script !== undefined) return true;
   if (["watch", "parallel", "trap", "pwsh", "powershell"].includes(name) && r.program !== undefined) return true;
   if (POWERSHELLS.has(name) && r.stop) return !r.file;
   return STDIN_SHELLS.has(name) && r.program === undefined && !r.stop && r.stdin !== "other";
@@ -1489,7 +1639,8 @@ function sudoShell(t, from, limit) {
  *
  * What the hook does not read is refused, never modelled (#1659): a printer
  * or any other command piped into a shell, a shell fed a here-string or a
- * heredoc, `eval`, a `sudo` that runs a shell, a string that is not one plain
+ * heredoc, one reading its script from stdin by name, a process substitution
+ * or a descriptor ({@link scriptStream}), `eval`, a `sudo` that runs a shell, a string that is not one plain
  * level ({@link stringForm}), a shell inside a string that runs text it is
  * handed ({@link feedsText}), and a program word in a string that is not its
  * plain name ({@link wordForm}). Positions are recorded, never searched for,
@@ -1564,8 +1715,13 @@ function fedStarts(command, text, fed, programs) {
       if (sudoShell(L.text, e, L.text.length)) refuse(REFUSED.sudo, `${L.via} … sudo …`);
       return;
     }
-    if (SHELL_NAMES.has(name) && feedsText(name, commandOf(shellSpec(name), L.text, e, L.text.length)))
-      refuse(REFUSED.nested, `${L.via} … ${name} …`);
+    if (!SHELL_NAMES.has(name) && !SCRIPT_READERS.has(name)) return;
+    const r = commandOf(shellSpec(name), L.text, e, L.text.length);
+    // A script read from a stream other than the string's own stdin is named
+    // by its form; one that reads the string's stdin is a string inside it.
+    const stream = SCRIPT_READERS.has(name) ? scriptStream(name, r, L.text) : undefined;
+    if (stream && !stream.piped) return refuse(stream.form, `${L.via} … ${stream.shape}`);
+    if (feedsText(name, r)) refuse(REFUSED.nested, `${L.via} … ${name} …`);
   };
   // `d` of the level `L`, and the position after each lead token from it, up
   // to the end of its command there. Each is recorded at its raw word's
@@ -1647,16 +1803,21 @@ function fedStarts(command, text, fed, programs) {
     for (const [open, close] of own.quotes) closes.set(open, close);
     // What feeds the shell word at `p` its stdin through a pipe in the span: a
     // printer in the stage before it (`echo '…' | bash`), or any other command.
+    // Whether it refused one.
     const pipedInto = (p, via) => {
-      if (!own.pipes.some((x) => x < p)) return;
+      if (!own.pipes.some((x) => x < p)) return false;
       for (const stages of own.pipelines) {
         const k = stages.findIndex(([s, e]) => s <= p && p < e);
         if (k < 1) continue;
         const [s, e] = stages[k - 1];
         const echo = echoAt(text, s);
-        if (echo && echo.end <= e && byName.has(echo.start)) return refuse(REFUSED.printer, `${echo.name} … | ${via}`);
+        if (echo && echo.end <= e && byName.has(echo.start)) {
+          refuse(REFUSED.printer, `${echo.name} … | ${via}`);
+          return true;
+        }
       }
       refuse(REFUSED.stdin, `… | ${via}`);
+      return true;
     };
     // The shell words among the program words of the span ({@link SHELL_NAMES}:
     // a rewritten program word spells its plain name), inside a string too.
@@ -1684,16 +1845,16 @@ function fedStarts(command, text, fed, programs) {
           if (L !== base) return;
           if (via === "eval") return refuse(REFUSED.eval, "eval …");
           const r = commandOf(OPTION_SPECS.get(via) ?? NO_OPTIONS, text, d, b);
-          // A shell that reads its script from stdin: a here-string, a heredoc
-          // or a pipe, all refused (PowerShell's `-Command -` too).
-          if (STDIN_SHELLS.has(via) && r.string === undefined && r.program === undefined && !r.stop) {
-            if (typeof r.stdin === "number") return refuse(REFUSED.hereString, `${via} <<< …`);
-            if (r.stdin === "heredoc") return refuse(REFUSED.heredoc, `${via} <<…`);
-            if (r.stdin === "pipe") pipedInto(p, via);
+          // A shell that reads its script from a stream: a here-string, a
+          // heredoc, a process substitution, a descriptor or a pipe, all
+          // refused; stdin named by a path or PowerShell's `-` is refused with
+          // no pipe too, since the command says where the script comes from.
+          const stream = SCRIPT_READERS.has(via) ? scriptStream(via, r, text) : undefined;
+          if (stream) {
+            if (!stream.piped) return refuse(stream.form, stream.shape);
+            if (!pipedInto(p, via) && stream.named) refuse(REFUSED.stdin, stream.shape);
             return;
           }
-          if (POWERSHELLS.has(via) && r.string !== undefined && /^-(?=\s|$)/.test(text.slice(r.string, r.string + 2)))
-            return refuse(REFUSED.stdin, `${via} -Command -`);
           const kind = { how: "shell", via };
           // `watch -x` (`--exec`) runs its words as they are, no shell joining
           // them: each is kept one word (#1646).
@@ -3978,7 +4139,10 @@ export function wordText(word) {
  * {@link readCommand} wants them: quotes and escapes kept, each word whole
  * ({@link COMMAND_WORD}), up to an unquoted `;`, `&`, `|`, paren, backtick or
  * newline, or to `limit` — the close of the string the command is itself
- * inside, so the words of a command found in one never run past it. The
+ * inside, so the words of a command found in one never run past it. They
+ * stop at a substitution, which the deck-host ask marks as words it cut short
+ * itself (`UNREAD` in `script-runs.mjs`), where the lexer's {@link commandOf}
+ * reads on through one ({@link commandWordEnd}). The
  * deck-host ask reads every runner's words with this and decodes each whole
  * ({@link wordText}), its quoted strings included: {@link chainCommands}'
  * `args` end where the lexer's chain does, which inside a string a shell is
