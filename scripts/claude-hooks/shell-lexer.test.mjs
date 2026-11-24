@@ -2633,3 +2633,19 @@ describe("the stopping rule: a trailing comment (#1659 PR review)", () => {
     `{ bash; } </dev/null # <<< x`,
   ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
 });
+
+// PR #1798 review at 0dced8c2f: the chain a reset must cross runs from the
+// exec that set the stream, not from any exec since, so a group or subshell
+// anywhere after the stream keeps it.
+describe("the stopping rule: a reset across everything since the stream (#1659 PR review)", () => {
+  const HERE_STRING = "a shell reading its script from a here-string";
+  it.each([
+    `exec 0<<<':'; ( exec <x; exec </dev/null ); bash`,
+    `exec 0<<<':'; { exec <x; exec </dev/null; }; bash`,
+    `exec 0<<<':'; ( exec 3>f; exec </dev/null ); bash`,
+  ])("refuses %s", (c) => expect(lexer.refusedForms(c)[0]?.form).toBe(HERE_STRING));
+  it.each([`exec 0<<<':'; exec <x; exec </dev/null; bash`, `exec 0<<<':'; exec 3>f; exec </dev/null; bash`])(
+    "reads and refuses nothing in %s",
+    (c) => expect(lexer.refusedForms(c)).toEqual([]),
+  );
+});

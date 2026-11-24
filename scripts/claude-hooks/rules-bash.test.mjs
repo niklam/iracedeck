@@ -5327,6 +5327,16 @@ describe("a group holding a word an object inherits (#1659)", () => {
   });
 });
 
+// PR #1798 review at 0dced8c2f: a subshell anywhere since the stream keeps it.
+describe("an exec reset across everything since the stream (#1659)", () => {
+  it("refuses a reset in a subshell after another exec, and passes a plain chain", () => {
+    expect(stopped(`exec 0<<<'gh pr merge 7 --squash'; ( exec <x; exec </dev/null ); bash`)).toContain(
+      "from a here-string",
+    );
+    passes(`exec 0<<<'gh pr merge 7 --squash'; exec <x; exec </dev/null; bash`);
+  });
+});
+
 // A judge on PR #1798: a trailing comment is no script operand.
 describe("a stdin shell with a trailing comment (#1659)", () => {
   it.each([

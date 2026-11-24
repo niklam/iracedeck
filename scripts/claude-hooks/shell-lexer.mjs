@@ -2179,15 +2179,18 @@ function fedStarts(command, text, fed, programs) {
       const r = commandOf(NO_OPTIONS, text, end, p);
       if (r.program !== undefined || r.stdin === "pipe") continue;
       const stream = formOf(r.stdin, "exec <…;");
-      if (stream) found = stream;
-      else if (
+      // The chain a reset must cross runs from the exec that set the stream,
+      // whatever execs come between (PR #1798 review at 0dced8c2f).
+      if (stream) {
+        found = stream;
+        after = end;
+      } else if (
         found &&
         isDevNull(r.stdinTarget) &&
         !UNSURE_CHAIN.test(text.slice(after, at)) &&
         !/[|&]/.test(text[base.ends[at]] ?? "")
       )
         found = undefined;
-      after = end;
     }
     return found;
   };
