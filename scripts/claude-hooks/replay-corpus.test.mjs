@@ -615,6 +615,34 @@ describe("the census", () => {
   });
 });
 
+/** How long a case waits for a write that got through, well under Vitest's 5 s test timeout. */
+const SETTLE_BOUND_MS = 2000;
+
+/**
+ * Waits up to `bound` ms for `pending`, the writes a case let through, with
+ * the case `c` held from before the wait, so an afterEach run mid-wait by a
+ * test timeout leaves its folder and descriptor alone ({@link leaveCase}).
+ * Settled in time, the case goes back to its own cleanup, or is cleaned here
+ * when that afterEach already ran; still pending, `clean` runs once it
+ * settles (PR #1798 review at 0dced8c2f).
+ */
+async function settleOrDefer(c, pending, bound, clean) {
+  c.unsettled = true;
+  const late = Symbol("late");
+  let timer;
+  const outcome = await Promise.race([pending, new Promise((r) => (timer = setTimeout(() => r(late), bound)))]);
+  clearTimeout(timer);
+  if (outcome === late) pending.then(clean);
+  else if (c.left) clean();
+  else c.unsettled = false;
+}
+
+/** A case's afterEach: removes its folder, unless a write it let through is pending, whose wait then cleans up. */
+function leaveCase(c) {
+  if (c.unsettled) c.left = true;
+  else fs.rmSync(c.owned, { recursive: true, force: true });
+}
+
 describe("side effects while judging", () => {
   it("make a spawn or a file write throw until restored, through ESM bindings too", () => {
     const spawnSync = childProcess.spawnSync;
@@ -648,20 +676,20 @@ describe("side effects while judging", () => {
   // Each case gets a folder of its own, so a write that escaped one case can
   // never touch the next case's fixture; a case whose escaped write has not
   // settled leaves its folder in place rather than delete under it (PR #1798
-  // review).
+  // review), held by the case object `kase` ({@link settleOrDefer}).
   let owned;
   let never;
   let fixture;
-  let unsettled;
+  let kase;
   beforeEach(() => {
     owned = fs.mkdtempSync(path.join(os.tmpdir(), "replay-corpus-writers-"));
     never = path.join(owned, "never-written.txt");
     fixture = path.join(owned, "fixture.txt");
-    unsettled = false;
+    kase = { owned, unsettled: false, left: false };
   });
   afterEach(async () => {
     await new Promise((r) => setTimeout(r, 0));
-    if (!unsettled) fs.rmSync(owned, { recursive: true, force: true });
+    leaveCase(kase);
   });
   const x = () => Buffer.from("x");
   it.each([
@@ -694,6 +722,7 @@ describe("side effects while judging", () => {
     ["fs.mkdtemp", (_, done) => fs.mkdtemp(path.join(owned, "made-"), done)],
     ["fs.promises.mkdtemp", () => fs.promises.mkdtemp(path.join(owned, "made-"))],
   ])("make %s throw while judging", async (_, write) => {
+    const c = kase;
     fs.writeFileSync(fixture, "");
     const fd = fs.openSync(fixture, "r+");
     try {
@@ -718,30 +747,98 @@ describe("side effects while judging", () => {
           () => {},
         );
         const callback = write.length > 1 ? called : Promise.resolve();
-        const late = Symbol("late");
-        const outcome = await Promise.race([
-          Promise.all([settled, callback]),
-          new Promise((r) => setTimeout(() => r(late), 5000)),
-        ]);
-        // Still pending: this case's descriptor and folder stay until the
-        // write settles, so the OS cannot hand that descriptor to a later
-        // case while the write is queued on it (PR #1798 review).
-        if (outcome === late) {
-          unsettled = true;
-          const dir = owned;
-          Promise.all([settled, callback]).then(() => {
-            fs.closeSync(fd);
-            fs.rmSync(dir, { recursive: true, force: true });
-          });
-        }
+        // Still pending past the bound: this case's descriptor and folder stay
+        // until the write settles, so the OS cannot hand that descriptor to a
+        // later case while the write is queued on it (PR #1798 review).
+        const dir = c.owned;
+        await settleOrDefer(c, Promise.all([settled, callback]), SETTLE_BOUND_MS, () => {
+          fs.closeSync(fd);
+          fs.rmSync(dir, { recursive: true, force: true });
+        });
       }
       expect(threw?.message).toMatch(/was called while judging|for writing while judging/);
       expect(fs.existsSync(never)).toBe(false);
       expect(fs.readFileSync(fixture, "utf8")).toBe("");
-      expect(fs.readdirSync(owned)).toEqual(["fixture.txt"]);
+      expect(fs.readdirSync(c.owned)).toEqual(["fixture.txt"]);
     } finally {
-      if (!unsettled) fs.closeSync(fd);
+      if (!c.unsettled) fs.closeSync(fd);
     }
+  });
+
+  // PR #1798 review at 0dced8c2f: the wait was as long as Vitest's own test
+  // timeout, which could end the case first and run its afterEach while the
+  // write was pending.
+  describe("a write that got through", () => {
+    const tick = () => new Promise((r) => setTimeout(r, 0));
+    let dir;
+    let fd;
+    let cleaned;
+    let c;
+    const clean = () => {
+      cleaned++;
+      fs.closeSync(fd);
+      fs.rmSync(dir, { recursive: true, force: true });
+    };
+    const open = () => {
+      try {
+        fs.fstatSync(fd);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    beforeEach(() => {
+      dir = fs.mkdtempSync(path.join(os.tmpdir(), "replay-corpus-settle-"));
+      fd = fs.openSync(path.join(dir, "fixture.txt"), "w");
+      cleaned = 0;
+      c = { owned: dir, unsettled: false, left: false };
+    });
+    afterEach(() => {
+      if (!cleaned) fs.closeSync(fd);
+      fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    it("is held well under the test timeout", () => {
+      expect(SETTLE_BOUND_MS).toBeLessThanOrEqual(2000);
+    });
+
+    it("released in time goes back to the case's own cleanup", async () => {
+      await settleOrDefer(c, Promise.resolve(), 1000, clean);
+      expect(c.unsettled).toBe(false);
+      expect(cleaned).toBe(0);
+      leaveCase(c);
+      expect(fs.existsSync(dir)).toBe(false);
+    });
+
+    it("pending past the bound keeps its folder and descriptor through the afterEach, then cleans up once settled", async () => {
+      let release;
+      const pending = new Promise((r) => (release = r));
+      await settleOrDefer(c, pending, 10, clean);
+      expect(c.unsettled).toBe(true);
+      leaveCase(c);
+      expect(fs.existsSync(dir)).toBe(true);
+      expect(open()).toBe(true);
+      expect(cleaned).toBe(0);
+      release();
+      await pending;
+      await tick();
+      expect(cleaned).toBe(1);
+      expect(fs.existsSync(dir)).toBe(false);
+      expect(open()).toBe(false);
+    });
+
+    it("held before the wait, so an afterEach a timeout runs mid-wait leaves it, and the wait cleans up", async () => {
+      let release;
+      const pending = new Promise((r) => (release = r));
+      const waiting = settleOrDefer(c, pending, 1000, clean);
+      leaveCase(c);
+      expect(fs.existsSync(dir)).toBe(true);
+      expect(open()).toBe(true);
+      release();
+      await waiting;
+      expect(cleaned).toBe(1);
+      expect(fs.existsSync(dir)).toBe(false);
+    });
   });
 
   it("let a temp folder be made again once restored", async () => {
