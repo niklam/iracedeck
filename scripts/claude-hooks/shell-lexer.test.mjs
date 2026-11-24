@@ -2224,3 +2224,34 @@ describe("the stopping rule: a form the lexer does not read is found, and refuse
     ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
   });
 });
+
+// #1659 second read: a stdin shell whose stdin an enclosing compound command's
+// redirection, or an earlier `exec`, sets.
+describe("the stopping rule: a stdin shell fed from around it (#1659 second read)", () => {
+  const HERE_STRING = "a shell reading its script from a here-string";
+  const HEREDOC = "a shell reading its script from a heredoc";
+  const PROCESS = "a shell reading its script from a process substitution";
+  const DESCRIPTOR = "a shell reading its script from a descriptor";
+  it.each([
+    [`{ bash; } <<< 'gh pr merge 7 --squash'`, HERE_STRING],
+    [`( bash ) <<< 'gh pr merge 7 --squash'`, HERE_STRING],
+    [`(bash) <<< 'gh pr merge 7 --squash'`, HERE_STRING],
+    [`while :; do bash; break; done <<< 'gh pr merge 7 --squash'`, HERE_STRING],
+    [`if true; then sh; fi <<'EOF'\ngh pr merge 7\nEOF`, HEREDOC],
+    [`{ bash; } < <(echo gh pr merge 7)`, PROCESS],
+    [`{ bash; } 0<&3`, DESCRIPTOR],
+    [`exec < <(echo 'gh pr merge 7 --squash'); bash`, PROCESS],
+    [`exec 0<<<'gh pr merge 7'; bash`, HERE_STRING],
+    [`exec <&3; sh`, DESCRIPTOR],
+  ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+  it.each([
+    `{ bash x.sh; } <<< 'input'`,
+    `{ cat; } <<< 'x'`,
+    `{ bash; } < file.sh`,
+    `exec < file.sh; bash`,
+    `exec 3<<<'x'; cat <&3`,
+    `exec > log.txt; bash x.sh`,
+    `while read -r f; do bash -c 'echo "$f"'; done < list.txt`,
+    `( cd x && bash scripts/run.sh ) <<< 'y'`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+});

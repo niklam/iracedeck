@@ -5247,6 +5247,25 @@ describe("the deck-host ask over a nested text in a form the hook does not read 
   ])("passes %s, whose texts the hook reads", (c, o) => passes(c, o));
 });
 
+// #1659 second read: a stdin shell fed by an enclosing redirection or an
+// earlier `exec` passed every rule.
+describe("the stopping rule over a stdin shell fed from around it (#1659)", () => {
+  it.each([
+    [`{ bash; } <<< 'gh pr merge 7 --squash'`, "from a here-string"],
+    [`( bash ) <<< 'gh pr merge 7 --squash'`, "from a here-string"],
+    [`while :; do bash; break; done <<< 'gh pr merge 7 --squash'`, "from a here-string"],
+    [`exec < <(echo 'gh pr merge 7 --squash'); bash`, "from a process substitution"],
+    [`exec 0<<<'gh pr merge 7 --squash'; bash`, "from a here-string"],
+  ])("refuses %s (%s)", (c, form) => {
+    const v = stopped(c);
+    expect(v).toContain(form);
+  });
+  it.each([`{ cat; } <<< 'x'`, `{ bash x.sh; } <<< 'input'`, `exec < file.sh; bash`, `exec 3<<<'x'; cat <&3`])(
+    "passes %s",
+    (c) => passes(c),
+  );
+});
+
 describe("the lexer's stopping rule: a form it does not read is refused outright (#1659)", () => {
   const REFUSAL = /hands text to a shell in a form the hook does not read/;
   const refusal = (c, o = ctx()) => {

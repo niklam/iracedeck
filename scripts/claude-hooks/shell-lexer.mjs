@@ -1575,6 +1575,21 @@ const SCRIPT_READERS = new Set([...STDIN_SHELLS, "source", "."]);
  * (any non-interactive bash) and POSIX `ENV` (an interactive `sh`).
  */
 const STARTUP_VARIABLE = /(?<=^|[\s;&|(\x60])(BASH_ENV|ENV)=/g;
+/**
+ * The closing word of a compound command, whose redirections set the stdin of
+ * every command inside it ({@link fedStarts}' `stdinAround`, #1659): `}`,
+ * `done`, `fi` and `esac` as words, and any `)`.
+ */
+const CLOSER = /(?:(?<=^|[\s;&|])(?:\}|done|fi|esac)|\))(?=[\s<0-9]|$)/g;
+/** An `exec` word, whose redirections with no program apply to the rest of its shell ({@link fedStarts}). */
+const EXEC_WORD = /(?<=^|[\s;&|(])exec(?=\s)/g;
+/** The refused form of each stdin kind ({@link readCommand}) a stdin shell may not read its script from. */
+const STREAM_FORMS = Object.freeze({
+  hereString: REFUSED.hereString,
+  heredoc: REFUSED.heredoc,
+  substitution: REFUSED.processSubstitution,
+  descriptor: REFUSED.descriptor,
+});
 
 /**
  * Where the {@link SCRIPT_READERS} word `name`, its words read in `t` as
@@ -1773,7 +1788,8 @@ function sudoShell(t, from, limit) {
  *
  * What the hook does not read is refused, never modelled (#1659): a printer
  * or any other command piped into a shell, a shell fed a here-string or a
- * heredoc, one reading its script from stdin by name, a process substitution
+ * heredoc (by its own redirection, a compound command's around it or an
+ * earlier `exec`), one reading its script from stdin by name, a process substitution
  * or a descriptor, `source` and `.` included, a startup file read from
  * one (`--rcfile`, `BASH_ENV`, `ENV`) and PowerShell's `-EncodedCommand`
  * ({@link scriptStream}), `eval`, a `sudo`
@@ -1855,6 +1871,29 @@ function fedStarts(command, text, fed, programs) {
     for (let w = commandWordEnd(text, at); w && w.end <= p; w = commandWordEnd(text, w.end))
       options.push(text.slice(w.start, w.end));
     return { replace: replaceString(options), by: "xargs" };
+  };
+  // Where a stdin shell at `p` of the typed text, in the fed span ending at
+  // `b`, takes its stdin from around it (#1659 second read): the input
+  // redirection on the closing word of a group, subshell, loop, `if` or
+  // `case` after it in its element (`{ bash; } <<< …`, `while …; do bash;
+  // done < <(…)`), or one an `exec` with no program sets before it, anywhere
+  // in the command (`exec 0<<<…; bash`): `{ form, shape }` for a stream the
+  // hook does not read ({@link STREAM_FORMS}), `undefined` for none or a file.
+  // A closer after the shell that does not enclose it (`bash | { cat; } <<<
+  // x`) counts too: the gate errs to deny.
+  const stdinAround = (p, b) => {
+    const formOf = (kind, shape) => STREAM_FORMS[kind] && { form: STREAM_FORMS[kind], shape };
+    for (const m of text.slice(p, b).matchAll(CLOSER)) {
+      const r = commandOf(NO_OPTIONS, text, p + m.index + m[0].length, b);
+      const found = formOf(r.stdin, `${m[0]} <…`);
+      if (found) return found;
+    }
+    for (const m of text.slice(0, p).matchAll(EXEC_WORD)) {
+      const r = commandOf(NO_OPTIONS, text, m.index + m[0].length, p);
+      const found = r.program === undefined && formOf(r.stdin, "exec <…;");
+      if (found) return found;
+    }
+    return undefined;
   };
   // The program word `[d, e)` of a string's level `L`: refused when it is not
   // its plain name, when it is `eval` (PowerShell's too, in its string) or a
@@ -2033,7 +2072,12 @@ function fedStarts(command, text, fed, programs) {
           const stream = SCRIPT_READERS.has(via) ? scriptStream(via, r, text) : undefined;
           if (stream) {
             if (!stream.piped) return refuse(stream.form, stream.shape);
-            if (!pipedInto(p, via) && stream.named) refuse(REFUSED.stdin, stream.shape);
+            if (pipedInto(p, via)) return;
+            // Its stdin may be set around it: by the closing word of a group,
+            // subshell or loop it sits in, or by an earlier `exec`.
+            const around = stdinAround(p, b);
+            if (around) return refuse(around.form, `${around.shape} ${via}`);
+            if (stream.named) refuse(REFUSED.stdin, stream.shape);
             return;
           }
           const kind = { how: "shell", via };
