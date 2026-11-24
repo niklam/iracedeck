@@ -61,12 +61,12 @@ Read (normalised), as today:
 Refused outright, whatever the text holds:
 
 - a printer (`echo`, `printf`) piped into a shell;
-- a shell reading its script from stdin, a here-string or a heredoc;
+- a shell reading its script from stdin, a here-string or a heredoc, a stream (`/dev/stdin`, a descriptor, `pwsh -`), a process substitution (`bash <(…)`, `source <(…)`, a startup file given as one), or an encoded string (`powershell -EncodedCommand`);
 - `eval`;
 - a `sudo` that runs a shell (`-s`, `-i`, `--shell`, `--login`, or a shell word);
 - a shell string that is not one plain level: an ANSI-C `$'…'` or locale `$"…"` string, a string inside a string (a shell feed found inside a level-1 string), and a substitution inside a level-1 string at command position;
 - a program word inside a level-1 string whose text is not its name after quote removal (an escape, a splice or an expansion in it);
-- a shell string that `xargs -I` or `parallel` fills from its input (`xargs -I{} sh -c '…{}…'`). The input text is substituted before the shell parses the string, so an input line can carry a whole command wherever `{}` sits, and no reading of the string is sound. This is the one refusal that changes real verdicts: 3 commands in the census (worktree inspections, `find … | xargs -I{} sh -c 'echo "== {}"; cat {}'`). It is not re-opened, because the agent can type it another way at the cost of one word: `xargs -I{} sh -c 'cat "$1"' _ {}` or `find … -exec sh -c '…' _ {} \;` passes the input as data and stays read. The refusal's message names that spelling (PO, 2026-11-24).
+- a shell string that `xargs -I`, `parallel` or `find -exec` fills from its input (`xargs -I{} sh -c '…{}…'`, `find … -exec sh -c '…{}…' \;`). The input text is substituted before the shell parses the string, so an input line can carry a whole command wherever `{}` sits, and no reading of the string is sound. This is the one refusal that changes real verdicts: 3 commands in the census (worktree inspections, `find … | xargs -I{} sh -c 'echo "== {}"; cat {}'`). It is not re-opened, because the agent can type it another way at the cost of one word: `xargs -I{} sh -c 'cat "$1"' _ {}` or `find … -exec sh -c '…' _ {} \;` passes the input as data and stays read. The refusal's message names that spelling (PO, 2026-11-24).
 
 **A refused form can be re-opened, for one form only**, when the census or a session shows a real, non-probe command of it refused and the agent cannot reasonably type it another way. It is then added to the read list here, with its tests and a census count in the PR. A spelling found by a probe or a review alone is answered with a refusal, never a reader.
 
