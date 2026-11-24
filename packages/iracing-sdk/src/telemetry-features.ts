@@ -252,6 +252,18 @@ export interface ReplayState {
    * field is missing or not finite.
    */
   readonly frame: number | null;
+  /**
+   * The frame on screen as a cursor a step can be measured from (#1660):
+   * `ReplayFrameNum` on a tick that reads a replay, the last frame a replay
+   * tick showed while the sighting holds (the grace, and the seek hold of
+   * #1429), else null. Null past both with the flag false: in a live session
+   * the frame is then the live edge (`ReplayFrameNumEnd`), which is a frame
+   * but never a cursor, and in a saved replay it is the tick's
+   * `ReplayFrameNum`, which reads 0 while iRacing carries out a seek that is
+   * not the plugin's. {@link frame} keeps both, since filing at the live edge
+   * is deliberate; a walk through a recorded list reads this instead.
+   */
+  readonly cursorFrame: number | null;
   /** Whether the loaded session is a saved replay (`WeekendInfo.SimMode === "replay"`), never live. */
   readonly replayOnlySession: boolean;
   /** The last tick's raw `IsReplayPlaying` read. */
@@ -321,6 +333,7 @@ export function initialReplayState(): ReplayState {
   return {
     inReplay: false,
     frame: null,
+    cursorFrame: null,
     replayOnlySession: false,
     tickReplayPlaying: false,
     tickFrame: null,
@@ -376,21 +389,37 @@ function seekHoldStands(state: ReplayState, nowMs: number): boolean {
 }
 
 /**
- * The state's `inReplay` and `frame` re-evaluated at `nowMs`: the grace runs
- * on wall time, so a read between ticks (a key press, a dial turn) sees it
- * expire without waiting for the next tick. Pure; the sighting fields are
- * untouched, and the same object comes back when nothing changed.
+ * The state's `inReplay`, `frame` and `cursorFrame` re-evaluated at
+ * `nowMs`: the grace runs on wall time, so a read between ticks (a key press,
+ * a dial turn) sees it expire without waiting for the next tick. Pure; the
+ * sighting fields are untouched, and the same object comes back when nothing
+ * changed.
  *
  * In a saved replay past the grace the frame is the tick's `ReplayFrameNum`
  * (the `tickFrame` {@link nextReplayState} stored for it); whether iRacing
  * keeps that field meaningful while the flag reads false there is
- * unverified against the sim.
+ * unverified against the sim, and it reads 0 mid-seek, so it is no cursor
+ * (#1660).
  */
 export function replayStateAt(state: ReplayState, nowMs: number): ReplayState {
-  const inReplay = state.tickReplayPlaying || withinReplayGrace(state, nowMs) || state.replayOnlySession;
-  const frame = !state.tickReplayPlaying && withinReplayGrace(state, nowMs) ? state.replaySeenFrame : state.tickFrame;
+  const held = withinReplayGrace(state, nowMs);
+  const inReplay = state.tickReplayPlaying || held || state.replayOnlySession;
+  const frame = !state.tickReplayPlaying && held ? state.replaySeenFrame : state.tickFrame;
+  const cursorFrame = cursorOf(state, held);
 
-  return inReplay === state.inReplay && frame === state.frame ? state : { ...state, inReplay, frame };
+  return inReplay === state.inReplay && frame === state.frame && cursorFrame === state.cursorFrame
+    ? state
+    : { ...state, inReplay, frame, cursorFrame };
+}
+
+/**
+ * The cursor read ({@link ReplayState.cursorFrame}): the tick's frame when it
+ * reads a replay, the sighting's frame while `held`, else none.
+ */
+function cursorOf(state: ReplayState, held: boolean): number | null {
+  if (state.tickReplayPlaying) return state.tickFrame;
+
+  return held ? state.replaySeenFrame : null;
 }
 
 /**
@@ -517,6 +546,7 @@ export function replayLeftForLive(state: ReplayState, nowMs: number): ReplayStat
     ...state,
     inReplay: state.tickReplayPlaying,
     frame: state.tickFrame,
+    cursorFrame: cursorOf(state, false),
     replaySeenAt: null,
     replaySeenFrame: null,
     liveExitAt: nowMs,
