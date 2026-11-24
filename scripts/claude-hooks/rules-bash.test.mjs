@@ -5294,6 +5294,15 @@ describe("a shell word glued to its redirection (#1659)", () => {
   it.each([`bash</dev/null x.sh`, `bash</dev/null -c 'pnpm build'`])("passes %s", (c) => passes(c));
 });
 
+// CodeRabbit CLI round 2 on #1659: a word naming an inherited property threw
+// out of the lexer, which checkBash reported as a hook error.
+describe("a group holding a word an object inherits (#1659)", () => {
+  it("passes one whose stdin is a file, and refuses one fed a here-string", () => {
+    passes(`{ constructor; toString; __proto__; bash; } < file.sh`);
+    expect(stopped(`{ constructor; bash; } <<< 'gh pr merge 7 --squash'`)).toContain("from a here-string");
+  });
+});
+
 // CodeRabbit CLI on #1659: a later `exec` that surely runs resets the stdin.
 describe("an exec chain's last stdin (#1659)", () => {
   it("passes a stdin the chain resets, and refuses one it may not", () => {

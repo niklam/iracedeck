@@ -1864,7 +1864,7 @@ function pipedCommands(command) {
         frames.push({ kind: w, piped: cur });
         cur = false;
       } else if (["then", "do", "else", "elif"].includes(w)) cur = false;
-      else if (CLOSES[w]) pop(CLOSES[w]);
+      else if (Object.hasOwn(CLOSES, w)) pop(CLOSES[w]);
       else if (w !== "!" && w !== "time") break;
       i = e;
     }
@@ -2936,7 +2936,7 @@ const ANSI_LETTERS = {
 function ansiEscape(w, j) {
   const c = w[j];
   if (c === undefined) return ["\\", j];
-  if (ANSI_LETTERS[c] !== undefined) return [ANSI_LETTERS[c], j + 1];
+  if (Object.hasOwn(ANSI_LETTERS, c ?? "")) return [ANSI_LETTERS[c], j + 1];
   const digits = (re, from) => re.exec(w.slice(from, from + 8))?.[0];
   const octal = digits(/^[0-7]{1,3}/, j);
   if (octal) return [String.fromCharCode(parseInt(octal, 8) & 0xff), j + octal.length];
@@ -2983,7 +2983,7 @@ export function decodeWord(w) {
       let k = i + 2;
       for (; k < w.length && w[k] !== "'"; k++)
         if (w[k] !== "\\") lit(w[k], k);
-        else if (ANSI_PLAIN[w[++k]] !== undefined) lit(ANSI_PLAIN[w[k]], k, k + 1, k - 1);
+        else if (Object.hasOwn(ANSI_PLAIN, w[++k] ?? "")) lit(ANSI_PLAIN[w[k]], k, k + 1, k - 1);
         else live("\\", k, k + 1, k - 1);
       i = k + 1;
     } else if (ch === "$" && w[i + 1] === '"') {

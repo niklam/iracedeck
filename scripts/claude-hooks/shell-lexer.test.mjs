@@ -2431,3 +2431,16 @@ describe("the stopping rule: an exec chain's last stdin (#1659 CodeRabbit)", () 
     `exec <<< ':'; true | exec </dev/null; bash`,
   ])("refuses %s", (c) => expect(lexer.refusedForms(c)[0]?.form).toBe(HERE_STRING));
 });
+
+// CodeRabbit CLI round 2 on #1659: a word that names an inherited property
+// (`constructor`, `toString`, `__proto__`) is no closing word of a group.
+describe("the stopping rule: a lookup table answers only its own keys (#1659 CodeRabbit)", () => {
+  it.each([`{ constructor; bash; } < file.sh`, `{ toString; __proto__; hasOwnProperty; bash; } < file.sh`])(
+    "reads and refuses nothing in %s",
+    (c) => expect(lexer.refusedForms(c)).toEqual([]),
+  );
+  it("still refuses such a group fed a here-string", () =>
+    expect(lexer.refusedForms(`{ constructor; bash; } <<< 'gh pr merge 7'`)[0]?.form).toBe(
+      "a shell reading its script from a here-string",
+    ));
+});
