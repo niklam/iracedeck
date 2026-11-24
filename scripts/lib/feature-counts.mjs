@@ -5,7 +5,7 @@ import path from "node:path";
  * The feature counts every public summary states — actions, modes and
  * categories — checked against the code that registers them (#1271).
  *
- * The counts are written by hand in five places: the root `README.md`, the
+ * The counts are written by hand in four places: the root `README.md`, the
  * website's Actions Overview (`docs/actions/overview.md`), the docs landing
  * page (`docs/index.md`) and the home page's stat row (`index.mdx`). Nothing
  * connected them, and the README fell behind: it said "265+ modes" while its
@@ -17,17 +17,20 @@ import path from "node:path";
  *    `false`; the four hidden ones are legacy replay and camera actions kept
  *    working for old keys) are exactly the action pages under
  *    `docs/actions/<category>/<action>.md`, by name.
- * 2. Each category's modes are the sum of its pages' mode badges (`"7 modes"`,
- *    `"13 modes + dial"`), which state the options of the action's keypad Mode
- *    select. Two documented exceptions: Car Setup counts only the options of
- *    each action's `Adjust` optgroup, read from its `.ejs`, leaving out the
- *    "Display value" sub-modes its badges include (the `iracedeck-actions`
- *    skill); and a page whose badge names no mode count is a single-mode
- *    action only when `SINGLE_MODE_PAGES` says so.
- * 3. The overview's table has one row per category folder, with that folder's
+ * 2. Each page's mode badge (`"7 modes"`, `"13 modes + dial"`) states the
+ *    options its action's keypad Mode select offers in the action's `.ejs`:
+ *    an option marked `hidden`, inside a comment, or named in
+ *    `RUNTIME_REMOVED_OPTIONS` is not one. A template with no Mode select is a
+ *    single-mode action, whose badge says `1 mode` or which
+ *    `SINGLE_MODE_PAGES` names.
+ * 3. Each category's modes are the sum of its pages' modes, except that Car
+ *    Setup counts only the options of each action's `Adjust` optgroup,
+ *    leaving out the "Display value" sub-modes its badges include — the
+ *    convention the `iracedeck-actions` skill documents.
+ * 4. The overview's table has one row per category folder, with that folder's
  *    page count and mode count, and its headline states their sums.
- * 4. The README's headline and Features table, the docs landing page's
- *    headline and the home page's stats state the overview's numbers, and the
+ * 5. The README's headline and Features table, the docs landing page's
+ *    headline and the home page's stats state the same numbers, and the
  *    README's table names the overview's categories in the overview's order.
  *
  * Every problem is returned as one line naming the file and both numbers, so a
@@ -57,6 +60,17 @@ export const ADJUST_ONLY_CATEGORY = "car-setup";
 export const SINGLE_MODE_PAGES = new Set(["stream-deck/switch-profile"]);
 
 /**
+ * Keypad Mode options a template still carries but its script removes from the
+ * dropdown for a new key, by action. Each is kept only so an existing key that
+ * uses it keeps working, so it is not a mode a user can pick.
+ *
+ * - `pit-crew` / `radar-volume`: moved to Audio Controls (#590).
+ *
+ * @type {Record<string, string[]>}
+ */
+export const RUNTIME_REMOVED_OPTIONS = { "pit-crew": ["radar-volume"] };
+
+/**
  * Reads every input the check needs from a repository checkout.
  *
  * @param {string} root the repository root
@@ -71,12 +85,13 @@ export function readFeatureCountInputs(root) {
     for (const file of fs.readdirSync(dir).sort()) {
       if (!/\.mdx?$/.test(file)) continue;
       const slug = file.replace(/\.mdx?$/, "");
-      const page = { category, slug, text: read(path.join(FEATURE_COUNT_PATHS.actionPages, category, file)) };
-      if (category === ADJUST_ONLY_CATEGORY) {
-        const ejs = path.join(FEATURE_COUNT_PATHS.actions, slug, `${slug}.ejs`);
-        page.ejs = fs.existsSync(path.join(root, ejs)) ? read(ejs) : null;
-      }
-      pages.push(page);
+      const ejs = path.join(FEATURE_COUNT_PATHS.actions, slug, `${slug}.ejs`);
+      pages.push({
+        category,
+        slug,
+        text: read(path.join(FEATURE_COUNT_PATHS.actionPages, category, file)),
+        ejs: fs.existsSync(path.join(root, ejs)) ? read(ejs) : null,
+      });
     }
   }
   return {
@@ -89,27 +104,71 @@ export function readFeatureCountInputs(root) {
   };
 }
 
-/** The mode count a page's sidebar badge states, or `null` when it names none. */
+/**
+ * The mode count a page's sidebar badge states, or `null` when it names none.
+ * Only the `text` key inside the frontmatter's `badge:` block is read.
+ */
 export function badgeModes(pageText) {
   const frontmatter = pageText.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!frontmatter) return null;
-  const badge = frontmatter[1].match(/^\s+text:\s*"([^"]*)"/m);
-  const count = badge?.[1].match(/^(\d+) modes?\b/);
-  return count ? Number(count[1]) : null;
+  const lines = frontmatter[1].split(/\r?\n/);
+  const at = lines.findIndex((line) => /^\s*badge:\s*$/.test(line));
+  if (at < 0) return null;
+  const indent = lines[at].match(/^\s*/)[0].length;
+  for (const line of lines.slice(at + 1)) {
+    if (line.trim() === "") continue;
+    if (line.match(/^\s*/)[0].length <= indent) break;
+    const text = line.match(/^\s+text:\s*"([^"]*)"/);
+    if (text) {
+      const count = text[1].match(/^(\d+) modes?\b/);
+      return count ? Number(count[1]) : null;
+    }
+  }
+  return null;
 }
 
 /**
- * The non-hidden options inside the `Adjust` optgroup of a template's first
- * `Mode` item — the keypad one; a dial section's Mode select comes after it.
- * `null` when the template has no such optgroup.
+ * The template's first `<sdpi-item label="Mode">` — the keypad one; a dial
+ * section's Mode select comes after it — with HTML comments removed. `null`
+ * when the template has none, or never closes it.
  */
-export function adjustOptions(ejs) {
+function keypadModeItem(ejs) {
   const start = ejs.indexOf('<sdpi-item label="Mode">');
   if (start < 0) return null;
-  const item = ejs.slice(start, ejs.indexOf("</sdpi-item>", start));
-  const group = item.match(/<optgroup label="Adjust">([\s\S]*?)<\/optgroup>/);
-  if (!group) return null;
-  return [...group[1].matchAll(/<option\b[^>]*>/g)].filter((m) => !/\shidden\b/.test(m[0])).length;
+  const end = ejs.indexOf("</sdpi-item>", start);
+  if (end < 0) return null;
+  return ejs.slice(start, end).replace(/<!--[\s\S]*?-->/g, "");
+}
+
+/** The `value` of every option in some template text not marked `hidden`. */
+function visibleOptionValues(text) {
+  return [...text.matchAll(/<option\b[^>]*>/g)]
+    .map((m) => m[0])
+    .filter((tag) => !/\shidden\b/.test(tag))
+    .map((tag) => tag.match(/\svalue="([^"]*)"/)?.[1] ?? "");
+}
+
+/**
+ * The options the keypad Mode select offers a new key: not `hidden`, not in a
+ * comment, and not one the template's script removes. `null` when the
+ * template has no keypad Mode select.
+ *
+ * @param {string} ejs
+ * @param {string[]} [removed] option values the template's script removes
+ */
+export function keypadModeOptions(ejs, removed = []) {
+  const item = keypadModeItem(ejs);
+  if (item == null) return null;
+  return visibleOptionValues(item).filter((value) => !removed.includes(value)).length;
+}
+
+/**
+ * The options a user can pick inside the `Adjust` optgroup of the keypad Mode
+ * select. `null` when the template has no such optgroup.
+ */
+export function adjustOptions(ejs) {
+  const group = keypadModeItem(ejs)?.match(/<optgroup label="Adjust">([\s\S]*?)<\/optgroup>/);
+  return group ? visibleOptionValues(group[1]).length : null;
 }
 
 const num = (s) => Number(s.trim());
@@ -148,7 +207,7 @@ export function parseReadmeRows(readme) {
   return rows;
 }
 
-/** The home page's stat row: `{ Actions: 33, Modes: 287, … }`. */
+/** The home page's stat row: `{ Actions: "33", Modes: "287", … }`. */
 export function parseHomeStats(home) {
   const stats = {};
   for (const m of home.matchAll(
@@ -184,42 +243,68 @@ export function checkFeatureCounts(inputs) {
     problems.push(`${P.actionPages}: page "${slug}" is not a visible action in ${P.manifest}`);
   }
 
-  // 2. Per-category counts from the pages (and Car Setup's templates).
+  // 2. Each page's badge against its action's template.
   /** @type {Map<string, { actions: number, modes: number }>} */
   const byCategory = new Map();
   for (const page of inputs.pages) {
     const id = `${page.category}/${page.slug}`;
-    let modes;
-    if (page.category === ADJUST_ONLY_CATEGORY) {
-      modes = page.ejs == null ? null : adjustOptions(page.ejs);
-      if (modes == null) {
-        problems.push(`${P.actions}/${page.slug}/${page.slug}.ejs: no "Adjust" optgroup in its keypad Mode select`);
-        continue;
-      }
-    } else {
-      modes = badgeModes(page.text);
-      if (modes == null) {
-        if (!SINGLE_MODE_PAGES.has(id)) {
-          problems.push(
-            `${P.actionPages}/${id}.md: its sidebar badge names no mode count ("N modes"); add one, or list the page in SINGLE_MODE_PAGES`,
-          );
-          continue;
-        }
-        modes = 1;
-      }
-    }
+    const pageFile = `${P.actionPages}/${id}.md`;
+    const ejsFile = `${P.actions}/${page.slug}/${page.slug}.ejs`;
+    // Counted as an action whatever else is wrong with it, so one bad page is
+    // not also reported as a wrong action count for its category.
     const entry = byCategory.get(page.category) ?? { actions: 0, modes: 0 };
     entry.actions += 1;
-    entry.modes += modes;
     byCategory.set(page.category, entry);
+    if (page.ejs == null) {
+      problems.push(`${ejsFile}: not found; every action page needs its action's template`);
+      continue;
+    }
+    const removed = RUNTIME_REMOVED_OPTIONS[page.slug] ?? [];
+    const present = visibleOptionValues(keypadModeItem(page.ejs) ?? "");
+    for (const value of removed.filter((v) => !present.includes(v))) {
+      problems.push(
+        `RUNTIME_REMOVED_OPTIONS names "${page.slug}" / "${value}", which its keypad Mode select no longer has; remove it`,
+      );
+    }
+    // A badge that disagrees is reported, but the template's count still goes
+    // into the category: it is the code, so the totals stay right and the red
+    // run names only the badge.
+    const offered = keypadModeOptions(page.ejs, removed) ?? 1;
+    const badge = badgeModes(page.text);
+    if (badge == null && !SINGLE_MODE_PAGES.has(id)) {
+      problems.push(
+        `${pageFile}: its sidebar badge names no mode count ("N modes"); add one, or list the page in SINGLE_MODE_PAGES`,
+      );
+    } else if (badge == null && offered !== 1) {
+      problems.push(`${pageFile}: SINGLE_MODE_PAGES counts it as 1 mode; ${ejsFile} offers ${offered}`);
+    } else if (badge != null && badge !== offered) {
+      problems.push(`${pageFile}: its badge states ${plural(badge, "mode")}; ${ejsFile} offers ${offered}`);
+    }
+
+    // 3. The category's count: Car Setup counts only its Adjust options.
+    if (page.category === ADJUST_ONLY_CATEGORY) {
+      const adjust = adjustOptions(page.ejs);
+      if (adjust == null) {
+        problems.push(`${ejsFile}: no "Adjust" optgroup in its keypad Mode select`);
+        continue;
+      }
+      entry.modes += adjust;
+    } else {
+      entry.modes += offered;
+    }
   }
   for (const id of SINGLE_MODE_PAGES) {
     if (!inputs.pages.some((p) => `${p.category}/${p.slug}` === id)) {
       problems.push(`SINGLE_MODE_PAGES names "${id}", which has no page; remove it`);
     }
   }
+  for (const slug of Object.keys(RUNTIME_REMOVED_OPTIONS)) {
+    if (!inputs.pages.some((p) => p.slug === slug)) {
+      problems.push(`RUNTIME_REMOVED_OPTIONS names "${slug}", which has no page; remove it`);
+    }
+  }
 
-  // 3. The overview against the pages.
+  // 4. The overview against the pages.
   const overviewRows = parseOverviewRows(inputs.overview);
   const overviewHead = parseHeadline(
     inputs.overview,
@@ -257,7 +342,7 @@ export function checkFeatureCounts(inputs) {
     categories: byCategory.size,
   };
 
-  // 4. Every other summary against the code-derived totals and the overview's rows.
+  // 5. Every other summary against the code-derived totals and the overview's rows.
   const checkHeadline = (file, head, label) => {
     if (!head) {
       problems.push(`${file}: ${label} not found`);
@@ -299,12 +384,15 @@ export function checkFeatureCounts(inputs) {
       `${P.readme}: Features table names [${names(readmeRows)}]; the overview names [${names(overviewRows)}], in that order`,
     );
   }
+  // A README row is held to the code's count for the folder its namesake
+  // overview row links to, so a wrong overview row is not blamed on it too.
   for (const row of readmeRows) {
-    const theirs = overviewRows.find((r) => r.name === row.name);
-    if (!theirs) continue;
-    if (row.actions !== theirs.actions || row.modes !== theirs.modes) {
+    const dir = overviewRows.find((r) => r.name === row.name)?.dir;
+    const counted = dir && byCategory.get(dir);
+    if (!counted) continue;
+    if (row.actions !== counted.actions || row.modes !== counted.modes) {
       problems.push(
-        `${P.readme}: "${row.name}" states ${plural(row.actions, "action")} / ${plural(row.modes, "mode")}; the overview states ${theirs.actions} / ${theirs.modes}`,
+        `${P.readme}: "${row.name}" states ${plural(row.actions, "action")} / ${plural(row.modes, "mode")}; the code has ${counted.actions} / ${counted.modes}`,
       );
     }
   }
