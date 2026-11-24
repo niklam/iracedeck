@@ -1509,6 +1509,8 @@ const REFUSED = Object.freeze({
   substitution: "a substitution at command position in a string",
   program: "a program word that is not its plain name",
 });
+/** Every form the stopping rule refuses, by its name ({@link REFUSED}): the replay labels a deny only with one of these. */
+export const REFUSED_FORMS = Object.freeze(new Set(Object.values(REFUSED)));
 
 /**
  * What to type instead of a shell string xargs or `find -exec` fills in ({@link

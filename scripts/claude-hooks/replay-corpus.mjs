@@ -399,29 +399,41 @@ export function cut(text, n) {
  * text can quote a command's raw arguments (a refused PR title); the
  * comparison is still on the whole strings (CodeRabbit CLI on #1659).
  */
-export function formatDifference({ index, tool, command, base, head }, { showCommands = false } = {}) {
+export function formatDifference(
+  { index, tool, command, base, head },
+  { showCommands = false, forms = NO_FORMS } = {},
+) {
   const reasons = probeReasons(command);
-  const shown = (v) => (showCommands ? cut(v, VERDICT_CUT) : verdictKind(v));
+  const kind = (v) => verdictKind(v, forms);
+  const shown = (v) => (showCommands ? cut(v, VERDICT_CUT) : kind(v));
   const lines = [
     `#${index} ${tool}`,
     `  probe: ${reasons.length ? reasons.join("; ") : "real"}`,
     `  base: ${shown(base)}`,
     `  head: ${shown(head)}`,
   ];
-  if (!showCommands && verdictKind(base) === verdictKind(head)) lines.push("  (same kind, different text)");
+  if (!showCommands && kind(base) === kind(head)) lines.push("  (same kind, different text)");
   if (showCommands) lines.splice(1, 0, `  command: ${cut(command, COMMAND_CUT)}`);
   return lines;
 }
 
+/** No form the stopping rule refuses: every deny prints as plain `DENY` ({@link verdictKind}). */
+const NO_FORMS = Object.freeze(new Set());
+/** The stopping rule's own deny, up to its form (`stoppingRefusal` in `rules-bash.mjs`). */
+const STOPPING_DENY = "DENY: This command hands text to a shell in a form the hook does not read (";
+
 /**
  * A verdict's kind as {@link formatVerdict} spells it — `PASS`, `ASK`,
- * `DENY`, `THROW` or `OTHER` — with the form for a stopping-rule deny, whose
- * name is the hook's own text, never the command's.
+ * `DENY`, `THROW` or `OTHER` — with the form for a stopping-rule deny: only
+ * one that starts with that rule's own message and names a form in `forms`,
+ * the sides' `REFUSED_FORMS`, so a deny that quotes the phrase, or a form
+ * the hook did not write, prints as plain `DENY` (CodeRabbit CLI on #1659).
  */
-export function verdictKind(v) {
+export function verdictKind(v, forms = NO_FORMS) {
   const kind = /^[A-Z]+/.exec(v)?.[0] ?? "OTHER";
-  const form = kind === "DENY" ? /form the hook does not read \(([^)]+)\)/.exec(v)?.[1] : undefined;
-  return form ? `${kind} (stopping rule: ${form})` : kind;
+  if (kind !== "DENY" || !v.startsWith(STOPPING_DENY)) return kind;
+  const form = v.slice(STOPPING_DENY.length, v.indexOf("): ", STOPPING_DENY.length));
+  return forms.has(form) ? `${kind} (stopping rule: ${form})` : kind;
 }
 
 /** The count of `differences`, real commands apart from probes ({@link isProbe}). */
@@ -838,7 +850,9 @@ export async function main(
       print(`commands judged: ${judged}`);
       print(`identical verdicts: ${identical}`);
       print(differenceSummary(differences));
-      for (const d of differences) for (const line of formatDifference(d, opts)) print(line);
+      // The forms either side names, so a renamed form still prints as one.
+      const forms = new Set([...(base.lexer.REFUSED_FORMS ?? []), ...(head.lexer.REFUSED_FORMS ?? [])]);
+      for (const d of differences) for (const line of formatDifference(d, { ...opts, forms })) print(line);
     }
     print("");
     print("census (program positions by kind; flags count commands):");

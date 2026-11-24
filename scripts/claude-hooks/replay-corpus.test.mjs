@@ -420,10 +420,8 @@ describe("verdicts", () => {
       base: "DENY: Title 'secret plan' is not <type>(<scope>): …",
       head: "DENY: This command hands text to a shell in a form the hook does not read (eval): `eval …`. Type …",
     };
-    expect(formatDifference(d).slice(2)).toEqual([
-      "  base: DENY",
-      "  head: DENY (stopping rule: eval)",
-    ]);
+    const forms = new Set(["eval"]);
+    expect(formatDifference(d, { forms }).slice(2)).toEqual(["  base: DENY", "  head: DENY (stopping rule: eval)"]);
     expect(formatDifference({ ...d, head: "DENY: other 'secret'" }).slice(2)).toEqual([
       "  base: DENY",
       "  head: DENY",
@@ -436,6 +434,26 @@ describe("verdicts", () => {
     ]);
     expect(verdictKind("PASS")).toBe("PASS");
     expect(verdictKind("OTHER: {}")).toBe("OTHER");
+  });
+
+  // CodeRabbit CLI round 2 on #1659: only the stopping rule's own message, and
+  // only a form it knows, earns a label; an ordinary deny quoting the phrase is
+  // plain DENY.
+  it("label a deny only by the stopping rule's prefix and a form it knows", async () => {
+    const forms = new Set(["eval"]);
+    const stopping = (form) =>
+      `DENY: This command hands text to a shell in a form the hook does not read (${form}): \`x\`. Type …`;
+    expect(verdictKind(stopping("eval"), forms)).toBe("DENY (stopping rule: eval)");
+    expect(verdictKind(stopping("secret plan"), forms)).toBe("DENY");
+    expect(verdictKind(stopping("eval"))).toBe("DENY");
+    expect(verdictKind("DENY: Title 'a form the hook does not read (eval)' is not <type>(<scope>)", forms)).toBe(
+      "DENY",
+    );
+    // The lexer's own set, which main hands over, labels the deny checkBash writes.
+    const { REFUSED_FORMS } = await import("./shell-lexer.mjs");
+    expect(
+      verdictKind(verdictOf(checkBash, `eval ls`, fixedContext({ cwd: "C:/r", shell: BASH })), REFUSED_FORMS),
+    ).toBe("DENY (stopping rule: eval)");
   });
 
   // #1659 review: the acceptance gate (no real command changes verdict) is
