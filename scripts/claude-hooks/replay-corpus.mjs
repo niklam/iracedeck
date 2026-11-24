@@ -508,12 +508,17 @@ export function kindName(kind) {
  * side's `lexer` as `checkBash` reads it: a PowerShell command as bash, and
  * the `refused` flag from `refusedForms` with the command's shell, the hook's
  * own call, so PowerShell's `iex` counts where the hook refuses it
- * (CodeRabbit CLI on #1659).
+ * (CodeRabbit CLI on #1659). A lexer from before the stopping rule has no
+ * `refusedForms`: its positions still count, with no `refused` flag, while one
+ * whose export throws still throws (PR #1798 review at 0dced8c2f).
  */
 export function commandCensus(lexer, tool, command) {
   const powershell = tool === "PowerShell";
   const text = powershell ? lexer.powershellAsBash(command) : command;
-  const refused = lexer.refusedForms(text, powershell ? lexer.POWERSHELL : lexer.BASH);
+  const refused =
+    typeof lexer.refusedForms === "function"
+      ? lexer.refusedForms(text, powershell ? lexer.POWERSHELL : lexer.BASH)
+      : undefined;
   return censusOf({ ...lexer.view(text), refused });
 }
 

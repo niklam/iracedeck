@@ -546,6 +546,25 @@ describe("the census", () => {
     expect([...commandCensus(lexer, "Bash", "gh pr view 7").positions]).toEqual([["command", 1]]);
   });
 
+  // PR #1798 review at 0dced8c2f: a head from before the stopping rule has no
+  // `refusedForms`, and its census still counts the positions; one whose
+  // export throws still reports that.
+  it("counts a lexer without refusedForms, and lets one that throws throw", async () => {
+    const lexer = await import("./shell-lexer.mjs");
+    const { refusedForms, ...older } = lexer;
+    expect(refusedForms).toBeTypeOf("function");
+    const census = commandCensus(older, "Bash", "gh pr view 7; eval ls");
+    expect([...census.positions]).toEqual([["command", 2]]);
+    expect(census.flags).not.toContain("refused");
+    const broken = {
+      ...lexer,
+      refusedForms: () => {
+        throw new Error("no forms");
+      },
+    };
+    expect(() => commandCensus(broken, "Bash", "gh pr view 7")).toThrow("no forms");
+  });
+
   it("counts positions by kind and the flags a view raises", () => {
     const view = {
       sure: false,
