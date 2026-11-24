@@ -28,6 +28,7 @@ import {
   readCommands,
   readWorkspace,
   transcriptFiles,
+  verdictKind,
   verdictOf,
 } from "./replay-corpus.mjs";
 import { checkBash } from "./rules-bash.mjs";
@@ -380,9 +381,39 @@ describe("verdicts", () => {
     expect(cut("x".repeat(400), 300)).toBe(`${"x".repeat(300)}...`);
     const d = { index: 7, tool: "Bash", command: "gh pr merge 5", base: "PASS", head: `DENY: ${"y".repeat(400)}` };
     const plain = formatDifference(d);
-    expect(plain).toEqual(["#7 Bash", "  probe: real", "  base: PASS", `  head: DENY: ${"y".repeat(294)}...`]);
+    expect(plain).toEqual(["#7 Bash", "  probe: real", "  base: PASS", "  head: DENY"]);
     expect(plain.join("\n")).not.toContain("gh pr merge");
-    expect(formatDifference(d, { showCommands: true })[1]).toBe("  command: gh pr merge 5");
+    const shown = formatDifference(d, { showCommands: true });
+    expect(shown[1]).toBe("  command: gh pr merge 5");
+    expect(shown.at(-1)).toBe(`  head: DENY: ${"y".repeat(294)}...`);
+  });
+
+  // CodeRabbit CLI on #1659: a deny's text can quote a command's raw
+  // arguments (a refused PR title), so by default only its kind is printed.
+  it("print only each verdict's kind unless the commands are shown", () => {
+    const d = {
+      index: 2,
+      tool: "Bash",
+      command: "x",
+      base: "DENY: Title 'secret plan' is not <type>(<scope>): …",
+      head: "DENY: This command hands text to a shell in a form the hook does not read (eval): `eval …`. Type …",
+    };
+    expect(formatDifference(d).slice(2)).toEqual([
+      "  base: DENY",
+      "  head: DENY (stopping rule: eval)",
+    ]);
+    expect(formatDifference({ ...d, head: "DENY: other 'secret'" }).slice(2)).toEqual([
+      "  base: DENY",
+      "  head: DENY",
+      "  (same kind, different text)",
+    ]);
+    expect(formatDifference(d).join("\n")).not.toContain("secret");
+    expect(formatDifference({ ...d, base: "ASK: Sure? 'secret'", head: "THROW: boom 'secret'" }).slice(2)).toEqual([
+      "  base: ASK",
+      "  head: THROW",
+    ]);
+    expect(verdictKind("PASS")).toBe("PASS");
+    expect(verdictKind("OTHER: {}")).toBe("OTHER");
   });
 
   // #1659 review: the acceptance gate (no real command changes verdict) is

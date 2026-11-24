@@ -57,7 +57,8 @@ export const USAGE = `Usage: node scripts/claude-hooks/replay-corpus.mjs --trans
   --base <git ref>      the revision whose checkBash is the base side (default origin/master)
   --head-dir <dir>      the checkout whose scripts/ is the head side (default: this one)
   --census-only         print the census, judge nothing
-  --show-commands       print each differing command's text
+  --show-commands       print each differing command's text and its verdicts' full text
+                        (otherwise only each verdict's kind)
   --help                print this`;
 
 // ---------------------------------------------------------------------------
@@ -375,18 +376,34 @@ export function cut(text, n) {
  * says which {@link PROBE_PATTERNS} its command matched ({@link
  * probeReasons}), or that it is real, so the acceptance gate — no real
  * command changes its verdict — is applied by reading the names rather than
- * by trusting a loose heuristic (#1659 review).
+ * by trusting a loose heuristic (#1659 review). A verdict prints only its
+ * kind ({@link verdictKind}) unless the commands are shown, since a deny's
+ * text can quote a command's raw arguments (a refused PR title); the
+ * comparison is still on the whole strings (CodeRabbit CLI on #1659).
  */
 export function formatDifference({ index, tool, command, base, head }, { showCommands = false } = {}) {
   const reasons = probeReasons(command);
+  const shown = (v) => (showCommands ? cut(v, VERDICT_CUT) : verdictKind(v));
   const lines = [
     `#${index} ${tool}`,
     `  probe: ${reasons.length ? reasons.join("; ") : "real"}`,
-    `  base: ${cut(base, VERDICT_CUT)}`,
-    `  head: ${cut(head, VERDICT_CUT)}`,
+    `  base: ${shown(base)}`,
+    `  head: ${shown(head)}`,
   ];
+  if (!showCommands && verdictKind(base) === verdictKind(head)) lines.push("  (same kind, different text)");
   if (showCommands) lines.splice(1, 0, `  command: ${cut(command, COMMAND_CUT)}`);
   return lines;
+}
+
+/**
+ * A verdict's kind as {@link formatVerdict} spells it — `PASS`, `ASK`,
+ * `DENY`, `THROW` or `OTHER` — with the form for a stopping-rule deny, whose
+ * name is the hook's own text, never the command's.
+ */
+export function verdictKind(v) {
+  const kind = /^[A-Z]+/.exec(v)?.[0] ?? "OTHER";
+  const form = kind === "DENY" ? /form the hook does not read \(([^)]+)\)/.exec(v)?.[1] : undefined;
+  return form ? `${kind} (stopping rule: ${form})` : kind;
 }
 
 /** The count of `differences`, real commands apart from probes ({@link isProbe}). */
