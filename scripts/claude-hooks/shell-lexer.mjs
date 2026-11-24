@@ -732,11 +732,15 @@ const PROCESS_SUBSTITUTION = /^[<>]\(/;
  * backtick one) or a process substitution (`<( … )`, `>( … )`) taken whole
  * wherever it sits in the word, so a word such as `$(x)` or `<(x)` no longer
  * ends the reading of a command at its paren: `bash --rcfile $(x) -c '…'`
- * reaches its string.
+ * reaches its string. A `#` that starts a word comments out the rest of its
+ * line, so no word starts there (a judge on PR #1798): read as one, it made
+ * `echo hi | bash #c` a shell running a file named `#c`. A `#` inside a word
+ * (`a#b`) or escaped (`\#`) is text.
  */
 function commandWordEnd(text, i) {
   while (text[i] === " " || text[i] === "\t") i++;
   const start = i;
+  if (text[i] === "#" && (i === 0 || /[\s;&|()]/.test(text[i - 1]))) return undefined;
   for (;;) {
     WORD_REST.lastIndex = i;
     if (WORD_REST.exec(text)) i = WORD_REST.lastIndex;
