@@ -26,9 +26,11 @@
  *
  * **The one "in a replay" answer** is the controller's debounced replay state
  * (#1324), read once per tick: it holds for `REPLAY_EXIT_GRACE_MS` after the
- * last `IsReplayPlaying: true` tick, so a seek's ~300 ms false blip is not a
- * trip to live (a blip tick neither seeds nor records), and it is true
- * throughout a saved replay (`SimMode === "replay"`), whatever the flag reads.
+ * last `IsReplayPlaying: true` tick, and for as long as a seek of the plugin's
+ * own is still out (the seek hold the replay engine reports, #1429), so a
+ * seek's false ticks are not a trip to live (such a tick neither seeds nor
+ * records), and it is true throughout a saved replay (`SimMode === "replay"`),
+ * whatever the flag reads.
  *
  * **Its own reads, after the translator's.** The recorder reads
  * `getReplayState()` and `getSessionInfo()` itself, once each per tick, in its
