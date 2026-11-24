@@ -36,7 +36,7 @@ import { parseArgs } from "node:util";
 
 import { renderAudioStripSvg } from "../../iracing-actions/src/actions/audio-controls/audio-dial-render.ts";
 import { renderBlackBoxStrip } from "../../iracing-actions/src/actions/black-box-selector/black-box-selector-dial-render.ts";
-import { renderCarCarousel } from "../../iracing-actions/src/actions/camera-controls/camera-dial-surface.ts";
+import { renderCarCarousel } from "../../iracing-actions/src/actions/camera-controls/camera-dial-render.ts";
 import { switchTargetTemplateValues } from "../../iracing-actions/src/actions/camera-controls/switch-target-value.ts";
 import { renderStripCanvasSvg } from "../../iracing-actions/src/actions/fuel-service/fuel-dial-surface.ts";
 import { statusBarOn } from "../../iracing-actions/src/icons/status-bar.ts";
@@ -628,7 +628,10 @@ for (const dirent of readdirSync(ACTIONS_ROOT, { withFileTypes: true })) {
 // Black Box Selector dial surfaces, which draw their own custom pixmaps but
 // expose a pure, tsx-importable render function that needs no live
 // host/context object (verified empirically — issue: gallery feedback wave,
-// item 5; extended for the post-merge batch, task 10).
+// item 5; extended for the post-merge batch, task 10). Those four functions
+// live in each surface's `*-dial-render.ts` module, which imports no sim
+// package (#1662), so this build loads neither the iRacing SDK nor its native
+// addon; each sample's `path` still names the dial surface it stands for.
 for (const spec of [...SETUP_DIAL_SAMPLES, ...DIAL_BOX_SAMPLES]) {
   const sourcePath = path.join(ACTIONS_ROOT, spec.key, `${spec.key}-dial-surface.ts`);
   const dashSvg = bakeDialScreenBackground(
@@ -707,12 +710,14 @@ entries.push({
 
 /**
  * Camera Controls' dial surface (issue #803, camera-dial-surface.ts) owns its
- * own carousel renderers per `dial.mode` rather than the shared renderDialBox.
- * `renderCarCarousel` (exported for testing, lines ~512-544) is pure and needs
+ * own carousel renderers per `dial.mode` rather than the shared renderDialBox,
+ * kept in its sim-free render module (camera-dial-render.ts, #1662).
+ * `renderCarCarousel` (camera-dial-render.ts, lines ~268-331) is pure and needs
  * no live host — it renders the DEFAULT mode, "car-number" (DialSettings.mode
- * default, line ~177), with MODE_TITLE["car-number"] = "CAR #" (line ~163),
- * MODE_IDENTITY["car-number"] = "CAR #" (line ~127, unused here since a live
- * center is supplied), and MODE_COLOR["car-number"] = "#2ecc71" (line ~140).
+ * default, camera-dial-surface.ts line ~326), with MODE_TITLE["car-number"] =
+ * "CAR #" (line ~310), MODE_IDENTITY["car-number"] = "CAR #" (line ~272,
+ * unused here since a live center is supplied), and MODE_COLOR["car-number"] =
+ * "#2ecc71" (line ~286), the three tables in camera-dial-surface.ts.
  * `center`/`left`/`right` are plausible sample car numbers (sides per #884).
  *
  * This action's static assets (dial.svg/icon.svg/key.svg) live under the
@@ -752,12 +757,12 @@ entries.push({
 
 /**
  * Black Box Selector's dial surface (issue #808) draws its own static strip —
- * `renderBlackBoxStrip` (exported for testing, lines ~134-157) — a "BB" badge
- * + "BLACK BOX" wordmark with no live readback (iRacing exposes no open-box
- * telemetry, the #782 identity-only compromise), using the surface's own
- * ACCENT "#d4a017" (line ~45) and `bindingMissing: false` (the Cycle bindings
- * assumed configured for the sample, same convention as every other dash
- * sample above).
+ * `renderBlackBoxStrip` (black-box-selector-dial-render.ts, lines ~136-152,
+ * #1662) — a "BB" badge + "BLACK BOX" wordmark with no live readback (iRacing
+ * exposes no open-box telemetry, the #782 identity-only compromise), using the
+ * surface's own ACCENT "#d4a017" (black-box-selector-dial-surface.ts line
+ * ~117) and `bindingMissing: false` (the Cycle bindings assumed configured for
+ * the sample, same convention as every other dash sample above).
  */
 const blackBoxDashSvg = bakeDialScreenBackground(
   renderBlackBoxStrip({

@@ -9,16 +9,18 @@ import { resolveDialBoxColors } from "../../shared/dial-box.js";
 import { describeLateInput } from "../../shared/dial-late-input.test-support.js";
 import { describePressShapes } from "../../shared/press-shape.test-support.js";
 import {
-  buildTriggerDescription,
-  CameraDialSurface,
-  clockwiseDirection,
-  DIAL_MODES,
-  DialSettings,
   renderCameraCarousel,
   renderCarCarousel,
   renderKnobCarousel,
   renderRacePositionCarousel,
   renderSubCameraCarousel,
+} from "./camera-dial-render.js";
+import {
+  buildTriggerDescription,
+  CameraDialSurface,
+  clockwiseDirection,
+  DIAL_MODES,
+  DialSettings,
 } from "./camera-dial-surface.js";
 import { SUB_CAMERA_BINDING_KEY_LIST, SUB_CAMERA_BINDING_KEYS } from "./sub-camera-bindings.js";
 

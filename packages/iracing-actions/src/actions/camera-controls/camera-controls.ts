@@ -92,7 +92,8 @@ import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { setSelectIntent } from "../../shared/car-select-intent.js";
 import { availableProfilesForDevice, deviceProfileEntries, profileEntriesEqual } from "../../shared/profile-entries.js";
 import { unavailableLook } from "../../shared/unavailable-look.js";
-import { CameraDialSurface, type CarouselGlyph, DialSettings } from "./camera-dial-surface.js";
+import type { CarouselGlyph } from "./camera-dial-render.js";
+import { CameraDialSurface, DialSettings } from "./camera-dial-surface.js";
 import {
   CAMERA_GROUPS_SETTING_KEY,
   CHANGE_CAMERA_GROUPS,
