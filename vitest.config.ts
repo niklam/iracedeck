@@ -64,6 +64,7 @@ export default defineConfig({
       "@iracedeck/deck-adapter-mirabox": packageSrc("deck-adapter-mirabox"),
       "@iracedeck/deck-adapter-ulanzi": packageSrc("deck-adapter-ulanzi"),
       "@iracedeck/deck-core/testing": packageSrc("deck-core", "src/testing.ts"),
+      "@iracedeck/deck-core/display-units": packageSrc("deck-core", "src/display-units.ts"),
       "@iracedeck/deck-core": packageSrc("deck-core"),
       "@iracedeck/deck-iracing/testing": packageSrc("deck-iracing", "src/testing.ts"),
       "@iracedeck/deck-iracing": packageSrc("deck-iracing"),

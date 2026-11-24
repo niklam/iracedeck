@@ -2,36 +2,15 @@ import { DisplayUnits } from "@iracedeck/iracing-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  celsiusToFahrenheit,
   formatFuelAmount,
   FUEL_UNIT_IMPERIAL,
   FUEL_UNIT_METRIC,
   fuelFromDisplayUnits,
   fuelToDisplayUnits,
-  GALLONS_TO_LITERS,
-  gallonsToLiters,
   getFuelUnitSuffix,
   isMetricUnits,
-  LITERS_TO_GALLONS,
-  litersToGallons,
+  unitSystemOf,
 } from "./unit-conversion.js";
-
-describe("celsiusToFahrenheit (issue #466)", () => {
-  it.each([
-    [0, 32],
-    [100, 212],
-    [-40, -40],
-    [-20, -4],
-    [80, 176],
-    [23, 73.4],
-  ])("%d °C is %d °F", (celsius, fahrenheit) => {
-    expect(celsiusToFahrenheit(celsius)).toBeCloseTo(fahrenheit, 10);
-  });
-
-  it("does not round — speech rounds later", () => {
-    expect(celsiusToFahrenheit(41.3)).toBeCloseTo(106.34, 10);
-  });
-});
 
 describe("fuelToDisplayUnits (callers' contract)", () => {
   it("returns liters unchanged for metric", () => {
@@ -48,71 +27,35 @@ describe("fuelToDisplayUnits (callers' contract)", () => {
 });
 
 describe("unit-conversion", () => {
-  describe("litersToGallons", () => {
-    it("should convert 0 liters to 0 gallons", () => {
-      expect(litersToGallons(0)).toBe(0);
+  describe("unitSystemOf (#1662)", () => {
+    it("maps Metric to the metric unit system", () => {
+      expect(unitSystemOf(DisplayUnits.Metric)).toBe("metric");
+      expect(unitSystemOf(1)).toBe("metric");
     });
 
-    it("should convert 1 liter to approximately 0.264 gallons", () => {
-      expect(litersToGallons(1)).toBeCloseTo(0.264172, 5);
+    it("maps English to the imperial unit system", () => {
+      expect(unitSystemOf(DisplayUnits.English)).toBe("imperial");
+      expect(unitSystemOf(0)).toBe("imperial");
     });
 
-    it("should convert 3.78541 liters to approximately 1 gallon", () => {
-      expect(litersToGallons(3.78541)).toBeCloseTo(1, 4);
-    });
-
-    it("should convert 10 liters correctly", () => {
-      expect(litersToGallons(10)).toBeCloseTo(2.64172, 4);
-    });
-  });
-
-  describe("gallonsToLiters", () => {
-    it("should convert 0 gallons to 0 liters", () => {
-      expect(gallonsToLiters(0)).toBe(0);
-    });
-
-    it("should convert 1 gallon to approximately 3.785 liters", () => {
-      expect(gallonsToLiters(1)).toBeCloseTo(3.78541, 4);
-    });
-
-    it("should convert 0.264172 gallons to approximately 1 liter", () => {
-      expect(gallonsToLiters(0.264172)).toBeCloseTo(1, 4);
-    });
-
-    it("should convert 10 gallons correctly", () => {
-      expect(gallonsToLiters(10)).toBeCloseTo(37.8541, 3);
+    it("maps an unknown or undefined value to imperial, as every DisplayUnits function treats it", () => {
+      expect(unitSystemOf(undefined)).toBe("imperial");
+      expect(unitSystemOf(7)).toBe("imperial");
     });
   });
 
-  describe("round-trip conversion", () => {
-    it("should round-trip liters -> gallons -> liters", () => {
-      const original = 15.5;
-      const gallons = litersToGallons(original);
-      const result = gallonsToLiters(gallons);
-      // Precision is limited due to rounded conversion factors
-      expect(result).toBeCloseTo(original, 4);
-    });
+  describe("re-exports the sim-neutral constants and conversions", () => {
+    it("is the same definition as @iracedeck/deck-core/display-units", async () => {
+      const units = await import("./unit-conversion.js");
+      const neutral = await import("@iracedeck/deck-core/display-units");
 
-    it("should round-trip gallons -> liters -> gallons", () => {
-      const original = 5.5;
-      const liters = gallonsToLiters(original);
-      const result = litersToGallons(liters);
-      // Precision is limited due to rounded conversion factors
-      expect(result).toBeCloseTo(original, 4);
-    });
-  });
-
-  describe("conversion factors", () => {
-    it("should have correct LITERS_TO_GALLONS constant", () => {
-      expect(LITERS_TO_GALLONS).toBe(0.264172);
-    });
-
-    it("should have correct GALLONS_TO_LITERS constant", () => {
-      expect(GALLONS_TO_LITERS).toBe(3.78541);
-    });
-
-    it("should have inverse relationship between conversion factors", () => {
-      expect(LITERS_TO_GALLONS * GALLONS_TO_LITERS).toBeCloseTo(1, 5);
+      expect(units.LITERS_TO_GALLONS).toBe(neutral.LITERS_TO_GALLONS);
+      expect(units.GALLONS_TO_LITERS).toBe(neutral.GALLONS_TO_LITERS);
+      expect(units.FUEL_UNIT_METRIC).toBe(neutral.FUEL_UNIT_METRIC);
+      expect(units.FUEL_UNIT_IMPERIAL).toBe(neutral.FUEL_UNIT_IMPERIAL);
+      expect(units.litersToGallons).toBe(neutral.litersToGallons);
+      expect(units.gallonsToLiters).toBe(neutral.gallonsToLiters);
+      expect(units.celsiusToFahrenheit).toBe(neutral.celsiusToFahrenheit);
     });
   });
 

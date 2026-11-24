@@ -25,6 +25,7 @@ export {
   isMetricUnits,
   LITERS_TO_GALLONS,
   litersToGallons,
+  unitSystemOf,
 } from "./unit-conversion.js";
 export { createElevationCheckSubscriber, type ElevationCheckOptions, hasElevationMismatch } from "./elevation-check.js";
 export { ELEVATION_WARNING_ID, ELEVATION_WARNING_MESSAGE, evaluateElevationWarning } from "./elevation-warning.js";

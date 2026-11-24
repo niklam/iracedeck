@@ -3,45 +3,39 @@
  *
  * Handles conversion between metric and imperial units based on iRacing's DisplayUnits setting.
  * iRacing internally uses metric units (liters, kPa, etc.) - these utilities convert for display only.
+ *
+ * The conversions themselves are sim-neutral and live in
+ * `@iracedeck/deck-core/display-units`, keyed by a {@link UnitSystem} (#1662); what is iRacing's is
+ * the `DisplayUnits` encoding, which {@link unitSystemOf} maps onto it. The
+ * functions below keep their DisplayUnits signatures as thin wrappers.
  */
+import {
+  formatFuelIn,
+  fuelFromUnitSystem,
+  fuelToUnitSystem,
+  fuelUnitSuffixFor,
+  type UnitSystem,
+} from "@iracedeck/deck-core/display-units";
 import { DisplayUnits } from "@iracedeck/iracing-sdk";
 
-/**
- * Conversion factor from liters to US gallons
- */
-export const LITERS_TO_GALLONS = 0.264172;
+export {
+  celsiusToFahrenheit,
+  FUEL_UNIT_IMPERIAL,
+  FUEL_UNIT_METRIC,
+  GALLONS_TO_LITERS,
+  gallonsToLiters,
+  LITERS_TO_GALLONS,
+  litersToGallons,
+} from "@iracedeck/deck-core/display-units";
 
 /**
- * Conversion factor from US gallons to liters
+ * Maps iRacing's DisplayUnits value onto the sim-neutral unit system: Metric is
+ * metric, anything else — English, or a value not yet known — is imperial.
+ * @param displayUnits - The iRacing DisplayUnits value (0=English, 1=Metric)
+ * @returns `"metric"` for Metric, otherwise `"imperial"`
  */
-export const GALLONS_TO_LITERS = 3.78541;
-
-/**
- * Unit suffix for metric fuel display
- */
-export const FUEL_UNIT_METRIC = "L";
-
-/**
- * Unit suffix for imperial fuel display (US Gallons)
- */
-export const FUEL_UNIT_IMPERIAL = "gal";
-
-/**
- * Converts liters to US gallons
- * @param liters - Volume in liters
- * @returns Volume in US gallons
- */
-export function litersToGallons(liters: number): number {
-  return liters * LITERS_TO_GALLONS;
-}
-
-/**
- * Converts US gallons to liters
- * @param gallons - Volume in US gallons
- * @returns Volume in liters
- */
-export function gallonsToLiters(gallons: number): number {
-  return gallons * GALLONS_TO_LITERS;
+export function unitSystemOf(displayUnits: DisplayUnits | number | undefined): UnitSystem {
+  return displayUnits === DisplayUnits.Metric ? "metric" : "imperial";
 }
 
 /**
@@ -50,7 +44,7 @@ export function gallonsToLiters(gallons: number): number {
  * @returns The appropriate unit suffix ("L" or "gal")
  */
 export function getFuelUnitSuffix(displayUnits: DisplayUnits | number | undefined): string {
-  return displayUnits === DisplayUnits.Metric ? FUEL_UNIT_METRIC : FUEL_UNIT_IMPERIAL;
+  return fuelUnitSuffixFor(unitSystemOf(displayUnits));
 }
 
 /**
@@ -59,7 +53,7 @@ export function getFuelUnitSuffix(displayUnits: DisplayUnits | number | undefine
  * @returns true if metric, false if English/imperial
  */
 export function isMetricUnits(displayUnits: DisplayUnits | number | undefined): boolean {
-  return displayUnits === DisplayUnits.Metric;
+  return unitSystemOf(displayUnits) === "metric";
 }
 
 /**
@@ -69,11 +63,7 @@ export function isMetricUnits(displayUnits: DisplayUnits | number | undefined): 
  * @returns Fuel amount in the user's preferred unit
  */
 export function fuelToDisplayUnits(liters: number, displayUnits: DisplayUnits | number | undefined): number {
-  if (displayUnits === DisplayUnits.Metric) {
-    return liters;
-  }
-
-  return litersToGallons(liters);
+  return fuelToUnitSystem(liters, unitSystemOf(displayUnits));
 }
 
 /**
@@ -83,11 +73,7 @@ export function fuelToDisplayUnits(liters: number, displayUnits: DisplayUnits | 
  * @returns Fuel amount in liters (internal unit)
  */
 export function fuelFromDisplayUnits(amount: number, displayUnits: DisplayUnits | number | undefined): number {
-  if (displayUnits === DisplayUnits.Metric) {
-    return amount;
-  }
-
-  return gallonsToLiters(amount);
+  return fuelFromUnitSystem(amount, unitSystemOf(displayUnits));
 }
 
 /**
@@ -102,19 +88,5 @@ export function formatFuelAmount(
   displayUnits: DisplayUnits | number | undefined,
   decimals: number = 1,
 ): string {
-  const displayValue = fuelToDisplayUnits(liters, displayUnits);
-  const suffix = getFuelUnitSuffix(displayUnits);
-
-  return `${displayValue.toFixed(decimals)} ${suffix}`;
-}
-
-/**
- * Converts a temperature from degrees Celsius (iRacing's internal unit) to
- * degrees Fahrenheit. Unrounded: callers that speak or display it round
- * for their own purpose (issue #466).
- * @param celsius - Temperature in °C
- * @returns Temperature in °F
- */
-export function celsiusToFahrenheit(celsius: number): number {
-  return (celsius * 9) / 5 + 32;
+  return formatFuelIn(liters, unitSystemOf(displayUnits), decimals);
 }

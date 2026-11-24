@@ -13,6 +13,10 @@
     "./testing": {
       "import": "./dist/testing.js",
       "types": "./dist/testing.d.ts"
+    },
+    "./display-units": {
+      "import": "./dist/display-units.js",
+      "types": "./dist/display-units.d.ts"
     }
   },
   "scripts": {
