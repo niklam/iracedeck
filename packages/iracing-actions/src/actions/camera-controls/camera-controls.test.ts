@@ -4775,8 +4775,6 @@ describe("Auto Group on Car Change key (#1656)", () => {
     return null;
   }
 
-  const isOn = (action: CameraControls, id: string): boolean => keyState(action, id) === "on";
-
   beforeEach(() => {
     vi.clearAllMocks();
     _resetAutoGroup();
@@ -4930,7 +4928,7 @@ describe("Auto Group on Car Change key (#1656)", () => {
       await appear(action, "ag-1");
 
       expect(autoGroupOwner()).toBeNull();
-      expect(isOn(action, "ag-1")).toBe(false);
+      expect(keyState(action, "ag-1")).toBe("off");
     });
 
     it("starts on the first press and stops on the second, redrawing the key each time", async () => {
@@ -4941,13 +4939,13 @@ describe("Auto Group on Car Change key (#1656)", () => {
 
       expect(autoGroupOwner()).toBe("ag-1");
       expect(controller.subscribe).toHaveBeenCalledTimes(1);
-      expect(isOn(action, "ag-1")).toBe(true);
+      expect(keyState(action, "ag-1")).toBe("on");
 
       await press(action, ctx);
 
       expect(autoGroupOwner()).toBeNull();
       expect(controller.unsubscribe).toHaveBeenCalledTimes(1);
-      expect(isOn(action, "ag-1")).toBe(false);
+      expect(keyState(action, "ag-1")).toBe("off");
     });
 
     it("starts with the key's own list and pick order", async () => {
@@ -4969,8 +4967,8 @@ describe("Auto Group on Car Change key (#1656)", () => {
       await press(action, second);
 
       expect(autoGroupOwner()).toBe("ag-2");
-      expect(isOn(action, "ag-1")).toBe(false);
-      expect(isOn(action, "ag-2")).toBe(true);
+      expect(keyState(action, "ag-1")).toBe("off");
+      expect(keyState(action, "ag-2")).toBe("on");
       // A takeover keeps the one telemetry subscription.
       expect(controller.subscribe).toHaveBeenCalledTimes(1);
       expect(controller.unsubscribe).not.toHaveBeenCalled();
@@ -4984,14 +4982,14 @@ describe("Auto Group on Car Change key (#1656)", () => {
 
       await press(focus, first);
 
-      expect(isOn(focus, "ag-focus")).toBe(true);
-      expect(isOn(cycle, "ag-cycle")).toBe(false);
+      expect(keyState(focus, "ag-focus")).toBe("on");
+      expect(keyState(cycle, "ag-cycle")).toBe("off");
 
       await press(cycle, second);
 
       expect(autoGroupOwner()).toBe("ag-cycle");
-      expect(isOn(focus, "ag-focus")).toBe(false);
-      expect(isOn(cycle, "ag-cycle")).toBe(true);
+      expect(keyState(focus, "ag-focus")).toBe("off");
+      expect(keyState(cycle, "ag-cycle")).toBe("on");
     });
 
     it("stops redrawing a disposed instance when the owner changes (#1656 review)", async () => {
@@ -5000,14 +4998,14 @@ describe("Auto Group on Car Change key (#1656)", () => {
       const keptKey = await appear(kept, "ag-kept");
       const disposedKey = await appear(disposed, "ag-disposed");
       await press(disposed, disposedKey);
-      expect(isOn(disposed, "ag-disposed")).toBe(true);
+      expect(keyState(disposed, "ag-disposed")).toBe("on");
       const redraws = vi.mocked(disposed["updateKeyImage"]).mock.calls.length;
 
       disposed._dispose();
       await press(kept, keptKey); // a takeover: every live listener hears it
 
       expect(autoGroupOwner()).toBe("ag-kept");
-      expect(isOn(kept, "ag-kept")).toBe(true);
+      expect(keyState(kept, "ag-kept")).toBe("on");
       expect(vi.mocked(disposed["updateKeyImage"]).mock.calls.length).toBe(redraws);
     });
 
@@ -5017,7 +5015,7 @@ describe("Auto Group on Car Change key (#1656)", () => {
 
       await press(action, keys[1]);
 
-      expect(keys.map((ctx) => isOn(action, ctx.id))).toEqual([false, true, false]);
+      expect(keys.map((ctx) => keyState(action, ctx.id))).toEqual(["off", "on", "off"]);
     });
 
     it("keeps running when its key leaves the screen, and the key is on again when it is back", async () => {
@@ -5032,7 +5030,7 @@ describe("Auto Group on Car Change key (#1656)", () => {
 
       await appear(action, "ag-1");
 
-      expect(isOn(action, "ag-1")).toBe(true);
+      expect(keyState(action, "ag-1")).toBe("on");
     });
 
     it("leaves it off and warns when the SDK controller refuses the subscription", async () => {
@@ -5049,7 +5047,7 @@ describe("Auto Group on Car Change key (#1656)", () => {
 
       expect(autoGroupOwner()).toBeNull();
       expect(action["logger"].warn).toHaveBeenCalledWith("Auto group could not start: not connected");
-      expect(isOn(action, "ag-1")).toBe(false);
+      expect(keyState(action, "ag-1")).toBe("off");
     });
 
     it("sends no camera switch at the press", async () => {
@@ -5123,7 +5121,7 @@ describe("Auto Group on Car Change key (#1656)", () => {
 
       expect(autoGroupOwner()).toBe("ag-1");
       expect(controller.unsubscribe).not.toHaveBeenCalled();
-      expect(isOn(action, "ag-1")).toBe(true);
+      expect(keyState(action, "ag-1")).toBe("on");
     });
   });
 
@@ -5197,13 +5195,13 @@ describe("Auto Group on Car Change key (#1656)", () => {
       await press(action, key);
 
       expect(autoGroupOwner()).toBe("ag-1");
-      expect(isOn(action, "ag-1")).toBe(true);
+      expect(keyState(action, "ag-1")).toBe("on");
       expect(marked(dial)).toBe(false);
 
       await pressDial(action, dial);
 
       expect(autoGroupOwner()).toBe("dial-1");
-      expect(isOn(action, "ag-1")).toBe(false);
+      expect(keyState(action, "ag-1")).toBe("off");
       expect(marked(dial)).toBe(true);
     });
 
