@@ -2814,3 +2814,39 @@ describe("the stopping rule: closing words from the recorded compound commands (
     expect(lexer.refusedForms(c)[0]?.form).toBe(`a shell reading its script from a ${form}`),
   );
 });
+
+// CLI check of 8086892f8: a PowerShell here-string is one string whatever
+// quotes it holds; an expandable one runs only its `$( … )`.
+describe("the stopping rule: PowerShell here-strings (#1659 CLI check)", () => {
+  const ps = (c) => lexer.refusedForms(lexer.powershellAsBash(c), lexer.POWERSHELL);
+  it.each([
+    `$s = @"\nsay "hi\niex x\n"@`,
+    `$s = @'\nit's\niex x\n'@`,
+    `$s = @"\nsay "hi"\niex x\n"@`,
+    '$s = @"\na `$(iex x)\n"@',
+    `$s = @'\n$(iex x)\n'@`,
+    `$s = @"\n"@ ; Write-Host "it's"`,
+  ])("reads and refuses nothing in %j from the PowerShell tool", (c) => expect(ps(c)).toEqual([]));
+  it.each([
+    `$s = @"\n$(iex x)\n"@`,
+    `$s = @"\nsay "hi\n$(iex x)\n"@`,
+    `$s = @"\n$(Get-Date; Invoke-Expression x)\n"@`,
+    `$s = @'\nx\n'@\niex y`,
+    `$s = @"\nx\n"@\niex y`,
+    `$s = @"\n$("a)" + (iex x))\n"@`,
+  ])("refuses %j from the PowerShell tool", (c) => expect(ps(c)[0]?.form).toBe("eval"));
+});
+
+// CLI check of 8086892f8: with a string's text no position, a quoted name
+// the call operator runs is still read as the program it names.
+describe("the stopping rule: PowerShell's call operator on a quoted name (#1659 CLI check)", () => {
+  const ps = (c) => lexer.refusedForms(lexer.powershellAsBash(c), lexer.POWERSHELL);
+  it.each([`& "iex" x`, `& 'iex' 'ls'`, `. "iex" x`, `&"Invoke-Expression" x`, `ls; & 'IEX' x`])(
+    "refuses %s from the PowerShell tool",
+    (c) => expect(ps(c)[0]?.form).toBe("eval"),
+  );
+  it.each([`$a = "iex"`, `Get-Item "iex"`, `Write-Host '&' "iex"`, `& "Get-Item" iex`])(
+    "reads and refuses nothing in %s from the PowerShell tool",
+    (c) => expect(ps(c)).toEqual([]),
+  );
+});

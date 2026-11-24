@@ -5711,3 +5711,12 @@ describe("a quoted closing word after a stdin shell (#1659)", () => {
     expect(stopped(`( bash -s -- 'example' ) <<< 'gh pr merge 7 --squash'`)).toContain("from a here-string");
   });
 });
+
+// CLI check of 8086892f8: a PowerShell here-string is one string.
+describe("a PowerShell here-string (#1659)", () => {
+  const ps = () => ctx({ shell: POWERSHELL });
+  it("passes an iex line in its text, and refuses one in its subexpression", () => {
+    passes(`$s = @'\nit's\niex x\n'@`, ps());
+    expect(stopped(`$s = @"\n$(iex x)\n"@`, ps())).toContain("(eval)");
+  });
+});

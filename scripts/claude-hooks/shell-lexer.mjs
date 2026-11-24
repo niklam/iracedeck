@@ -3569,13 +3569,16 @@ export function refusedForms(command, shell = BASH) {
   const evals = [];
   if (shell === POWERSHELL) {
     const inString = new Set(v.decoded.map(([p]) => p));
+    // A position bash's reading finds in text PowerShell reads as a string or
+    // a comment (a here-string's line, CLI check of 8086892f8) runs nothing.
+    const statements = powershellStatementEvals(command);
     for (const p of v.byName.keys()) {
-      if (inString.has(p)) continue;
+      if (inString.has(p) || statements.inert[p]) continue;
       PROGRAM_WORD.lastIndex = p;
       const name = PROGRAM_WORD.exec(v.text)?.[0];
       if (PS_EVAL.has(name)) evals.push(name);
     }
-    evals.push(...powershellStatementEvals(command));
+    evals.push(...statements);
   }
   const strings = new Set(v.decoded.map(([, L]) => L).filter((L) => POWERSHELLS.has(L.via)));
   for (const L of strings) evals.push(...powershellStatementEvals(L.text));
@@ -3589,44 +3592,95 @@ export function refusedForms(command, shell = BASH) {
  * newline, `;`, `|`, `&`, `=`, `{` or `(`, so a script block's and a
  * subexpression's statements count, a double-quoted string's `$(…)` among
  * them, while an argument (`Get-Help iex`), a single-quoted string and a
- * comment do not ({@link refusedForms}, CLI check of be3d79a4b).
+ * comment do not ({@link refusedForms}, CLI check of be3d79a4b). A here-string
+ * is one string to its closing line whatever quotes it holds: a literal one
+ * (`@'…'@`) is skipped whole, an expandable one (`@"…"@`) is read for its
+ * `$(…)` only (CLI check of 8086892f8).
  */
 export function powershellStatementEvals(text) {
   // A word up to the next blank, operator, bracket, quote, backtick or `#`.
   const PS_WORD = /[^\s;|&={}()'"\x60#]+/y;
+  // The quote of a here-string's opening `@"` or `@'`, which ends its line.
+  const HERE_STRING_OPEN = /^(["'])[ \t]*\r?\n/;
   const out = [];
-  // Frames: a double-quoted string, or a `$(…)` in one, with its paren depth.
+  // 1 at each character PowerShell reads as a string's or a comment's text.
+  const inert = new Uint8Array(text.length);
+  // A quoted name the call operator `&` or a dot-source runs, its quotes at
+  // `from` and `to`: its literal text names the program (`& "iex" x`). The
+  // PowerShell tool's text is read after `powershellAsBash`, which blanks the
+  // operator, so a quoted word starting a statement counts too, erring to
+  // deny; an assignment's value (`$a = "iex"`) does not.
+  const callsAt = (lead) => /[\n;|&{(]/.test(lead);
+  const called = (from, to) => {
+    if (from === undefined) return;
+    const name = text
+      .slice(from + 1, to)
+      .replace(/''/g, "'")
+      .toLowerCase();
+    if (PS_EVAL.has(name)) out.push(name);
+  };
+  // Frames: a double-quoted string, an expandable here-string up to the index
+  // of its closing quote, or a `$(…)` in either, with its paren depth.
   const stack = [];
   let lead = "\n";
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
     const top = stack.at(-1);
-    if (top?.kind === "dq") {
+    if (top?.kind === "here" && i >= top.end) {
+      inert.fill(1, i, i + 2);
+      stack.pop();
+      i++;
+      lead = "x";
+      continue;
+    }
+    if (top?.kind === "dq" || top?.kind === "here") {
+      inert.fill(1, i, i + 2);
       if (c === "\x60") i++;
-      else if (c === '"' && text[i + 1] === '"') i++;
-      else if (c === '"') stack.pop();
-      else if (c === "$" && text[i + 1] === "(") {
+      else if (top.kind === "dq" && c === '"' && text[i + 1] === '"') i++;
+      else if (top.kind === "dq" && c === '"') {
+        stack.pop();
+        called(top.start, i);
+      } else if (c === "$" && text[i + 1] === "(") {
         stack.push({ kind: "sub", depth: 0 });
         i++;
         lead = "(";
       }
       continue;
     }
-    if (c === "\x60") {
+    // A here-string opens with `@"` or `@'` ending its line, and closes with
+    // that quote and `@` starting a line: a literal one is skipped whole.
+    const here = c === "@" ? HERE_STRING_OPEN.exec(text.slice(i + 1, i + 260))?.[1] : undefined;
+    if (here) {
+      const close = text.indexOf(`\n${here}@`, i + 2);
+      const end = close < 0 ? text.length : close + 1;
+      inert.fill(1, i, i + 2);
+      if (here === '"') stack.push({ kind: "here", end });
+      else {
+        inert.fill(1, i, end + 2);
+        i = end + 1;
+      }
+      lead = "x";
+    } else if (c === "\x60") {
       i++;
       lead = "x";
     } else if (c === "'") {
       // A single-quoted string, `''` its quote.
+      const start = i;
       for (i++; i < text.length && !(text[i] === "'" && text[i + 1] !== "'"); i++) if (text[i] === "'") i++;
+      inert.fill(1, start, i + 1);
+      if (callsAt(lead)) called(start, i);
       lead = "x";
     } else if (c === '"') {
-      stack.push({ kind: "dq" });
+      inert[i] = 1;
+      stack.push({ kind: "dq", start: callsAt(lead) ? i : undefined });
       lead = "x";
     } else if (c === "<" && text[i + 1] === "#") {
       const end = text.indexOf("#>", i + 2);
+      inert.fill(1, i, end < 0 ? text.length : end + 2);
       i = end < 0 ? text.length : end + 1;
     } else if (c === "#" && /^[\s;|&({]?$/.test(text[i - 1] ?? "")) {
       const end = text.indexOf("\n", i);
+      inert.fill(1, i, end < 0 ? text.length : end);
       i = end < 0 ? text.length : end - 1;
     } else if (c === ")" && top?.kind === "sub" && top.depth === 0) {
       stack.pop();
@@ -3641,12 +3695,14 @@ export function powershellStatementEvals(text) {
       PS_WORD.lastIndex = i;
       const word = PS_WORD.exec(text)?.[0] ?? c;
       const name = word.toLowerCase();
-      if (PS_EVAL.has(name) && /[\n;|&={(]/.test(lead)) out.push(name);
+      const start = /[\n;|&={(]/.test(lead);
+      if (PS_EVAL.has(name) && start) out.push(name);
       i += word.length - 1;
-      lead = "x";
+      // Dot-sourcing calls the word after it, as `&` does.
+      lead = word === "." && start ? "&" : "x";
     }
   }
-  return out;
+  return Object.assign(out, { inert });
 }
 
 /** The command with its inert text masked where the mask stands, and raw where it is set aside ({@link view}). */
