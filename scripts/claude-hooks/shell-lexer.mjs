@@ -1819,6 +1819,63 @@ function sudoShell(t, from, limit) {
   return SHELL_NAMES.has(programName(decodeWord(t.slice(program, e < 0 ? limit : e)))?.name);
 }
 
+/** The compound commands' closing words, each with the opening words it closes ({@link pipedCommands}). */
+const CLOSES = Object.freeze({ "}": ["{"], done: ["while", "until", "for", "select"], fi: ["if"], esac: ["case"] });
+const OPENS = new Set(["{", "while", "until", "if", "for", "select", "case"]);
+
+/**
+ * Each command of `command` ({@link level}: a heredoc body or a quoted `|`
+ * is no boundary) as `{ start, end, piped }`, in order, `piped` saying
+ * whether its program reads a pipe (CodeRabbit CLI on #1659): one that ends
+ * the command before it (`echo x | bash`, over a newline or a comment after
+ * the `|`; `|&` too), or one into a group, subshell, loop, `if` or `case`
+ * holding it (`echo x | { cd y && bash; }`), whose commands read its stdin. A
+ * pipe into another command beside it (`{ printf x | wc -c; bash; }`) is
+ * none. The keywords that lead a command (`then`, `do`, `{` …) are read past
+ * to its program word.
+ */
+function pipedCommands(command) {
+  const { commands, ends } = level(command);
+  const out = [];
+  const frames = [];
+  const pop = (kinds) => {
+    if (frames.length && kinds.includes(frames.at(-1).kind)) frames.pop();
+  };
+  let pending = false;
+  for (const c of commands) {
+    const end = Math.min(ends[c], command.length);
+    let cur = pending;
+    for (let i = c; ;) {
+      while (i < end && /\s/.test(command[i])) i++;
+      if (i >= end || command[i] === "#") break;
+      const e = wordEnd(command, i);
+      if (e <= i) break;
+      const w = command.slice(i, e);
+      if (OPENS.has(w)) {
+        frames.push({ kind: w, piped: cur });
+        cur = false;
+      } else if (["then", "do", "else", "elif"].includes(w)) cur = false;
+      else if (CLOSES[w]) pop(CLOSES[w]);
+      else if (w !== "!" && w !== "time") break;
+      i = e;
+    }
+    out.push({ start: c, end, piped: cur || frames.some((f) => f.piped) });
+    const text = command.slice(c, end).trim();
+    const blank = !text || text.startsWith("#");
+    const b = command[end];
+    if (b === "(") {
+      frames.push({ kind: "(", piped: cur });
+      pending = false;
+    } else if (b === ")") {
+      pop(["("]);
+      pending = false;
+    } else if (b === "|") pending = command[end + 1] !== "|" && command[end - 1] !== "|";
+    // A `|` goes on over a newline or a comment after it, and `|&` is one.
+    else if (!(blank && (b === "\n" || (b === "&" && command[end - 1] === "|")))) pending = false;
+  }
+  return out;
+}
+
 /**
  * Where the words a shell word or a wrapper runs start (#1607, #1634): a map
  * from each such index to how that word is the program (`{ how, via }`), plus
@@ -1956,19 +2013,29 @@ function fedStarts(command, text, fed, programs) {
   const levels = [];
   const owner = new Int32Array(text.length).fill(-1);
   const levelAt = (p) => (owner[p] >= 0 ? levels[owner[p]] : base);
+  // Whether a pipe feeds the stdin of the command whose word is at `p` of the
+  // typed text ({@link pipedCommands}, CodeRabbit CLI on #1659). Read over the
+  // raw command, once, so each shell word is a lookup: the view's text may
+  // hold a heredoc delimiter its program-word rewrite lowercased, which ends
+  // no body.
+  let fedCommands;
+  const pipeFeeds = (p) => {
+    fedCommands ??= pipedCommands(command);
+    let lo = 0;
+    let hi = fedCommands.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (fedCommands[mid].start <= p) lo = mid;
+      else hi = mid - 1;
+    }
+    const at = fedCommands[lo];
+    return Boolean(at && at.start <= p && p <= at.end && at.piped);
+  };
   // The xargs ahead of the program word at `p` of the typed text, in its own
   // command, as `{ replace, by }` ({@link replaceString}; `undefined` for none),
   // or `undefined` where none is (#1659). Any `xargs` word between the
   // command's start and `p` counts, so a wrapper between them (`xargs nice
   // sh -c …`) hides nothing: the gate errs to deny.
-  // Whether a pipe feeds the command whose word is at `p` of the typed text.
-  const pipedHere = (p) => {
-    let start = 0;
-    for (const c of base.commands)
-      if (c <= p) start = c;
-      else break;
-    return start > 0 && text[start - 1] === "|" && text[start - 2] !== "|";
-  };
   const xargsBefore = (p) => {
     let start = 0;
     for (const c of base.commands)
@@ -2135,7 +2202,7 @@ function fedStarts(command, text, fed, programs) {
     // printer in the stage before it (`echo '…' | bash`), or any other command.
     // Whether it refused one.
     const pipedInto = (p, via) => {
-      if (!own.pipes.some((x) => x < p)) return false;
+      if (!pipeFeeds(p)) return false;
       for (const stages of own.pipelines) {
         const k = stages.findIndex(([s, e]) => s <= p && p < e);
         if (k < 1) continue;
@@ -2191,7 +2258,7 @@ function fedStarts(command, text, fed, programs) {
             // in its element, erring to deny; one whose script word expands
             // only when a pipe feeds its own command (`… | bash "$F"`), since
             // agents run a script so after an unrelated pipe (#1659 second read).
-            if (stream.expands && !stream.named ? pipedHere(p) && pipedInto(p, via) : pipedInto(p, via)) return;
+            if (stream.expands && !stream.named ? pipeFeeds(p) && pipedInto(p, via) : pipedInto(p, via)) return;
             // Its stdin may be set around it: by the closing word of a group,
             // subshell or loop it sits in, or by an earlier `exec`.
             const around = stdinAround(p, b);
@@ -2225,7 +2292,7 @@ function fedStarts(command, text, fed, programs) {
           if (r.string !== undefined) {
             const N = stringAt(r.string, r.attached ? { ...kind, attached: true } : kind, join);
             // What the string's shell was given on stdin, for a script word in it that expands.
-            if (N) Object.assign(N, { outerStdin: r.stdin, outerPiped: own.pipes.some((x) => x < p) });
+            if (N) Object.assign(N, { outerStdin: r.stdin, outerPiped: pipeFeeds(p) });
           }
           // fish's `-C` / `--init-command` string, read as its `-c` one is (#1659 second read).
           for (const x of r.extras) stringAt(x, kind, join);
@@ -2244,7 +2311,7 @@ function fedStarts(command, text, fed, programs) {
     const stream = scriptStream(".", commandOf(NO_OPTIONS, command, p + 1, command.length), command);
     // `.` reads stdin only through its name, or a script word that expands: a
     // pipe into it then reads the script from stdin.
-    if (stream && (!stream.piped || stream.named || pipedHere(p)))
+    if (stream && (!stream.piped || stream.named || pipeFeeds(p)))
       refuse(stream.piped ? REFUSED.stdin : stream.form, stream.shape);
   }
   // The wrappers and the `find`s among the program words: what each runs, read

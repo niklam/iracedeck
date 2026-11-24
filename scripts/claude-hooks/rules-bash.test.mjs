@@ -5294,6 +5294,16 @@ describe("a shell word glued to its redirection (#1659)", () => {
   it.each([`bash</dev/null x.sh`, `bash</dev/null -c 'pnpm build'`])("passes %s", (c) => passes(c));
 });
 
+// CodeRabbit CLI on #1659: a pipe that feeds another command beside a stdin
+// shell is no pipe into it; the enclosing redirection decides.
+describe("the pipe that feeds a stdin shell (#1659)", () => {
+  it("passes a shell whose group reads a file, and refuses one a pipe into its group feeds", () => {
+    passes(`{ printf x | wc -c; bash; } </dev/null`);
+    expect(stopped(`{ printf x | wc -c; bash; } <<< 'gh pr merge 7 --squash'`)).toContain("from a here-string");
+    expect(stopped(`echo 'gh pr merge 7 --squash' | { cd x && bash; }`)).toContain("from stdin");
+  });
+});
+
 // CodeRabbit CLI on #1659: a `BASH_ENV=` that is a search pattern is no assignment.
 describe("a startup-file assignment only where one is made (#1659)", () => {
   it("passes a pattern and refuses an assignment", () => {

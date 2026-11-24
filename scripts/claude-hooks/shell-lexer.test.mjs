@@ -2383,3 +2383,32 @@ describe("the stopping rule: a startup-file assignment only where one is made (#
     `cat .env | grep ENV=$F`,
   ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
 });
+
+// CodeRabbit CLI on #1659: a pipe that feeds another command in the element
+// is no pipe into the shell; only one into it, or into a compound command
+// that holds it, is.
+describe("the stopping rule: the pipe that feeds a stdin shell (#1659 CodeRabbit)", () => {
+  const STDIN = "a shell reading its script from stdin";
+  const PRINTER = "a printer piped into a shell";
+  it.each([
+    `{ printf x | wc -c; bash; } </dev/null`,
+    `printf x | wc -c; bash`,
+    `git log | head -3 && bash`,
+    `a || bash`,
+    `( printf x | wc -c ); bash`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+  it.each([
+    [`{ printf x | wc -c; bash; } <<< 'gh pr merge 7'`, "a shell reading its script from a here-string"],
+    [`echo 'gh pr merge 7' | { cd x && bash; }`, STDIN],
+    [`echo 'gh pr merge 7' | (cd x && bash)`, STDIN],
+    [`echo 'gh pr merge 7' | while true; do bash; break; done`, STDIN],
+    [`echo 'gh pr merge 7' | if true; then bash; fi`, STDIN],
+    [`echo 'gh pr merge 7' |\nbash`, STDIN],
+    [`echo 'gh pr merge 7' | # run it\nbash`, STDIN],
+    [`echo 'gh pr merge 7' |& bash`, PRINTER],
+    [`cat <<'EOF' |\nls; gh pr merge 5 --squash\nEOF\nbash`, STDIN],
+    [`echo x | { printf y | wc -c; bash; }`, STDIN],
+    [`echo 'gh pr merge 7' | { case x in x) bash;; esac; }`, PRINTER],
+    [`cat x | { case x in x) bash;; esac; }`, STDIN],
+  ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+});
