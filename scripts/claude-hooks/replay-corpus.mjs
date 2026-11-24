@@ -543,8 +543,17 @@ export function commandCensus(lexer, tool, command) {
   const text = read(command);
   let refused = typeof lexer.refusedForms === "function" ? lexer.refusedForms(text, shell) : undefined;
   // A command `checkBash` judges twice for its curly quotes counts as refused
-  // when either reading refuses it, once (CodeRabbit on 164de4f80).
-  const second = refused && !refused.length ? lexer.curlyReading?.(command, powershell) : undefined;
+  // when either reading refuses it, once (CodeRabbit on 164de4f80). A head
+  // lexer from before `curlyReading` (it had `readsCurlyTwice` and
+  // `straightQuotes`) gets its second reading the way its own hook took it
+  // (PR #1798 review at f68f5a838).
+  const secondReading = (c) => {
+    if (typeof lexer.curlyReading === "function") return lexer.curlyReading(c, powershell);
+    if (typeof lexer.readsCurlyTwice === "function" && typeof lexer.straightQuotes === "function")
+      return lexer.readsCurlyTwice(c, powershell) ? lexer.straightQuotes(c) : undefined;
+    return undefined;
+  };
+  const second = refused && !refused.length ? secondReading(command) : undefined;
   if (second !== undefined) refused = lexer.refusedForms(read(second), shell);
   return censusOf({ ...lexer.view(text), refused });
 }

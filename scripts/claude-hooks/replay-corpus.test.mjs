@@ -569,6 +569,26 @@ describe("the census", () => {
     expect(() => commandCensus(broken, "Bash", "gh pr view 7")).toThrow("no forms");
   });
 
+  // PR #1798 review at f68f5a838: a head lexer from before `curlyReading`
+  // exported `readsCurlyTwice` and `straightQuotes`; its census takes the
+  // second reading the way its own hook did.
+  it("takes the curly second reading from a lexer without curlyReading", async () => {
+    const lexer = await import("./shell-lexer.mjs");
+    const { curlyReading, ...rest } = lexer;
+    expect(curlyReading).toBeTypeOf("function");
+    const asked = [];
+    const older = {
+      ...rest,
+      readsCurlyTwice: (c, ps) => (asked.push([c, ps]), ps),
+      straightQuotes: (c) => c.replace(/[‘’]/g, "'"),
+    };
+    expect(commandCensus(older, "PowerShell", `& ‘iex’ 'Get-Location'`).flags).toContain("refused");
+    expect(asked).toEqual([[`& ‘iex’ 'Get-Location'`, true]]);
+    // Where it says no second reading, none is taken.
+    const never = { ...older, readsCurlyTwice: () => false };
+    expect(commandCensus(never, "PowerShell", `& ‘iex’ 'Get-Location'`).flags).not.toContain("refused");
+  });
+
   it("counts positions by kind and the flags a view raises", () => {
     const view = {
       sure: false,
