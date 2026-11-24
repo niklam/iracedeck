@@ -2998,3 +2998,16 @@ describe("the stopping rule: PowerShell's eval after an assignment (#1659 PR rev
     `@{a=iex y}`,
   ])("refuses %s", (c) => expect(ps(c)[0]?.form).toBe("eval"));
 });
+
+// CodeRabbit on 164de4f80: each `ENV` in one long word walked back to the
+// word's start, so a word holding many took time quadratic in its length.
+describe("the stopping rule: startup names in one long word (#1659 PR review)", () => {
+  it("reads them in time linear in the word's length", () => {
+    const c = `echo ${"ENV".repeat(40000)} x; BASH_ENV=<(echo y) bash -c true`;
+    const t = Date.now();
+    expect(lexer.refusedForms(c).map((r) => r.form)).toContain(
+      "a shell startup file read from stdin, a descriptor or a process substitution",
+    );
+    expect(Date.now() - t).toBeLessThan(3000);
+  });
+});

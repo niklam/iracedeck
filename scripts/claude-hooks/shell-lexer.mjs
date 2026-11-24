@@ -2214,9 +2214,17 @@ function fedStarts(command, text, fed, programs) {
     let ends;
     let made;
     let cursor = 0;
+    // Where the last candidate's word starts, and where it was found: a
+    // candidate in the same word reads back only to there, so a long word
+    // holding many is walked once (CodeRabbit on 164de4f80).
+    let wordAt = -1;
+    let lastAt = -1;
     for (const m of found.matchAll(STARTUP_NAME)) {
       let s = m.index;
-      while (s > 0 && !/[\s;&|(\x60]/.test(found[s - 1])) s--;
+      while (s > 0 && s > lastAt && !/[\s;&|(\x60]/.test(found[s - 1])) s--;
+      if (lastAt >= 0 && s === lastAt) s = wordAt;
+      wordAt = s;
+      lastAt = m.index;
       if (seen.has(s)) continue;
       seen.add(s);
       // Only where an assignment is made: a command's prefix, or an argument
