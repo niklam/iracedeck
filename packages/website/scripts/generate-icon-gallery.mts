@@ -714,12 +714,12 @@ entries.push({
  * Camera Controls' dial surface (issue #803, camera-dial-surface.ts) owns its
  * own carousel renderers per `dial.mode` rather than the shared renderDialBox,
  * kept in its sim-free render module (camera-dial-render.ts, #1662).
- * `renderCarCarousel` (camera-dial-render.ts, lines ~268-331) is pure and needs
- * no live host — it renders the DEFAULT mode, "car-number" (DialSettings.mode
- * default, camera-dial-surface.ts line ~326), with MODE_TITLE["car-number"] =
- * "CAR #" (line ~310), MODE_IDENTITY["car-number"] = "CAR #" (line ~272,
- * unused here since a live center is supplied), and MODE_COLOR["car-number"] =
- * "#2ecc71" (line ~286), the three tables in camera-dial-surface.ts.
+ * `renderCarCarousel` (camera-dial-render.ts) is pure and needs no live host —
+ * it renders the DEFAULT mode, "car-number" (DialSettings.mode's default in
+ * camera-dial-surface.ts), with MODE_TITLE["car-number"] = "CAR #",
+ * MODE_IDENTITY["car-number"] = "CAR #" (unused here since a live center is
+ * supplied), and MODE_COLOR["car-number"] = "#2ecc71", the three tables in
+ * camera-dial-surface.ts.
  * `center`/`left`/`right` are plausible sample car numbers (sides per #884).
  *
  * This action's static assets (dial.svg/icon.svg/key.svg) live under the
@@ -759,12 +759,12 @@ entries.push({
 
 /**
  * Black Box Selector's dial surface (issue #808) draws its own static strip —
- * `renderBlackBoxStrip` (black-box-selector-dial-render.ts, lines ~136-152,
- * #1662) — a "BB" badge + "BLACK BOX" wordmark with no live readback (iRacing
- * exposes no open-box telemetry, the #782 identity-only compromise), using the
- * surface's own ACCENT "#d4a017" (black-box-selector-dial-surface.ts line
- * ~117) and `bindingMissing: false` (the Cycle bindings assumed configured for
- * the sample, same convention as every other dash sample above).
+ * `renderBlackBoxStrip` (black-box-selector-dial-render.ts, #1662) — a "BB"
+ * badge + "BLACK BOX" wordmark with no live readback (iRacing exposes no
+ * open-box telemetry, the #782 identity-only compromise), using the surface's
+ * own ACCENT "#d4a017" (black-box-selector-dial-surface.ts) and
+ * `bindingMissing: false` (the Cycle bindings assumed configured for the
+ * sample, same convention as every other dash sample above).
  */
 const blackBoxDashSvg = bakeDialScreenBackground(
   renderBlackBoxStrip({
