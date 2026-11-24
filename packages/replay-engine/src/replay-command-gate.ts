@@ -47,6 +47,10 @@
  *   and the gate reports per token whether something of it is under way or
  *   waiting ({@link subscribeReplayGate}). It adds no behaviour: the gate
  *   sends the same commands in the same order with and without a listener.
+ *   A press may also wait outside the slot, for a search of the gate's to
+ *   land before it reads where a replay step starts (#1660,
+ *   `replay-record-walk.ts`): {@link openReplayGateWait} puts that up as the
+ *   token's waiting fact, which fills no slot and sends nothing.
  * - **Every speed it sends is the speed state's** (#1467, #1427): a speed, a
  *   pause or a playback step that went out is recorded in
  *   `replay-speed-state.ts` the moment it goes out, as the one pending speed,
@@ -223,6 +227,8 @@ type SearchRecordKind = ReplaySearchKind | "go-to-start" | "go-to-end";
 
 /** A search the gate sent, or a go to start / end. */
 interface SearchRecord {
+  /** Its identity, for a caller that waited it out ({@link replaySearchOnItsWay}). */
+  readonly id: number;
   readonly kind: SearchRecordKind;
   readonly direction: 1 | -1;
   readonly sentAt: number;
@@ -348,6 +354,8 @@ export type ReplayTargetFate =
   | { readonly kind: "replaced"; readonly by: number | null };
 
 let search: SearchRecord | null = null;
+/** The last search record's id. */
+let searchSeq = 0;
 let takeover: Takeover | null = null;
 let slot: Slot | null = null;
 let held: HeldJump | null = null;
@@ -431,7 +439,7 @@ const END_CLASS: Record<ReplayGateEndReason, ReplayGateEndClass> = {
 export interface ReplayGateView {
   /** Something of this token's is under way: its target stands, its search may be on its way, or its replay jump holds the cursor. */
   readonly underWay: { readonly since: number; readonly seen: boolean } | null;
-  /** A command of this token's waits in the slot. */
+  /** A command of this token's waits in the slot, or a press of its waits for a landing to read its start (#1660). */
   readonly waiting: { readonly since: number } | null;
 }
 
@@ -472,6 +480,17 @@ let sentSpeeds: ReplaySpeed[] = [];
  * per tick.
  */
 let toldSeekHold: ReplaySeekHoldUntil | null = null;
+
+/** A press waiting outside the slot for a search to land before it reads its start (#1660): a waiting fact, nothing more. */
+interface StartWait {
+  readonly origin: string | undefined;
+  readonly since: number;
+}
+
+/** The waiting starts by handle ({@link openReplayGateWait}). */
+const startWaits = new Map<number, StartWait>();
+/** The last waiting start's handle. */
+let startWaitSeq = 0;
 
 /** Runs `listener` on every change of any token's view. Returns the unsubscribe. */
 export function subscribeReplayGate(listener: (notice: ReplayGateNotice) => void): () => void {
@@ -637,16 +656,31 @@ function computeViews(): Map<string, ReplayGateView> {
 
   if (held !== null && held.claim.cancelledBy === null) add(held.origin, witness);
 
+  // Waiting: the slot's command, and any start waiting for a landing (#1660); the earliest press is its since.
+  const waiting = new Map<string, number>();
+  const wait = (origin: string | undefined, since: number): void => {
+    if (origin === undefined) return;
+
+    const earlier = waiting.get(origin);
+
+    waiting.set(origin, earlier === undefined ? since : Math.min(earlier, since));
+  };
+
+  if (slot !== null) wait(slot.origin, slot.pressedAt);
+
+  for (const start of startWaits.values()) wait(start.origin, start.since);
+
   const result = new Map<string, ReplayGateView>();
-  const tokens = new Set<string>([...underWay.keys(), ...(slot?.origin === undefined ? [] : [slot.origin])]);
+  const tokens = new Set<string>([...underWay.keys(), ...waiting.keys()]);
 
   for (const origin of tokens) {
     const since = runs.get(origin) ?? batchNow;
     const isUnderWay = underWay.has(origin);
+    const waitingSince = waiting.get(origin);
 
     result.set(origin, {
       underWay: isUnderWay ? { since, seen: underWay.get(origin) ?? false } : null,
-      waiting: slot !== null && slot.origin === origin ? { since: slot.pressedAt } : null,
+      waiting: waitingSince === undefined ? null : { since: waitingSince },
     });
   }
 
@@ -810,6 +844,7 @@ function recordSearch(
 
   endSearch("forgotten");
   search = {
+    id: ++searchSeq,
     kind,
     direction,
     sentAt: now,
@@ -2527,6 +2562,78 @@ export function replaySearchCouldRunMs(): number | null {
   return Math.max(0, search.sentAt + search.couldRunMs - engineNow());
 }
 
+/** A search of the gate's on its way, as a replay step's start waits for it (#1660). */
+export interface ReplaySearchOnItsWay {
+  /** Its identity: a later record is a later search. */
+  readonly id: number;
+  /** How long it could still be running (ms). */
+  readonly couldRunMs: number;
+}
+
+/**
+ * The search a replay step waits for before it reads where it starts
+ * (#1660), or null: one the gate sent that has not landed and is still taken
+ * to be on its way, by the rule the gate settles it by, read without
+ * settling: seen on its way (a playing replay's frame standing still), or
+ * unseen and still inside the time it could be running. The same searches
+ * hold the replay through their seek ({@link seekHoldUntil}): a lap, session
+ * or incident search, and a go to start, whose landing is where the user
+ * sent the replay, so a step pressed during it chains from there instead of
+ * cancelling it with its jump. A go to end never counts: outside a saved
+ * replay it leaves the replay for the car, so there is no landing to step
+ * from.
+ */
+export function replaySearchOnItsWay(): ReplaySearchOnItsWay | null {
+  if (search === null || search.landed || !search.onItsWay || search.kind === "go-to-end") return null;
+
+  const couldRunMs = search.sentAt + search.couldRunMs - engineNow();
+
+  if (!search.seen && couldRunMs <= 0) return null;
+
+  return { id: search.id, couldRunMs: Math.max(0, couldRunMs) };
+}
+
+/**
+ * Puts up a waiting fact for `origin` (#1660): a press that waits for a
+ * search of the gate's to land before it reads where its replay step
+ * starts (`replay-record-walk.ts`'s `awaitReplayWalkStart`). It is a fact in
+ * the state seam only: it neither fills nor empties the slot, the table is
+ * unchanged, and nothing is sent by it, so the busy indicator shows the
+ * press's still mark as it does for a command waiting in the slot. Returns
+ * its handle for {@link closeReplayGateWait}; with no origin it shows
+ * nowhere.
+ */
+export function openReplayGateWait(origin: string | undefined): number {
+  const id = ++startWaitSeq;
+  const now = engineNow();
+
+  batch(now, () => {
+    startWaits.set(id, { origin, since: now });
+  });
+
+  return id;
+}
+
+/**
+ * Ends the waiting fact `id` for `reason` and runs `then` in the same change,
+ * so whatever the press sends in `then` takes over from its waiting fact in
+ * one notice: the busy indicator goes from the still mark straight to what
+ * was sent, with no rest drawn between. A completed or superseded reason
+ * shows no not-done; a handle already ended only runs `then`.
+ */
+export function closeReplayGateWait<T>(id: number, reason: ReplayGateEndReason, then: () => T): T {
+  return batch(engineNow(), () => {
+    const wait = startWaits.get(id);
+
+    if (wait !== undefined) {
+      startWaits.delete(id);
+      noteEnd(wait.origin, "waiting", reason);
+    }
+
+    return then();
+  });
+}
+
 /**
  * How the target with `id` ended (#1450): read back, given up, replaced and by
  * which target, cleared, or nothing moved. Null while it still stands, for an
@@ -2680,6 +2787,9 @@ export function _resetReplayCommandGate(): void {
 
   timer = null;
   search = null;
+  searchSeq = 0;
+  startWaits.clear();
+  startWaitSeq = 0;
   takeover = null;
   slot = null;
   held = null;
