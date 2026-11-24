@@ -57,6 +57,9 @@ export const SIM_NEUTRAL_PACKAGES = Object.freeze([
   'audio-assets',
   'track-data',
   'plugin-build',
+  // The icon gallery's relative reach into iracing-actions, which this block
+  // cannot see, is held sim-free by the runtime-closure check in
+  // scripts/cross-package-reach.test.mjs (#1662).
   'website',
 ]);
 const SIM_NEUTRAL_MESSAGE =

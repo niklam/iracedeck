@@ -48,12 +48,26 @@
 // NAMED_NOT_OPENED names the exact `packages/…` strings a test records or
 // compares as repo-relative names without opening them, with the same
 // staleness check.
+//
+// A reach out of a sim-neutral package must also stay sim-free (#1662). The
+// sim-neutral ESLint block (SIM_NEUTRAL_PACKAGES in eslint.config.js) matches
+// package specifiers, so a relative path launders a sim import past it: the
+// website's icon-gallery generator imported iracing-actions' dial renderers by
+// path, and they imported @iracedeck/iracing-sdk, whose native addon loads in
+// module scope. So every non-test source of a sim-neutral package whose module
+// imports leave its own package — ALLOWED's entries there, and the scripts that
+// import the root `scripts/lib/`, which no sim block lints — is a root, and the
+// files it loads at runtime are walked (`runtimeClosure`, whose comments state
+// each rule of the walk). The closure may load a workspace package only if that
+// package is sim-neutral; a failure names the chain of files that leads to the
+// import, so it says where to cut.
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
-import { isTestSource, moduleReferences, trackedPackageSources } from "./lib/source-imports.mjs";
+import { SIM_NEUTRAL_PACKAGES } from "../eslint.config.js";
+import { CODE, isTestSource, moduleReferences, packageOf, trackedPackageSources } from "./lib/source-imports.mjs";
 import { trackedPackageDirs } from "./lib/workspace-packages.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
@@ -84,7 +98,8 @@ const ALLOWED = {
     reason:
       "renders the website's icon gallery from the icon SVGs, the dial strips from iracing-actions' own render " +
       "functions and the action list from the Elgato manifest; the website declares iracing-actions for build " +
-      "ordering only, held by scripts/website-workspace-deps.test.mjs (#1458)",
+      "ordering only, held by scripts/website-workspace-deps.test.mjs (#1458). The website is sim-neutral, so the " +
+      "files this reach loads must stay sim-free: the runtime-closure check below holds it (#1662)",
   },
   "packages/diagnostics/src/cpu-profile-capture.test.ts": {
     reaches: ["app-constants"],
@@ -550,6 +565,226 @@ export function reachProblems(found, allowed, files, namedNotOpened = {}) {
   return problems;
 }
 
+/**
+ * The module specifiers `source` loads when it runs, and the module references
+ * it makes that this cannot follow (#1662). Read from TypeScript's syntax tree,
+ * so a comment or a string that merely mentions a package is no edge.
+ *
+ * What loads: `import … from`, `export … from` (`export *` included), a
+ * side-effect `import "x"`, `import x = require("x")`, and a dynamic
+ * `import("x")` or `require("x")` with a literal specifier. What does not:
+ * `import type`, `export type`, `import type x = require()` and the type
+ * `import("x").T`, which TypeScript and esbuild drop whatever the config.
+ *
+ * Any other import counts as loading, even when every name it binds is marked
+ * `type` (`import { type A } from "x"`) or none is used as a value. Whether
+ * those are dropped depends on the tsconfig governing the file: tsx applies the
+ * website's (Astro's `verbatimModuleSyntax`) to the website's own files, where
+ * `import { type A } from "x"` stays as `import {} from "x"` and loads `x`,
+ * and TypeScript's default to the files it reaches outside the website, where
+ * it is dropped (measured with the website's tsx on 2026-11-24). This check
+ * does not model which config governs which file, so it reads them as loading;
+ * the fix for a red it gives is `import type`. A mixed `import { type A, b }`
+ * loads under either.
+ *
+ * A dynamic import or `require` whose specifier is not a literal cannot be
+ * followed, so it is reported rather than skipped, and so is any module
+ * reference `ts.preProcessFile` finds that the tree walk did not classify:
+ * an edge this cannot read fails instead of passing unseen.
+ *
+ * @param {object} input
+ * @param {string} input.file repo-relative, `/`-separated
+ * @param {string} input.source
+ * @returns {{ loads: string[], unread: string[] }}
+ */
+export function runtimeImports({ file, source }) {
+  const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, scriptKind(file));
+  const loads = [];
+  const unread = [];
+  const classified = new Set();
+  const load = (literal) => {
+    classified.add(literal.getStart(sf));
+    loads.push(literal.text);
+  };
+  const typeOnly = (literal) => classified.add(literal.getStart(sf));
+
+  const visit = (node) => {
+    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+      (node.importClause?.isTypeOnly ? typeOnly : load)(node.moduleSpecifier);
+    } else if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+      (node.isTypeOnly ? typeOnly : load)(node.moduleSpecifier);
+    } else if (
+      ts.isImportEqualsDeclaration(node) &&
+      ts.isExternalModuleReference(node.moduleReference) &&
+      ts.isStringLiteralLike(node.moduleReference.expression)
+    ) {
+      (node.isTypeOnly ? typeOnly : load)(node.moduleReference.expression);
+    } else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)) {
+      typeOnly(node.argument.literal);
+    } else if (
+      ts.isCallExpression(node) &&
+      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+        (ts.isIdentifier(node.expression) && node.expression.text === "require"))
+    ) {
+      const [specifier] = node.arguments;
+
+      if (specifier && ts.isStringLiteralLike(specifier)) load(specifier);
+      else unread.push(`${node.getText(sf).replace(/\s+/g, " ")}, whose specifier is not a string literal`);
+    }
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sf);
+
+  for (const reference of moduleReferences(source)) {
+    if (reference.kind === "import" && !classified.has(reference.pos)) {
+      unread.push(`a reference to ${reference.specifier} in a form this check does not read`);
+    }
+  }
+
+  return { loads, unread };
+}
+
+/**
+ * The extensions a relative specifier's file may have, in the order TypeScript
+ * resolves them under `moduleResolution: "Bundler"` and tsx loads them: a `.js`
+ * specifier names the `.ts` source beside it, `.mjs` the `.mts`, `.cjs` the
+ * `.cts`. A `.d.ts` is never a candidate, since a declaration loads nothing.
+ */
+const SOURCE_EXTENSIONS = {
+  ".js": [".ts", ".tsx", ".js", ".jsx"],
+  ".jsx": [".tsx", ".jsx"],
+  ".mjs": [".mts", ".mjs"],
+  ".cjs": [".cts", ".cjs"],
+};
+
+/** What an extensionless specifier, or a folder's `index`, may be. */
+const EXTENSIONLESS = [".ts", ".tsx", ".js", ".jsx"];
+
+/**
+ * The repo-relative file a relative `specifier` in `fromFile` loads, or
+ * undefined when none exists (or the path climbs out of the repository): the
+ * first candidate `read` returns text for, in TypeScript's order. A specifier
+ * spelling another extension (`.ts`, `.mts`, `.json`) is tried as written first,
+ * then as extensionless, then as a folder holding an `index`.
+ *
+ * @param {string} fromFile
+ * @param {string} specifier
+ * @param {(file: string) => string | undefined} read
+ */
+export function resolveRuntimeFile(fromFile, specifier, read) {
+  const target = P.normalize(P.join(P.dirname(fromFile), specifier));
+
+  if (target === ".." || target.startsWith("../") || P.isAbsolute(target)) return undefined;
+  const ext = P.extname(target);
+  const candidates = SOURCE_EXTENSIONS[ext]?.map((to) => target.slice(0, -ext.length) + to) ?? [
+    target,
+    ...EXTENSIONLESS.map((to) => target + to),
+    ...EXTENSIONLESS.map((to) => `${target}/index${to}`),
+  ];
+
+  return candidates.find((candidate) => read(candidate) !== undefined);
+}
+
+/** A specifier with a URL scheme or an absolute path, which this cannot follow; `node:` is a builtin. */
+const UNFOLLOWABLE = /^(\/|\\|[a-z][a-z\d+.-]*:)/i;
+
+/**
+ * Walks the files `root` loads when it runs and reports every workspace
+ * package that closure loads which is not sim-neutral (#1662). Pure: `read`
+ * returns a repo-relative file's text, or undefined when there is no such file,
+ * so the controls need no disk.
+ *
+ * The rules of the walk:
+ *   * Only what loads at runtime is an edge, as `runtimeImports` reads it.
+ *   * A relative specifier is followed file by file, resolved as tsx would
+ *     (`resolveRuntimeFile`), across package boundaries too. One that resolves
+ *     to no file is a failure, not a skip: an instrument that drops what it
+ *     cannot read passes vacuously. A file that is not code (`.json`, `.svg`)
+ *     is a leaf.
+ *   * A workspace package's specifier (`@iracedeck/<name>[/sub]`) is checked by
+ *     the package's directory, mapped through each package.json's `name`, and is
+ *     not descended into. A sim-neutral package's own sources are held by the
+ *     ESLint block and its relative reaches out of itself by this same check,
+ *     so the induction holds without walking it; a non-sim-neutral one is the
+ *     failure. A specifier naming the `@iracedeck` scope but no workspace
+ *     package fails too.
+ *   * A bare third-party specifier (`zod`) and a Node builtin (`node:fs`, `fs`)
+ *     are ignored; an absolute path or other URL scheme cannot be followed and
+ *     fails.
+ * Each failure names the chain of files from `root` to the importing one, the
+ * first chain the breadth-first walk met, so it says where to cut.
+ *
+ * @param {object} input
+ * @param {string} input.root repo-relative, `/`-separated
+ * @param {(file: string) => string | undefined} input.read
+ * @param {Map<string, string>} input.packageDirs workspace package name → its directory under `packages/`
+ * @param {Set<string>} input.neutral the sim-neutral package directories
+ * @returns {{ visited: string[], problems: string[] }}
+ */
+export function runtimeClosure({ root, read, packageDirs, neutral }) {
+  const from = new Map([[root, null]]);
+  const queue = [root];
+  const problems = [];
+  const chain = (file) => {
+    const files = [];
+
+    for (let at = file; at !== null; at = from.get(at)) files.unshift(at);
+
+    return files.join(" → ");
+  };
+
+  if (read(root) === undefined) return { visited: [], problems: [`${root} does not exist`] };
+
+  while (queue.length > 0) {
+    const file = queue.shift();
+
+    if (!CODE.test(file)) continue;
+    const { loads, unread } = runtimeImports({ file, source: read(file) });
+
+    for (const what of unread) problems.push(`${chain(file)} makes ${what}: write it so it can be followed`);
+
+    for (const specifier of loads) {
+      if (RELATIVE_SPECIFIER.test(specifier)) {
+        const target = resolveRuntimeFile(file, specifier, read);
+
+        if (target === undefined) {
+          problems.push(`${chain(file)} imports ${specifier}, which resolves to no file in the repository`);
+        } else if (!from.has(target)) {
+          from.set(target, file);
+          queue.push(target);
+        }
+        continue;
+      }
+
+      if (UNFOLLOWABLE.test(specifier) && !specifier.startsWith("node:")) {
+        problems.push(`${chain(file)} imports ${specifier}, an absolute path or URL this check cannot follow`);
+        continue;
+      }
+
+      const name = packageOf(specifier);
+      const dir = name === null ? undefined : packageDirs.get(name);
+
+      if (dir === undefined) {
+        if (name?.startsWith("@iracedeck/")) {
+          problems.push(`${chain(file)} imports ${specifier}, which names no workspace package`);
+        }
+        continue;
+      }
+
+      if (!neutral.has(dir)) {
+        problems.push(
+          `${chain(file)} imports ${specifier}: packages/${dir}/ is not sim-neutral (SIM_NEUTRAL_PACKAGES in ` +
+            `eslint.config.js), so ${root} loads it at runtime. Cut the chain, or import only types from it ` +
+            "with `import type` (#1662)",
+        );
+      }
+    }
+  }
+
+  return { visited: [...from.keys()], problems };
+}
+
 const PACKAGES = new Set(trackedPackageDirs(ROOT));
 const FILES = trackedPackageSources(ROOT);
 
@@ -563,6 +798,52 @@ function scan(files = FILES) {
   }
 
   return found;
+}
+
+/** Workspace package name → its directory under `packages/`. */
+const PACKAGE_DIRS = new Map(
+  [...PACKAGES].map((dir) => [
+    JSON.parse(readFileSync(path.join(ROOT, "packages", dir, "package.json"), "utf-8")).name,
+    dir,
+  ]),
+);
+const NEUTRAL = new Set(SIM_NEUTRAL_PACKAGES);
+const GALLERY = "packages/website/scripts/generate-icon-gallery.mts";
+
+/** A repo-relative file's text as tsx would read it from disk, or undefined when there is no such file. */
+function readRepoFile(file) {
+  try {
+    return readFileSync(path.join(ROOT, file), "utf-8");
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The roots of the closure check (#1662): every non-test source of a
+ * sim-neutral package that names a module outside its own package by a
+ * relative path — ALLOWED's entries in those packages, and the scripts that
+ * import the root `scripts/lib/`, which no sim block lints. Inside its own
+ * package a relative import stays where the ESLint block holds every file.
+ *
+ * Tests (`isTestSource`) are out of scope: Vitest alone loads them, never a
+ * package's build or a plugin, and it loads them against the native mocks
+ * (`testing.md`). Their reaches read another package's files as text, a
+ * fixture or a manifest, or transpile one into a child process; none puts a
+ * sim package into what the package ships or builds. The ESLint block still
+ * refuses a sim specifier in them.
+ */
+function closureRoots() {
+  return FILES.filter((file) => NEUTRAL.has(file.split("/")[1]) && !isTestSource(file)).filter((file) => {
+    const own = `packages/${file.split("/")[1]}/`;
+
+    return moduleReferences(readRepoFile(file)).some(
+      ({ kind, specifier }) =>
+        kind === "import" &&
+        RELATIVE_SPECIFIER.test(specifier) &&
+        !P.normalize(P.join(P.dirname(file), specifier)).startsWith(own),
+    );
+  });
 }
 
 describe("no package reaches into another by a relative path (#1375)", () => {
@@ -589,6 +870,34 @@ describe("no package reaches into another by a relative path (#1375)", () => {
       expect(paths.length, file).toBeGreaterThan(0);
       expect(reason.length, file).toBeGreaterThan(20);
     }
+  });
+});
+
+describe("a sim-neutral package's reach out of itself loads no sim package at runtime (#1662)", () => {
+  const roots = closureRoots();
+  const walks = new Map(
+    roots.map((root) => [
+      root,
+      runtimeClosure({ root, read: readRepoFile, packageDirs: PACKAGE_DIRS, neutral: NEUTRAL }),
+    ]),
+  );
+
+  it("walks every non-test ALLOWED file of a sim-neutral package, the icon gallery deep into iracing-actions", () => {
+    const allowedNeutral = Object.keys(ALLOWED).filter(
+      (file) => NEUTRAL.has(file.split("/")[1]) && !isTestSource(file),
+    );
+
+    expect(PACKAGE_DIRS.size).toBe(PACKAGES.size);
+    expect(allowedNeutral).toContain(GALLERY);
+    expect(roots).toEqual(expect.arrayContaining(allowedNeutral));
+    const gallery = walks.get(GALLERY).visited;
+
+    expect(gallery.length).toBeGreaterThan(10);
+    expect(gallery.filter((file) => file.startsWith("packages/iracing-actions/")).length).toBeGreaterThan(5);
+  });
+
+  it("loads only sim-neutral workspace packages from each root", () => {
+    expect([...walks.values()].flatMap(({ problems }) => problems)).toEqual([]);
   });
 });
 
@@ -783,6 +1092,183 @@ describe("the check itself (positive controls)", () => {
     ).toEqual([
       expect.stringContaining(
         `${file} reaches into packages/deck-core/ by a relative path (packages/deck-core/src/dial-gesture.js)`,
+      ),
+    ]);
+  });
+});
+
+describe("the runtime-closure check itself (positive controls, #1662)", () => {
+  const ROOT_FILE = "packages/website/scripts/gallery.mts";
+  const packageDirs = new Map([
+    ["@iracedeck/deck-core", "deck-core"],
+    ["@iracedeck/iracing-actions", "iracing-actions"],
+    ["@iracedeck/iracing-sdk", "iracing-sdk"],
+    ["@iracedeck/website", "website"],
+  ]);
+  const neutral = new Set(["deck-core", "website"]);
+  /** The closure of ROOT_FILE over an in-memory tree: repo-relative path → source. */
+  const walk = (tree, root = ROOT_FILE) => runtimeClosure({ root, read: (file) => tree[file], packageDirs, neutral });
+  /** A tree whose root holds `source` and nothing else. */
+  const only = (source) => walk({ [ROOT_FILE]: source });
+
+  it("fails a two-hop relative chain into a file that imports a sim package, naming the chain", () => {
+    const { visited, problems } = walk({
+      [ROOT_FILE]: 'import { render } from "../../iracing-actions/src/a.ts";',
+      "packages/iracing-actions/src/a.ts": 'import { helper } from "./b.js";\nexport const render = helper;',
+      "packages/iracing-actions/src/b.ts":
+        'import { Flags } from "@iracedeck/iracing-sdk";\nexport const helper = Flags;',
+    });
+
+    expect(visited).toEqual([ROOT_FILE, "packages/iracing-actions/src/a.ts", "packages/iracing-actions/src/b.ts"]);
+    expect(problems).toEqual([
+      expect.stringMatching(
+        /^packages\/website\/scripts\/gallery\.mts → packages\/iracing-actions\/src\/a\.ts → packages\/iracing-actions\/src\/b\.ts imports @iracedeck\/iracing-sdk: packages\/iracing-sdk\/ is not sim-neutral/,
+      ),
+    ]);
+  });
+
+  it("fails every form that loads: a dynamic import, a side-effect import, a re-export, require and import =", () => {
+    for (const source of [
+      'const sdk = await import("@iracedeck/iracing-sdk");',
+      "const sdk = await import(`@iracedeck/iracing-sdk`);",
+      'import "@iracedeck/iracing-sdk/dist/setup.js";',
+      'export * from "@iracedeck/iracing-sdk";',
+      'export { Flags } from "@iracedeck/iracing-sdk";',
+      'export * as sdk from "@iracedeck/iracing-sdk";',
+      'const sdk = require("@iracedeck/iracing-sdk");',
+      'import sdk = require("@iracedeck/iracing-sdk");',
+      'import sdk from "@iracedeck/iracing-sdk";',
+      'import * as sdk from "@iracedeck/iracing-sdk";',
+      'import {} from "@iracedeck/iracing-sdk";',
+    ]) {
+      expect(only(source).problems, source).toEqual([expect.stringContaining("imports @iracedeck/iracing-sdk")]);
+    }
+  });
+
+  it("fails an import whose every name is marked type, as tsx keeps it under the website's verbatimModuleSyntax", () => {
+    // `import { type A } from "x"` stays as `import {} from "x"` in a file the website's tsconfig governs.
+    for (const source of [
+      'import { type Flags } from "@iracedeck/iracing-sdk";',
+      'import { type Flags, SessionState } from "@iracedeck/iracing-sdk";',
+      'export { type Flags } from "@iracedeck/iracing-sdk";',
+    ]) {
+      expect(only(source).problems, source).toEqual([expect.stringContaining("imports @iracedeck/iracing-sdk")]);
+    }
+  });
+
+  it("passes what loads nothing: import type, export type, a type import(), a comment and a string", () => {
+    const source = [
+      'import type { Flags } from "@iracedeck/iracing-sdk";',
+      'import type Sdk from "@iracedeck/iracing-sdk";',
+      'export type { Flags } from "@iracedeck/iracing-sdk";',
+      'export type * from "@iracedeck/iracing-sdk";',
+      'import type sdk = require("@iracedeck/iracing-sdk");',
+      'type T = import("@iracedeck/iracing-sdk").Flags;',
+      '// import { Flags } from "@iracedeck/iracing-sdk";',
+      '/* await import("@iracedeck/iracing-sdk"); */',
+      'const name = "@iracedeck/iracing-sdk";',
+      "const line = 'import \"@iracedeck/iracing-sdk\";';",
+      'const template = `require("@iracedeck/iracing-sdk")`;',
+    ].join("\n");
+
+    expect(only(source)).toEqual({ visited: [ROOT_FILE], problems: [] });
+  });
+
+  it("passes a sim-neutral workspace package without descending into it, and ignores third-party and builtins", () => {
+    const { visited, problems } = walk({
+      [ROOT_FILE]: [
+        'import { SimConnection } from "@iracedeck/deck-core";',
+        'import { x } from "@iracedeck/website/sub";',
+        'import { z } from "zod";',
+        'import fs from "node:fs";',
+        'import path from "path";',
+      ].join("\n"),
+      // Never read: deck-core is held by its own ESLint block.
+      "packages/deck-core/src/index.ts": 'import "@iracedeck/iracing-sdk";',
+    });
+
+    expect({ visited, problems }).toEqual({ visited: [ROOT_FILE], problems: [] });
+  });
+
+  it("fails a specifier it cannot follow: unresolvable, out of the repository, absolute, computed, or no package", () => {
+    const cases = {
+      'import { x } from "./missing.js";': "imports ./missing.js, which resolves to no file",
+      'import { x } from "../../../../outside.ts";': "imports ../../../../outside.ts, which resolves to no file",
+      'import { x } from "/abs/x.ts";': "an absolute path or URL",
+      'import { x } from "file:///C:/x.ts";': "an absolute path or URL",
+      "const m = await import(name);": "import(name), whose specifier is not a string literal",
+      "const m = require(name);": "require(name), whose specifier is not a string literal",
+      'import { x } from "@iracedeck/nope";': "imports @iracedeck/nope, which names no workspace package",
+    };
+
+    for (const [source, message] of Object.entries(cases)) {
+      expect(only(source).problems, source).toEqual([expect.stringContaining(message)]);
+    }
+  });
+
+  it("resolves a relative specifier as tsx does: .js to .ts, .mjs to .mts, extensionless, a folder's index", () => {
+    const sim = 'import "@iracedeck/iracing-sdk";';
+    const cases = [
+      ["./a.js", "packages/website/scripts/a.ts"],
+      ["./a.js", "packages/website/scripts/a.tsx"],
+      ["./a.js", "packages/website/scripts/a.js"],
+      ["./a.mjs", "packages/website/scripts/a.mts"],
+      ["./a.cjs", "packages/website/scripts/a.cts"],
+      ["./a", "packages/website/scripts/a.ts"],
+      ["./a.ts", "packages/website/scripts/a.ts"],
+      ["./dir", "packages/website/scripts/dir/index.ts"],
+      ["../src/a.js", "packages/website/src/a.ts"],
+    ];
+
+    for (const [specifier, file] of cases) {
+      const { visited, problems } = walk({ [ROOT_FILE]: `import "${specifier}";`, [file]: sim });
+
+      expect(visited, specifier).toEqual([ROOT_FILE, file]);
+      expect(problems, specifier).toEqual([
+        expect.stringContaining(`${ROOT_FILE} → ${file} imports @iracedeck/iracing-sdk`),
+      ]);
+    }
+
+    // A .d.ts loads nothing, so a specifier only it answers resolves to no file.
+    expect(walk({ [ROOT_FILE]: 'import "./a.js";', "packages/website/scripts/a.d.ts": "" }).problems).toEqual([
+      expect.stringContaining("imports ./a.js, which resolves to no file"),
+    ]);
+  });
+
+  it("treats a non-code file as a leaf, and walks a cycle once", () => {
+    const { visited, problems } = walk({
+      [ROOT_FILE]: 'import data from "./data.json";\nimport "./b.ts";',
+      "packages/website/scripts/data.json": '{ "import": "@iracedeck/iracing-sdk" }',
+      "packages/website/scripts/b.ts": `import "./gallery.mts";`,
+    });
+
+    expect(visited).toEqual([ROOT_FILE, "packages/website/scripts/data.json", "packages/website/scripts/b.ts"]);
+    expect(problems).toEqual([]);
+  });
+
+  it("fails a missing root rather than passing it empty", () => {
+    expect(walk({})).toEqual({ visited: [], problems: [`${ROOT_FILE} does not exist`] });
+  });
+
+  it("finds the import #1662 cut when it is put back into a real iracing-actions file the gallery loads", () => {
+    const closure = (read) => runtimeClosure({ root: GALLERY, read, packageDirs: PACKAGE_DIRS, neutral: NEUTRAL });
+    // The last iracing-actions file the real walk reaches: the deepest, so the planted chain has hops.
+    const file = closure(readRepoFile)
+      .visited.filter((at) => at.startsWith("packages/iracing-actions/"))
+      .at(-1);
+    const real = readRepoFile(file);
+    // iracing-native: no file the gallery loads imports it directly, before or after #1662.
+    const planted = `import { loadAddon } from "@iracedeck/iracing-native";\n${real}`;
+    const run = (source) =>
+      closure((at) => (at === file ? source : readRepoFile(at))).problems.filter((problem) =>
+        problem.includes(`${file} imports @iracedeck/iracing-native:`),
+      );
+
+    expect(file).toBeDefined();
+    expect(run(real)).toEqual([]);
+    expect(run(planted)).toEqual([
+      expect.stringMatching(
+        new RegExp(`^${GALLERY} → .*${file} imports @iracedeck/iracing-native: packages/iracing-native/`),
       ),
     ]);
   });
