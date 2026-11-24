@@ -68,6 +68,7 @@ import {
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
 import {
+  awaitReplayWalkStart,
   beginReplayJump,
   canJumpToRaceStart,
   describeReplayJump,
@@ -89,8 +90,8 @@ import {
   type ReplayPressResult,
   type ReplaySpeed,
   requestCameraSwitch,
-  resolveReplayWalkStart,
   runJumpToFrame,
+  type SettledReplayWalkStart,
   shownReplaySpeed,
 } from "@iracedeck/replay-engine";
 import { getReplaySessionStore, isReplaySessionStoreInitialized } from "@iracedeck/replay-store";
@@ -1010,18 +1011,50 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
    * through the record (`replay-record-step.ts`), measured from where the
    * replay is headed, else the cursor (`replay-engine`'s `replay-record-walk.ts`).
    *
+   * The start is `awaitReplayWalkStart`'s (#1660): the pending target while
+   * one stands; while a search of the plugin's is still on its way, its
+   * landing, which the press waits for with this key's still mark showing
+   * (the waiting fact carries its origin token); else the cursor. Everything
+   * the step decides and sends happens in {@link stepFromRecordStart}, run
+   * synchronously once the start is settled, so a second press waiting on the
+   * same search reads this one's target and steps on from it. A throw there
+   * is logged.
+   */
+  private pressRecordStep(
+    contextId: string,
+    mode: RecordStepMode,
+    press: (command: ReplayGateCommand) => ReplayPressResult,
+  ): void {
+    const step = RECORD_STEPS[mode];
+
+    void awaitReplayWalkStart(
+      () => this.sdkController.getReplayState(Date.now()),
+      () => this.sdkController.getCurrentTelemetry(),
+      (start) => this.stepFromRecordStart(contextId, mode, press, start),
+      { origin: contextId },
+    ).catch((error: unknown) => {
+      this.logger.error(`${step.label}: step failed: ${error instanceof Error ? error.message : String(error)}`);
+    });
+  }
+
+  /**
+   * The step of a Next / Previous Lap or Session press from its settled
+   * start (#1426, #1660), with the telemetry read now, since a press that
+   * waited for a search to land reads a later replay than the one it was
+   * pressed on. Everything it decides and sends happens before it returns;
+   * the jump's own wait runs on in the background.
+   *
    * - **Outside a replay** nothing is sent: iRacing honours replay commands
-   *   only out of the car. A standing target is a start either way
-   *   (`resolveReplayWalkStart`).
-   * - **No cursor** to step from — no standing target, and a tick still
-   *   reading mid-seek once the exit grace is over (a seek not of the
-   *   plugin's, or a rest state whose flag reads false in a saved replay) —
-   *   is a miss like the record's own: a step from there would send the
+   *   only out of the car. A standing target is a start either way.
+   * - **No cursor** to step from — no standing target, no search of the
+   *   plugin's on its way, and a tick still reading mid-seek past the exit
+   *   grace and the seek hold (a seek not of the plugin's in a saved replay)
+   *   — is a miss like the record's own: a step from there would send the
    *   list's first entry, so the key's search goes instead, through the gate,
    *   which holds it while a seek shows.
    * - **A hit** is one waited record jump to the landing frame
-   *   (`beginReplayJump` at the press, its frame recorded as the target before
-   *   its pause, then `runReplayJump`, `jump.end()` in a `finally`), carrying
+   *   (`beginReplayJump` here, its frame recorded as the target before its
+   *   pause, then `runJumpToFrame`, `jump.end()` in a `finally`), carrying
    *   this key's origin token. Claiming the cursor cancels a Jump to Fastest
    *   Lap walk in flight. No camera switch: a lap list is the viewed car's, a
    *   session belongs to everyone. The speeds the jump sends reach the keys
@@ -1030,15 +1063,13 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
    *   before, with its origin token: the gate holds it behind a jump or a
    *   search of the plugin's that is still under way.
    */
-  private pressRecordStep(
+  private stepFromRecordStart(
     contextId: string,
     mode: RecordStepMode,
     press: (command: ReplayGateCommand) => ReplayPressResult,
+    start: SettledReplayWalkStart,
   ): void {
     const step = RECORD_STEPS[mode];
-    const now = Date.now();
-    const telemetry = this.sdkController.getCurrentTelemetry();
-    const start = resolveReplayWalkStart(this.sdkController.getReplayState(now), telemetry);
 
     if (start.frame === null && start.reason === "not in a replay") {
       this.logger.debug(`${step.label}: ${start.reason}; nothing sent`);
@@ -1059,6 +1090,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       return;
     }
 
+    const telemetry = this.sdkController.getCurrentTelemetry();
     const anchor = start.frame;
     const found = findRecordStep(step, anchor, this.recordStepSource(telemetry));
 
@@ -1074,7 +1106,10 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
 
     this.logger.debug(`${step.label}: record HIT (${found.what}); from ${start.from} frame ${anchor} to ${frame}`);
 
-    const jump = beginReplayJump(`replay-control-${mode}`, telemetry, undefined, now, { frame, origin: contextId });
+    const jump = beginReplayJump(`replay-control-${mode}`, telemetry, undefined, Date.now(), {
+      frame,
+      origin: contextId,
+    });
 
     void (async () => {
       try {

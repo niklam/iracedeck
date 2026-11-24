@@ -8,8 +8,11 @@
  * A Lap or Session turn of `ticks` detents is one walk of `|ticks|` entries
  * through the record and **one** waited jump to the entry it reaches; a turn
  * made while that jump is still under way walks on from where it is headed,
- * because the surface measures the walk from the replay's pending target. A
- * record that runs out part-way jumps as far as it reaches and drops the rest.
+ * because the surface measures the walk from the replay's pending target, and
+ * one made while another search of the plugin's is on its way — a key's, or
+ * this dial's for another mode — waits for its landing and steps from there
+ * (#1660). A record that runs out part-way jumps as far as it reaches and
+ * drops the rest.
  * A record with nothing that way — no store, no car, a gap, the end of what
  * it holds — hands the whole turn to the paced search
  * (`replay-search-queue.ts`), and so does every turn made while that search
@@ -131,35 +134,49 @@ export function createRecordStepMode(config: RecordStepModeConfig): ReplayDialMo
     rotateDescription: config.rotateDescription,
 
     rotate(ticks, _dial, io) {
-      if (io.isSearchRunning(target)) {
+      /** Adds the turn to the paced search working for this mode, when one is: true when it did. */
+      const addToRun = (): boolean => {
+        if (!io.isSearchRunning(target)) return false;
+
         io.logger.info(`${logLabel}: added to the search under way`);
         io.logger.debug(`${logLabel}: ticks=${ticks}; the search is working for ${target}, so the record is not asked`);
         io.queueSearch(owner, target, ticks);
 
-        return;
-      }
+        return true;
+      };
+
+      // A turn during the mode's own paced run goes to its count before any
+      // start is read, so it never waits for that run's own searches to land.
+      if (addToRun()) return;
 
       const wanted = Math.abs(ticks);
       const step = ticks > 0 ? steps.next : steps.previous;
-      const found = io.recordStep(step, wanted);
 
-      if (!found.hit) {
-        io.logger.info(`${logLabel}: stepping by iRacing's search`);
+      // The step is taken from the start the surface settles (#1660): at once,
+      // or once a search of the plugin's on its way has landed. A turn that
+      // waited, behind an earlier turn whose miss has since started this
+      // mode's run, adds to that run as a turn made now would.
+      return io.recordStep(step, wanted, (found) => {
+        if (addToRun()) return;
+
+        if (!found.hit) {
+          io.logger.info(`${logLabel}: stepping by iRacing's search`);
+          io.logger.debug(
+            `${logLabel}: ticks=${ticks}, record MISS (${found.reason}); the whole turn goes to the search`,
+          );
+          io.queueSearch(owner, target, ticks);
+
+          return;
+        }
+
+        io.logger.info(`${logLabel}: jumping by the record`);
         io.logger.debug(
-          `${logLabel}: ticks=${ticks}, record MISS (${found.reason}); the whole turn goes to the search`,
+          `${logLabel}: ticks=${ticks}, record HIT (${found.what}); ${found.steps} of ${wanted} steps to frame ${found.frame}` +
+            (found.steps < wanted ? "; the record ran out, the rest is dropped" : ""),
         );
-        io.queueSearch(owner, target, ticks);
 
-        return;
-      }
-
-      io.logger.info(`${logLabel}: jumping by the record`);
-      io.logger.debug(
-        `${logLabel}: ticks=${ticks}, record HIT (${found.what}); ${found.steps} of ${wanted} steps to frame ${found.frame}` +
-          (found.steps < wanted ? "; the record ran out, the rest is dropped" : ""),
-      );
-
-      return io.recordJump(owner, found.frame);
+        return io.recordJump(owner, found.frame);
+      });
     },
 
     view(_dial, io) {

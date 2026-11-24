@@ -5,6 +5,7 @@ import {
   getAllCarNumbers,
   getCarNumberFromSessionInfo,
   getCarNumberRawFromSessionInfo,
+  REPLAY_EXIT_GRACE_MS,
   type ReplayPosMode,
   replaySpeedToSdk,
   type TelemetryData,
@@ -3414,6 +3415,81 @@ describe("ReplayControl", () => {
 
       expect(sim.calls.slice(from)).toEqual(["nextSession"]);
       expect(sim.thrown).toBe(0);
+    });
+
+    describe("a press made while a search of the plugin's is on its way waits for its landing (#1660)", () => {
+      /** Where the Next Session search lands: 5 000 frames on, in 1.5 s, past the exit grace. */
+      const LANDING = START + 5_000;
+
+      /** A Next Session key whose record misses, so its press sends iRacing's search; it is on its way past the grace. */
+      async function searchOnItsWay(): Promise<void> {
+        setUp({ minSeekMs: 1_500, searches: { nextSession: (from) => from + 5_000 } });
+        store.sessions.list.mockImplementation(() => ({ hit: false, reason: "no file" }));
+
+        await pressKey("ctx-session", "next-session");
+        await vi.advanceTimersByTimeAsync(REPLAY_EXIT_GRACE_MS + 100);
+
+        expect(sim.calls).toEqual(["nextSession"]);
+        expect(sim.busy()).toBe(true);
+      }
+
+      it("a Next Lap steps from the landing, not from the frame the replay left, and lets the search land", async () => {
+        await searchOnItsWay();
+
+        await pressKey("ctx-lap", "next-lap");
+
+        // Nothing goes out into the search: the press waits.
+        expect(sim.calls).toEqual(["nextSession"]);
+
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        // From 105 000 the next lap start is 106 000; from 100 000 it would have been 103 000.
+        expect(seeks()).toEqual([106_000 - 60]);
+        expect(sim.frame()).toBe(106_000 - 60);
+        expect(sim.thrown).toBe(0);
+        expect(action["logger"].debug).toHaveBeenCalledWith(
+          `Next lap: record HIT (4 lap starts of carIdx ${CAM_CAR}); from cursor frame ${LANDING} to ${106_000 - 60}`,
+        );
+      });
+
+      it("two quick presses during one search step twice from its landing, the second from the first's target", async () => {
+        await searchOnItsWay();
+
+        await pressKey("ctx-lap", "next-lap");
+        await pressKey("ctx-lap", "next-lap");
+        await vi.advanceTimersByTimeAsync(10_000);
+
+        expect(seeks()).toEqual([106_000 - 60, 109_000 - 60]);
+        expect(sim.frame()).toBe(109_000 - 60);
+        expect(sim.thrown).toBe(0);
+      });
+
+      it("the waiting press shows as waiting on its key, and hands over to its jump", async () => {
+        await searchOnItsWay();
+
+        await pressKey("ctx-lap", "next-lap");
+
+        expect(getReplayGateView("ctx-lap")).toMatchObject({ waiting: { since: expect.any(Number) }, underWay: null });
+
+        await vi.advanceTimersByTimeAsync(1_000);
+
+        // Landed: the wait is over, and the key's jump is under way in its place.
+        expect(getReplayGateView("ctx-lap").waiting).toBeNull();
+        expect(getReplayGateView("ctx-lap").underWay).not.toBeNull();
+      });
+
+      it("a step that throws once its start settles is logged, not left unhandled", async () => {
+        await searchOnItsWay();
+        store.laps.listLapStarts.mockImplementation(() => {
+          throw new Error("store gone");
+        });
+
+        await pressKey("ctx-lap", "next-lap");
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(action["logger"].error).toHaveBeenCalledWith("Next lap: step failed: store gone");
+        expect(seeks()).toEqual([]);
+      });
     });
 
     it.each(["next-lap", "prev-lap", "next-session", "prev-session"])(

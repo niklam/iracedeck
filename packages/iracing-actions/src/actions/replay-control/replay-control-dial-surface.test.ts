@@ -3220,6 +3220,94 @@ describe("ReplayControlDialSurface", () => {
         expect(queue.turns).toEqual([{ target: "lap", ticks: 2, origin: ctx.id, owner: "dial-lap" }]);
       });
 
+      describe("a turn made while a search of the plugin's is on its way (#1660)", () => {
+        /** A key's Next Session search from 54 000, on a paused replay, still on its way past the exit grace. */
+        async function keySearchOnItsWay(): Promise<void> {
+          pressReplayCommand({ kind: "search", search: "nextSession" }, { by: "next-session", origin: "key-1" });
+          await vi.advanceTimersByTimeAsync(REPLAY_EXIT_GRACE_MS + 100);
+
+          expect(mocks.nextSession).toHaveBeenCalledOnce();
+        }
+
+        it("waits, with the dial's still mark, and steps from the landing, not from the frame the replay left", async () => {
+          withRecord();
+          const { surface, ctx, d } = await dialIn("lap", pausedOn(54_000));
+
+          await keySearchOnItsWay();
+          surface.rotate(ctx as never, d, 1, false);
+
+          expect(seeks()).toEqual([]);
+          expect(getReplayGateView(ctx.id).waiting).not.toBeNull();
+
+          // The search lands at 61 000.
+          env.telemetry = pausedOn(61_000);
+          await vi.advanceTimersByTimeAsync(500);
+
+          // From 61 000 the next lap start is 62 000; from 54 000 it would have been 56 000.
+          expect(seeks()).toEqual([62_000 - 60]);
+          expect(getReplayGateView(ctx.id).waiting).toBeNull();
+          expect(queue.turns).toEqual([]);
+        });
+
+        it("two turns during one search step twice from its landing, the second from the first's target", async () => {
+          withRecord();
+          const { surface, ctx, d } = await dialIn("lap", pausedOn(54_000));
+
+          await keySearchOnItsWay();
+          surface.rotate(ctx as never, d, 1, false);
+          surface.rotate(ctx as never, d, 1, false);
+          env.telemetry = pausedOn(61_000);
+          await vi.advanceTimersByTimeAsync(500);
+
+          expect(seeks()).toEqual([62_000 - 60, 65_000 - 60]);
+        });
+
+        it("a turn the record has no step for from the landing goes to the paced search then", async () => {
+          withRecord(LAP_STARTS.slice(0, 4));
+          const { surface, ctx, d } = await dialIn("lap", pausedOn(54_000));
+
+          await keySearchOnItsWay();
+          surface.rotate(ctx as never, d, 1, false);
+
+          expect(queue.turns).toEqual([]);
+
+          env.telemetry = pausedOn(61_000);
+          await vi.advanceTimersByTimeAsync(500);
+
+          expect(seeks()).toEqual([]);
+          expect(queue.turns).toEqual([{ target: "lap", ticks: 1, origin: ctx.id, owner: "dial-lap" }]);
+        });
+
+        it("a turn during the mode's own paced run goes to its count at once, without waiting for its search", async () => {
+          withRecord();
+          const { surface, ctx, d } = await dialIn("lap", pausedOn(54_000));
+
+          // The run's own search, out through the gate under the dial's token.
+          queue.running = "lap";
+          pressReplayCommand({ kind: "search", search: "nextLap" }, { by: "dial-lap", origin: ctx.id });
+          surface.rotate(ctx as never, d, 2, false);
+
+          expect(queue.turns).toEqual([{ target: "lap", ticks: 2, origin: ctx.id, owner: "dial-lap" }]);
+          expect(seeks()).toEqual([]);
+        });
+
+        it("a turn whose replay was left while it waited sends nothing", async () => {
+          withRecord();
+          const { surface, ctx, d } = await dialIn("lap", pausedOn(54_000));
+
+          await keySearchOnItsWay();
+          surface.rotate(ctx as never, d, 1, false);
+          env.inReplay = false;
+          await vi.advanceTimersByTimeAsync(5_000);
+
+          expect(seeks()).toEqual([]);
+          expect(queue.turns).toEqual([]);
+          expect(logger.debug).toHaveBeenCalledWith(
+            "Replay control dial: Next lap x1: the replay was left; nothing sent",
+          );
+        });
+      });
+
       it.each(["lap", "session", "incident", "track-order"])("a %s turn from the car sends nothing", async (mode) => {
         withRecord();
         const { surface, ctx, d } = await dialIn(mode, pausedOn(54_000));

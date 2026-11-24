@@ -8,6 +8,7 @@ import type { TelemetryData } from "@iracedeck/iracing-sdk";
 import {
   type RecordStepResult,
   type RecordStepSource,
+  type RecordStepSpec,
   type ReplayPosition,
   type ReplaySettledOutcome,
 } from "@iracedeck/replay-engine";
@@ -49,17 +50,25 @@ export function sessionsAt(frames: number[]): ReplaySessionStart[] {
   return frames.map((frame, i) => ({ sessionNum: i, sessionUniqueId: 1, frame }));
 }
 
-/** The fake `io`, its members typed as the mocks they are. */
+/**
+ * The fake `io`, its members typed as the mocks they are, and `recordStepFound`:
+ * what its `recordStep` hands the turn's `act` (#1660), at once, as the surface
+ * does when no search is on its way.
+ */
 export type FakeStepIo = {
   [K in keyof ReplayDialStepIo]: ReplayDialStepIo[K] extends (...args: infer A) => infer R
     ? Mock<(...args: A) => R>
     : ReplayDialStepIo[K];
-};
+} & { readonly recordStepFound: Mock<(step: RecordStepSpec, steps: number) => RecordStepResult> };
 
 /** A fake `io`: a paused replay at frame 5000, no record, no search, bindings set, no jump under way, no race order. */
 export function fakeStepIo(): FakeStepIo {
   const paused: ReplaySpeed = { speed: 0, slowMotion: false };
   const at: ReplayPosition = { frame: 5_000, time: 83.5, endFrame: 100_000, seeking: false };
+  const recordStepFound = vi.fn((_step: RecordStepSpec, _steps: number): RecordStepResult => ({
+    hit: false,
+    reason: "no store",
+  }));
 
   return {
     logger: { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
@@ -71,7 +80,12 @@ export function fakeStepIo(): FakeStepIo {
     step: vi.fn((_owner: string, _direction: 1 | -1) => true),
     jumpTo: vi.fn((_owner: string, _frame: number) => true),
     recordJump: vi.fn((_owner: string, _frame: number) => Promise.resolve()),
-    recordStep: vi.fn((): RecordStepResult => ({ hit: false, reason: "no store" })),
+    recordStepFound,
+    // The start settled at once: `act` runs within the call, with what `recordStepFound` answers.
+    recordStep: vi.fn(
+      async (step: RecordStepSpec, steps: number, act: (found: RecordStepResult) => Promise<void> | void) =>
+        act(recordStepFound(step, steps)),
+    ),
     recordSource: vi.fn(() => recordSource(null, null)),
     sessionInfo: vi.fn((): unknown => null),
     queueSearch: vi.fn(),

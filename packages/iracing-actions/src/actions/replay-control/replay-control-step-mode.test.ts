@@ -190,11 +190,11 @@ describe.each([
   it.each([1, 5])("of %i detents makes one waited jump to the entry the record step reaches", async (ticks) => {
     const io = fakeStepIo();
 
-    io.recordStep.mockReturnValue({ hit: true, frame: 61_000, steps: ticks, what: "starts" });
+    io.recordStepFound.mockReturnValue({ hit: true, frame: 61_000, steps: ticks, what: "starts" });
 
     await mode.rotate(ticks, dial, io);
 
-    expect(io.recordStep).toHaveBeenCalledExactlyOnceWith(next, ticks);
+    expect(io.recordStep).toHaveBeenCalledExactlyOnceWith(next, ticks, expect.any(Function));
     expect(io.recordJump).toHaveBeenCalledExactlyOnceWith(owner, 61_000);
     expect(io.queueSearch).not.toHaveBeenCalled();
   });
@@ -202,10 +202,10 @@ describe.each([
   it("counter-clockwise walks the previous way, |ticks| entries", () => {
     const io = fakeStepIo();
 
-    io.recordStep.mockReturnValue({ hit: true, frame: 1_000, steps: 3, what: "starts" });
+    io.recordStepFound.mockReturnValue({ hit: true, frame: 1_000, steps: 3, what: "starts" });
     void mode.rotate(-3, dial, io);
 
-    expect(io.recordStep).toHaveBeenCalledExactlyOnceWith(previous, 3);
+    expect(io.recordStep).toHaveBeenCalledExactlyOnceWith(previous, 3, expect.any(Function));
     expect(io.recordJump).toHaveBeenCalledExactlyOnceWith(owner, 1_000);
   });
 
@@ -213,7 +213,7 @@ describe.each([
     const io = fakeStepIo();
     let land!: () => void;
 
-    io.recordStep.mockReturnValue({ hit: true, frame: 61_000, steps: 1, what: "starts" });
+    io.recordStepFound.mockReturnValue({ hit: true, frame: 61_000, steps: 1, what: "starts" });
     io.recordJump.mockReturnValue(new Promise<void>((resolve) => (land = resolve)));
 
     const turn = mode.rotate(1, dial, io);
@@ -231,7 +231,7 @@ describe.each([
   it("with a record that ran out part-way jumps as far as it reaches and drops the rest", () => {
     const io = fakeStepIo();
 
-    io.recordStep.mockReturnValue({ hit: true, frame: 70_000, steps: 2, what: "starts" });
+    io.recordStepFound.mockReturnValue({ hit: true, frame: 70_000, steps: 2, what: "starts" });
     void mode.rotate(5, dial, io);
 
     expect(io.recordJump).toHaveBeenCalledExactlyOnceWith(owner, 70_000);
@@ -244,7 +244,7 @@ describe.each([
     (reason) => {
       const io = fakeStepIo();
 
-      io.recordStep.mockReturnValue({ hit: false, reason });
+      io.recordStepFound.mockReturnValue({ hit: false, reason });
       void mode.rotate(-4, dial, io);
 
       expect(io.queueSearch).toHaveBeenCalledExactlyOnceWith(owner, target, -4);
@@ -267,10 +267,29 @@ describe.each([
     const io = fakeStepIo();
 
     io.isSearchRunning.mockImplementation((t) => t === "incident");
-    io.recordStep.mockReturnValue({ hit: true, frame: 61_000, steps: 1, what: "starts" });
+    io.recordStepFound.mockReturnValue({ hit: true, frame: 61_000, steps: 1, what: "starts" });
     void mode.rotate(1, dial, io);
 
     expect(io.recordJump).toHaveBeenCalledOnce();
     expect(io.queueSearch).not.toHaveBeenCalled();
+  });
+
+  it("whose start waited, while an earlier turn's miss started this target's search, goes to its count (#1660)", async () => {
+    const io = fakeStepIo();
+    let running = false;
+
+    io.isSearchRunning.mockImplementation((t) => running && t === target);
+    io.recordStepFound.mockReturnValue({ hit: true, frame: 61_000, steps: 2, what: "starts" });
+    // The surface settles the start later, once the run has started meanwhile.
+    io.recordStep.mockImplementation(async (step, steps, act) => {
+      running = true;
+
+      return act(io.recordStepFound(step, steps));
+    });
+
+    await mode.rotate(2, dial, io);
+
+    expect(io.queueSearch).toHaveBeenCalledExactlyOnceWith(owner, target, 2);
+    expect(io.recordJump).not.toHaveBeenCalled();
   });
 });
