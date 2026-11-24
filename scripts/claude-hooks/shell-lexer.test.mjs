@@ -1904,21 +1904,22 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
       expect(lexer.cwdAt("cd ../ir-5 | cat; pnpm x", MASTER, 18)).toBe(MASTER);
     });
 
-    // A lastpipe the hook cannot see (a profile, BASH_ENV) runs the final stage in the shell itself.
     // Whether bash runs a final stage in itself (`lastpipe`, no job control)
-    // the hook cannot see: a profile or BASH_ENV may set it (CodeRabbit on PR #1788).
-    it("leaves a pipeline's final-stage cd unknown unless lastpipe is set here, and follows no other stage's", () => {
+    // the hook cannot see: a profile or BASH_ENV may set it, and a `shopt` in
+    // the command may come after the pipeline (CodeRabbit on PR #1788, the
+    // CodeRabbit CLI at ef788cc00).
+    it("leaves a pipeline's final-stage cd unknown, lastpipe or not, and follows no other stage's", () => {
       expect(lexer.dirAfter([bash("true | cd ../ir-5; ")], MASTER)).toBeUndefined();
-      expect(lexer.dirAfter([bash("true | cd ../ir-5; ")], MASTER, true)).toBe(tree("ir-5"));
-      expect(lexer.dirAfter([bash("shopt -s lastpipe; true | cd ../ir-5; ")], MASTER)).toBe(tree("ir-5"));
+      expect(lexer.dirAfter([bash("shopt -s lastpipe; true | cd ../ir-5; ")], MASTER)).toBeUndefined();
       expect(lexer.dirAfter([bash("shopt -s lastpipe; cd ../ir-5 | cat; ")], MASTER)).toBe(MASTER);
       const where = (c) => [...lexer.chainCommands(c, MASTER, cmd(/pnpm\b/))].map(({ base, lost }) => ({ base, lost }));
       expect(where("true | cd ../ir-5; pnpm x")).toEqual([{ base: tree("ir-5"), lost: true }]);
       expect(where("bash -c 'true | cd ../ir-5; pnpm x'")).toEqual([{ base: MASTER, lost: true }]);
-      expect(where("shopt -s lastpipe; true | cd ../ir-5; pnpm x")).toEqual([{ base: tree("ir-5"), lost: undefined }]);
+      expect(where("shopt -s lastpipe; true | cd ../ir-5; pnpm x")).toEqual([{ base: tree("ir-5"), lost: true }]);
+      expect(where("true | cd ../ir-5; shopt -s lastpipe; pnpm x")).toEqual([{ base: tree("ir-5"), lost: true }]);
       expect(where("true | cd ../ir-5 | cat; pnpm x")).toEqual([{ base: MASTER, lost: undefined }]);
       expect(lexer.cwdAt("true | cd ../ir-5; pnpm x", MASTER, 19)).toBeUndefined();
-      expect(lexer.cwdAt("shopt -s lastpipe; true | cd ../ir-5; pnpm x", MASTER, 38)).toBe(tree("ir-5"));
+      expect(lexer.cwdAt("shopt -s lastpipe; true | cd ../ir-5; pnpm x", MASTER, 38)).toBeUndefined();
     });
   });
 

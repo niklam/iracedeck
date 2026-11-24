@@ -6588,22 +6588,29 @@ describe("a carried merge or tag push behind a quoted lead value (#1646)", () =>
     });
 
     // A shell without job control runs a pipeline's final stage in itself
-    // under `shopt -s lastpipe`; set here, a cd there moves on, and otherwise,
-    // since a profile or BASH_ENV the hook cannot see may set it, the tree is
-    // unknown (CodeRabbit CLI at 6146b0d79, CodeRabbit on PR #1788).
-    it.each([
-      "shopt -s lastpipe; true | cd ../ir-integration; pnpm dev:voices",
-      "bash -c 'shopt -s lastpipe; true | cd ../ir-integration; pnpm dev:voices'",
-      String.raw`printf 'shopt -s lastpipe; true | cd %s; pnpm %s\n' ../ir-integration dev:voices | bash`,
-    ])("follows a final-stage cd under an explicit lastpipe: %s", (c) => expect(asks(c, linked)).toMatch(there));
-
+    // under `shopt -s lastpipe`, which a profile or BASH_ENV the hook cannot
+    // see may set, and a `shopt` in the command may come after the pipeline,
+    // so a final-stage cd always leaves the tree unknown (CodeRabbit on PR
+    // #1788, the CodeRabbit CLI at ef788cc00).
     it.each([
       "true | cd ../ir-integration; pnpm dev:voices",
       "export SHELLOPTS; true | cd ../ir-integration; pnpm dev:voices",
+      "shopt -s lastpipe; true | cd ../ir-integration; pnpm dev:voices",
+      "true | cd ../ir-integration; shopt -s lastpipe; pnpm dev:voices",
+      "bash -c 'shopt -s lastpipe; true | cd ../ir-integration; pnpm dev:voices'",
       "cd ../ir-integration && ls | cd ../ir-5; pnpm dev:voices",
     ])("refuses dev:voices after a final-stage cd it cannot follow: %s", (c) =>
       expect(deny(c, linked)).toMatch(/leaves unknown/),
     );
+
+    // Read in printf output, a lost runner keeps its decoded hit, and is refused for that.
+    it("refuses a decoded dev:voices after a final-stage cd, lastpipe or not", () =>
+      expect(
+        deny(
+          String.raw`printf 'shopt -s lastpipe; true | cd %s; pnpm %s\n' ../ir-integration dev:voices | bash`,
+          linked,
+        ),
+      ).toMatch(/reads its words differently/));
 
     it("passes a command whose tree decides nothing after a final-stage cd", () =>
       passes("ls | cd ../ir-integration; pnpm test", linked));

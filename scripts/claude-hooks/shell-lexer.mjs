@@ -3314,9 +3314,6 @@ const DIR_CHANGE = /^\s*(?:\w+=\S*\s+)*(cd|pushd|popd|chdir|sl|set-location|push
 const NESTED_DIR_CHANGE =
   /^\s*(?:(?:[({!]|then|else|elif|do|if|while|until|time)\s*)+(?:\w+=\S*\s+)*(?:cd|pushd|popd|chdir|sl|set-location|push-location|pop-location)(?=\s|$)/i;
 
-/** An explicit `shopt -s … lastpipe`: a pipeline's final stage then runs in the shell itself ({@link cdSteps}). */
-const EXPLICIT_LASTPIPE = /\bshopt\s+-s\b[^;&|\n]*\blastpipe\b/;
-
 /**
  * What each `cd` among the chain segments of `text` does to the directory of
  * the shell reading `text` (#1646, CodeRabbit on PR #1788): `{ ranges, seps,
@@ -3329,8 +3326,8 @@ const EXPLICIT_LASTPIPE = /\bshopt\s+-s\b[^;&|\n]*\blastpipe\b/;
  *   `||`), so it moves only a command reached from it through `&&` alone.
  * - `"final"`: the final stage of a pipeline, which bash runs in the shell
  *   itself only under `lastpipe` without job control, neither of which the
- *   hook can see (a profile or `BASH_ENV` may set them), so the directory is
- *   unknown after it — unless `lastpipe` is set explicitly here.
+ *   hook can see (a profile or `BASH_ENV` may set them; a `shopt` in the
+ *   command may come after the pipeline), so the directory is unknown after it.
  * - `"lost"`: one whose directory cannot be known — it expands (`cd "$X"`),
  *   steps through history (`cd -`), has no directory or has options, is a
  *   `popd`, sits inside a compound command whose extent the segment does not
@@ -3382,13 +3379,13 @@ function cdSteps(text, shell, strict) {
 /**
  * The directory a shell starting in `base` is in at segment `upTo` of `text`
  * ({@link cdSteps}, every segment before it), or `undefined` where it cannot
- * be known: a `"lost"` step, a `"final"` one without `lastpipe`, or a
+ * be known: a `"lost"` or `"final"` step, or a
  * `"cond"` one not followed by `&&` alone up to `upTo` — so `false && cd x;
  * pnpm …` is unknown, and `cd x && pnpm …` and `true && cd x && pnpm …` run
  * in `x`. `loose` follows every step that names a directory and skips the
  * rest, never `undefined`: the fallback a lost command keeps.
  */
-function dirThrough({ seps, steps }, upTo, base, shell, lastpipe, loose = false) {
+function dirThrough({ seps, steps }, upTo, base, shell, loose = false) {
   let dir = base;
   for (let k = 0; k < upTo; k++) {
     const step = steps[k];
@@ -3397,8 +3394,7 @@ function dirThrough({ seps, steps }, upTo, base, shell, lastpipe, loose = false)
       dir = resolveDir(dir, step.to, { shell });
       continue;
     }
-    if (step.kind === "lost") return undefined;
-    if (step.kind === "final" && !lastpipe) return undefined;
+    if (step.kind === "lost" || step.kind === "final") return undefined;
     if (step.kind === "cond" && !seps.slice(k, upTo).every((s) => s === "&&")) return undefined;
     dir = resolveDir(dir, step.to, { shell });
   }
@@ -3418,16 +3414,15 @@ const PUSHD_RE = new RegExp(
  * read strictly ({@link cdSteps}), through the line's end, where the next
  * line's string or the command itself is handed over ({@link dirThrough}).
  * `undefined` where the directory cannot be known, so the caller judges the
- * command lost rather than in the wrong tree. `lastpipe`: set explicitly in
- * the command, so a final stage's `cd` moves on.
+ * command lost rather than in the wrong tree.
  */
-export function dirAfter(lines, base, lastpipe = false) {
+export function dirAfter(lines, base) {
   let dir = base;
   for (const { text, shell } of lines) {
     if (!/(?:cd|pushd|popd|chdir|sl|location)\b/i.test(text)) continue;
     const steps = cdSteps(text, shell, true);
     // Through the last segment, which holds the word handing the next string over, or the command.
-    dir = dirThrough(steps, steps.ranges.length - 1, dir, shell, lastpipe || EXPLICIT_LASTPIPE.test(text));
+    dir = dirThrough(steps, steps.ranges.length - 1, dir, shell);
     if (dir === undefined) return undefined;
   }
   return dir;
@@ -3532,11 +3527,10 @@ export function cwdAt(command, cwd, index, shell = BASH) {
  */
 function typedDirAt(command, cwd, shell, loose = false) {
   const steps = cdSteps(command, shell, false);
-  const lastpipe = EXPLICIT_LASTPIPE.test(command);
   return (index) => {
     let upTo = 0;
     while (upTo < steps.ranges.length && steps.ranges[upTo][1] <= index) upTo++;
-    return dirThrough(steps, upTo, cwd, shell, lastpipe, loose);
+    return dirThrough(steps, upTo, cwd, shell, loose);
   };
 }
 
@@ -3756,7 +3750,6 @@ export function* chainCommands(command, cwd, re, shell = BASH) {
   // its `base` for the rules that read no `lost`.
   const dirAt = typedDirAt(command, cwd, shell);
   const looseAt = typedDirAt(command, cwd, shell, true);
-  const lastpipe = EXPLICIT_LASTPIPE.test(command);
   for (const [a, b] of ranges(text, CHAIN)) {
     for (const f of [...found(command, re, a, b)].sort((x, y) => x.program - y.program)) {
       // A command a string runs runs where the `cd`s ahead of it in that
@@ -3766,7 +3759,7 @@ export function* chainCommands(command, cwd, re, shell = BASH) {
       // never from a `cd` the chain ranges read inside that string.
       const root = f.before?.length ? f.before.root : a;
       const outer = dirAt(root);
-      const lead = outer !== undefined && f.before?.length ? dirAfter(f.before, outer, lastpipe) : outer;
+      const lead = outer !== undefined && f.before?.length ? dirAfter(f.before, outer) : outer;
       const base = looseAt(root);
       const start = programStart(command, f.at);
       const from = f.end;
