@@ -80,6 +80,7 @@
 // over-approximates instead, and NAMED_NOT_LOADED names each literal that
 // loads nothing, with the reason. The ESLint block stays as the editor's early
 // word on a static or type import.
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
@@ -241,7 +242,9 @@ const NAMED_NOT_LOADED = {
     literals: ["@iracedeck/actions", "@iracedeck/iracing-actions"],
     reason:
       "the released 1.14.0 section's prose records the package rename @iracedeck/actions → @iracedeck/iracing-actions; " +
-      "the page is Markdown text the release fold writes one bullet at a time, and holds no import or expression",
+      "the page is Markdown text the release fold writes one bullet at a time, and holds no import or expression. " +
+      "Each count spans changelog.mdx and the changelog.d fragments read with it, so the fold, which moves a " +
+      "bullet from one to the other, keeps it",
   },
 };
 
@@ -1264,6 +1267,12 @@ ${source}`;
  *     and a query other than `?raw` or `?url` on one that resolves fails. An
  *     `@iracedeck/` one is checked as a package specifier is, so a mention in
  *     prose fails like an import unless NAMED_NOT_LOADED excuses it.
+ *   * A component's `companions` are read as part of it: their raw text by
+ *     the same rule, their candidates resolved as the component's own, and
+ *     each failure naming the companion it is written in. The changelog page
+ *     takes in every `changelog.d/` fragment (`changelogFragments`), whose
+ *     bullet the stable release folds into it, so a fragment's mention fails
+ *     on its own PR and the fold moves a mention without changing a count.
  *   * A relative specifier is followed file by file, to every file it may
  *     load (`resolveRuntimeFiles`: TypeScript, tsx, Node and Vite can pick
  *     different ones), across package boundaries too. One that resolves to no
@@ -1296,9 +1305,10 @@ ${source}`;
  * @param {(file: string) => string | undefined} input.read
  * @param {Map<string, string>} input.packageDirs workspace package name → its directory under `packages/`
  * @param {Set<string>} input.neutral the sim-neutral package directories
+ * @param {Map<string, string[]>} [input.companions] component → the files whose text the release writes into it
  * @returns {{ visited: string[], problems: string[] }}
  */
-export function runtimeClosure({ roots, read, packageDirs, neutral }) {
+export function runtimeClosure({ roots, read, packageDirs, neutral, companions = new Map() }) {
   const present = roots.filter((root) => read(root) !== undefined);
   const from = new Map(present.map((root) => [root, null]));
   const queue = [...present];
@@ -1351,18 +1361,34 @@ export function runtimeClosure({ roots, read, packageDirs, neutral }) {
             "nothing goes in NAMED_NOT_LOADED with the reason (#1662)";
     };
 
-    for (const what of unread) problems.push(`${chain(file)} makes ${what}`);
+    /** What the component says, and its companions (`companions`), each with where a failure says it is written. */
+    const parts = [{ candidates, unread, where: "" }];
+
+    for (const companion of companions.get(file) ?? []) {
+      const text = read(companion);
+
+      if (text === undefined) {
+        problems.push(`${chain(file)} takes in ${companion}, which does not exist`);
+        continue;
+      }
+      parts.push({
+        ...memoizedImports(file, text),
+        where: ` (written in ${companion}, which the release folds into ${file})`,
+      });
+    }
 
     const tried = new Set();
 
-    for (const candidate of candidates) {
+    /** Follows, ignores or fails one candidate of the component, as the walk's rules say. */
+    const takeCandidate = (candidate, where) => {
       if (candidate.startsWith("@")) {
         const problem = packageProblem("names", candidate);
 
-        if (problem !== undefined) problems.push(problem);
-        continue;
+        if (problem !== undefined) problems.push(problem + where);
+
+        return;
       }
-      if (tried.has(candidate)) continue;
+      if (tried.has(candidate)) return;
       tried.add(candidate);
       const unhashed = candidate.replace(/#.*$/, "");
       const query = unhashed.indexOf("?");
@@ -1375,22 +1401,29 @@ export function runtimeClosure({ roots, read, packageDirs, neutral }) {
       const folders = resolved.flatMap((each) => each.unread);
 
       // A specifier that resolves to nothing loads nothing: the build would fail on an import of it.
-      if (targets.length === 0 && folders.length === 0) continue;
+      if (targets.length === 0 && folders.length === 0) return;
       if (query !== -1) {
         if (!isDataSpecifier(unhashed)) {
           problems.push(
             `${chain(file)} names ${unhashed}, whose query this check does not follow: only ?raw and ?url, ` +
-              "which load no code, pass; import the module itself so it can be followed",
+              `which load no code, pass; import the module itself so it can be followed${where}`,
           );
         }
-        continue;
+
+        return;
       }
       for (const folder of folders) {
         problems.push(
-          `${chain(file)} names ${base}, ${folder}: import the file it loads by its own path so it can be followed`,
+          `${chain(file)} names ${base}, ${folder}: import the file it loads by its own path so it can be ` +
+            `followed${where}`,
         );
       }
       follow(targets);
+    };
+
+    for (const { candidates: said, unread: unsaid, where } of parts) {
+      for (const what of unsaid) problems.push(`${chain(file)} makes ${what}${where}`);
+      for (const candidate of said) takeCandidate(candidate, where);
     }
 
     for (const specifier of loads) {
@@ -1469,6 +1502,29 @@ const PACKAGE_DIRS = new Map(
 const NEUTRAL = new Set(SIM_NEUTRAL_PACKAGES);
 const GALLERY = "packages/website/scripts/generate-icon-gallery.mts";
 
+/** The public changelog page, which a stable release writes every `changelog.d/` fragment into. */
+const CHANGELOG = "packages/website/src/content/docs/changelog.mdx";
+
+/**
+ * The changelog fragments among repo-relative `files`, sorted: every
+ * `changelog.d/<name>.md` but the folder's `README.md`, the one file there that
+ * is no fragment (`changelog.md`). Each is read as part of the changelog page
+ * (`runtimeClosure`'s `companions`), since the release folds its bullet in.
+ */
+export function changelogFragments(files) {
+  return files.filter((file) => /^changelog\.d\/[^/]+\.md$/.test(file) && file !== "changelog.d/README.md").sort();
+}
+
+/** The changelog page and the fragments the release folds into it (#1662). */
+const COMPANIONS = new Map([
+  [
+    CHANGELOG,
+    changelogFragments(
+      execFileSync("git", ["ls-files", "changelog.d"], { cwd: ROOT, encoding: "utf-8" }).split("\n").filter(Boolean),
+    ),
+  ],
+]);
+
 /** A repo-relative file's text as tsx would read it from disk, or undefined when there is no such file. */
 function readRepoFile(file) {
   try {
@@ -1531,7 +1587,13 @@ describe("no package reaches into another by a relative path (#1375)", () => {
 describe("a sim-neutral package loads no sim package at runtime (#1662)", () => {
   const roots = closureRoots();
   const closure = (from) =>
-    runtimeClosure({ roots: from, read: readRepoFile, packageDirs: PACKAGE_DIRS, neutral: NEUTRAL });
+    runtimeClosure({
+      roots: from,
+      read: readRepoFile,
+      packageDirs: PACKAGE_DIRS,
+      neutral: NEUTRAL,
+      companions: COMPANIONS,
+    });
   // One walk from every root at once, so each file is read once and each failure is named once.
   const all = closure(roots);
 
@@ -1598,6 +1660,38 @@ describe("a sim-neutral package loads no sim package at runtime (#1662)", () => 
     expect(loadsIn(planted)).toEqual([
       expect.stringMatching(new RegExp(`^${file} (imports|names) @iracedeck/iracing-(actions|sdk): packages/iracing-`)),
     ]);
+  });
+
+  // A new fragment naming a sim package fails on its own PR, against the real page and its real fragments.
+  it("fails a fragment planted beside the real ones that names a sim package, naming the fragment", () => {
+    const planted = "changelog.d/1999-planted.md";
+    const fragments = COMPANIONS.get(CHANGELOG);
+    const problemsWith = (extra) =>
+      unexcusedProblems(
+        runtimeClosure({
+          roots: [CHANGELOG],
+          read: (file) => (file === planted ? extra : readRepoFile(file)),
+          packageDirs: PACKAGE_DIRS,
+          neutral: NEUTRAL,
+          companions: new Map([[CHANGELOG, [...fragments, planted]]]),
+        }).problems,
+        // The changelog's own entry: a walk from this one root meets no other file's UNREAD_LOADS.
+        {},
+        { [CHANGELOG]: NAMED_NOT_LOADED[CHANGELOG] },
+      );
+
+    expect(fragments.every((file) => file.startsWith("changelog.d/") && file !== "changelog.d/README.md")).toBe(true);
+    expect(problemsWith("---\ncategory: Maintenance\nweight: 50\n---\n\nNothing here.\n")).toEqual([]);
+    expect(
+      problemsWith("---\ncategory: Maintenance\nweight: 50\n---\n\n**X** now uses @iracedeck/iracing-sdk.\n"),
+    ).toEqual([
+      expect.stringContaining(`${CHANGELOG} names @iracedeck/iracing-sdk: packages/iracing-sdk/ is not sim-neutral`),
+    ]);
+    expect(
+      problemsWith(
+        "---\ncategory: Maintenance\nweight: 50\n---\n\n**X** now uses @iracedeck/iracing-sdk.\n",
+      )[0].endsWith(` (written in ${planted}, which the release folds into ${CHANGELOG})`),
+    ).toBe(true);
   });
 
   it("gives every UNREAD_LOADS and NAMED_NOT_LOADED entry a reason", () => {
@@ -2686,6 +2780,79 @@ describe("the runtime-closure check itself (positive controls, #1662)", () => {
     expect(unexcusedProblems([], {}, namedNotLoaded)).toEqual([
       `NAMED_NOT_LOADED says ${page} names @iracedeck/x, but the walk no longer finds it: remove it`,
     ]);
+  });
+
+  // The stable release folds each changelog.d fragment into changelog.mdx (#1386). Read as part of the page, a
+  // fragment's mention fails on its own PR, and the fold moves a mention without changing a count (#1662).
+  describe("the changelog page, read with the fragments the release folds into it", () => {
+    const page = "packages/website/src/content/docs/changelog.mdx";
+    const fragment = "changelog.d/1999-planted.md";
+    const bullet = "**Planted** now loads nothing from @iracedeck/iracing-sdk.";
+    const fragmentText = `---\ncategory: Maintenance\nweight: 50\n---\n\n${bullet}\n`;
+    const released = "## 1.0.0\n\n**Maintenance**\n\n- Moved off @iracedeck/iracing-sdk.\n";
+    /** The page after a stable release folds the fragment in and deletes it. */
+    const folded = `## 1.1.0\n\n**Maintenance**\n\n- ${bullet}\n\n${released}`;
+    const written = ` (written in ${fragment}, which the release folds into ${page})`;
+    const walkPage = (tree, fragments) =>
+      runtimeClosure({
+        roots: [page],
+        read: (file) => tree[file],
+        packageDirs,
+        neutral,
+        companions: new Map([[page, fragments]]),
+      }).problems;
+    const allowing = (count) => ({
+      [page]: { literals: [{ literal: "@iracedeck/iracing-sdk", count }], reason: "a control's mentions" },
+    });
+
+    it("fails a fragment's mention as the page's, naming the fragment, so its own PR goes red", () => {
+      const problems = walkPage({ [page]: released, [fragment]: fragmentText }, [fragment]);
+
+      expect(problems).toHaveLength(2);
+      expect(problems[0]).toMatch(`${page} names @iracedeck/iracing-sdk: packages/iracing-sdk/`);
+      expect(problems[0]).not.toContain("written in");
+      expect(problems[1]).toMatch(`${page} names @iracedeck/iracing-sdk: packages/iracing-sdk/`);
+      expect(problems[1].endsWith(written)).toBe(true);
+      // The entry that held before the fragment counts one: the fragment's mention is a second.
+      expect(unexcusedProblems(problems, {}, allowing(1))).toEqual([
+        ...problems,
+        `NAMED_NOT_LOADED says ${page} names @iracedeck/iracing-sdk 1 time(s), but the walk finds it 2 times: ` +
+          "excuse each call site the entry's reason holds for, and no other",
+      ]);
+    });
+
+    it("keeps a count across the fold: the entry that passes the fragment passes the page it is folded into", () => {
+      const before = walkPage({ [page]: released, [fragment]: fragmentText }, [fragment]);
+      const after = walkPage({ [page]: folded }, []);
+
+      expect(after).toHaveLength(2);
+      expect(after.some((problem) => problem.includes("written in"))).toBe(false);
+      expect(unexcusedProblems(before, {}, allowing(2))).toEqual([]);
+      expect(unexcusedProblems(after, {}, allowing(2))).toEqual([]);
+    });
+
+    it("reads a fragment's computed load as unread, naming the fragment, and fails a fragment that is gone", () => {
+      expect(
+        walkPage({ [page]: "", [fragment]: "---\ncategory: Maintenance\n---\n\n{import(name)}\n" }, [fragment]),
+      ).toEqual([
+        `${page} makes an import( on line 5 whose specifier is not a single string literal, a load this check ` +
+          `cannot read: write the specifier as a literal${written}`,
+      ]);
+      expect(walkPage({ [page]: "" }, [fragment])).toEqual([`${page} takes in ${fragment}, which does not exist`]);
+    });
+
+    it("takes every changelog.d fragment and nothing else: no README.md, other file, subfolder or other changelog.d", () => {
+      expect(
+        changelogFragments([
+          "changelog.d/README.md",
+          "changelog.d/1999-planted.md",
+          "changelog.d/12-earlier.md",
+          "changelog.d/notes.txt",
+          "changelog.d/sub/1-nested.md",
+          "packages/x/changelog.d/1-elsewhere.md",
+        ]),
+      ).toEqual(["changelog.d/12-earlier.md", "changelog.d/1999-planted.md"]);
+    });
   });
 
   it("walks several roots once each, naming a failure by the first root that reaches it", () => {
