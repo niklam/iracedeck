@@ -536,11 +536,14 @@ export function kindName(kind) {
  */
 export function commandCensus(lexer, tool, command) {
   const powershell = tool === "PowerShell";
-  const text = powershell ? lexer.powershellAsBash(command) : command;
-  const refused =
-    typeof lexer.refusedForms === "function"
-      ? lexer.refusedForms(text, powershell ? lexer.POWERSHELL : lexer.BASH)
-      : undefined;
+  const shell = powershell ? lexer.POWERSHELL : lexer.BASH;
+  const read = (c) => (powershell ? lexer.powershellAsBash(c) : c);
+  const text = read(command);
+  let refused = typeof lexer.refusedForms === "function" ? lexer.refusedForms(text, shell) : undefined;
+  // A command `checkBash` judges twice for its curly quotes counts as refused
+  // when either reading refuses it, once (CodeRabbit on 164de4f80).
+  if (refused && !refused.length && lexer.readsCurlyTwice?.(command, powershell))
+    refused = lexer.refusedForms(read(lexer.straightQuotes(command)), shell);
   return censusOf({ ...lexer.view(text), refused });
 }
 

@@ -1195,3 +1195,16 @@ describe("the command line", () => {
     expect(await main(["--transcripts", path.join(os.tmpdir(), "no-such-replay-corpus-dir")], () => {})).toBe(2);
   });
 });
+
+// CodeRabbit on 164de4f80: a command checkBash reads twice for its curly
+// quotes is counted as refused when either reading refuses it.
+describe("the census of a curly-quoted command", () => {
+  it("flags a refusal either reading finds, once", async () => {
+    const lexer = await import("./shell-lexer.mjs");
+    const flags = (tool, c) => commandCensus(lexer, tool, c).flags;
+    expect(flags("PowerShell", "& \u2018iex\u2019 'Get-Location'")).toContain("refused");
+    expect(flags("PowerShell", "Write-Host 'a\u2019; iex x; echo \u2018x'")).toContain("refused");
+    expect(flags("PowerShell", "Write-Host 'it\u2019\u2019s'")).not.toContain("refused");
+    expect(flags("Bash", "echo 'a\u2019; eval x; \u2018b' # pwsh")).not.toContain("refused");
+  });
+});

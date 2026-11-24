@@ -31,7 +31,6 @@ import {
   chainCommands,
   cmd,
   commandEnd,
-  CURLY_QUOTE,
   excuseDecodedHit,
   GIT_GLOBALS,
   gitPlace,
@@ -45,6 +44,7 @@ import {
   powershellAsBash,
   programStart,
   ranges,
+  readsCurlyTwice,
   refusedForms,
   resolveDir,
   respelledPrograms,
@@ -1333,7 +1333,7 @@ export function checkBash(command, ctx) {
   // every ask either reading raises, in one prompt, as `judge` joins its rules'
   // (CodeRabbit on 164de4f80). A Bash command that only mentions pwsh, in a
   // comment or an argument, is read one way.
-  if (!CURLY_QUOTE.test(command) || (!powershell && !runsPowershell(command))) return read(command);
+  if (!readsCurlyTwice(command, powershell)) return read(command);
   const verdicts = [read(command), read(straightQuotes(command))];
   const deny = verdicts.find((v) => typeof v === "string");
   if (deny) return deny;
@@ -1341,13 +1341,6 @@ export function checkBash(command, ctx) {
   if (raised.length < 2) return raised[0] ?? null;
   const all = [...new Set(raised.flatMap((v) => v.asks ?? [v.ask]))];
   return all.length === 1 ? raised[0] : { ask: all.join("\n\n"), asks: all };
-}
-
-/** Whether `command`, read as bash, runs pwsh or powershell as a program, in a string a shell runs too ({@link checkBash}). */
-function runsPowershell(command) {
-  const v = view(command);
-  for (const p of v.byName.keys()) if (/^(?:pwsh|powershell)(?![\w.-])/i.test(v.text.slice(p, p + 11))) return true;
-  return false;
 }
 
 /**

@@ -3828,6 +3828,21 @@ export function refusedForms(command, shell = BASH) {
  * verdict standing ({@link CURLY_QUOTE}).
  */
 export const CURLY_QUOTE = /[\u2018\u2019\u201A\u201B\u201C\u201D\u201E]/;
+
+/**
+ * Whether `command` is judged a second time with its curly quotes as plain
+ * ones ({@link straightQuotes}): it holds one, and is typed to PowerShell
+ * (`powershell`) or, read as bash, runs pwsh or powershell as a program, in a
+ * string a shell runs too. A Bash command that only mentions pwsh, in a
+ * comment or an argument, is read one way (CodeRabbit on 164de4f80).
+ */
+export function readsCurlyTwice(command, powershell) {
+  if (!CURLY_QUOTE.test(command)) return false;
+  if (powershell) return true;
+  const v = view(command);
+  for (const p of v.byName.keys()) if (/^(?:pwsh|powershell)(?![\w.-])/i.test(v.text.slice(p, p + 11))) return true;
+  return false;
+}
 export function straightQuotes(text) {
   return text.replace(/[\u2018\u2019\u201A\u201B]/g, "'").replace(/[\u201C\u201D\u201E]/g, '"');
 }
