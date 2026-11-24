@@ -46,11 +46,13 @@ import {
 import {
   BASH,
   chainCommands,
+  CURLY_QUOTE,
   cwdAt,
   gitCwd,
   POWERSHELL,
   powershellAsBash,
   resolveDir,
+  straightQuotes,
   trustedMask,
 } from "./shell-lexer.mjs";
 
@@ -95,8 +97,18 @@ if (typeof raw === "string") {
       const r = git(["diff", "--stat"], gitCwd(command, cwd));
       notes.push(`sed -i ran; git diff --stat:\n${r.out.trim() || "(no tracked changes)"}`);
     }
-    const merge = firstMerge(command);
-    if (merge?.readable) notes.push(...afterMerge(merge, command, cwd, shell));
+    // A curly-quoted PowerShell command is judged both ways by the pre-hook
+    // (`checkBash`), so a merge only the straightened reading finds is one it
+    // judged, and is followed up here too, read where it was found (CodeRabbit
+    // on 164de4f80).
+    let merged = command;
+    let merge = firstMerge(command);
+    if (!merge && shell === POWERSHELL && CURLY_QUOTE.test(raw)) {
+      const straight = powershellAsBash(straightQuotes(raw));
+      merge = firstMerge(straight);
+      if (merge) merged = straight;
+    }
+    if (merge?.readable) notes.push(...afterMerge(merge, merged, cwd, shell));
     else if (merge)
       notes.push(
         "gh pr merge ran, but its PR argument could not be read; check by hand whether it merged, and move its Roadmap card to Testing.",

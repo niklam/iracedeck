@@ -239,6 +239,16 @@ describe("post-bash.mjs triggers", { timeout: 30_000 }, () => {
     expect(fire(continued, { withoutGh: true })).toBeNull();
     expect(fire("Write-Output 'gh pr merge 7'", { tool })).toBeNull();
   });
+
+  // CodeRabbit on 164de4f80: the pre-hook reads a curly-quoted PowerShell
+  // command both ways, so a merge only the straightened reading finds is one
+  // it judged, and the post-hook follows it up too.
+  it("follows up a merge only the curly-quote reading finds, from the PowerShell tool", () => {
+    const tool = "PowerShell";
+    const curly = "Write-Host 'a’; gh pr merge 7 --squash; echo ‘x'";
+    expect(fire(curly, { withoutGh: true, tool })).toMatch(/could not read the PR back/);
+    expect(fire("Write-Host 'a; gh pr merge 7 --squash; echo x'", { withoutGh: true, tool })).toBeNull();
+  });
 });
 
 // #1527: a card is found by issue number alone, so a filing or a merge in
