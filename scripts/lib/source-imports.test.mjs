@@ -6,6 +6,7 @@ import {
   COMPONENT,
   importedPackages,
   isTestSource,
+  markupLoads,
   moduleReferences,
   moduleSource,
   packageOf,
@@ -147,6 +148,102 @@ describe("moduleSource (#1662)", () => {
     it("reads a component with no frontmatter by its scripts alone, and one with neither as empty", () => {
       expect(specifiers(file, '<p>x</p>\n<script>import "./a.js";</script>\n')).toEqual(["./a.js"]);
       expect(moduleSource(file, '<p>import a from "./a.js"</p>\n').trim()).toBe("");
+    });
+
+    // Astro bundles a local <script src>, so it is the import of what it names.
+    it("reads each <script src> that names a module as its import, the quote at the attribute's own offset", () => {
+      const scripts = [
+        "---",
+        'import Card from "./Card.astro";',
+        "---",
+        '<script src="../../../iracing-actions/src/a.js"></script>',
+        "<script type=\"module\" src='./single.ts' defer></script>",
+        "<script src=./unquoted.js></script>",
+        '<script data-src="./not-src.js" src="@iracedeck/iracing-sdk">import "./body.js";</script>',
+        '<script data-type="json">import "./data-type.js";</script>',
+        '<script src="https://cdn.example.com/x.js"></script>',
+        '<script src="//cdn.example.com/y.js"></script>',
+        '<script type="application/json" src="./z.json"></script>',
+        '<!-- <script src="./commented.js"></script> -->',
+        "",
+      ].join("\n");
+      const source = moduleSource(file, scripts);
+
+      expect(source).toHaveLength(scripts.length);
+      expect(source.split("\n")).toHaveLength(scripts.split("\n").length);
+      expect(specifiers(file, scripts)).toEqual([
+        "./Card.astro",
+        "../../../iracing-actions/src/a.js",
+        "./single.ts",
+        "./unquoted.js",
+        "@iracedeck/iracing-sdk",
+        "./body.js",
+        "./data-type.js",
+      ]);
+      const quoteOf = (specifier) =>
+        moduleReferences(source).find((reference) => reference.specifier === specifier).pos;
+
+      expect(quoteOf("../../../iracing-actions/src/a.js")).toBe(scripts.indexOf('"../../../iracing-actions/src/a.js"'));
+      expect(quoteOf("./single.ts")).toBe(scripts.indexOf("'./single.ts'"));
+      // An unquoted value has no quote of its own: its synthetic one sits two characters before it, on its line.
+      expect(quoteOf("./unquoted.js")).toBe(scripts.indexOf("./unquoted.js") - 2);
+      for (const mention of ["not-src", "cdn.example.com", "z.json", "commented"]) {
+        expect(source, mention).not.toContain(mention);
+      }
+    });
+  });
+
+  describe("markupLoads", () => {
+    const astro = "packages/website/src/components/Planted.astro";
+    const mdx = "packages/website/src/content/docs/planted.mdx";
+
+    it("finds an import( or require( an .astro template expression could evaluate, by line", () => {
+      const text = [
+        "---",
+        'const a = await import("./frontmatter.js");',
+        "---",
+        '<p>{import("@iracedeck/iracing-sdk")}</p>',
+        "<Card load={() => require ('./b.js')} />",
+        '<p>{x.import("./method.js")} {x.require("./method.js")} {reimport("./c.js")}</p>',
+        '<!-- {import("./commented.js")} -->',
+        '<script>const d = import("./script.js");</script>',
+        '<script type="application/json">{ "e": "import(\'./json.js\')" }</script>',
+        '<style>.f { content: "import(./style.css)"; }</style>',
+        "",
+      ].join("\n");
+
+      expect(markupLoads(astro, text)).toEqual([
+        { call: "import(", line: 4 },
+        { call: "require(", line: 5 },
+      ]);
+    });
+
+    it("finds one in .mdx prose or JSX, and none in its ESM, frontmatter, fenced code or code spans", () => {
+      const text = [
+        "---",
+        'title: import("./frontmatter.js")',
+        "---",
+        "",
+        'export const g = await import("./esm.js");',
+        "",
+        'Prose {import("@iracedeck/iracing-sdk")} and `import("./span.js")` and ``require("./span2.js")``.',
+        "",
+        '<Card load={require("./jsx.js")} />',
+        "",
+        "```ts",
+        'const h = import("./fenced.js");',
+        "```",
+        "",
+      ].join("\n");
+
+      expect(markupLoads(mdx, text)).toEqual([
+        { call: "import(", line: 7 },
+        { call: "require(", line: 9 },
+      ]);
+    });
+
+    it("finds nothing in a code source, whose loads are module code", () => {
+      expect(markupLoads("packages/x/src/a.ts", 'const a = import("./a.js");')).toEqual([]);
     });
   });
 

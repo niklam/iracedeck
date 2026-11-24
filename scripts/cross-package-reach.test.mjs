@@ -77,6 +77,7 @@ import {
   COMPONENT,
   isModuleSource,
   isTestSource,
+  markupLoads,
   moduleReferences,
   moduleSource,
   packageOf,
@@ -607,7 +608,11 @@ export function reachProblems(found, allowed, files, namedNotOpened = {}) {
  * A dynamic import or `require` whose specifier is not a literal cannot be
  * followed, so it is reported rather than skipped, and so is any module
  * reference `ts.preProcessFile` finds that the tree walk did not classify:
- * an edge this cannot read fails instead of passing unseen.
+ * an edge this cannot read fails instead of passing unseen. So does an
+ * `import(` or `require(` in an `.astro` component's or `.mdx` page's markup
+ * (`markupLoads`), since Astro and MDX evaluate a template expression and this
+ * does not parse one. An `.astro` `<script src>` that names a module is read as
+ * the import of it (`moduleSource`), since Astro bundles what it names.
  *
  * @param {object} input
  * @param {string} input.file repo-relative, `/`-separated
@@ -647,7 +652,11 @@ export function runtimeImports({ file, source: text }) {
       const [specifier] = node.arguments;
 
       if (specifier && ts.isStringLiteralLike(specifier)) load(specifier);
-      else unread.push(`${node.getText(sf).replace(/\s+/g, " ")}, whose specifier is not a string literal`);
+      else {
+        unread.push(
+          `${node.getText(sf).replace(/\s+/g, " ")}, whose specifier is not a string literal: write it so it can be followed`,
+        );
+      }
     }
     ts.forEachChild(node, visit);
   };
@@ -656,8 +665,17 @@ export function runtimeImports({ file, source: text }) {
 
   for (const reference of moduleReferences(source)) {
     if (reference.kind === "import" && !classified.has(reference.pos)) {
-      unread.push(`a reference to ${reference.specifier} in a form this check does not read`);
+      unread.push(
+        `a reference to ${reference.specifier} in a form this check does not read: write it so it can be followed`,
+      );
     }
+  }
+
+  for (const { call, line } of markupLoads(file, text)) {
+    unread.push(
+      `an ${call} call in its markup (line ${line}), where a template expression is not read: make the load in ` +
+        `the module code (an .astro frontmatter or <script>, an .mdx import) so it can be followed`,
+    );
   }
 
   return { loads, unread };
@@ -790,7 +808,7 @@ export function runtimeClosure({ root, read, packageDirs, neutral }) {
     if (!isModuleSource(file)) continue;
     const { loads, unread } = runtimeImports({ file, source: read(file) });
 
-    for (const what of unread) problems.push(`${chain(file)} makes ${what}: write it so it can be followed`);
+    for (const what of unread) problems.push(`${chain(file)} makes ${what}`);
 
     for (const specifier of loads) {
       if (RELATIVE_SPECIFIER.test(specifier)) {
@@ -1107,6 +1125,7 @@ describe("the check itself (positive controls)", () => {
       [astro, '---\nimport { rows } from "../../../iracing-actions/src/rows.js";\n---\n\n<p>{rows}</p>\n'],
       [astro, '---\nconst ROWS = "../../../iracing-actions/src/rows.js";\n---\n\n<p>{ROWS}</p>\n'],
       [astro, '<p>x</p>\n\n<script>\n  import { rows } from "../../../iracing-actions/src/rows.js";\n</script>\n'],
+      [astro, '<p>x</p>\n<script src="../../../iracing-actions/src/rows.js"></script>\n'],
       [mdx, '---\ntitle: x\n---\n\nimport { rows } from "../../../iracing-actions/src/rows.js";\n\n# Planted\n'],
       [mdx, 'import {\n  rows,\n} from "../../../iracing-actions/src/rows.js";\n\nProse.\n'],
     ]) {
@@ -1384,7 +1403,7 @@ describe("the runtime-closure check itself (positive controls, #1662)", () => {
           'import Card from "../../components/Card.astro";',
           'import { rows } from "@iracedeck/iracing-actions";',
           "",
-          'Prose naming "@iracedeck/iracing-sdk" and import("@iracedeck/deck-iracing").',
+          'Prose naming "@iracedeck/iracing-sdk" and `import("@iracedeck/deck-iracing")` in a code span.',
           "",
           "<Card />",
         ].join("\n"),
@@ -1414,6 +1433,31 @@ describe("the runtime-closure check itself (positive controls, #1662)", () => {
       ),
       expect.stringMatching(/Card\.astro imports @iracedeck\/iracing-sdk\/dist\/setup\.js: /),
     ]);
+  });
+
+  it("follows an .astro <script src> as the import Astro bundles it into, and fails a template's load", () => {
+    const card = "packages/website/src/components/Card.astro";
+    const viaSrc = walk(
+      {
+        [card]: '<p>x</p>\n<script src="../../../iracing-actions/src/a.ts"></script>\n',
+        "packages/iracing-actions/src/a.ts": 'import "@iracedeck/iracing-sdk";',
+      },
+      card,
+    );
+
+    expect(viaSrc.visited).toEqual([card, "packages/iracing-actions/src/a.ts"]);
+    expect(viaSrc.problems).toEqual([
+      expect.stringContaining(`${card} → packages/iracing-actions/src/a.ts imports @iracedeck/iracing-sdk: `),
+    ]);
+    expect(walk({ [card]: "<script src='@iracedeck/iracing-sdk'></script>" }, card).problems).toEqual([
+      expect.stringContaining(`${card} imports @iracedeck/iracing-sdk: `),
+    ]);
+    expect(walk({ [card]: '---\n---\n<p>{import("@iracedeck/iracing-sdk")}</p>\n' }, card).problems).toEqual([
+      `${card} makes an import( call in its markup (line 3), where a template expression is not read: make the load ` +
+        "in the module code (an .astro frontmatter or <script>, an .mdx import) so it can be followed",
+    ]);
+    // The browser's own fetch is no module of the repository's.
+    expect(walk({ [card]: '<script src="https://cdn.example.com/x.js"></script>' }, card).problems).toEqual([]);
   });
 
   it("passes a missing data file, which loads nothing, and still fails a missing component or module", () => {
