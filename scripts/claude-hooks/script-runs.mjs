@@ -6,7 +6,8 @@
  * handed to (bash and its kin, cmd.exe, PowerShell, `eval`), recursively to
  * {@link MAX_SCRIPT_DEPTH}. {@link deckFindings} is the entry point: every
  * way the commands touch a deck host, each a finding of one kind
- * ({@link FINDING_KINDS}, #1737) — a restart, a relink or a watch — which the
+ * ({@link FINDING_KINDS}, #1737) — a restart, a relink, a watch, or a nested
+ * text in a form the lexer's stopping rule refuses (#1659) — which the
  * rule in `rules-bash.mjs` turns into its ask when any is not a restart.
  *
  * The deck vocabulary lives here rather than with the rule
@@ -60,6 +61,7 @@ import {
   POWERSHELL,
   powershellAsBash,
   readCommand,
+  refusedForms,
   resolveDir,
   shellSpec,
   stringBounds,
@@ -151,6 +153,8 @@ export const FINDING_KINDS = {
   restart: "restarts, stops or starts a deck host",
   relink: "links, unlinks or relinks a deck host",
   watch: "restarts a deck host on every rebuild",
+  // A text this reader cannot read, so it asks (#1659).
+  unread: "hands text to a shell in a form the hook cannot read",
 };
 /** The kind of finding a script name makes wherever it runs, or `undefined` for none. */
 const nameKind = (name) => Object.keys(DECK_ALWAYS).find((kind) => DECK_ALWAYS[kind].test(name));
@@ -998,6 +1002,16 @@ function deckReach(c, cwd, ctx, shell, trail, lostDir = false) {
         const [text, lineShell] = lineAs(line, as);
         // A lifecycle script is named in the path ({@link bodyLines}).
         const via = step ? `\`${run.label}\` → \`${step}\`` : `\`${run.label}\``;
+        // The stopping rule judges the typed command only: a form it refuses in
+        // a text read here — a shell's string, a script's body, a rollup hook —
+        // runs what the hook cannot read, so it asks, naming the form (#1659).
+        const [unread] = refusedForms(text, lineShell);
+        if (unread)
+          finding(
+            `${via} ${FINDING_KINDS.unread} (${unread.form}: \`${unread.shape}\`), so what it runs is unknown`,
+            "unread",
+            run.repeats,
+          );
         const inner = deckReach(text, dir, ctx, lineShell, [...trail, key], Boolean(run.lost));
         const itself = key && inner.cycles.delete(key);
         for (const k of inner.cycles) cycles.add(k);

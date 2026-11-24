@@ -5219,6 +5219,34 @@ describe("a carried merge or tag push behind a quoted lead value (#1646)", () =>
     ]));
 });
 
+// #1659 second read: the stopping rule judges the typed command only, so a
+// refused form in a text the deck-host ask reads itself — a runner's shell
+// string, a package script's body, a rollup hook — was read by nothing once
+// the stdin readers were gone. Such a text asks, naming the form.
+describe("the deck-host ask over a nested text in a form the hook does not read (#1659)", () => {
+  const withScripts = (scripts) => ctx({ scriptsAt: () => ({ dir: MASTER, scripts }) });
+  const UNREAD = /hands text to a shell in a form the hook cannot read/;
+  it.each([
+    [`pnpm exec bash -c "echo pnpm link:stream-deck | bash"`, ctx(), "a printer piped into a shell"],
+    [`pnpm exec bash -c "bash <<< 'pnpm link:stream-deck'"`, ctx(), "a shell reading its script from a here-string"],
+    [`npx sh -c "cat steps | sh"`, ctx(), "a shell reading its script from stdin"],
+    [`pnpm x`, withScripts({ x: "echo 'pnpm link:stream-deck' | bash" }), "a printer piped into a shell"],
+    [`pnpm x`, withScripts({ x: "bash <<< 'pnpm link:stream-deck'" }), "a shell reading its script from a here-string"],
+    [`pnpm x`, withScripts({ x: "eval pnpm link:stream-deck" }), "eval"],
+    [`pnpm x`, withScripts({ x: "pnpm y", y: "bash <(echo ls)" }), "a process substitution"],
+    [`pnpm x`, withScripts({ x: `rollup -c -w --watch.onEnd="echo ls | bash"` }), "a printer piped into a shell"],
+  ])("asks for %s, naming the form", (c, o, form) => {
+    const v = asks(c, o);
+    expect(v).toMatch(UNREAD);
+    expect(v).toContain(form);
+  });
+  it.each([
+    [`pnpm exec bash -c "pnpm build"`, ctx()],
+    [`pnpm x`, withScripts({ x: "bash scripts/x.sh && tsc" })],
+    [`pnpm x`, withScripts({ x: "find . -name x -exec sh -c 'ls \"$1\"' _ {} ';'" })],
+  ])("passes %s, whose texts the hook reads", (c, o) => passes(c, o));
+});
+
 describe("the lexer's stopping rule: a form it does not read is refused outright (#1659)", () => {
   const REFUSAL = /hands text to a shell in a form the hook does not read/;
   const refusal = (c, o = ctx()) => {
