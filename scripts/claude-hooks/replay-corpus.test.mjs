@@ -4,7 +4,7 @@ import * as fsp from "node:fs/promises";
 import { createRequire, syncBuiltinESMExports } from "node:module";
 import os from "node:os";
 import path from "node:path";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
   Census,
@@ -618,18 +618,23 @@ describe("side effects while judging", () => {
   // Every fixture lives in a folder the test owns, and only that folder is
   // cleaned (CodeRabbit CLI on #1659). A writer that got through would leave
   // its file there, or write to the fixture the descriptor writers are given.
+  // Each case gets a folder of its own, so a write that escaped one case can
+  // never touch the next case's fixture; a case whose escaped write has not
+  // settled leaves its folder in place rather than delete under it (PR #1798
+  // review).
   let owned;
   let never;
   let fixture;
-  beforeAll(() => {
+  let unsettled;
+  beforeEach(() => {
     owned = fs.mkdtempSync(path.join(os.tmpdir(), "replay-corpus-writers-"));
     never = path.join(owned, "never-written.txt");
     fixture = path.join(owned, "fixture.txt");
+    unsettled = false;
   });
-  afterAll(() => fs.rmSync(owned, { recursive: true, force: true }));
   afterEach(async () => {
     await new Promise((r) => setTimeout(r, 0));
-    for (const n of fs.readdirSync(owned)) fs.rmSync(path.join(owned, n), { recursive: true, force: true });
+    if (!unsettled) fs.rmSync(owned, { recursive: true, force: true });
   });
   const x = () => Buffer.from("x");
   it.each([
@@ -686,7 +691,13 @@ describe("side effects while judging", () => {
           () => {},
         );
         const callback = write.length > 1 ? called : Promise.resolve();
-        await Promise.race([Promise.all([settled, callback]), new Promise((r) => setTimeout(r, 2000))]);
+        const late = Symbol("late");
+        const outcome = await Promise.race([
+          Promise.all([settled, callback]),
+          new Promise((r) => setTimeout(() => r(late), 5000)),
+        ]);
+        // Still pending: this case's folder stays, and nothing else is in it.
+        if (outcome === late) unsettled = true;
       }
       expect(threw?.message).toMatch(/was called while judging|for writing while judging/);
       expect(fs.existsSync(never)).toBe(false);
