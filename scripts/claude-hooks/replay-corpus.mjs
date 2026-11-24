@@ -226,16 +226,20 @@ export const NO_WORKSPACE = Object.freeze({ root: undefined, manifests: Object.f
  * one that does not parse. {@link fixedContext} answers the workspace reads
  * from it, so a `pnpm --filter <pkg>` reaches the rules after the one that
  * looks the package up, rather than stopping both sides at a false "no such
- * package".
+ * package". A folder with no manifest is no package; a manifest that exists
+ * but cannot be read throws, naming it, since skipping it would make the same
+ * false stop (CodeRabbit CLI on #1659).
  */
 export function readWorkspace(root) {
   const manifests = [];
   const add = (dir) => {
+    const file = path.join(dir, "package.json");
     let text;
     try {
-      text = readFileSync(path.join(dir, "package.json"), "utf8");
-    } catch {
-      return;
+      text = readFileSync(file, "utf8");
+    } catch (e) {
+      if (e?.code === "ENOENT") return;
+      throw new Error(`could not read ${file}: ${e instanceof Error ? e.message : e}`, { cause: e });
     }
     try {
       const pkg = JSON.parse(text);
@@ -668,8 +672,12 @@ const isDirectory = (p) => {
   }
 };
 
-/** The tool: returns its exit status, printing through `print`. */
-export async function main(argv, print = (line) => process.stdout.write(`${line}\n`)) {
+/**
+ * The tool: returns its exit status, printing through `print`. `root` is the
+ * checkout whose manifests and directory the context answers with; a test
+ * may point it elsewhere (@internal).
+ */
+export async function main(argv, print = (line) => process.stdout.write(`${line}\n`), { root = REPO_ROOT } = {}) {
   const opts = parseCli(argv);
   if (opts.help) {
     print(USAGE);
@@ -716,10 +724,17 @@ export async function main(argv, print = (line) => process.stdout.write(`${line}
   const differences = [];
   let judged = 0;
   let identical = 0;
-  const workspace = readWorkspace(REPO_ROOT);
+  let workspace;
+  try {
+    workspace = readWorkspace(root);
+  } catch (e) {
+    if (base?.dir) rmSync(base.dir, { recursive: true, force: true });
+    print(`replay-corpus: could not read the workspace: ${e instanceof Error ? e.message : e}`);
+    return 3;
+  }
   const contexts = {
-    Bash: fixedContext({ cwd: REPO_ROOT, shell: head.lexer.BASH, workspace }),
-    PowerShell: fixedContext({ cwd: REPO_ROOT, shell: head.lexer.POWERSHELL, workspace }),
+    Bash: fixedContext({ cwd: root, shell: head.lexer.BASH, workspace }),
+    PowerShell: fixedContext({ cwd: root, shell: head.lexer.POWERSHELL, workspace }),
   };
   const restore = forbidSideEffects();
   try {
@@ -750,7 +765,7 @@ export async function main(argv, print = (line) => process.stdout.write(`${line}
   print(`tool-use lines not JSON: ${unparsed}`);
   print(`distinct commands: ${list.length} (real ${census.totals.real}, probe ${census.totals.probe})`);
   print(`head: ${headRoot}`);
-  print(`context: cwd ${REPO_ROOT}, ${workspace.manifests.length} package manifests`);
+  print(`context: cwd ${root}, ${workspace.manifests.length} package manifests`);
   if (!opts.censusOnly) {
     print(`base: ${opts.base} (${base.sha})`);
     print(`commands judged: ${judged}`);

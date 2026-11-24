@@ -288,6 +288,23 @@ describe("the fixed context", () => {
     expect(NO_WORKSPACE.manifests).toEqual([]);
   });
 
+  // CodeRabbit CLI on #1659: a manifest that exists but cannot be read was
+  // skipped as absent, so both sides stopped at a false "no such package".
+  it("skips only a missing manifest, and throws on one it cannot read, naming it", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "replay-corpus-ws-"));
+    try {
+      fs.writeFileSync(path.join(root, "package.json"), '{"name":"root"}');
+      // A directory where the manifest should be: a read failure that is no ENOENT.
+      fs.mkdirSync(path.join(root, "packages", "odd", "package.json"), { recursive: true });
+      expect(() => readWorkspace(root)).toThrow(path.join(root, "packages", "odd", "package.json"));
+      fs.rmSync(path.join(root, "packages", "odd"), { recursive: true });
+      fs.mkdirSync(path.join(root, "packages", "none"), { recursive: true });
+      expect(readWorkspace(root).manifests).toEqual([{ dir: root, name: "root", scripts: {} }]);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("satisfies this checkout's checkBash across the rules that read it", () => {
     const repo = path.resolve(import.meta.dirname, "..", "..");
     const workspace = readWorkspace(repo);
@@ -579,6 +596,21 @@ describe("the command line", () => {
     expect(parseCli(["--transcripts", "d", "--bogus"]).error).toBeDefined();
     expect(parseCli(["--transcripts", "d", "extra"]).error).toBeDefined();
     expect(parseCli(["--help"])).toEqual({ help: true });
+  });
+
+  it("exits 3 on a manifest it cannot read, naming it", async () => {
+    const owned = fs.mkdtempSync(path.join(os.tmpdir(), "replay-corpus-main-"));
+    try {
+      const transcripts = path.join(owned, "t");
+      fs.mkdirSync(transcripts);
+      const root = path.join(owned, "checkout");
+      fs.mkdirSync(path.join(root, "packages", "odd", "package.json"), { recursive: true });
+      const out = [];
+      expect(await main(["--transcripts", transcripts, "--census-only"], (l) => out.push(l), { root })).toBe(3);
+      expect(out.join("\n")).toContain(path.join(root, "packages", "odd", "package.json"));
+    } finally {
+      fs.rmSync(owned, { recursive: true, force: true });
+    }
   });
 
   it("exits 2 on a usage error, naming the problem", async () => {
