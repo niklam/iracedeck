@@ -203,12 +203,15 @@ export function keypadModeItem(ejs) {
 /** `<% if (condition) { %> … <% } %>`, one level deep: the only control flow a Mode item uses. */
 const EJS_IF_BLOCK = /<%\s*if\s*\(([^)]*)\)\s*\{\s*%>([\s\S]*?)<%\s*\}\s*%>/g;
 
+/** An `<optgroup hidden>` and everything in it, EJS blocks included. */
+const HIDDEN_OPTGROUP = /<optgroup\b[^>]*\shidden\b[^>]*>[\s\S]*?<\/optgroup>/g;
+
 /**
  * The `value` of every option in some template text a user can be offered:
  * not marked `hidden`, and not inside an `<optgroup hidden>`.
  */
 function visibleOptionValues(text) {
-  const shown = text.replace(/<optgroup\b[^>]*\shidden\b[^>]*>[\s\S]*?<\/optgroup>/g, "");
+  const shown = text.replace(HIDDEN_OPTGROUP, "");
   return [...shown.matchAll(/<option\b[^>]*>/g)]
     .map((m) => m[0])
     .filter((tag) => !/\shidden\b/.test(tag))
@@ -219,9 +222,11 @@ function visibleOptionValues(text) {
  * Some template text split by EJS: `values`, the options outside any EJS
  * block; `gated`, those inside an `if` block, each with its condition;
  * `unread`, whether any other EJS control flow (a loop, an `else`) is left,
- * whose options the check cannot count.
+ * whose options the check cannot count. A hidden optgroup is dropped first,
+ * so an `if` inside one never brings its options back.
  */
-function splitByEjs(text) {
+function splitByEjs(input) {
+  const text = input.replace(HIDDEN_OPTGROUP, "");
   const gated = [...text.matchAll(EJS_IF_BLOCK)].flatMap((m) =>
     visibleOptionValues(m[2]).map((value) => ({ value, condition: m[1] })),
   );

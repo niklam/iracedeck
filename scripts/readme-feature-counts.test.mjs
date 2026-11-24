@@ -364,6 +364,11 @@ describe("feature counts (#1271)", () => {
       '<option value="d">D</option></sdpi-select></sdpi-item>';
     expect(keypadModeOptions(ejs)).toBe(2);
     expect(keypadModeOptions(ejs, ["d"])).toBe(1);
+    // A gated option inside a hidden optgroup stays hidden whatever its gate says.
+    const hiddenGated =
+      '<sdpi-item label="Mode"><sdpi-select><option value="a">A</option><optgroup label="Old" hidden>' +
+      '<% if (x) { %><option value="g">G</option><% } %></optgroup></sdpi-select></sdpi-item>';
+    expect(keypadModeOptions(hiddenGated, [], () => true)).toBe(1);
     expect(keypadModeOptions("<div></div>")).toBeNull();
     // An item never closed is not read to the end of the file.
     expect(keypadModeOptions('<sdpi-item label="Mode"><option value="a">A</option>')).toBeNull();
