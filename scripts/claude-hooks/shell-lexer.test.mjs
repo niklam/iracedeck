@@ -2346,7 +2346,7 @@ describe("fish's init command is a string it runs (#1659 second read)", () => {
 describe("the stopping rule: an expanding startup file beside a string (#1659 CodeRabbit)", () => {
   it.each([
     [`bash --rcfile "$F" -i -c 'true' <<< 'gh pr merge 7 --squash'`, "a shell reading its script from a here-string"],
-    [`bash -i --init-file $F -c : < <(echo gh pr merge 7)`, "a shell reading its script from a process substitution"],
+    [`bash --init-file $F -i -c : < <(echo gh pr merge 7)`, "a shell reading its script from a process substitution"],
     [`bash --rcfile "$F" -i -c : < in.txt`, "a shell reading its script from stdin"],
     [`echo 'gh pr merge 7' | bash --rcfile "$F" -i -c :`, "a printer piped into a shell"],
   ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
