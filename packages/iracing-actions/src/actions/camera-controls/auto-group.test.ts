@@ -899,14 +899,16 @@ describe("auto group ownership", () => {
 
     it("switch the pick order", () => {
       applySwitches();
-      vi.spyOn(Math, "random").mockReturnValue(0);
+      // A draw at the top of the range: in order would take TV2 after TV1,
+      // so only the random pick reaches TV3.
+      vi.spyOn(Math, "random").mockReturnValue(0.99);
       start("key-a", ["TV1", "TV2", "TV3"]);
       landOn(2);
       updateAutoGroupSettings("key-a", ["TV1", "TV2", "TV3"], "random");
       landOn(3);
 
-      // Random from TV1: the others are TV2 and TV3, and 0 draws TV2.
-      expect(switchedGroups()).toEqual(["TV1", "TV2"]);
+      // Random from TV1: the others are TV2 and TV3, and 0.99 draws TV3.
+      expect(switchedGroups()).toEqual(["TV1", "TV3"]);
     });
 
     it("are ignored from any other context, and with nothing running", () => {
