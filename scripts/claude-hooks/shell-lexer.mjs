@@ -1967,10 +1967,18 @@ const OPENS = new Set(["{", "while", "until", "if", "for", "select", "case"]);
  * into it (`printf x | { bash; } </dev/null`, PR #1798 review): from the
  * innermost compound command out, the first that has its own redirection or
  * is piped decides. The array also carries `closers`: every compound
- * command's closing word, in order, as `{ at, from }`, where it starts and
+ * command's closing word, in order, as `{ at, from, open }`, where it starts,
  * where the words after it start, whose redirections set the stdin of every
- * command inside it ({@link fedStarts}' `stdinAround`, CLI check of
- * 8086892f8).
+ * command inside it, and where the compound command opens ({@link
+ * fedStarts}' `stdinAround`, CLI check of 8086892f8). Each command's `shell`
+ * names the shell it runs in, as the opening positions of the subshells
+ * holding it joined by `/`, outermost first: a `( … )` or a process
+ * substitution, a command substitution (`$` and its position), a compound
+ * command or a command run as a pipeline stage, in the background or by
+ * `coproc` (`s` and its position); `""` for the shell the text is typed
+ * to. One shell runs in another when the other's name is a prefix of its
+ * own ({@link runsIn}), so an `exec` reaches only its own shell and those it
+ * starts later (a judge on 15ce351a1).
  */
 function pipedCommands(command) {
   const { commands, ends } = level(command);
@@ -1983,16 +1991,23 @@ function pipedCommands(command) {
   const pop = (kinds, at, from, to) => {
     if (!frames.length || !kinds.includes(frames.at(-1).kind)) return;
     const frame = frames.pop();
+    // A compound command piped on or sent to the background runs in a subshell.
+    if (stageAfter(command, from)) frame.shell = true;
     // A process substitution's `)` ends a word of the command holding it, so
     // what follows redirects that command, not the substitution (#1659).
     if (frame.substitution) return void (frame.close = at);
-    closers.push({ at, from });
+    closers.push({ at, from, open: frame.open });
     Object.assign(frame, { close: at, redirected: commandOf(NO_OPTIONS, command, from, to).stdin !== "pipe" });
   };
+  // A `coproc` runs the command or compound command after it in a subshell.
+  let coproc = false;
   let pending = false;
   for (const c of commands) {
     const end = Math.min(ends[c], command.length);
     let cur = pending;
+    // Piped into, piped on or sent to the background: a pipeline stage.
+    let stage = pending || stageAfter(command, end);
+    coproc = false;
     for (let i = c; ;) {
       while (i < end && /\s/.test(command[i])) i++;
       if (i >= end || command[i] === "#") break;
@@ -2000,26 +2015,30 @@ function pipedCommands(command) {
       if (e <= i) break;
       const w = command.slice(i, e);
       if (OPENS.has(w)) {
-        frames.push({ kind: w, piped: cur });
+        // A piped-into compound command is a subshell; its commands are not stages.
+        frames.push({ kind: w, piped: cur, open: i, shell: coproc || cur });
+        coproc = false;
         cur = false;
+        stage = false;
       } else if (["then", "do", "else", "elif"].includes(w)) cur = false;
       else if (Object.hasOwn(CLOSES, w)) pop(CLOSES[w], i, e, end);
       else if (w === "coproc") {
         // What a coproc runs reads the coproc's pipe (#1659).
         cur = true;
+        coproc = true;
         i = coprocProgram(command, blanksFrom(command, e));
         continue;
       } else if (w !== "!" && w !== "time") break;
       i = e;
     }
-    out.push({ start: c, end, own: cur, chain: frames.slice() });
+    out.push({ start: c, end, own: cur, chain: frames.slice(), stage: stage || coproc });
     const text = command.slice(c, end).trim();
     const blank = !text || text.startsWith("#");
     const b = command[end];
     if (b === "(") {
       // An output process substitution's commands read its pipe (`tee >(bash)`, #1659).
       const substitution = command[end - 1] === ">" || command[end - 1] === "<";
-      frames.push({ kind: "(", piped: cur || command[end - 1] === ">", substitution });
+      frames.push({ kind: "(", piped: cur || command[end - 1] === ">", substitution, open: end, shell: true });
       pending = false;
     } else if (b === ")") {
       pop(["("], end, end + 1, command.length);
@@ -2038,11 +2057,15 @@ function pipedCommands(command) {
     return false;
   };
   // `closes`, where the closing word of each compound command holding it stands.
-  const read = out.map(({ start, end, own, chain }) => ({
+  // The shell each command runs in, read once every frame is closed.
+  const shellOf = (chain, start, stage) =>
+    [...chain.filter((f) => f.shell).map((f) => String(f.open)), ...(stage ? [`s${start}`] : [])].join("/");
+  const read = out.map(({ start, end, own, chain, stage }) => ({
     start,
     end,
     piped: own || fed(chain),
     closes: chain.map((f) => f.close).filter((x) => x !== undefined),
+    shell: shellOf(chain, start, stage),
     top: true,
   }));
   // Each command substitution's body is a command list of its own, however
@@ -2056,20 +2079,50 @@ function pipedCommands(command) {
     const host = read.find((c) => c.start <= s && s <= c.end);
     // Up to the closing `)` or backtick, which `e` is just past.
     const body = pipedCommands(command.slice(from, Math.max(from, e - 1)));
+    // Its shell is a subshell of the one running the command holding it.
+    const at = (k) => k.replace(/\d+/g, (n) => String(Number(n) + from));
+    const sub = [host?.shell, `$${s}`].filter(Boolean).join("/");
     for (const x of body)
       inner.push({
         start: x.start + from,
         end: x.end + from,
         piped: x.piped || Boolean(host?.piped),
         closes: x.closes.map((c) => c + from),
+        shell: x.shell ? `${sub}/${at(x.shell)}` : sub,
         top: false,
       });
-    for (const x of body.closers) closers.push({ at: x.at + from, from: x.from + from });
+    for (const x of body.closers) closers.push({ at: x.at + from, from: x.from + from, open: x.open + from });
   }
   closers.sort((x, y) => x.at - y.at);
   const all = inner.length ? [...read, ...inner].sort((x, y) => x.start - y.start) : read;
   return Object.assign(all, { closers });
 }
+
+/**
+ * Whether the separator that ends the command whose words resume at `from`
+ * of `t` makes it a pipeline stage or a background job, run in a subshell
+ * ({@link pipedCommands}): a `|` (not `||`) or a `&` that is neither
+ * `&&` nor a redirection's, past the words and redirections before it.
+ */
+function stageAfter(t, from) {
+  let k = from;
+  while (k < t.length) {
+    if (t[k] === " " || t[k] === "\t") k++;
+    else if (t[k] === "<" || t[k] === ">") k++;
+    else if (endsCommand(t, k)) break;
+    else {
+      const e = wordEnd(t, k);
+      if (e <= k) break;
+      k = e;
+    }
+  }
+  const c = t[k];
+  if (c === "|") return t[k + 1] !== "|";
+  return c === "&" && t[k + 1] !== "&";
+}
+
+/** Whether a command in the shell named `inner` runs in the shell named `outer`, or one it starts ({@link pipedCommands}). */
+const runsIn = (inner, outer) => outer === "" || inner === outer || inner.startsWith(`${outer}/`);
 
 /**
  * Where the words a shell word or a wrapper runs start (#1607, #1634): a map
@@ -2312,13 +2365,19 @@ function fedStarts(command, text, fed, programs) {
       if (closers[mid].at <= p) lo = mid + 1;
       else hi = mid;
     }
+    // Where the compound command whose file redirection gives `p` its stdin
+    // opens: an `exec` inside it, after that, still sets it (a judge on 15ce351a1).
+    let since = -1;
     for (let k = lo; k < closers.length && closers[k].at < b; k++) {
-      const { at, from } = closers[k];
+      const { at, from, open } = closers[k];
       const r = commandOf(NO_OPTIONS, text, from, b);
       if (r.stdin === "pipe") continue;
       const stream = formOf(r.stdin, `${text.slice(at, from)} <…`);
       if (stream) return stream;
-      if (encloses.has(at)) return undefined;
+      if (encloses.has(at)) {
+        since = open;
+        break;
+      }
     }
     // The last `exec` that sets stdin wins, but one that resets it to a file
     // only when it surely runs in the same shell after the one it overrides:
@@ -2332,8 +2391,11 @@ function fedStarts(command, text, fed, programs) {
     // other file is sure to open (CodeRabbit CLI on f62995d39).
     let found;
     let after = 0;
-    for (const at of commandExecs()) {
+    // Only an `exec` in the shell `p` runs in, or one that started it, sets its stdin.
+    const shell = fedCommandAt(p)?.shell ?? "";
+    for (const { at, shell: owner, end: stop } of commandExecs()) {
       if (at >= p) break;
+      if (at <= since || !runsIn(shell, owner)) continue;
       const end = at + "exec".length;
       const r = commandOf(NO_OPTIONS, text, end, p);
       if (r.program !== undefined || r.stdin === "pipe") continue;
@@ -2347,25 +2409,30 @@ function fedStarts(command, text, fed, programs) {
         found &&
         isDevNull(r.stdinTarget) &&
         !UNSURE_CHAIN.test(text.slice(after, at)) &&
-        !/[|&]/.test(text[base.ends[at]] ?? "")
+        !/[|&]/.test(text[stop] ?? "")
       )
         found = undefined;
     }
     return found;
   };
-  // Where each `exec` that leads a command starts, in order, read once past
-  // the keywords and wrappers ahead of it ({@link leadStep}).
+  // Each `exec` that leads a command, in order, as `{ at, shell, end }`:
+  // where it starts, the shell it runs in and where its command ends, read
+  // once past the keywords and wrappers ahead of it ({@link leadStep}), in a
+  // command substitution's body too (a judge on 15ce351a1).
   let execs;
   const commandExecs = () => {
     if (execs) return execs;
     execs = [];
-    for (const c of base.commands) {
-      let k = blanksFrom(text, c);
-      for (let step; (step = leadStep(text, k)); k = step.end) if (step.wrapper === "exec") execs.push(k);
+    fedCommands ??= pipedCommands(command);
+    for (const c of fedCommands) {
+      let k = blanksFrom(text, c.start);
+      const at = (x) => execs.push({ at: x, shell: c.shell, end: c.end });
+      for (let step; (step = leadStep(text, k)) && k < c.end; k = step.end) if (step.wrapper === "exec") at(k);
       // An `exec` glued to its redirection (`exec<<<x`), which the lead,
       // wanting a blank after it, does not step over (PR #1798 review).
-      if (/^exec[<>]/.test(text.slice(k, k + 5))) execs.push(k);
+      if (k < c.end && /^exec[<>]/.test(text.slice(k, k + 5))) at(k);
     }
+    execs.sort((x, y) => x.at - y.at);
     return execs;
   };
   // The program word `[d, e)` of a string's level `L`: refused when it is not

@@ -2940,3 +2940,41 @@ describe("the stopping rule: startup-file assignments through every lead (#1659 
     expect(Date.now() - t).toBeLessThan(3000);
   });
 });
+
+// A judge on 15ce351a1: an `exec` sets the stdin of the shell it runs in, from
+// where it runs on, a group's own redirection before it included; a subshell's
+// or a substitution's reaches no command outside it.
+describe("the stopping rule: the shell an exec runs in (#1659 judge)", () => {
+  const HERE_STRING = "a shell reading its script from a here-string";
+  it.each([
+    `{ exec <<< 'gh pr merge 7'; bash; } < /dev/null`,
+    `( exec <<< 'gh pr merge 7'; bash ) </dev/null`,
+    `while read x; do exec <<< 'gh pr merge 7'; bash; done < f.txt`,
+    `echo $(exec <<< 'gh pr merge 7'; bash)`,
+    `x=$(exec <<< 'gh pr merge 7'; bash)`,
+    "echo `exec <<< 'gh pr merge 7'; bash`",
+    `echo "$(exec <<< 'gh pr merge 7'; bash)"`,
+    `echo $( (exec <<< 'gh pr merge 7'; bash) )`,
+    `exec <<< 'gh pr merge 7'; echo $(bash)`,
+    `exec <<< 'gh pr merge 7'; ( bash )`,
+    `exec <<< 'gh pr merge 7'; { bash; }`,
+    // Twins: a group's exec inside a redirected subshell, and a nested substitution.
+    `( { exec <<< 'gh pr merge 7'; }; bash ) </dev/null`,
+    `echo $(exec <<< 'gh pr merge 7'; echo $(bash))`,
+    `exec <<< 'gh pr merge 7'; bash &`,
+  ])("refuses %s", (c) => expect(lexer.refusedForms(c)[0]?.form).toBe(HERE_STRING));
+  it.each([
+    `( exec <<< ':' ); bash`,
+    `echo $(exec <<< ':'); bash`,
+    "echo `exec <<< ':'`; bash",
+    `cat <(exec <<< ':'); bash`,
+    `{ exec <<< ':'; } | cat; bash`,
+    `exec <<< ':' | cat; bash`,
+    `( exec <<< ':'; ( true ) ); bash`,
+    `exec <<< ':' & bash`,
+    `{ exec <<< ':'; } & bash`,
+    `exec <<< ':'; { bash; } </dev/null`,
+    `{ bash; exec <<< ':'; } </dev/null`,
+    `x=$(exec <<< ':'); echo $(bash)`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+});

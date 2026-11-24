@@ -5864,3 +5864,12 @@ describe("PowerShell's curly quotes (#1659)", () => {
   );
   it("passes an iex in a curly-quoted PowerShell string", () => passes(`pwsh -c "Write-Host \u2018a; iex x\u2019"`));
 });
+
+// A judge on 15ce351a1: an exec sets the stdin of the shell it runs in.
+describe("the shell an exec runs in (#1659)", () => {
+  it("refuses an exec inside a redirected group or a substitution, and passes a subshell's", () => {
+    expect(stopped(`{ exec <<< 'gh pr merge 7 --squash'; bash; } < /dev/null`)).toContain("from a here-string");
+    expect(stopped(`echo "$(exec <<< 'gh pr merge 7 --squash'; bash)"`)).toContain("from a here-string");
+    passes(`( exec <<< ':' ); bash -s`);
+  });
+});
