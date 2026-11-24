@@ -5346,6 +5346,15 @@ describe("an exec reset across everything since the stream (#1659)", () => {
   });
 });
 
+// PR #1798 review at 0dced8c2f: the nearest enclosing closer with a stdin file decides.
+describe("a stdin shell inside groups that redirect stdin (#1659)", () => {
+  it("passes an inner group reading a file, and refuses one the outer stream still feeds", () => {
+    passes(`{ { bash; } </dev/null; } <<< 'gh pr merge 7 --squash'`);
+    expect(stopped(`{ { bash; }; } <<< 'gh pr merge 7 --squash'`)).toContain("from a here-string");
+    expect(stopped(`exec <<< 'gh pr merge 7 --squash'; bash | { cat; } </dev/null`)).toContain("from a here-string");
+  });
+});
+
 // A judge on PR #1798: a trailing comment is no script operand.
 describe("a stdin shell with a trailing comment (#1659)", () => {
   it.each([

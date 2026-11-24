@@ -2662,3 +2662,21 @@ describe("the stopping rule: an exec glued to its redirection (#1659 PR review)"
     (c) => expect(lexer.refusedForms(c)).toEqual([]),
   );
 });
+
+// PR #1798 review at 0dced8c2f: the nearest closing word that redirects stdin
+// decides; a file there ends the search, an outer stream reaches no further.
+describe("the stopping rule: the nearest closer that redirects stdin (#1659 PR review)", () => {
+  const HERE_STRING = "a shell reading its script from a here-string";
+  it.each([`{ { bash; } </dev/null; } <<< ':'`, `( { bash; } < in.txt ) <<< ':'`])(
+    "reads and refuses nothing in %s",
+    (c) => expect(lexer.refusedForms(c)).toEqual([]),
+  );
+  it.each([
+    `{ { bash; }; } <<< ':'`,
+    `{ { bash; } 2>/dev/null; } <<< ':'`,
+    `{ { bash; } <<< x; } </dev/null`,
+    // A closer that does not hold the shell decides nothing for it.
+    `exec <<< x; bash | { cat; } </dev/null`,
+    `exec <<< x; bash; { cat; } </dev/null`,
+  ])("refuses %s", (c) => expect(lexer.refusedForms(c)[0]?.form).toBe(HERE_STRING));
+});

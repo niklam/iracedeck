@@ -1901,11 +1901,12 @@ function pipedCommands(command) {
   const { commands, ends } = level(command);
   const out = [];
   const frames = [];
-  // Closes the innermost compound command of `kinds`, marking it when the
-  // words from `from` to `to` after its closing word redirect its stdin.
-  const pop = (kinds, from, to) => {
+  // Closes the innermost compound command of `kinds` at its closing word `at`,
+  // marking it when the words from `from` to `to` after that word redirect
+  // its stdin.
+  const pop = (kinds, at, from, to) => {
     if (!frames.length || !kinds.includes(frames.at(-1).kind)) return;
-    frames.pop().redirected = commandOf(NO_OPTIONS, command, from, to).stdin !== "pipe";
+    Object.assign(frames.pop(), { close: at, redirected: commandOf(NO_OPTIONS, command, from, to).stdin !== "pipe" });
   };
   let pending = false;
   for (const c of commands) {
@@ -1921,7 +1922,7 @@ function pipedCommands(command) {
         frames.push({ kind: w, piped: cur });
         cur = false;
       } else if (["then", "do", "else", "elif"].includes(w)) cur = false;
-      else if (Object.hasOwn(CLOSES, w)) pop(CLOSES[w], e, end);
+      else if (Object.hasOwn(CLOSES, w)) pop(CLOSES[w], i, e, end);
       else if (w !== "!" && w !== "time") break;
       i = e;
     }
@@ -1933,7 +1934,7 @@ function pipedCommands(command) {
       frames.push({ kind: "(", piped: cur });
       pending = false;
     } else if (b === ")") {
-      pop(["("], end + 1, command.length);
+      pop(["("], end, end + 1, command.length);
       pending = false;
     } else if (b === "|") pending = command[end + 1] !== "|" && command[end - 1] !== "|";
     // A `|` goes on over a newline or a comment after it, and `|&` is one.
@@ -1948,7 +1949,13 @@ function pipedCommands(command) {
     }
     return false;
   };
-  return out.map(({ start, end, own, chain }) => ({ start, end, piped: own || fed(chain) }));
+  // `closes`, where the closing word of each compound command holding it stands.
+  return out.map(({ start, end, own, chain }) => ({
+    start,
+    end,
+    piped: own || fed(chain),
+    closes: chain.map((f) => f.close).filter((x) => x !== undefined),
+  }));
 }
 
 /**
@@ -2098,7 +2105,8 @@ function fedStarts(command, text, fed, programs) {
   // hold a heredoc delimiter its program-word rewrite lowercased, which ends
   // no body.
   let fedCommands;
-  const pipeFeeds = (p) => {
+  // The simple command of {@link pipedCommands} holding `p`, if any.
+  const fedCommandAt = (p) => {
     fedCommands ??= pipedCommands(command);
     let lo = 0;
     let hi = fedCommands.length - 1;
@@ -2108,8 +2116,9 @@ function fedStarts(command, text, fed, programs) {
       else hi = mid - 1;
     }
     const at = fedCommands[lo];
-    return Boolean(at && at.start <= p && p <= at.end && at.piped);
+    return at && at.start <= p && p <= at.end ? at : undefined;
   };
+  const pipeFeeds = (p) => Boolean(fedCommandAt(p)?.piped);
   // The xargs that runs the program word at `p` of the typed text, as `{
   // replace, by }` ({@link replaceString}; `undefined` for none), or
   // `undefined` where none does (#1659). Read as the lead is parsed, from the
@@ -2156,10 +2165,17 @@ function fedStarts(command, text, fed, programs) {
   // x`) counts too: the gate errs to deny.
   const stdinAround = (p, b) => {
     const formOf = (kind, shape) => STREAM_FORMS[kind] && { form: STREAM_FORMS[kind], shape };
+    // The nearest enclosing closing word that redirects stdin at all decides:
+    // a file there ends the search, since what is inside reads that and no
+    // outer redirection (PR #1798 review at 0dced8c2f). A stream on any
+    // closer before that is refused, enclosing or not.
+    const encloses = new Set(fedCommandAt(p)?.closes);
     for (const m of text.slice(p, b).matchAll(CLOSER)) {
       const r = commandOf(NO_OPTIONS, text, p + m.index + m[0].length, b);
-      const found = formOf(r.stdin, `${m[0]} <…`);
-      if (found) return found;
+      if (r.stdin === "pipe") continue;
+      const stream = formOf(r.stdin, `${m[0]} <…`);
+      if (stream) return stream;
+      if (encloses.has(p + m.index)) return undefined;
     }
     // The last `exec` that sets stdin wins, but one that resets it to a file
     // only when it surely runs in the same shell after the one it overrides:
