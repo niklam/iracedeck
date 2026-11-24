@@ -15,7 +15,7 @@ import {
   replaySearchOnItsWay,
   subscribeReplayGate,
 } from "./replay-command-gate.js";
-import { fakeReplay, type FakeReplay } from "./replay-command-gate.test-support.js";
+import { fakeReplay, type FakeReplay, type FakeReplayOptions } from "./replay-command-gate.test-support.js";
 import { resetEngine } from "./replay-engine-reset.test-support.js";
 import { beginReplayJump, runReplayJump } from "./replay-jump-playback.js";
 import type { ReplaySpeed } from "./replay-jump-speed.js";
@@ -339,7 +339,9 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
   };
 
   /** Where the fake's searches land: Next Session 100 000 frames on, Next Lap a long way on, Next Incident nowhere. */
-  function setUp(options: { speed?: ReplaySpeed; frame?: number } = {}): void {
+  function setUp(
+    options: { speed?: ReplaySpeed; frame?: number; searches?: FakeReplayOptions["searches"] } = {},
+  ): void {
     sim = fakeReplay({
       frame: options.frame ?? 100_000,
       speed: options.speed,
@@ -347,6 +349,7 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
         nextSession: (from) => from + 100_000,
         nextLap: (from) => from + 900_000,
         nextIncident: () => null,
+        ...options.searches,
       },
     });
     state = steppedReplayState(() => sim.telemetry());
@@ -572,6 +575,135 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
 
     expect(order).toEqual(["a cursor 200000", "b target 250000"]);
     expect(sim.frame()).toBe(300_000);
+  });
+
+  describe("press order across the gate's slot", () => {
+    /** An incident search lands 30 000 frames on. */
+    const withIncidents = { searches: { nextIncident: (from: number) => from + 30_000 } };
+    /** A key's Next Incident, which the gate holds in its slot behind a search on its way. */
+    const incidentKey = () =>
+      pressReplayCommand({ kind: "search", search: "nextIncident" }, { by: "test-incident", origin: "key-g" });
+
+    /** A marker-style press: its start, then a jump 50 000 frames on from it, its target recorded at once. */
+    function jumpPress(name: string, order: string[], jumps: Promise<unknown>[]): Promise<void> {
+      return awaitReplayWalkStart(
+        readState,
+        () => sim.telemetry(),
+        (start) => {
+          order.push(`${name} ${start.frame === null ? start.reason : `${start.from} ${start.frame}`}`);
+
+          if (start.frame === null) return;
+
+          const frame = start.frame + 50_000;
+          const jump = beginReplayJump(`test-${name}`, sim.telemetry(), undefined, Date.now(), { frame });
+
+          jumps.push(runReplayJump(jump, { frame, readTelemetry: () => sim.telemetry() }).finally(() => jump.end()));
+        },
+      );
+    }
+
+    it("a start pressed before the slot's command goes first at the landing, and the command waits behind its jump", async () => {
+      setUp(withIncidents);
+      search("nextSession");
+
+      const order: string[] = [];
+      const jumps: Promise<unknown>[] = [];
+      const a = jumpPress("a", order, jumps);
+
+      expect(incidentKey()).toEqual({ kind: "held" });
+
+      await vi.advanceTimersByTimeAsync(3_000);
+      await a;
+      await vi.advanceTimersByTimeAsync(5_000);
+      await Promise.all(jumps);
+
+      // The session landed at 200 000; the marker press stepped from there, then the incident search from its jump.
+      expect(order).toEqual(["a cursor 200000"]);
+      expect(sim.calls.filter((call) => call !== "pause")).toEqual([
+        "nextSession",
+        "setPlayPosition 0 250000",
+        "nextIncident",
+      ]);
+      expect(sim.frame()).toBe(280_000);
+      expect(sim.thrown).toBe(0);
+    });
+
+    it("a slot command pressed before the start still goes first, and the start waits for its search", async () => {
+      setUp(withIncidents);
+      search("nextSession");
+
+      const order: string[] = [];
+      const jumps: Promise<unknown>[] = [];
+
+      expect(incidentKey()).toEqual({ kind: "held" });
+
+      const a = jumpPress("a", order, jumps);
+
+      await vi.advanceTimersByTimeAsync(3_000);
+      await a;
+      await vi.advanceTimersByTimeAsync(5_000);
+      await Promise.all(jumps);
+
+      expect(order).toEqual(["a cursor 230000"]);
+      expect(sim.calls.filter((call) => call !== "pause")).toEqual([
+        "nextSession",
+        "nextIncident",
+        "setPlayPosition 0 280000",
+      ]);
+      expect(sim.frame()).toBe(280_000);
+    });
+
+    it("a start that went first and pressed a search does not drop the newer slot command, which waits for that search", async () => {
+      setUp(withIncidents);
+      search("nextSession");
+
+      // A Replay Control miss: the press falls back to the key's own search through the gate.
+      const a = awaitReplayWalkStart(
+        readState,
+        () => sim.telemetry(),
+        () => pressReplayCommand({ kind: "search", search: "nextSession" }, { by: "test-a" }),
+      );
+
+      expect(incidentKey()).toEqual({ kind: "held" });
+
+      await vi.advanceTimersByTimeAsync(3_000);
+
+      await expect(a).resolves.toEqual({ kind: "sent", ok: true });
+
+      await vi.advanceTimersByTimeAsync(3_000);
+
+      expect(sim.calls).toEqual(["nextSession", "nextSession", "nextIncident"]);
+      expect(sim.frame()).toBe(330_000);
+      expect(sim.thrown).toBe(0);
+    });
+
+    it("when the start that went first sends nothing, the slot's command goes out before the next start reads", async () => {
+      setUp(withIncidents);
+      search("nextSession");
+
+      const order: string[] = [];
+      const a = awaitReplayWalkStart(
+        readState,
+        () => sim.telemetry(),
+        (start) => order.push(`a ${start.frame}`),
+      );
+
+      expect(incidentKey()).toEqual({ kind: "held" });
+
+      // Pressed after the incident key: it waits for the incident search the key sends once the first press has acted.
+      const b = awaitReplayWalkStart(
+        readState,
+        () => sim.telemetry(),
+        (start) => order.push(`b ${start.frame}`),
+      );
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      await Promise.all([a, b]);
+
+      expect(order).toEqual(["a 200000", "b 230000"]);
+      expect(sim.calls).toEqual(["nextSession", "nextIncident"]);
+      expect(getReplayGateView("key-g")).toEqual({ underWay: null, waiting: null });
+    });
   });
 
   it("resolves every press waiting on one search to its landing", async () => {

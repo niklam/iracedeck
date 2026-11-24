@@ -278,6 +278,12 @@ interface Slot {
   /** The press's own `rememberSpeed`, for a takeover the slot hands it to. What the slot sends itself always remembers. */
   readonly rememberSpeed: boolean;
   readonly pressedAt: number;
+  /**
+   * Its place in press order among the slot's commands and the waiting
+   * starts ({@link openReplayGateWait}), from one counter: a start waiting
+   * with a lower one was pressed first and goes first at a landing (#1660).
+   */
+  readonly order: number;
   readonly behind: "jump" | "search";
   /** The target it waits on; null behind a seek only the witness shows. */
   behindTargetId: number | null;
@@ -293,6 +299,13 @@ interface Slot {
    * that arrives behind it is a first press, which waits, not a second one.
    */
   follow?: boolean;
+  /**
+   * Set when the search it waited behind landed while a start pressed before
+   * it still waited (#1660): it was held back for those starts, and goes once
+   * they have acted ({@link releaseOnLanding}), even if a start's jump has
+   * since forgotten the landed record.
+   */
+  searchLanded?: boolean;
 }
 
 /** A replay jump holding the cursor (`replay-jump-playback.ts`, the walk). */
@@ -485,12 +498,25 @@ let toldSeekHold: ReplaySeekHoldUntil | null = null;
 interface StartWait {
   readonly origin: string | undefined;
   readonly since: number;
+  /** Its place in press order (`Slot.order`). */
+  readonly order: number;
 }
 
 /** The waiting starts by handle ({@link openReplayGateWait}). */
 const startWaits = new Map<number, StartWait>();
 /** The last waiting start's handle. */
 let startWaitSeq = 0;
+/** The last press order given to a slot command or a waiting start (#1660). */
+let pressOrder = 0;
+
+/** Whether a start pressed before `order` still waits: it goes before the slot's command at a landing (#1660). */
+function startWaitsBefore(order: number): boolean {
+  for (const start of startWaits.values()) {
+    if (start.order < order) return true;
+  }
+
+  return false;
+}
 
 /** Runs `listener` on every change of any token's view. Returns the unsubscribe. */
 export function subscribeReplayGate(listener: (notice: ReplayGateNotice) => void): () => void {
@@ -1340,6 +1366,7 @@ function holdBehindJump(
     origin: options.origin,
     rememberSpeed: options.rememberSpeed === true,
     pressedAt: now,
+    order: ++pressOrder,
     behind: "jump",
     behindTargetId: pendingReplayTarget()?.id ?? null,
     jumpPlayback,
@@ -1378,6 +1405,7 @@ function waitBehindSearch(
     origin: options.origin,
     rememberSpeed: options.rememberSpeed === true,
     pressedAt: now,
+    order: ++pressOrder,
     behind: "search",
     behindTargetId: null,
     jumpPlayback: null,
@@ -1446,6 +1474,7 @@ function takeOver(
       origin: options.origin,
       rememberSpeed: options.rememberSpeed === true,
       pressedAt: now,
+      order: ++pressOrder,
       behind: "jump",
       behindTargetId: target.id,
       jumpPlayback: null,
@@ -1474,20 +1503,37 @@ function serviceSlot(telemetry: TelemetryData | null, now: number): void {
 
 function serviceBehindSearch(current: Slot, telemetry: TelemetryData | null, now: number): void {
   const record = search;
+  // A slot held back at its landing still counts it landed once a start's jump has forgotten the record.
+  const landed = record === null ? current.searchLanded === true : record.landed;
 
-  if (record === null) {
+  if (record === null && !landed) {
     emptySlot("forgotten", "the search it waited on was forgotten");
 
     return;
   }
 
-  if (record.landed) {
-    slot = null;
-    noteEnd(current.origin, "waiting", "sent-on-landing");
-    goOut(current, telemetry, now);
+  if (landed) {
+    // Starts pressed before it go first at the landing, in press order (#1660): it waits until they have acted.
+    if (startWaitsBefore(current.order)) {
+      if (current.searchLanded !== true) {
+        current.searchLanded = true;
+        log().debug(
+          `Replay command held on the landing: ${describe(current.command)} (${current.by}) waits for a step pressed before it`,
+        );
+      }
+
+      return;
+    }
+
+    releaseOnLanding(current, telemetry, now);
 
     return;
   }
+
+  if (record === null) return;
+
+  // A search on its way again (a start that went first sent one): the slot waits for that one, by the table.
+  current.searchLanded = false;
 
   if (!record.onItsWay) {
     slot = null;
@@ -1499,6 +1545,50 @@ function serviceBehindSearch(current: Slot, telemetry: TelemetryData | null, now
       now,
     );
   }
+}
+
+/**
+ * The slot's command goes out on its search's landing. One held back there
+ * for starts pressed before it (#1660) is decided once they have acted, by
+ * the table against what they sent: behind a jump a start sent, a speed, a
+ * search or anything else waits for its read-back, a step becomes a jump one
+ * frame from its target, a go to goes out, and a pause is not sent. The
+ * cursor is not taken from that jump, as the press took it when it was made.
+ * Otherwise it goes out at once, as on every landing.
+ */
+function releaseOnLanding(current: Slot, telemetry: TelemetryData | null, now: number): void {
+  slot = null;
+
+  if (current.searchLanded !== true || !jumpUnderWay() || current.command.kind === "playback") {
+    noteEnd(current.origin, "waiting", "sent-on-landing");
+    goOut(current, telemetry, now);
+
+    return;
+  }
+
+  const result = decide(
+    current.command,
+    { by: current.by, origin: current.origin, rememberSpeed: current.rememberSpeed },
+    telemetry,
+    now,
+    null,
+    null,
+  );
+  const reheld = slot as Slot | null;
+
+  if (result.kind === "held" && reheld !== null) {
+    // Still the same press: its place in press order and its waiting fact's start stay.
+    slot = { ...reheld, pressedAt: current.pressedAt, order: current.order };
+    log().debug(`Replay command held: ${describe(current.command)} (${current.by}) now waits for the step's jump`);
+
+    return;
+  }
+
+  noteEnd(
+    current.origin,
+    "waiting",
+    result.kind === "sent" ? "sent-on-landing" : current.command.kind === "pause" ? "cleared-by-pause" : "refused",
+  );
 }
 
 function serviceBehindJump(current: Slot, telemetry: TelemetryData | null, now: number): void {
@@ -1648,6 +1738,7 @@ function goOut(current: Slot, telemetry: TelemetryData | null, now: number): voi
     origin: current.origin,
     rememberSpeed: current.rememberSpeed,
     pressedAt: current.pressedAt,
+    order: current.order,
     behind: "search",
     behindTargetId: null,
     jumpPlayback: null,
@@ -2608,7 +2699,7 @@ export function openReplayGateWait(origin: string | undefined): number {
   const now = engineNow();
 
   batch(now, () => {
-    startWaits.set(id, { origin, since: now });
+    startWaits.set(id, { origin, since: now, order: ++pressOrder });
   });
 
   return id;
@@ -2620,18 +2711,51 @@ export function openReplayGateWait(origin: string | undefined): number {
  * one notice: the busy indicator goes from the still mark straight to what
  * was sent, with no rest drawn between. A completed or superseded reason
  * shows no not-done; a handle already ended only runs `then`.
+ *
+ * The slot is serviced at the end of the same change, after `then`, thrown
+ * or not (#1660): a command held back at its landing for this start goes out
+ * now, or waits behind what `then` sent, before the next start reads where it
+ * starts, so press order holds across the slot. While `then` runs that
+ * command is set aside, so the start's own send, the older press, does not
+ * empty the slot as if it were the newer word.
  */
 export function closeReplayGateWait<T>(id: number, reason: ReplayGateEndReason, then: () => T): T {
-  return batch(engineNow(), () => {
-    const wait = startWaits.get(id);
+  const now = engineNow();
 
-    if (wait !== undefined) {
-      startWaits.delete(id);
-      noteEnd(wait.origin, "waiting", reason);
-    }
+  try {
+    return batch(now, () => {
+      const wait = startWaits.get(id);
 
-    return then();
-  });
+      if (wait !== undefined) {
+        startWaits.delete(id);
+        noteEnd(wait.origin, "waiting", reason);
+      }
+
+      // A command held back at its landing for this start is newer than it: what the start sends must not replace
+      // it as the newest word ("newest wins"), so it is set aside while the start acts and put back after.
+      const parked = slot !== null && slot.searchLanded === true ? slot : null;
+
+      if (parked !== null) slot = null;
+
+      try {
+        return then();
+      } finally {
+        if (parked !== null) {
+          // The start's own command waiting in the slot is the older press: the held-back one replaces it.
+          if (slot !== null) emptySlot("replaced", "a newer press held back at the landing takes the slot");
+
+          slot = parked;
+        }
+
+        const telemetry = engineReads().readTelemetry();
+
+        settle(telemetry, now);
+        serviceSlot(telemetry, now);
+      }
+    });
+  } finally {
+    arm();
+  }
 }
 
 /**
@@ -2790,6 +2914,7 @@ export function _resetReplayCommandGate(): void {
   searchSeq = 0;
   startWaits.clear();
   startWaitSeq = 0;
+  pressOrder = 0;
   takeover = null;
   slot = null;
   held = null;
