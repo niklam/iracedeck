@@ -37,6 +37,7 @@ import { getReplayBusyLook, registerReplayBusySurface } from "../../shared/repla
 import { replayBusyDialMark } from "../../shared/replay-busy-mark.js";
 import {
   addMarkerAt,
+  awaitMarkerStepStart,
   CONFIRMATION_FLASH_MS,
   deleteMarkerAt,
   followMarkerJump,
@@ -47,7 +48,7 @@ import {
   previewDeleteMarker,
   type ReplayContextResult,
   resolveJumpTarget,
-  resolveMarkerJumpAnchor,
+  resolveMarkerViewStart,
   walkMarkers,
 } from "./replay-markers-ops.js";
 import type { ReplayMarkersDialGesture, ReplayMarkersDialSettings } from "./replay-markers-settings.js";
@@ -163,14 +164,15 @@ export function buildTriggerDescription(dial: ReplayMarkersDialSettings): DeckTr
  *   (at it, or up to 2 s past it), `N` otherwise;
  * - the side marks lit where a turn from `anchorFrame` would jump — the same
  *   {@link resolveJumpTarget} the rotation calls, so the screen cannot promise a
- *   jump the dial will not make (out of a replay neither is lit);
+ *   jump the dial will not make (out of a replay neither is lit, nor with no
+ *   frame to step from: `anchorFrame` null, #1660, when `N` is shown);
  * - from the car, a caption naming the press when it adds. "From the car" is
  *   the context's debounced `inReplay`, so the caption does not flash in the
  *   ~300 ms after each seek while `IsReplayPlaying` reads false.
  */
 export function resolveDialView(
   context: ReplayContextResult,
-  anchorFrame: number,
+  anchorFrame: number | null,
   dial: ReplayMarkersDialSettings,
 ): { value: string; sides: DialSideMarks; caption: string; dimmed: boolean } {
   if (!context.ok) return { value: "", sides: { left: false, right: false }, caption: "", dimmed: true };
@@ -181,7 +183,7 @@ export function resolveDialView(
     left: resolveJumpTarget("previous", context, anchorFrame) !== null,
     right: resolveJumpTarget("next", context, anchorFrame) !== null,
   };
-  const playing = inReplay ? markerIndexAt(markers, anchorFrame) : -1;
+  const playing = inReplay && anchorFrame !== null ? markerIndexAt(markers, anchorFrame) : -1;
   let value = String(markers.length);
 
   if (markers.length === 0) {
@@ -277,12 +279,12 @@ export class ReplayMarkersDialSurface extends ReleaseDialSurfaceBase<
    * A turn: one marker per detent from where the keypad's Next / Previous
    * would land (the shared walk's first step, {@link resolveJumpTarget}), no
    * per-event cap, stopping at the end of the list; one jump per event, to
-   * the last marker reached. The jump is started here and
-   * finishes on its own ({@link followMarkerJump}), drawing nothing when it
-   * does: the screen follows the replay through {@link onTick}. A further
-   * detent before it has landed takes the cursor from it and steps on from its
-   * marker. Push + turn is a plain turn — it only marks the press so its
-   * release fires nothing.
+   * the last marker reached, measured from where a press steps from
+   * ({@link stepTurn}). The jump finishes on its own
+   * ({@link followMarkerJump}), drawing nothing when it does: the screen
+   * follows the replay through {@link onTick}. A further detent before it has
+   * landed takes the cursor from it and steps on from its marker. Push + turn
+   * is a plain turn — it only marks the press so its release fires nothing.
    */
   rotate(action: IDeckActionContext, dial: ReplayMarkersDialSettings, ticks: number, pressed: boolean): void {
     const ctx = this.inputContext(action, dial, "rotate");
@@ -306,37 +308,73 @@ export class ReplayMarkersDialSurface extends ReleaseDialSurfaceBase<
       return;
     }
 
-    // The replay's pending target (#1230, #1430): a jump any surface sent
-    // that the replay has not reached yet.
-    const anchor = resolveMarkerJumpAnchor(context.frame, context.telemetry);
-    const first = resolveJumpTarget(direction, context, anchor);
-
-    if (!first) {
-      this.host.logger.debug(
-        context.inReplay
-          ? `Dial ${direction}: no marker that way (anchor=${anchor})`
-          : `Dial ${direction}: replay not playing, and iRacing ignores replay commands from the car`,
-      );
+    if (!context.inReplay) {
+      this.host.logger.debug(`Dial ${direction}: replay not playing, and iRacing ignores replay commands from the car`);
 
       return;
     }
 
-    const target = walkMarkers(context.store.markers.list(context.scope), first, direction, Math.abs(ticks));
-    // Takes the replay cursor and records the target before it returns, so
-    // the render below and the next detent both read it; a paused replay has
-    // its seek by then too. A Replay Markers detent carries the dial's own
-    // origin token (#1430).
-    const jump = jumpToMarkerFrame(
-      CURSOR_OWNER[direction],
-      target.frame,
-      () => this.host.readTelemetry(),
-      Date.now(),
-      ctx.action.id,
-    );
-    this.host.logger.info(`Dial jumped to ${direction} marker`);
-    this.host.logger.debug(`ticks=${ticks}, anchor=${anchor}, target=${target.frame}`);
-    followMarkerJump(this.host.logger, `Dial ${direction} marker`, target.frame, jump);
-    this.scheduleRender(ctx);
+    this.stepTurn(ctx, direction, ticks);
+  }
+
+  /**
+   * The step of a turn of `ticks` detents (#1660), from where a press steps
+   * from (`awaitMarkerStepStart`): the replay's pending target (#1230,
+   * #1430), a jump any surface sent that the replay has not reached yet;
+   * while a search of the plugin's is on its way, its landing, which the turn
+   * waits for; else the cursor. With none — the replay left while it waited,
+   * or a saved replay's tick read mid-seek past the grace with no hold —
+   * nothing is sent. A throw once the start has settled is logged.
+   */
+  private stepTurn(ctx: ReplayMarkersDialContext, direction: MarkerDirection, ticks: number): void {
+    void awaitMarkerStepStart(
+      () => this.host.readReplayContext(),
+      (context, start) => {
+        if (!context.ok) {
+          this.host.logger.debug(`Dial ${direction}: ${context.reason}; nothing sent`);
+
+          return;
+        }
+
+        if (start.frame === null) {
+          this.host.logger.debug(`Dial ${direction}: ${start.reason}; nothing sent`);
+
+          return;
+        }
+
+        const anchor = start.frame;
+        const first = resolveJumpTarget(direction, context, anchor);
+
+        if (!first) {
+          this.host.logger.debug(`Dial ${direction}: no marker that way (anchor=${anchor})`);
+
+          return;
+        }
+
+        const target = walkMarkers(context.store.markers.list(context.scope), first, direction, Math.abs(ticks));
+        // Takes the replay cursor and records the target before it returns, so
+        // the render below and the next detent both read it; a paused replay has
+        // its seek by then too. A Replay Markers detent carries the dial's own
+        // origin token (#1430).
+        const jump = jumpToMarkerFrame(
+          CURSOR_OWNER[direction],
+          target.frame,
+          () => this.host.readTelemetry(),
+          Date.now(),
+          ctx.action.id,
+        );
+        this.host.logger.info(`Dial jumped to ${direction} marker`);
+        this.host.logger.debug(`ticks=${ticks}, anchor=${anchor}, target=${target.frame}`);
+        followMarkerJump(this.host.logger, `Dial ${direction} marker`, target.frame, jump);
+
+        // A dial that left the screen while the turn waited is not drawn.
+        if (this.contextsState.get(ctx.action.id) === ctx) this.scheduleRender(ctx);
+      },
+    ).catch((err: unknown) => {
+      this.host.logger.error(
+        `Dial ${direction} marker: step failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
   }
 
   /** The gestures the press shapes (#269) report: the event's settings, since `down` and `touchTap` refresh the context from them. */
@@ -573,9 +611,13 @@ export class ReplayMarkersDialSurface extends ReleaseDialSurfaceBase<
     ctx.dial = dial;
   }
 
-  /** The dash-box arguments for the current state; `pending` and the flash ride every render. */
+  /**
+   * The dash-box arguments for the current state; `pending` and the flash ride
+   * every render. The view measures from where a view steps from
+   * ({@link resolveMarkerViewStart}): it does not wait for a search to land.
+   */
   private boxArgs(ctx: ReplayMarkersDialContext, context: ReplayContextResult): DialBoxArgs {
-    const anchor = context.ok ? resolveMarkerJumpAnchor(context.frame, context.telemetry) : 0;
+    const anchor = context.ok ? resolveMarkerViewStart(context) : null;
     const view = resolveDialView(context, anchor, ctx.dial);
     const value = ctx.flash ?? view.value;
     // The busy look (#1437), part of the signature as kind and position: the

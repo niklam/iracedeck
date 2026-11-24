@@ -1,10 +1,13 @@
 import { ReplayPosMode, replaySpeedToSdk, type TelemetryData } from "@iracedeck/iracing-sdk";
+import { pressReplayCommand } from "@iracedeck/replay-engine";
 import {
   _resetReplayCursor,
   cancelReplayCursorOwner,
   claimReplayCursor,
   clearReplayTarget,
   currentReplayCursorOwner,
+  type FakeReplay,
+  fakeReplay,
   pendingReplayTarget,
   withSteppedReplayState,
 } from "@iracedeck/replay-engine/testing";
@@ -851,6 +854,75 @@ describe("ReplayMarkers", () => {
       const logger = action["logger"] as unknown as { info: ReturnType<typeof vi.fn>; debug: ReturnType<typeof vi.fn> };
       expect(logger.info).not.toHaveBeenCalledWith(expect.stringContaining("Jumped"));
       expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining("open the replay first"));
+    });
+
+    describe("while the replay is seeking (#1660)", () => {
+      let sim: FakeReplay;
+
+      /** A paused replay at 12 000 behind the engine's fake sim; a Next Session search lands 8 000 frames on, in 1.5 s. */
+      function actionOverSim(sessionInfo: unknown = { WeekendInfo: { SubSessionID: 86697546 } }) {
+        sim = fakeReplay({ frame: 12_000, minSeekMs: 1_500, searches: { nextSession: (from) => from + 8_000 } });
+
+        const made = makeAction(REPLAY);
+        const controller = made.action["sdkController"] as unknown as ReturnType<typeof withSteppedReplayState>;
+
+        made.sdk.getCurrentTelemetry.mockImplementation(() => sim.telemetry());
+        made.sdk.getSessionInfo.mockReturnValue(sessionInfo);
+        configureEngine({
+          replay: () => sim.replay,
+          readTelemetry: () => sim.telemetry(),
+          inReplay: () => controller.getReplayState().inReplay,
+          connected: () => true,
+          seekHold: (hold) => controller.noteReplaySeekHold(hold),
+        });
+        // The replay sighted at 12 000.
+        expect(controller.getReplayState()).toMatchObject({ inReplay: true, cursorFrame: 12_000 });
+
+        return made;
+      }
+
+      const seeks = (): string[] => sim.calls.filter((call) => call.startsWith("setPlayPosition"));
+
+      it("Next pressed during a search of the plugin's waits for its landing and goes to the marker after it", async () => {
+        // From the landing at 20 000 Next is 25 000; from 12 000 it would be 15 000, ending the search.
+        mocks.markers.list.mockReturnValue(markersAt(5_000, 15_000, 25_000));
+        const { action } = actionOverSim();
+
+        pressReplayCommand({ kind: "search", search: "nextSession" }, { by: "next-session", origin: "rc-key" });
+        await vi.advanceTimersByTimeAsync(REPLAY_EXIT_GRACE_MS + 100);
+        await action.onKeyDown(keyDown({ mode: "next" }));
+
+        expect(sim.calls).toEqual(["nextSession"]);
+
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(seeks()).toEqual([`setPlayPosition ${ReplayPosMode.Begin} 25000`]);
+        expect(sim.frame()).toBe(25_000);
+        expect(sim.thrown).toBe(0);
+        expect(action["logger"].info).toHaveBeenCalledWith("Jumped to next marker");
+      });
+
+      it.each(["next", "previous"])(
+        "%s in a saved replay mid-seek past the grace, with no hold, sends nothing and greys",
+        async (mode) => {
+          mocks.markers.list.mockReturnValue(markersAt(5_000, 15_000));
+          const { action } = actionOverSim({ WeekendInfo: { SubSessionID: 86697546, SimMode: "replay" } });
+
+          // A seek that is not the plugin's: the gate knows nothing of it, so nothing holds the frame.
+          sim.replay.setPlayPosition(ReplayPosMode.Begin, 40_000);
+          await vi.advanceTimersByTimeAsync(REPLAY_EXIT_GRACE_MS + 100);
+
+          const before = sim.calls.length;
+
+          await action.onKeyDown(keyDown({ mode }));
+          await vi.advanceTimersByTimeAsync(100);
+
+          // From the mid-seek frame 0, Next would have gone to the first marker.
+          expect(sim.calls.slice(before)).toEqual([]);
+          expect(action["logger"].debug).toHaveBeenCalledWith(`${mode}: no cursor; nothing sent`);
+          expect(action["isJumpAvailable"](mode as "next" | "previous")).toBe(false);
+        },
+      );
     });
 
     it.each(["next", "previous"])("%s with no marker in that direction sends nothing", async (mode) => {

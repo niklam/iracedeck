@@ -35,6 +35,7 @@ import { unavailableLook } from "../../shared/unavailable-look.js";
 import { ReplayMarkersDialSurface } from "./replay-markers-dial-surface.js";
 import {
   addMarkerAt,
+  awaitMarkerStepStart,
   CONFIRMATION_FLASH_MS,
   deleteMarkerAt,
   followMarkerJump,
@@ -46,7 +47,6 @@ import {
   type ReplayContextResult,
   type ReplayContextSource,
   resolveJumpTarget,
-  resolveMarkerJumpAnchor,
 } from "./replay-markers-ops.js";
 import {
   parseReplayMarkersSettings,
@@ -398,8 +398,10 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
   /**
    * Run the mode. Returns the confirmation to flash for an Add or Delete that
    * changed the store, and undefined for everything else — a press that does
-   * nothing shows nothing. A Next / Previous jump is started here and finishes
-   * on its own ({@link followMarkerJump}): the press does not wait for the landing.
+   * nothing shows nothing. A Next / Previous press is handed to
+   * {@link stepToMarker}, which may wait for a search of the plugin's to land
+   * before it steps; its jump then finishes on its own
+   * ({@link followMarkerJump}).
    */
   private execute(settings: ReplayMarkersSettings, contextId: string): ReplayMarkerConfirmation | undefined {
     const context = this.readReplayContext();
@@ -444,35 +446,65 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
           return undefined;
         }
 
-        // From the replay's pending target while the replay has not reached it
-        // (#1230, #1430), so a press right after a turn or another press steps on.
-        const anchor = resolveMarkerJumpAnchor(context.frame, context.telemetry);
-        const target = resolveJumpTarget(settings.mode, context, anchor);
+        this.stepToMarker(settings.mode, contextId);
+
+        return undefined;
+      }
+    }
+  }
+
+  /**
+   * A Next / Previous press's step (#1660), from where a step starts
+   * ({@link awaitMarkerStepStart}): the replay's pending target while the
+   * replay has not reached it (#1230, #1430), so a press right after a turn or
+   * another press steps on; while a search of the plugin's is on its way, its
+   * landing, which the press waits for; else the cursor. With none — the
+   * replay left while it waited, or a saved replay's tick read mid-seek past
+   * the grace with no hold — nothing is sent. A throw once the start has
+   * settled is logged.
+   */
+  private stepToMarker(mode: MarkerDirection, contextId: string): void {
+    void awaitMarkerStepStart(
+      () => this.readReplayContext(),
+      (context, start) => {
+        if (!context.ok) {
+          this.logger.debug(`${mode}: ${context.reason}; nothing sent`);
+
+          return;
+        }
+
+        if (start.frame === null) {
+          this.logger.debug(`${mode}: ${start.reason}; nothing sent`);
+
+          return;
+        }
+
+        const target = resolveJumpTarget(mode, context, start.frame);
 
         if (!target) {
-          this.logger.info(`No ${settings.mode} marker`);
-          this.logger.debug(`current=${context.frame} anchor=${anchor}`);
+          this.logger.info(`No ${mode} marker`);
+          this.logger.debug(`current=${context.frame} anchor=${start.frame} (${start.from})`);
 
-          return undefined;
+          return;
         }
 
         // Takes the replay cursor (#1203) and records the target before it
         // returns; a paused replay has its seek by then too. The rest — the
         // landing, and the speed the setting asks for — follows the press.
         const jump = jumpToMarkerFrame(
-          settings.mode,
+          mode,
           target.frame,
           () => this.sdkController.getCurrentTelemetry(),
           Date.now(),
           contextId,
         );
-        this.logger.info(`Jumped to ${settings.mode} marker`);
-        this.logger.debug(`current=${context.frame}, anchor=${anchor}, target=${target.frame}`);
-        followMarkerJump(this.logger, `${settings.mode} marker`, target.frame, jump);
-
-        return undefined;
-      }
-    }
+        this.logger.info(`Jumped to ${mode} marker`);
+        this.logger.debug(`current=${context.frame}, anchor=${start.frame} (${start.from}), target=${target.frame}`);
+        followMarkerJump(this.logger, `${mode} marker`, target.frame, jump);
+      },
+    ).catch((err: unknown) => {
+      this.logger.error(`${mode} marker: step failed: ${err instanceof Error ? err.message : String(err)}`);
+    });
   }
 
   private addMarker(context: ReplayContext, settings: ReplayMarkersSettings): ReplayMarkerConfirmation | undefined {
@@ -519,14 +551,14 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
    * press and the dial's turn and side marks apply ({@link resolveJumpTarget}),
    * read fresh: connected, a store and a frame, a replay on screen, and a
    * marker outside the mode's window in that direction, measured from where a
-   * press would measure (the shared pending landing, #1230).
+   * view measures (the shared pending landing, #1230, else the cursor, which
+   * it reads while a search is on its way too: the key does not wait, and
+   * redraws on the landing, #1660). With no cursor the key greys.
    */
   private isJumpAvailable(mode: ReplayMarkersJumpMode): boolean {
     const context = this.readReplayContext();
 
-    return (
-      context.ok && resolveJumpTarget(mode, context, resolveMarkerJumpAnchor(context.frame, context.telemetry)) !== null
-    );
+    return context.ok && resolveJumpTarget(mode, context) !== null;
   }
 
   /**
