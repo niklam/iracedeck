@@ -33,9 +33,12 @@ Keep even these to small, focused pull requests.
 - **Python 3 and [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the C++ workload**, on Windows only, to build the two native addons (`iracing-native` and `audio-native`). On macOS the build skips them.
 - **A deck host** to try your change on: the [Elgato Stream Deck](https://www.elgato.com/stream-deck) software 7.1 or later. HotSpot StreamDock or VSD Craft (Mirabox) and UlanziStudio (Ulanzi Deck) are only needed if you work on those plugins.
 
+[Fork the repository](https://github.com/niklam/iracedeck/fork) first, then clone your fork, so `origin` is a remote you can push to, and add the main repository as `upstream` to fetch from:
+
 ```bash
-git clone https://github.com/niklam/iracedeck.git
+git clone https://github.com/<your-user>/iracedeck.git
 cd iracedeck
+git remote add upstream https://github.com/niklam/iracedeck.git
 pnpm install
 pnpm build
 ```
@@ -44,7 +47,7 @@ Linking the built plugin to each deck host, watch mode, the per-developer `.env.
 
 ## Making a change
 
-1. Fork the repository and create a branch from `master`, named `<type>/<issue>-<short-description>`: `feature/123-fuel-calculator`, `fix/456-pit-limiter-flicker`. The types are `feature`, `fix`, `refactor`, `chore`, `hotfix` and `docs`.
+1. Fetch `upstream` (`git fetch upstream`) and create a branch from `upstream/master`, named `<type>/<issue>-<short-description>`: `feature/123-fuel-calculator`, `fix/456-pit-limiter-flicker`. The types are `feature`, `fix`, `refactor`, `chore`, `hotfix` and `docs`.
 2. Commit in logical steps with [Conventional Commits](https://www.conventionalcommits.org/), scoped to the package you changed: `feat(iracing-actions): add Fuel Calculator action`, `fix(iracing-sdk): handle disconnection`.
 3. Add unit tests for new code. Tests use [Vitest](https://vitest.dev/) and sit beside their source (`foo.ts` → `foo.test.ts`). `pnpm test <path>` runs only the tests under a path, e.g. `pnpm test packages/iracing-sdk/`.
 4. Follow the existing style. ESLint and Prettier are configured for the repository: run `pnpm lint:fix` and `pnpm format:fix`, and a pre-commit hook formats the files you commit. Neither tool touches Markdown, so never run Prettier on a `.md` file; keep each paragraph on one line, and give every fenced code block a language.
