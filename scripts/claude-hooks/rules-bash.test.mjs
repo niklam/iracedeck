@@ -5770,6 +5770,11 @@ describe("a shell inside a command substitution or under coproc (#1659)", () => 
   ])("judges the merge %s carries with the merge gate's own message", (c) =>
     expect(deny(c)).toMatch(/first word of a string `bash` runs/),
   );
+  // An escaped separator ends no command, but cmd.exe has no escapes: the jq
+  // rule still reads the command after a `\&` it runs.
+  it.each([String.raw`cmd /c "echo \& jq . f"`, String.raw`bash -c "echo \\; jq . f"`])("still denies %s", (c) =>
+    expect(deny(c)).toMatch(/jq is not installed/),
+  );
   it.each([
     `echo "$(date)"`,
     `x=$(git rev-parse HEAD)`,
@@ -5780,6 +5785,8 @@ describe("a shell inside a command substitution or under coproc (#1659)", () => 
     `echo \${ date; }`,
     `tee >(cat) < x.txt`,
     `cat <<'EOF'\n$(eval x)\nEOF`,
+    // A jq `\(.name)` is no command start, in a substitution a string holds too.
+    String.raw`timeout 60 bash -c 'while :; do out=$(gh run list --commit 0123456789abcdef0123456789abcdef01234567 --jq ".[] | \"\(.workflowName) \(.status)\""); sleep 30; done'`,
     String.raw`echo "a \$(eval x)"`,
     `echo '$(eval x)'`,
     `echo $((1 + 2))`,

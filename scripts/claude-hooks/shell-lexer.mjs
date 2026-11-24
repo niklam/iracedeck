@@ -3111,6 +3111,11 @@ function* programPositions(text) {
     if (p > 0 && !"\n|;&()\x60".includes(text[p - 1]) && !funsubAt(text, p - 2)) continue;
     // A redirect's own `&` (`2>&1`, `&>log`) ends no command.
     if (text[p - 1] === "&" && (text[p] === ">" || /[<>]/.test(text[p - 2] ?? ""))) continue;
+    // Nor does an escaped one (`\(`, `\;`, a line continuation): in the raw
+    // text a shell is handed, a jq `\(.name)` once read as a program word, its
+    // case folded, which a command read in a substitution then differed by
+    // (#1659).
+    if (p > 0 && escapedAt(text, p - 1)) continue;
     const { end, env } = leadEnd(text, p);
     yield { start: end, env };
   }
