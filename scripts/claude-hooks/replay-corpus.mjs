@@ -250,8 +250,21 @@ export function readWorkspace(root) {
     }
   };
   add(root);
+  // `packages/` listed itself: only a missing folder is no packages, and a
+  // file in it (`README.md`) no package (CodeRabbit CLI round 2 on #1659).
   const packages = path.join(root, "packages");
-  if (isDirectory(packages)) for (const d of readdirSync(packages).sort()) add(path.join(packages, d));
+  let entries = [];
+  try {
+    entries = readdirSync(packages, { withFileTypes: true });
+  } catch (e) {
+    if (e?.code !== "ENOENT")
+      throw new Error(`could not list ${packages}: ${e instanceof Error ? e.message : e}`, { cause: e });
+  }
+  for (const d of entries
+    .filter((x) => x.isDirectory())
+    .map((x) => x.name)
+    .sort())
+    add(path.join(packages, d));
   return { root, manifests };
 }
 

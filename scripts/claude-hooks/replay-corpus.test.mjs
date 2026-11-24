@@ -308,6 +308,26 @@ describe("the fixed context", () => {
     }
   });
 
+  // CodeRabbit CLI round 2 on #1659: `packages/` is listed directly; a file in
+  // it is no package, and only a missing folder means none.
+  it("lists packages/ itself: a file in it is skipped, and any failure but ENOENT throws", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "replay-corpus-ws-"));
+    try {
+      fs.writeFileSync(path.join(root, "package.json"), '{"name":"root"}');
+      expect(readWorkspace(root).manifests).toHaveLength(1);
+      // `packages` a file: listing it fails with ENOTDIR, which is no "no packages".
+      fs.writeFileSync(path.join(root, "packages"), "");
+      expect(() => readWorkspace(root)).toThrow(path.join(root, "packages"));
+      fs.rmSync(path.join(root, "packages"));
+      fs.mkdirSync(path.join(root, "packages", "a"), { recursive: true });
+      fs.writeFileSync(path.join(root, "packages", "README.md"), "# x");
+      fs.writeFileSync(path.join(root, "packages", "a", "package.json"), '{"name":"@x/a"}');
+      expect(readWorkspace(root).manifests.map((m) => m.name)).toEqual(["root", "@x/a"]);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("satisfies this checkout's checkBash across the rules that read it", () => {
     const repo = path.resolve(import.meta.dirname, "..", "..");
     const workspace = readWorkspace(repo);
