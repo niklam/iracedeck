@@ -1705,41 +1705,68 @@ const SCRIPT_READERS = new Set([...STDIN_SHELLS, "source", "."]);
  * (any non-interactive bash) and POSIX `ENV` (an interactive `sh`).
  */
 const STARTUP_NAME = /ENV/g;
-/** The builtins and the wrapper whose arguments are assignments ({@link assignsAt}). */
-const DECLARERS = new Set(["env", "export", "declare", "typeset", "local", "readonly"]);
-/** The words that lead a command without being its program ({@link assignsAt}). */
-const ASSIGNMENT_LEADS = new Set(["if", "then", "do", "else", "elif", "while", "until", "!", "{", "time"]);
+/** The builtins whose arguments are assignments ({@link assignmentStarts}); `env`'s are read through its lead. */
+const DECLARERS = new Set(["export", "declare", "typeset", "local", "readonly"]);
+/** An assignment's word, as bash takes one ahead of a command: a name, an optional subscript, `=` or `+=`. */
+const ASSIGNMENT_WORD = /[A-Za-z_]\w*(?:\[[^\]\s]*\])?\+?=/y;
 
 /**
- * Whether the word at `s` of `t`, in the command that starts at `from`, is an
- * assignment bash makes (#1659, CodeRabbit CLI): every word ahead of it a
- * keyword that leads a command, a redirection or another assignment, or the
- * first other word one of the {@link DECLARERS} (`export`, `env -u X`),
- * whose arguments are assignments in any quoting.
+ * The words bash makes assignments of in the command `[from, end)` of `t`,
+ * by where each starts, in one walk (#1659, a judge on 15ce351a1): every
+ * assignment ahead of the program, past each lead a command takes — a
+ * keyword, `time -p`, `coproc` and its name, a redirection, a wrapper with
+ * its options (`command`, `exec`, `env`, `nohup`, `timeout`, `xargs`,
+ * `nice`, `stdbuf`, `winpty`, `sudo`) and `builtin` — and every argument
+ * of a declaring builtin (`export`, `command export`), in any quoting. A
+ * plain program's arguments are none (`env grep -F BASH_ENV=… f`). It fails
+ * closed: past a word it cannot classify (one that expands, is quoted or
+ * escaped, or never ends), every word counts.
  */
-function assignsAt(t, from, s) {
-  let i = from;
-  for (;;) {
-    while (i < s && /\s/.test(t[i])) i++;
-    if (i >= s) return true;
-    if (/^[A-Za-z_]\w*=/.test(t.slice(i, i + 256))) {
-      i = wordEnd(t, i, true);
-      if (i < 0 || i > s) return false;
+function assignmentStarts(t, from, end) {
+  const out = [];
+  let all = false;
+  for (let i = blanksFrom(t, from); i < end; i = blanksFrom(t, i)) {
+    ASSIGNMENT_WORD.lastIndex = i;
+    if (all || ASSIGNMENT_WORD.test(t)) {
+      out.push(i);
+      const e = wordEnd(t, i, true);
+      if (e <= i) return out;
+      i = e;
       continue;
     }
-    const redirect = LEAD_REDIRECT.exec(t.slice(i, i + 8));
-    if (redirect) {
-      i = wordEnd(t, blanksFrom(t, i + redirect[0].length));
-      if (i < 0 || i > s) return false;
+    const step = leadStep(t, i);
+    if (step && step.end > i) {
+      i = step.end;
       continue;
     }
     const e = wordEnd(t, i);
-    if (e <= i || e > s) return false;
-    const name = wordValue(t.slice(i, e));
-    if (DECLARERS.has(name)) return true;
-    if (!ASSIGNMENT_LEADS.has(name)) return false;
+    if (e <= i) return out;
+    const raw = t.slice(i, e);
+    const name = wordValue(raw);
+    if (name !== raw || expands(raw)) all = true;
+    else if (DECLARERS.has(name)) all = true;
+    else if (name === "builtin") {
+      i = e;
+      continue;
+    } else if (WRAPPER_NAMES.has(name) || name === "sudo") {
+      // Its options read as its spec reads them; an assignment-shaped word
+      // among them, which `sudo` makes and the reader may take for a
+      // redirection's word (`BASH_ENV=<(…)`), counts, erring to deny.
+      const { program } = commandOf(shellSpec(name), t, e, end);
+      for (let k = blanksFrom(t, e); k < (program ?? end); k = blanksFrom(t, k)) {
+        ASSIGNMENT_WORD.lastIndex = k;
+        if (ASSIGNMENT_WORD.test(t)) out.push(k);
+        const w = wordEnd(t, k, true);
+        if (w <= k) return out;
+        k = w;
+      }
+      if (program === undefined) return out;
+      i = program;
+      continue;
+    } else return out;
     i = e;
   }
+  return out;
 }
 /**
  * Text between two `exec`s across which the later one may not run, or not in
@@ -2135,6 +2162,8 @@ function fedStarts(command, text, fed, programs) {
   const startupFiles = (found, read) => {
     const seen = new Set();
     let starts;
+    let ends;
+    let made;
     let cursor = 0;
     for (const m of found.matchAll(STARTUP_NAME)) {
       let s = m.index;
@@ -2146,9 +2175,18 @@ function fedStarts(command, text, fed, programs) {
       // word (`grep -F BASH_ENV=/dev/stdin x`; CodeRabbit CLI on #1659).
       // The candidates come in order, so a forward cursor finds each one's
       // command start in time linear overall (PR #1798 review).
-      starts ??= level(found).commands;
+      if (!starts) {
+        const read0 = level(found);
+        starts = read0.commands;
+        ends = read0.ends;
+      }
       while (cursor + 1 < starts.length && starts[cursor + 1] <= s) cursor++;
-      if (!assignsAt(read, starts[cursor] ?? 0, s)) continue;
+      // Each command's assignments are read once, as its first candidate asks.
+      if (made?.cursor !== cursor) {
+        const from = starts[cursor] ?? 0;
+        made = { cursor, at: new Set(assignmentStarts(read, from, Math.max(ends[from], s + 1))) };
+      }
+      if (!made.at.has(s)) continue;
       const e = wordEnd(read, s, true);
       const raw = read.slice(s, e < 0 ? undefined : e);
       const chars = decodeWord(raw);

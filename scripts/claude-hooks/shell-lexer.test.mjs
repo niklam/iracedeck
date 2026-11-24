@@ -2894,3 +2894,49 @@ describe("the stopping rule: substitutions only where they run (#1659)", () => {
     [`bash -c 'ls # x\necho $(eval y)'`, "eval"],
   ])("refuses %j (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
 });
+
+// A judge on 15ce351a1: a startup-file assignment is read wherever bash makes
+// one, past any prefix assignment and through every lead, and nowhere else.
+describe("the stopping rule: startup-file assignments through every lead (#1659 judge)", () => {
+  const STARTUP = "a shell startup file read from stdin, a descriptor or a process substitution";
+  const LONG = "A".repeat(300);
+  it.each([
+    `A+=1 BASH_ENV=<(echo x) bash -c true`,
+    `A[1]=1 BASH_ENV=<(echo x) bash -c true`,
+    `${LONG}=1 BASH_ENV=<(echo x) bash -c true`,
+    `nice env BASH_ENV=<(echo x) bash -c true`,
+    `nice -n 5 BASH_ENV=<(echo x) bash -c true`,
+    `timeout 5 env BASH_ENV=<(echo x) bash -c true`,
+    `xargs env BASH_ENV=<(echo x) bash -c true`,
+    `time -p BASH_ENV=<(echo x) bash -c true`,
+    `command export BASH_ENV=/dev/stdin; bash -c true <<< x`,
+    `builtin export BASH_ENV=/dev/stdin; bash -c true <<< x`,
+    `coproc BASH_ENV=<(echo x) bash -c true`,
+    `sudo BASH_ENV=<(echo x) bash -c true`,
+    `env -u X BASH_ENV=<(echo x) bash -c true`,
+    `"$W" BASH_ENV=<(echo x) bash -c true`,
+    String.raw`\env BASH_ENV=<(echo x) bash -c true`,
+    // Twins: each wrapper and lead in front of `env`, and one in a string.
+    `exec env BASH_ENV=<(echo x) bash -c true`,
+    `nohup env BASH_ENV=<(echo x) bash -c true`,
+    `stdbuf -o0 env BASH_ENV=<(echo x) bash -c true`,
+    `winpty env BASH_ENV=<(echo x) bash -c true`,
+    `sudo -u x env BASH_ENV=<(echo x) bash -c true`,
+    `timeout -k 5 10 env BASH_ENV=<(echo x) bash -c true`,
+    `xargs -I{} env BASH_ENV=<(echo x) bash -c true`,
+    `command -p env BASH_ENV=<(echo x) bash -c true`,
+    `bash -c 'nice env BASH_ENV=<(echo x) bash -c true'`,
+  ])("refuses %s", (c) => expect(lexer.refusedForms(c).map((r) => r.form)).toContain(STARTUP));
+  it.each([
+    `env grep -F BASH_ENV=/dev/stdin config.txt`,
+    `grep -F BASH_ENV=/dev/stdin config.txt`,
+    `nice grep BASH_ENV=/dev/stdin x`,
+    `A+=1 grep BASH_ENV=/dev/stdin x`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+  it("reads a long run of assignments in time linear in their number", () => {
+    const c = `${"A=1 ".repeat(20000)}BASH_ENV=<(echo x) bash -c true`;
+    const t = Date.now();
+    expect(lexer.refusedForms(c).map((r) => r.form)).toContain(STARTUP);
+    expect(Date.now() - t).toBeLessThan(3000);
+  });
+});
