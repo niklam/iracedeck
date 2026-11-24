@@ -5,12 +5,13 @@ import {
   adjustOptions,
   badgeModes,
   checkFeatureCounts,
+  evaluateGate,
   keypadModeItem,
   keypadModeOptions,
+  keypadModeParts,
   parseHomeStats,
   parseOverviewRows,
   parseReadmeRows,
-  PLATFORM_GATED_OPTIONS,
   readFeatureCountInputs,
 } from "./lib/feature-counts.mjs";
 
@@ -79,6 +80,21 @@ const pageModes = badgeModes(page.text);
 const carPage = real.pages.find((p) => p.category === "car-setup");
 const carRow = overviewRows.find((r) => r.dir === "car-setup");
 
+/** A page with keypad Mode options behind an EJS gate, and how many. */
+const gatedPage = real.pages.find((p) => (keypadModeParts(p.ejs ?? "")?.gated.length ?? 0) > 0);
+const gatedCount = keypadModeParts(gatedPage.ejs).gated.length;
+const gatedEjs = `${ACTIONS}/${gatedPage.slug}/${gatedPage.slug}.ejs`;
+/** A flag the Stream Deck turns on. */
+const onFlag = Object.keys(real.platformFeatures).find((k) => real.platformFeatures[k] === true);
+
+/** A template with one new keypad Mode option behind `<% if (condition) { %>`. */
+const gateNewOption = (ejs, condition) =>
+  replaceMatch(
+    ejs,
+    /(<sdpi-item label="Mode">\s*<sdpi-select\b[^>]*>)/,
+    `$1\n<% if (${condition}) { %><option value="new-mode">New</option><% } %>`,
+  );
+
 /** The page's badge rewritten to `text`. */
 const rebadge = (p, text) => replaceMatch(p.text, new RegExp(`text:\\s*"${pageModes} modes?[^"]*"`), `text: "${text}"`);
 
@@ -93,7 +109,7 @@ describe("feature counts (#1271)", () => {
     expect(real.pages.filter((p) => keypadModeOptions(p.ejs) > 1).length).toBeGreaterThan(25);
     expect(real.pages.filter((p) => badgeModes(p.text) > 1).length).toBeGreaterThan(25);
     expect(Object.keys(real.platformFeatures).length).toBeGreaterThan(0);
-    expect(row && page && carPage && carRow).toBeTruthy();
+    expect(row && page && carPage && carRow && gatedPage && onFlag).toBeTruthy();
   });
 
   it("finds the README and the website in line with the code", () => {
@@ -228,27 +244,45 @@ describe("feature counts (#1271)", () => {
     });
 
     it("a platform-gated option whose flag the Stream Deck turns off", () => {
-      const [slug, gates] = Object.entries(PLATFORM_GATED_OPTIONS)[0];
-      const flag = Object.values(gates)[0];
       const broken = structuredClone(real);
-      broken.platformFeatures[flag] = false;
-      const gated = real.pages.find((p) => p.slug === slug);
-      const badge = badgeModes(gated.text);
+      broken.platformFeatures = Object.fromEntries(Object.keys(real.platformFeatures).map((k) => [k, false]));
+      const badge = badgeModes(gatedPage.text);
       expect(checkFeatureCounts(broken).join("\n")).toContain(
-        `${gated.file}: its badge states ${badge} modes; ${ACTIONS}/${slug}/${slug}.ejs offers ${badge - 1}`,
+        `${gatedPage.file}: its badge states ${badge} modes; ${gatedEjs} offers ${badge - gatedCount}`,
       );
     });
 
-    it("a new option inside an EJS if block", () => {
-      const [broken, p] = withPage(page.slug);
-      p.ejs = replaceMatch(
-        p.ejs,
-        /(<sdpi-item label="Mode">\s*<sdpi-select\b[^>]*>)/,
-        '$1\n<% if (locals.platform?.features?.profiles !== false) { %><option value="new-mode">New</option><% } %>',
-      );
+    it("a gate whose predicate is reversed", () => {
+      const [broken, p] = withPage(gatedPage.slug);
+      p.ejs = replaceMatch(p.ejs, /(features\?\.\w+\s*)!==(\s*false)/, "$1===$2");
+      const badge = badgeModes(gatedPage.text);
       expect(checkFeatureCounts(broken).join("\n")).toContain(
-        `${ACTIONS}/${page.slug}/${page.slug}.ejs: keypad Mode option "new-mode" is inside an EJS \`if\`; name the platform flag that gates it in PLATFORM_GATED_OPTIONS`,
+        `${gatedPage.file}: its badge states ${badge} modes; ${gatedEjs} offers ${badge - gatedCount}`,
       );
+    });
+
+    it("a new option behind a gate the Stream Deck renders counts", () => {
+      const [broken, p] = withPage(page.slug);
+      p.ejs = gateNewOption(p.ejs, `locals.platform?.features?.${onFlag} !== false`);
+      expect(checkFeatureCounts(broken).join("\n")).toContain(
+        `${page.file}: its badge states ${pageModes} modes; ${ACTIONS}/${page.slug}/${page.slug}.ejs offers ${pageModes + 1}`,
+      );
+    });
+
+    it.each([
+      ["a condition it cannot evaluate", `locals.platform?.features?.${onFlag} > 1`, /cannot evaluate/],
+      [
+        "a flag the platform does not declare",
+        "locals.platform?.features?.noSuchFlag !== false",
+        /"noSuchFlag", which the platform does not declare/,
+      ],
+      ["a variable the template never sets", "showNothing", /needs exactly one `<% var showNothing = …; %>`; found 0/],
+    ])("a gate with %s", (_, condition, message) => {
+      const [broken, p] = withPage(page.slug);
+      p.ejs = gateNewOption(p.ejs, condition);
+      const out = checkFeatureCounts(broken).join("\n");
+      expect(out).toContain(`${ACTIONS}/${page.slug}/${page.slug}.ejs: keypad Mode option "new-mode" is behind`);
+      expect(out).toMatch(message);
     });
 
     it("EJS control flow the count cannot read", () => {
@@ -338,6 +372,25 @@ describe("feature counts (#1271)", () => {
         '<sdpi-item label="Mode"><optgroup label="Adjust"><option value="a">A</option><option value="b" hidden>B</option></optgroup></sdpi-item>',
       ),
     ).toBe(1);
+  });
+
+  it("evaluates a platform gate as the PI build would", () => {
+    const on = { flag: true };
+    const off = { flag: false };
+    const gate = (cond, features, ejs = "") => evaluateGate(cond, ejs, features);
+    expect(gate("locals.platform?.features?.flag !== false", on)).toEqual({ offered: true });
+    expect(gate("locals.platform?.features?.flag !== false", off)).toEqual({ offered: false });
+    expect(gate("locals.platform?.features?.flag === false", on)).toEqual({ offered: false });
+    expect(gate("locals.platform?.features?.flag === false", off)).toEqual({ offered: true });
+    expect(gate("locals.platform.features.flag", on)).toEqual({ offered: true });
+    expect(gate("!locals.platform?.features?.flag", on)).toEqual({ offered: false });
+    expect(gate("locals.platform?.features?.flag === true", off)).toEqual({ offered: false });
+    // Through the one variable a template sets, the form every gate uses today.
+    const ejs = "<% var showX = locals.platform?.features?.flag !== false; %>";
+    expect(gate("showX", off, ejs)).toEqual({ offered: false });
+    expect(gate("showX", on, ejs)).toEqual({ offered: true });
+    expect(gate("showX", on, ejs + ejs)).toHaveProperty("problem");
+    expect(gate("a || b", on)).toHaveProperty("problem");
   });
 
   it("finds the keypad's Mode item, not a commented-out or dial one", () => {
