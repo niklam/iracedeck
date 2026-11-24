@@ -443,11 +443,21 @@ describe("git commit", () => {
           ),
         ),
       ).toMatch(/Testing or Verification/));
-    it("does not take a comment inside a code fence for a heading", () =>
+    // CodeRabbit on 164de4f80: a real heading line inside the fence, so the
+    // test fails if the fence stops being read as one.
+    it("does not take a comment or a heading inside a code fence for a heading", () =>
       expect(
         deny(
           "git commit -m x",
-          spec([HEADER, "# T", "## Out of scope", "x", "```bash\n# verify the build\npnpm build\n```"].join("\n\n")),
+          spec(
+            [
+              HEADER,
+              "# T",
+              "## Out of scope",
+              "x",
+              "```markdown\n# verify the build\n## Testing\n\npnpm build\n```",
+            ].join("\n\n"),
+          ),
         ),
       ).toMatch(/Testing or Verification/));
     it("still reads the headings after a fenced block closes", () =>

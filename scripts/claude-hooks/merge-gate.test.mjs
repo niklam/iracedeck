@@ -1,6 +1,8 @@
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { copyFileSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
 import { classifyCheck, DEPENDABOT_COMMIT_AUTHOR, GITHUB_COMMITTER } from "./merge-gate.mjs";
 import { checkBash } from "./rules-bash.mjs";
@@ -1455,5 +1457,115 @@ describe("gh pr merge", () => {
     expect(classifyCheck({ __typename: "StatusContext", state: "EXPECTED" })).toBe("pending");
     expect(classifyCheck({ __typename: "StatusContext", state: "FAILURE" })).toBe("bad");
     expect(classifyCheck({})).toBe("unknown");
+  });
+});
+
+// CodeRabbit on 164de4f80: one offline run of the pre-hook over a qualifying
+// `--admin` merge, its reads real: a temporary repository for the changed
+// files and commits, and a fake gh first on PATH for the PR and the base
+// branch's rules (the pattern of post-bash.test.mjs).
+describe("pre-bash.mjs over a qualifying --admin merge, offline", () => {
+  const HOOK = path.join(import.meta.dirname, "pre-bash.mjs");
+  const work = mkdtempSync(path.join(os.tmpdir(), "merge-gate-admin-"));
+  const repo = path.join(work, "repo");
+  const bin = path.join(work, "bin");
+  const fakeGh = path.join(bin, "fake-gh.cjs");
+  afterAll(() => rmSync(work, { recursive: true, force: true }));
+
+  const git = (...args) => {
+    const r = spawnSync("git", args, { cwd: repo, encoding: "utf8" });
+    if (r.status !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr}`);
+    return r.stdout.trim();
+  };
+  mkdirSync(repo, { recursive: true });
+  mkdirSync(bin, { recursive: true });
+  git("init", "-q", "-b", "master");
+  git("config", "user.name", "Someone");
+  git("config", "user.email", "someone@example.com");
+  writeFileSync(path.join(repo, "README.md"), "x\n");
+  git("add", "README.md");
+  git("commit", "-q", "-m", "base");
+  const base = git("rev-parse", "HEAD");
+  mkdirSync(path.join(repo, ".claude", "rules"), { recursive: true });
+  writeFileSync(path.join(repo, ".claude", "rules", "example.md"), "# Example\n\nProse.\n");
+  git("add", ".claude/rules/example.md");
+  git("commit", "-q", "-m", "docs: prose only");
+  const head = git("rev-parse", "HEAD");
+
+  writeFileSync(
+    fakeGh,
+    `const fs = require("node:fs");
+const path = require("node:path");
+if (path.basename(process.execPath).replace(/\\.exe$/i, "") === "gh") {
+  const args = process.argv.slice(1).map((a, k) => (k === 0 ? path.basename(a) : a));
+  const replies = JSON.parse(process.env.FAKE_GH_REPLIES);
+  const reply = replies[args.slice(0, 3).join(" ")] ?? replies[args.slice(0, 2).join(" ")];
+  if (reply === undefined) {
+    fs.writeSync(2, "fake gh: no reply for " + args.join(" "));
+    process.exit(1);
+  }
+  fs.writeSync(1, JSON.stringify(reply));
+  process.exit(0);
+}
+`,
+  );
+  const ghBinary = path.join(bin, process.platform === "win32" ? "gh.exe" : "gh");
+  try {
+    linkSync(process.execPath, ghBinary);
+  } catch {
+    copyFileSync(process.execPath, ghBinary);
+  }
+
+  const pr = (checks) => ({
+    number: 7,
+    url: "https://github.com/iracedeck/iracedeck/pull/7",
+    state: "OPEN",
+    author: { login: "someone", is_bot: false },
+    headRefOid: head,
+    headRefName: "docs/7-prose",
+    baseRefName: "master",
+    baseRefOid: base,
+    reviewDecision: "REVIEW_REQUIRED",
+    mergeStateStatus: "BLOCKED",
+    statusCheckRollup: checks.map((name) => ({
+      __typename: "CheckRun",
+      name,
+      status: "COMPLETED",
+      conclusion: "SUCCESS",
+    })),
+    reviews: [],
+  });
+  const rules = [{ type: "required_status_checks", parameters: { required_status_checks: [{ context: "ci-test" }] } }];
+  const fire = (checks) => {
+    const env = Object.fromEntries(
+      Object.entries(process.env).filter(([k]) => !["path", "gh_repo", "node_options"].includes(k.toLowerCase())),
+    );
+    const r = spawnSync(process.execPath, [HOOK], {
+      input: JSON.stringify({
+        tool_name: "Bash",
+        tool_input: { command: `gh pr merge 7 --squash --admin --match-head-commit ${head}` },
+        cwd: repo,
+      }),
+      encoding: "utf8",
+      timeout: 60_000,
+      env: {
+        ...env,
+        PATH: [bin, process.env.PATH ?? process.env.Path ?? ""].join(path.delimiter),
+        NODE_OPTIONS: `--require "${fakeGh.replaceAll("\\", "/")}"`,
+        FAKE_GH_REPLIES: JSON.stringify({
+          "pr view 7": pr(checks),
+          "api repos/iracedeck/iracedeck/rules/branches/master?per_page=100": rules,
+        }),
+      },
+    });
+    expect(r.status, r.stderr).toBe(0);
+    return r.stdout.trim() ? JSON.parse(r.stdout).hookSpecificOutput : null;
+  };
+
+  it("passes with the required check green, and denies when it is missing", { timeout: 60_000 }, () => {
+    expect(fire(["ci-test"])).toBeNull();
+    const v = fire(["other-check"]);
+    expect(v.permissionDecision).toBe("deny");
+    expect(v.permissionDecisionReason).toMatch(/ci-test/);
   });
 });

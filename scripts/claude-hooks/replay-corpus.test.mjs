@@ -1137,7 +1137,18 @@ describe("the command line", () => {
       const head = path.join(owned, "head");
       const hooks = path.join(head, "scripts", "claude-hooks");
       fs.mkdirSync(hooks, { recursive: true });
-      fs.writeFileSync(path.join(hooks, "rules-bash.mjs"), "export const checkBash = () => null;\n");
+      // A head that passes only where it judges from its own checkout, with
+      // the package only that checkout has (CodeRabbit on 164de4f80); the
+      // base is the real checkBash, which passes `ls`.
+      fs.writeFileSync(
+        path.join(hooks, "rules-bash.mjs"),
+        [
+          'import path from "node:path";',
+          "export const checkBash = (c, ctx) =>",
+          '  path.basename(ctx.cwd) === "head" && ctx.packages()["head-only"] ? null : "not the head\'s context";',
+          "",
+        ].join("\n"),
+      );
       fs.writeFileSync(
         path.join(hooks, "shell-lexer.mjs"),
         [
@@ -1151,15 +1162,17 @@ describe("the command line", () => {
       fs.writeFileSync(path.join(head, "package.json"), '{ "name": "head-only" }\n');
       fs.mkdirSync(path.join(owned, "t"));
       fs.writeFileSync(path.join(owned, "t", "a.jsonl"), `${line(toolUse("Bash", { command: "ls" }))}\n`);
-      const args = ["--transcripts", path.join(owned, "t"), "--census-only", "--head-dir", head];
+      const args = ["--transcripts", path.join(owned, "t"), "--base", "HEAD", "--head-dir", head];
       const out = [];
-      expect(await main(args, (l) => out.push(l))).toBe(0);
+      expect(await main(args, (l) => out.push(l)), out.join("\n")).toBe(0);
       expect(out).toContain(`context: cwd ${head}, 1 package manifests`);
+      expect(out).toContain("identical verdicts: 1");
       const other = path.join(owned, "other");
       fs.mkdirSync(other);
       const given = [];
-      expect(await main(args, (l) => given.push(l), { root: other })).toBe(0);
+      expect(await main(args, (l) => given.push(l), { root: other })).toBe(1);
       expect(given).toContain(`context: cwd ${other}, 0 package manifests`);
+      expect(given).toContain("differing verdicts: 1 (real 1, probe 0)");
     } finally {
       fs.rmSync(owned, { recursive: true, force: true });
     }
