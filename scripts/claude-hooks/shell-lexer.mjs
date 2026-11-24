@@ -2315,6 +2315,13 @@ function fedStarts(command, text, fed, programs) {
         p,
         () => {
           const L = levelAt(p);
+          // At the typed level, a word that starts inside a quoted string no
+          // shell is handed is a mention, which a raw view widened by another
+          // element shows as a program word (`printf '…; eval x' > f; bash -c
+          // true`, PR #1798 review); a quoted program word (`"bash"`) is its
+          // own quote.
+          const s = wordStarts[p] >= 0 ? wordStarts[p] : p;
+          if (L === base && own.quotes.some(([open, close]) => open < s && s < close)) return;
           const d = levelIndex(L, p + via.length);
           const limit = L === base ? b : L.text.length;
           if (via === "sudo") {

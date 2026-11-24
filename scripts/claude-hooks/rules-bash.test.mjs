@@ -5294,6 +5294,14 @@ describe("a shell word glued to its redirection (#1659)", () => {
   it.each([`bash</dev/null x.sh`, `bash</dev/null -c 'pnpm build'`])("passes %s", (c) => passes(c));
 });
 
+// PR #1798 review: an `eval` inside a quoted argument is a mention.
+describe("a shell word inside a quoted argument (#1659)", () => {
+  it("passes a printed eval, and refuses a real one", () => {
+    passes(String.raw`printf '%s\n' 'example; eval echo hello; end' > notes.txt; bash -c true`);
+    expect(stopped(`eval echo hello > notes.txt; bash -c true`)).toContain("(eval)");
+  });
+});
+
 // PR #1798 review: a piped group's own input redirection gives its stdin.
 describe("a piped group with its own stdin (#1659)", () => {
   it("passes one whose group reads a file, and refuses one the pipe still feeds", () => {

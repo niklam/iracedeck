@@ -2532,3 +2532,19 @@ describe("the stopping rule: a piped group with its own stdin (#1659 PR review)"
     [`printf x | { cat </dev/null | bash; } </dev/null`, STDIN],
   ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
 });
+
+// PR #1798 review: once another element widens the raw view, a shell word
+// inside a quoted argument is a mention, not a program word.
+describe("the stopping rule: a shell word inside a quoted argument (#1659 PR review)", () => {
+  it.each([
+    String.raw`printf '%s\n' 'example; eval echo hello; end' > notes.txt; bash -c true`,
+    String.raw`printf '%s\n' 'a; sudo -s x; b' > notes.txt; bash -c true`,
+    `echo "x; eval y" > f; bash -c true`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+  it.each([
+    [`eval x; bash -c true`, "eval"],
+    [`"eval" x > f; bash -c true`, "eval"],
+    [`"bash" -c "eval x"`, "eval"],
+    [`echo x > f; sudo -s ls`, "a sudo that runs a shell"],
+  ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+});
