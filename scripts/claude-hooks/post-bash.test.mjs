@@ -508,6 +508,8 @@ describe("post-bash.mjs acts on iracedeck/iracedeck only (#1527)", { timeout: 30
     const justNow = () => Date.now() - 60_000;
     /** The fake gh's answer to `gh repo view`: the repository of the checkout a create ran in. */
     const checkout = (nameWithOwner) => ({ "repo view": { nameWithOwner } });
+    /** gh's answer for the former home's name (#1799): the repository GitHub resolves it to. */
+    const redirect = (nameWithOwner) => ({ "repo view niklam/iracedeck": { nameWithOwner } });
     const OLD = "2026-09-01T00:00:00Z";
     const filed = (note) => [...note.matchAll(/Added (\S+) to the Roadmap board/g)].map((m) => m[1]);
 
@@ -622,7 +624,7 @@ describe("post-bash.mjs acts on iracedeck/iracedeck only (#1527)", { timeout: 30
       ]) {
         const redirected = fireWithGh(
           command,
-          { ...created(1534, justNow()), "api graphql": boardItem(null) },
+          { ...redirect("iracedeck/iracedeck"), ...created(1534, justNow()), "api graphql": boardItem(null) },
           { stdout: `${home(1534)}\n` },
         );
         expect(filed(redirected.note), command).toEqual([home(1534)]);
@@ -631,12 +633,26 @@ describe("post-bash.mjs acts on iracedeck/iracedeck only (#1527)", { timeout: 30
       const taken = "https://github.com/niklam/iracedeck/issues/7";
       const tookName = fireWithGh(
         "gh issue create -R niklam/iracedeck --title x --body y",
-        { ...created(1534, justNow()), "api graphql": boardItem(null) },
+        { ...redirect("niklam/iracedeck"), ...created(1534, justNow()), "api graphql": boardItem(null) },
         { stdout: `${taken}\n` },
       );
       expect(tookName.note).toBe(
         `[hook] Filed ${taken} in niklam/iracedeck, not iracedeck/iracedeck: the Roadmap board is left alone.`,
       );
+      // CodeRabbit: an unrelated old-name URL earlier in the chain does not decide; gh's answer about the name does.
+      const chained = fireWithGh(
+        `echo ${taken} && gh issue create -R niklam/iracedeck --title x --body y`,
+        { ...redirect("iracedeck/iracedeck"), ...created(1534, justNow()), "api graphql": boardItem(null) },
+        { stdout: `${taken}\n${home(1534)}\n` },
+      );
+      expect(filed(chained.note)).toEqual([home(1534)]);
+      // A name gh cannot resolve may be home: the create's own URL is still filed.
+      const unresolved = fireWithGh(
+        "gh issue create -R niklam/iracedeck --title x --body y",
+        { ...created(1534, justNow()), "api graphql": boardItem(null) },
+        { stdout: `${home(1534)}\n` },
+      );
+      expect(filed(unresolved.note)).toEqual([home(1534)]);
     });
 
     // CodeRabbit on #1535: a just-created iRaceDeck issue another command printed

@@ -240,7 +240,6 @@ function afterMerge(merge, command, cwd, shell) {
  * this board by hand, and a home one is never lost behind a foreign URL.
  */
 function afterIssueCreate(stdout, creates, cwd) {
-  const found = createdIssues(stdout);
   let resolved;
   const homeCreate = () => {
     if (!resolved) {
@@ -250,15 +249,26 @@ function afterIssueCreate(stdout, creates, cwd) {
           checkoutRepo.set(dir, ghJson(["repo", "view", "--json", "nameWithOwner"], dir)?.nameWithOwner ?? null);
         return checkoutRepo.get(dir);
       };
-      resolved = creates.map(({ repo, dir }) => (repo !== undefined ? repo : repoOf(dir)));
+      // A former home (#1799) is asked of gh, which follows GitHub's redirect: it answers HOME_REPO while the
+      // redirect stands, and the old name itself once a repository has taken it.
+      const canonical = new Map();
+      const resolve = (repo) => {
+        if (repo == null || isHomeRepo(repo) || !mayBeHome(repo)) return repo;
+        if (!canonical.has(repo.toLowerCase()))
+          canonical.set(
+            repo.toLowerCase(),
+            ghJson(["repo", "view", repo, "--json", "nameWithOwner"], cwd)?.nameWithOwner ?? null,
+          );
+        return canonical.get(repo.toLowerCase());
+      };
+      resolved = creates.map(({ repo, dir }) => (repo !== undefined ? resolve(repo) : repoOf(dir)));
     }
-    // An unreadable or unresolvable repository may be home, and so may a former home GitHub redirects (#1799)
-    // — unless gh printed an issue URL of that very repository, which means it exists and answered for itself.
-    const printedIn = new Set(found.map((issue) => issue.repo.toLowerCase()));
-    return resolved.some((t) => t == null || isHomeRepo(t) || (mayBeHome(t) && !printedIn.has(t.toLowerCase())));
+    // An unreadable or unresolvable repository may be home.
+    return resolved.some((t) => t == null || isHomeRepo(t));
   };
   const leftAlone = () =>
     `gh issue create ran in ${[...new Set(resolved.filter((t) => t != null))].join(", ")}, not ${HOME_REPO}: the Roadmap board is left alone.`;
+  const found = createdIssues(stdout);
   if (!found.length)
     return [
       homeCreate()
