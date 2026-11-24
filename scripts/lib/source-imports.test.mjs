@@ -8,7 +8,7 @@ import {
   isTestSource,
   markupLoads,
   moduleReferences,
-  moduleSource,
+  moduleSources,
   packageOf,
   trackedPackageSources,
   unclosedComment,
@@ -91,14 +91,17 @@ describe("isTestSource", () => {
   );
 });
 
-describe("moduleSource (#1662)", () => {
-  /** The imports `text` makes as `file`, read through moduleSource. */
-  const specifiers = (file, text) => moduleReferences(moduleSource(file, text)).map(({ specifier }) => specifier);
+describe("moduleSources (#1662)", () => {
+  /** The imports `text` makes as `file`, read through moduleSources. */
+  const specifiers = (file, text) =>
+    moduleSources(file, text).flatMap((source) => moduleReferences(source).map(({ specifier }) => specifier));
+  /** Every module of `text` as `file`, joined, for what none of them may hold. */
+  const joined = (file, text) => moduleSources(file, text).join("\n");
 
   it("passes a code file through unchanged", () => {
     const text = 'import a from "./a.js";\n<p>not markup in a .ts</p>';
 
-    expect(moduleSource("packages/x/src/a.ts", text)).toBe(text);
+    expect(moduleSources("packages/x/src/a.ts", text)).toEqual([text]);
   });
 
   describe("an .astro component", () => {
@@ -122,11 +125,15 @@ describe("moduleSource (#1662)", () => {
     const file = "packages/website/src/components/Planted.astro";
 
     it("reads its frontmatter and each <script> ESLint reads, at the file's own offsets", () => {
-      const source = moduleSource(file, text);
+      const sources = moduleSources(file, text);
 
-      expect(source).toHaveLength(text.length);
-      expect(source.split("\n")).toHaveLength(text.split("\n").length);
-      expect(source.indexOf('"../../../iracing-actions/src/rows.js"')).toBe(
+      // The frontmatter, then the three script bodies: each its own module.
+      expect(sources).toHaveLength(4);
+      for (const source of sources) {
+        expect(source).toHaveLength(text.length);
+        expect(source.split("\n")).toHaveLength(text.split("\n").length);
+      }
+      expect(sources[0].indexOf('"../../../iracing-actions/src/rows.js"')).toBe(
         text.indexOf('"../../../iracing-actions/src/rows.js"'),
       );
       expect(specifiers(file, text)).toEqual([
@@ -139,7 +146,7 @@ describe("moduleSource (#1662)", () => {
     });
 
     it("reads nothing from markup, a comment, a JSON script or an import map", () => {
-      const source = moduleSource(file, text);
+      const source = joined(file, text);
 
       for (const mention of ["deck-iracing", "iracing-sdk", "../../../c.js", "../../../d.js", "<p>", "<script"]) {
         expect(source, mention).not.toContain(mention);
@@ -148,7 +155,19 @@ describe("moduleSource (#1662)", () => {
 
     it("reads a component with no frontmatter by its scripts alone, and one with neither as empty", () => {
       expect(specifiers(file, '<p>x</p>\n<script>import "./a.js";</script>\n')).toEqual(["./a.js"]);
-      expect(moduleSource(file, '<p>import a from "./a.js"</p>\n').trim()).toBe("");
+      expect(moduleSources(file, '<p>import a from "./a.js"</p>\n')).toEqual([]);
+    });
+
+    // Astro compiles each script alone, so what one leaves open on its last line cannot run into the next.
+    it("reads each script apart, so a comment ending one hides nothing after it on its line", () => {
+      for (const [script, expected] of [
+        ['<script>// Setup</script><script src="./client.ts"></script>', ["./client.ts"]],
+        ['<script>// Setup</script><script>import "./next.js";</script>', ["./next.js"]],
+        ['<script>/* open</script><script>import "./after-block.js";</script>', ["./after-block.js"]],
+        ['<script>const s = `</script><script src="./after-template.ts"></script>', ["./after-template.ts"]],
+      ]) {
+        expect(specifiers(file, script), script).toEqual(expected);
+      }
     });
 
     // Astro bundles a local <script src>, so it is the import of what it names.
@@ -176,10 +195,13 @@ describe("moduleSource (#1662)", () => {
         '<script data-is:inline src="./not-inline.js"></script>',
         "",
       ].join("\n");
-      const source = moduleSource(file, scripts);
+      const sources = moduleSources(file, scripts);
+      const source = sources.join("\n");
 
-      expect(source).toHaveLength(scripts.length);
-      expect(source.split("\n")).toHaveLength(scripts.split("\n").length);
+      for (const each of sources) {
+        expect(each).toHaveLength(scripts.length);
+        expect(each.split("\n")).toHaveLength(scripts.split("\n").length);
+      }
       expect(specifiers(file, scripts)).toEqual([
         "./Card.astro",
         "../../../iracing-actions/src/a.js",
@@ -193,7 +215,7 @@ describe("moduleSource (#1662)", () => {
         "./not-inline.js",
       ]);
       const quoteOf = (specifier) =>
-        moduleReferences(source).find((reference) => reference.specifier === specifier).pos;
+        sources.flatMap(moduleReferences).find((reference) => reference.specifier === specifier).pos;
 
       expect(quoteOf("../../../iracing-actions/src/a.js")).toBe(scripts.indexOf('"../../../iracing-actions/src/a.js"'));
       expect(quoteOf("./single.ts")).toBe(scripts.indexOf("'./single.ts'"));
@@ -242,8 +264,45 @@ describe("moduleSource (#1662)", () => {
         "./after-bang.js",
         "./upper.js",
       ]);
-      expect(moduleSource(file, text)).not.toContain("commented");
+      expect(joined(file, text)).not.toContain("commented");
       expect(unclosedComment(file, text)).toBeUndefined();
+    });
+
+    // A template expression is JavaScript: a "<!--" in one is a string or the like,
+    // never a comment, so it hides no <script> after it.
+    it("reads a comment opener inside a template expression as JavaScript, not a comment", () => {
+      const text = [
+        "---",
+        "const a = 1;",
+        "---",
+        '<p>{"<!--"}</p>',
+        '<script src="./client.ts"></script>',
+        "<!-- note -->",
+        "<p>{'<!--'} {`<!--${a}`} {/* <!-- */ a}</p>",
+        '<script>import "./after-quoted.js";</script>',
+        "<!-- a real comment: <script>import './commented.js';</script> -->",
+        "",
+      ].join("\n");
+
+      expect(specifiers(file, text)).toEqual(["./client.ts", "./after-quoted.js"]);
+      expect(unclosedComment(file, text)).toBeUndefined();
+    });
+
+    // An expression whose end this cannot find runs to the end of the file, so a "<!--" after it reads as no comment.
+    it("reads no comment after a template expression it cannot bound", () => {
+      for (const expression of [
+        '{a < b && "x"}',
+        "{x && <b>bold</b>}",
+        "{a / b}",
+        "{/}/.test(s)}",
+        '{"never closed"',
+      ]) {
+        const text = `${expression}\n<!-- <script>import "./after.js";</script> -->\n`;
+
+        expect(specifiers(file, text), expression).toEqual(["./after.js"]);
+      }
+      // One it can bound ends where its brace closes, so a comment after it is one.
+      expect(specifiers(file, '{"}" + `${"{"}`}\n<!-- <script>import "./x.js";</script> -->\n')).toEqual([]);
     });
 
     it("reads a script whose end tag never comes to the end of the file, as HTML does", () => {
@@ -251,9 +310,9 @@ describe("moduleSource (#1662)", () => {
     });
 
     it("names the line of a markup comment that never closes, and none for a closed one or a code file", () => {
-      const open = '---\nconst a = 1;\n---\n<p>{"<!--"}</p>\n<script>import "./hidden.js";</script>\n';
+      const open = '---\nconst a = 1;\n---\n<p>x</p>\n<!-- never closed <script>import "./hidden.js";</script>\n';
 
-      expect(unclosedComment(file, open)).toBe(4);
+      expect(unclosedComment(file, open)).toBe(5);
       expect(specifiers(file, open)).toEqual([]);
       expect(unclosedComment(file, "<!-- closed --><p>x</p>")).toBeUndefined();
       expect(unclosedComment(file, '<script>const s = "<!--";</script>')).toBeUndefined();
@@ -311,6 +370,76 @@ describe("moduleSource (#1662)", () => {
       ]);
     });
 
+    // A backtick in a template expression opens a template literal, not a code span.
+    it("finds a load in an .mdx expression's template literal, and in every line of one that spans lines", () => {
+      const text = [
+        'Prose {`${String(import("./client.js"))}`} and `import("./span.js")`.',
+        'Prose {``+require("./empty-templates.js")+``} and ``require("./span2.js")``.',
+        "{(",
+        '  `${import("./multi-line.js")}`',
+        ")}",
+        "",
+        '`import("./after.js")` is a code span again.',
+        "",
+        '{"}" + `${import("./string-brace.js")}`}',
+        "",
+      ].join("\n");
+
+      expect(markupLoads(mdx, text)).toEqual([
+        { call: "import(", line: 1 },
+        { call: "require(", line: 2 },
+        { call: "import(", line: 4 },
+        { call: "import(", line: 9 },
+      ]);
+    });
+
+    it("opens no code span or fence after an .mdx expression it cannot bound, and still reads ESM there", () => {
+      const text = [
+        "{a < b}",
+        "",
+        '`import("./span.js")`',
+        "",
+        "```ts",
+        'require("./fenced.js");',
+        "```",
+        "",
+        'import x from "@iracedeck/iracing-sdk";',
+        "",
+      ].join("\n");
+
+      expect(markupLoads(mdx, text)).toEqual([
+        { call: "import(", line: 3 },
+        { call: "require(", line: 6 },
+      ]);
+      expect(specifiers(mdx, text)).toEqual(["@iracedeck/iracing-sdk"]);
+    });
+
+    it("keeps an escaped brace and a code span holding braces as Markdown", () => {
+      const text = ['\\{ `{{= import("./span.js") }}` \\}', '`{` then `import("./two.js")` then `}`', ""].join("\n");
+
+      expect(markupLoads(mdx, text)).toEqual([]);
+    });
+
+    it("finds a load with a comment between its name and its parenthesis, and none in prose", () => {
+      const text = [
+        "---",
+        "---",
+        '<p>{import /* lazy */ ("./client.js")}</p>',
+        "<p>{require // x",
+        '  ("./b.js")}</p>',
+        "<p>{import/**/(`./c.js`)}</p>",
+        "<p>Import the profile (it is free), or require it (once).</p>",
+        "",
+      ].join("\n");
+
+      expect(markupLoads(astro, text)).toEqual([
+        { call: "import(", line: 3 },
+        { call: "require(", line: 4 },
+        { call: "import(", line: 6 },
+      ]);
+      expect(markupLoads(mdx, 'Prose {import /* lazy */ ("./client.js")}.\n')).toEqual([{ call: "import(", line: 1 }]);
+    });
+
     it("finds nothing in a code source, whose loads are module code", () => {
       expect(markupLoads("packages/x/src/a.ts", 'const a = import("./a.js");')).toEqual([]);
     });
@@ -341,7 +470,7 @@ describe("moduleSource (#1662)", () => {
     const file = "packages/website/src/content/docs/planted.mdx";
 
     it("reads its import and export blocks, a multi-line import whole, at the file's own offsets", () => {
-      const source = moduleSource(file, text);
+      const [source] = moduleSources(file, text);
 
       expect(source).toHaveLength(text.length);
       expect(specifiers(file, text)).toEqual([
@@ -352,7 +481,7 @@ describe("moduleSource (#1662)", () => {
     });
 
     it("reads nothing from the frontmatter, prose, fenced code or JSX", () => {
-      const source = moduleSource(file, text);
+      const [source] = moduleSources(file, text);
 
       for (const mention of ["hero.js", "deck-iracing", "iracing-sdk", "Prose", "<Gallery"]) {
         expect(source, mention).not.toContain(mention);
@@ -408,7 +537,7 @@ describe("moduleSource (#1662)", () => {
         "../../../../../iracing-actions/src/rows.js",
         "./meta.js",
       ]);
-      expect(moduleSource("packages/website/src/content/docs/blank.mdx", page)).not.toContain("Prose");
+      expect(joined("packages/website/src/content/docs/blank.mdx", page)).not.toContain("Prose");
     });
 
     it("ends a block at a blank line when it is complete, or malformed before its end", () => {
@@ -422,7 +551,7 @@ describe("moduleSource (#1662)", () => {
         "```",
         "",
       ].join("\n");
-      const source = moduleSource("packages/website/src/content/docs/ends.mdx", page);
+      const [source] = moduleSources("packages/website/src/content/docs/ends.mdx", page);
 
       expect(source).toContain('import A from "./a.js";');
       expect(source).not.toContain("iracing-sdk");

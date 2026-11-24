@@ -7,7 +7,7 @@
  *
  * Imports are read with TypeScript's own scanner (`ts.preProcessFile`), so a
  * comment can neither add nor hide one. An `.astro` component's or `.mdx`
- * page's imports are read from its module code alone (`moduleSource`), so a
+ * page's imports are read from its module code alone (`moduleSources`), so a
  * mention in markup or prose is none either, while an `import(` or `require(`
  * a template expression could evaluate is reported apart (`markupLoads`), for
  * a guard to refuse as a load it cannot follow, as is an `.astro` HTML comment
@@ -24,7 +24,7 @@ export const CODE = /\.[cm]?[jt]sx?$/;
 /**
  * A component that holds module code among markup, by extension: an Astro
  * component (`.astro`) or an MDX page (`.mdx`). Its imports are read through
- * {@link moduleSource}, never from the raw text (#1662).
+ * {@link moduleSources}, never from the raw text (#1662).
  */
 export const COMPONENT = /\.(astro|mdx)$/;
 
@@ -63,7 +63,7 @@ const NOT_SOURCE_SEGMENT = /^(dist|node_modules)$|\.sdPlugin$|\.ulanziPlugin$/;
  * plugin bundle folder (`*.sdPlugin/`, `*.ulanziPlugin/`), and none of
  * {@link VENDORED_SOURCES}. With `components`, the `.astro` and `.mdx` files
  * too ({@link COMPONENT}), whose imports a caller then reads through
- * {@link moduleSource} (#1662).
+ * {@link moduleSources} (#1662).
  *
  * @param {string} root The repository root.
  * @param {{ components?: boolean }} [options]
@@ -142,11 +142,6 @@ function leadingFence(text) {
   return { contentStart, contentEnd: contentStart + close.index, end: contentStart + close.index + close[0].length };
 }
 
-/** Every match of the global regex `pattern` in `text`, as `[start, end)` ranges. */
-function rangesOf(pattern, text) {
-  return [...text.matchAll(pattern)].map((match) => [match.index, match.index + match[0].length]);
-}
-
 /**
  * The value of the attribute `name` in an HTML start tag's attribute text, and
  * where it sits there: `at` is the offset of its opening quote, or of its first
@@ -165,11 +160,62 @@ function attributeOf(attributes, name) {
 }
 
 /**
- * What the markup of an Astro component can open next: an HTML comment, or the
- * start tag of a `<script>` or `<style>` element (its name, then its attribute
- * text), whose body is raw text up to its end tag.
+ * Where the template expression whose `{` is at `open` ends: the offset just
+ * past the `}` that closes it, read as JavaScript — a quoted string (which ends
+ * at its quote or at the line's end, since JavaScript allows no line break in
+ * one), a template literal and its `${…}`, a comment, a nested brace. A `<`
+ * (JSX, or a comparison) or a `/` that opens no comment (a regular expression,
+ * or a division) is not read, so the expression is taken to run to the end of
+ * the text, as is one nothing closes (#1662). Every caller reads the text an
+ * expression spans more loosely than markup — no comment, code span or fence
+ * hides anything in it — so running long reads more, never less.
  */
-const MARKUP_OPENER = /<!--|<(script|style)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+function expressionEnd(text, open) {
+  /** The open levels, innermost last: a brace depth for code, or "`" for a template literal's text. */
+  const levels = [1];
+
+  for (let at = open + 1; at < text.length; at++) {
+    const c = text[at];
+    const top = levels.length - 1;
+
+    if (levels[top] === "`") {
+      if (c === "\\") at++;
+      else if (c === "`") levels.pop();
+      else if (c === "$" && text[at + 1] === "{") {
+        levels.push(1);
+        at++;
+      }
+    } else if (c === '"' || c === "'") {
+      at++;
+      while (at < text.length && text[at] !== c && text[at] !== "\n") at += text[at] === "\\" ? 2 : 1;
+    } else if (c === "`") {
+      levels.push("`");
+    } else if (c === "/" && text[at + 1] === "/") {
+      at = text.indexOf("\n", at);
+      if (at === -1) return text.length;
+    } else if (c === "/" && text[at + 1] === "*") {
+      at = text.indexOf("*/", at + 2);
+      if (at === -1) return text.length;
+      at++;
+    } else if (c === "<" || c === "/") {
+      return text.length;
+    } else if (c === "{") {
+      levels[top]++;
+    } else if (c === "}" && --levels[top] === 0) {
+      levels.pop();
+      if (levels.length === 0) return at + 1;
+    }
+  }
+
+  return text.length;
+}
+
+/**
+ * What the markup of an Astro component can open next: an HTML comment, the
+ * start tag of a `<script>` or `<style>` element (its name, then its attribute
+ * text), whose body is raw text up to its end tag, or a template expression.
+ */
+const MARKUP_OPENER = /<!--|<(script|style)\b((?:[^>"']|"[^"]*"|'[^']*')*)>|\{/gi;
 
 /**
  * Where an HTML comment ends, searched from just after its `<!--`: an abrupt
@@ -191,18 +237,23 @@ const BROWSER_URL = /^(https?:)?\/\//i;
 const isInline = (attributes) => /(^|\s)is:inline(?=[\s=/]|$)/i.test(attributes);
 
 /**
- * The parts of an Astro component: the `ranges` that hold module code, the
- * `overlays` that spell a `<script src>` as the import it is, the `blanks` that
- * hold no template — the frontmatter, HTML comments and the `<script>` and
- * `<style>` bodies — so what is left is the template, whose `{…}` expressions
- * Astro evaluates, and `unclosedComment`, the offset of an HTML comment that
- * runs to the end of the file, or -1.
+ * The parts of an Astro component: its `modules`, in the order they appear —
+ * the frontmatter, and for each `<script>` the import its `src` makes and its
+ * body — each one module apart, as Astro compiles them, so nothing one leaves
+ * open (a `//` comment on its last line) can run into the next on its line;
+ * the `blanks` that hold no template — the frontmatter, HTML comments and the
+ * `<script>` and `<style>` bodies — so what is left is the template, whose
+ * `{…}` expressions Astro evaluates; and `unclosedComment`, the offset of an
+ * HTML comment that runs to the end of the file, or -1.
  *
  * The markup after the frontmatter is read in order, as the HTML tokenizer
  * reads it: a `<!--` opens a comment only where markup is read, never inside a
  * `<script>` or `<style>` body, which is raw text up to its end tag, so a
  * script's `"<!--"` string hides nothing after it, while a `<script>` inside a
- * comment is part of the comment and loads nothing.
+ * comment is part of the comment and loads nothing. Nor inside a template
+ * expression (`expressionEnd`), whose `"<!--"` is a string: an expression
+ * this cannot bound runs to the end of the file, so no `<!--` after it opens a
+ * comment, and what follows one is read (#1662).
  *
  * Module code is the frontmatter, between the leading `---` fences, and the
  * body of every `<script>` the Astro ESLint processor hands on as a virtual
@@ -222,18 +273,26 @@ const isInline = (attributes) => /(^|\s)is:inline(?=[\s=/]|$)/i.test(attributes)
  * is `is:inline`, never a pass.
  */
 function astroParts(text) {
-  const ranges = [];
-  const overlays = [];
+  const modules = [];
   const fence = leadingFence(text);
   const markupStart = fence?.end ?? 0;
   /** The HTML comments, and the bodies of the <script> and <style> elements: never a template. */
   const blanks = [[0, markupStart]];
   let unclosedComment = -1;
+  /** Where the template expressions read so far end, at the furthest. */
+  let expressionsEnd = markupStart;
 
-  if (fence) ranges.push([fence.contentStart, fence.contentEnd]);
+  if (fence) modules.push({ ranges: [[fence.contentStart, fence.contentEnd]], overlays: [] });
   MARKUP_OPENER.lastIndex = markupStart;
   for (let match = MARKUP_OPENER.exec(text); match !== null; match = MARKUP_OPENER.exec(text)) {
+    if (match[0] === "{") {
+      // Read on inside it: a <script> there is still one.
+      if (match.index >= expressionsEnd) expressionsEnd = expressionEnd(text, match.index);
+      continue;
+    }
     if (match[1] === undefined) {
+      // A "<!--" in a template expression is JavaScript's, not a comment.
+      if (match.index < expressionsEnd) continue;
       const after = match.index + "<!--".length;
       const close = COMMENT_END.exec(text.slice(after));
       const end = close === null ? text.length : after + close.index + close[0].length;
@@ -265,12 +324,12 @@ function astroParts(text) {
       const quote = src.quote || '"';
       const quoteAt = attributesAt + src.at - (src.quote ? 0 : 2);
 
-      overlays.push([quoteAt - "import ".length, `import ${quote}${src.value}${quote};`]);
+      modules.push({ ranges: [], overlays: [[quoteAt - "import ".length, `import ${quote}${src.value}${quote};`]] });
     }
-    if (text.slice(bodyStart, bodyEnd).trim() !== "") ranges.push([bodyStart, bodyEnd]);
+    if (text.slice(bodyStart, bodyEnd).trim() !== "") modules.push({ ranges: [[bodyStart, bodyEnd]], overlays: [] });
   }
 
-  return { ranges, overlays, blanks, unclosedComment };
+  return { modules, blanks, unclosedComment };
 }
 
 /**
@@ -316,14 +375,21 @@ function incompleteEsm(block) {
   return diagnostics.length > 0 && first >= block.trimEnd().length;
 }
 
-/** A Markdown code span on one line: a run of backticks, then anything up to a run as long. */
-const CODE_SPAN = /(`+)(?!`)[^\r\n]*?(?<!`)\1(?!`)/g;
+/** A Markdown code span on one line, from its opening run of backticks: anything up to a run as long. */
+const CODE_SPAN_AT = /(`+)(?!`)[^\r\n]*?(?<!`)\1(?!`)/y;
 
 /**
- * The parts of an MDX page: the `ranges` that hold its ESM, and the `blanks`
- * that are neither ESM nor markup — the YAML frontmatter, fenced code and
- * one-line code spans — so what is left is the prose and JSX, whose `{…}`
- * expressions MDX evaluates.
+ * The parts of an MDX page: its one module, the `ranges` that hold its ESM,
+ * and the `blanks` that are neither ESM nor markup — the YAML frontmatter,
+ * fenced code and one-line code spans — so what is left is the prose and JSX,
+ * whose `{…}` expressions MDX evaluates.
+ *
+ * A code span or a fence is Markdown's, so it opens only in Markdown text,
+ * never inside a template expression (`expressionEnd`), where a backtick is a
+ * template literal's and a load in one runs (#1662). An expression this cannot
+ * bound runs to the end of the page, so after it nothing is a code span or
+ * fence and every load is found; an `import` or `export` line is still read as
+ * ESM there, so nothing the misreading spans can hide one.
  *
  * The ESM is each run of lines from one that starts `import` or `export` at the
  * left margin (`ESM_LINE`) up to the next blank line that ends it, outside
@@ -348,11 +414,44 @@ function mdxParts(text) {
   let codeStart = -1;
   /** Where the ESM block `at` is in started, or -1 outside one. */
   let esmStart = -1;
+  /** Where the template expressions read so far end, at the furthest: text before it is no Markdown. */
+  let expressionsEnd = frontmatterEnd;
+  /**
+   * Reads Markdown text from `from` to `to`, on one line: blanks each code
+   * span, steps over each template expression, and returns where the last one
+   * ends when that is past `to`, else `to`.
+   */
+  const readMarkdown = (from, to) => {
+    for (let i = from; i < to; i++) {
+      if (text[i] === "\\") {
+        i++;
+      } else if (text[i] === "`") {
+        CODE_SPAN_AT.lastIndex = i;
+        const span = CODE_SPAN_AT.exec(text);
+
+        if (span === null) {
+          // A run with no run as long after it on the line is text.
+          while (text[i + 1] === "`") i++;
+        } else {
+          blanks.push([i, i + span[0].length]);
+          i += span[0].length - 1;
+        }
+      } else if (text[i] === "{") {
+        const end = expressionEnd(text, i);
+
+        if (end > to) return end;
+        i = end - 1;
+      }
+    }
+
+    return to;
+  };
 
   while (at < text.length) {
     const newline = text.indexOf("\n", at);
     const end = newline === -1 ? text.length : newline + 1;
     const line = text.slice(at, end).replace(/\r?\n$/, "");
+    const lineEnd = at + line.length;
     const blank = line.trim() === "";
 
     if (codeFence !== null) {
@@ -365,6 +464,10 @@ function mdxParts(text) {
         ranges.push([esmStart, at]);
         esmStart = -1;
       }
+    } else if (at < expressionsEnd) {
+      // Inside a template expression: JavaScript, where no fence opens.
+      if (ESM_LINE.test(line)) esmStart = at;
+      else if (expressionsEnd < lineEnd) expressionsEnd = readMarkdown(expressionsEnd, lineEnd);
     } else if (CODE_FENCE.test(line)) {
       const open = CODE_FENCE.exec(line);
 
@@ -373,7 +476,7 @@ function mdxParts(text) {
     } else if (ESM_LINE.test(line)) {
       esmStart = at;
     } else {
-      blanks.push(...rangesOf(CODE_SPAN, line).map(([start, stop]) => [at + start, at + stop]));
+      expressionsEnd = readMarkdown(at, lineEnd);
     }
     at = end;
   }
@@ -381,7 +484,7 @@ function mdxParts(text) {
   // An unclosed code block runs to the end of the page.
   if (codeFence !== null) blanks.push([codeStart, text.length]);
 
-  return { ranges, overlays: [], blanks: [...blanks, ...ranges] };
+  return { modules: [{ ranges, overlays: [] }], blanks: [...blanks, ...ranges] };
 }
 
 /** The parts of a component, or undefined for a {@link CODE} source, which is module code throughout. */
@@ -393,27 +496,32 @@ function componentParts(file, text) {
 }
 
 /**
- * The module code of `file`, whose text is `text`, laid out at the offsets it
- * has in the file: the whole text for a {@link CODE} source, the frontmatter
- * and `<script>` bodies of an `.astro` component, with each `<script src>` that
- * names a module read as its import (an `is:inline` one's is the browser's),
- * and the ESM blocks of an `.mdx` page,
- * everything else blanked (#1662). So a reader of imports or path strings sees
- * what loads, and a mention in markup or prose is nothing. A load a template
- * expression makes is not module code: {@link markupLoads} finds it.
+ * The modules of `file`, whose text is `text`, each laid out at the offsets it
+ * has in the file with everything else blanked (#1662): the whole text for a
+ * {@link CODE} source; an `.mdx` page's ESM blocks, which MDX compiles as one
+ * module; and an `.astro` component's frontmatter, each `<script>` body and
+ * each `<script src>` that names a module, read as its import (an `is:inline`
+ * one's is the browser's), one module apart, since Astro compiles each alone,
+ * so a `//` comment ending one script cannot hide the next on its line. So a
+ * reader of imports or path strings reads each, sees what loads, and a mention
+ * in markup or prose is nothing. A load a template expression makes is not
+ * module code: {@link markupLoads} finds it.
  *
  * @param {string} file
  * @param {string} text
- * @returns {string}
+ * @returns {string[]} in the order they appear in the file; none for a component with no module code
  */
-export function moduleSource(file, text) {
+export function moduleSources(file, text) {
   const parts = componentParts(file, text);
 
-  return parts === undefined ? text : keepOnly(text, parts.ranges, parts.overlays);
+  return parts === undefined ? [text] : parts.modules.map(({ ranges, overlays }) => keepOnly(text, ranges, overlays));
 }
 
-/** An `import(` or `require(` call, not a method of that name. */
-const LOAD_CALL = /(?<![\w$.])(import|require)\s*\(/g;
+/**
+ * An `import(` or `require(` call, not a method of that name, with any
+ * whitespace or comments between the name and its `(`.
+ */
+const LOAD_CALL = /(?<![\w$.])(import|require)(?:\s|\/\*[\s\S]*?\*\/|\/\/[^\r\n]*)*\(/g;
 
 /**
  * Every `import(` or `require(` in the markup of an `.astro` component or an
