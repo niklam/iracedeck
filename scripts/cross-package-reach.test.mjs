@@ -72,7 +72,7 @@ import path from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
-import { SIM_NEUTRAL_PACKAGES } from "../eslint.config.js";
+import { SOURCE_EXTENSIONS as LINTED_EXTENSIONS, SIM_NEUTRAL_PACKAGES } from "../eslint.config.js";
 import {
   COMPONENT,
   isModuleSource,
@@ -752,8 +752,9 @@ function isDataSpecifier(specifier) {
  *     that is not sim-neutral, by bare name and subpath, the four sim packages
  *     and their complement NON_NEUTRAL_PACKAGES alike, derived from the
  *     workspace in eslint.config.js and proved per package by
- *     scripts/deck-core-sim-boundary.test.mjs (#1662); its `.mdx` pages, which
- *     ESLint does not read, are roots of this walk (`closureRoots`); and its
+ *     scripts/deck-core-sim-boundary.test.mjs (#1662); its sources in an
+ *     extension ESLint does not read (`.mdx` pages, `.js` files) are roots of
+ *     this walk (`closureRoots`); and its
  *     relative reaches out of itself are roots too. A specifier naming the
  *     `@iracedeck` scope but no workspace package fails.
  *   * A bare third-party specifier (`zod`), an Astro virtual module
@@ -878,8 +879,10 @@ function readRepoFile(file) {
  *     the root `scripts/lib/`, which no sim block lints. Inside its own package
  *     a relative import stays where the ESLint block holds every file, and a
  *     package import is the block's to refuse (NON_NEUTRAL_PACKAGES);
- *   * every `.mdx` page, which ESLint does not read, so neither its package
- *     imports nor its relative ones are held by anything but this walk.
+ *   * every module source in an extension the ESLint blocks do not read
+ *     (`isUnlinted`): an `.mdx` page, and a `.js` file such as the website's
+ *     `public/` browser script, so neither its package imports nor its relative
+ *     ones are held by anything but this walk.
  *
  * Tests (`isTestSource`) are out of scope: Vitest alone loads them, never a
  * package's build or a plugin, and it loads them against the native mocks
@@ -889,10 +892,12 @@ function readRepoFile(file) {
  * refuses a sim specifier in them.
  */
 function closureRoots() {
+  const isUnlinted = (file) => !LINTED_EXTENSIONS.includes(P.extname(file).slice(1));
+
   return FILES.filter((file) => NEUTRAL.has(file.split("/")[1]) && !isTestSource(file)).filter((file) => {
     const own = `packages/${file.split("/")[1]}/`;
 
-    if (file.endsWith(".mdx")) return true;
+    if (isUnlinted(file)) return true;
 
     return moduleReferences(moduleSource(file, readRepoFile(file))).some(
       ({ kind, specifier }) =>
@@ -959,6 +964,8 @@ describe("a sim-neutral package's reach out of itself loads no sim package at ru
     expect(FILES.filter((file) => COMPONENT.test(file)).length).toBeGreaterThan(20);
     expect(pages.length).toBeGreaterThan(5);
     expect(roots).toEqual(expect.arrayContaining(pages));
+    // A .js source, which no ESLint block reads either, is a root the same way.
+    expect(roots).toContain("packages/website/public/diagram-zoom.js");
     expect(walks.get("packages/website/src/content/docs/docs/development/icon-gallery.mdx").visited).toEqual(
       expect.arrayContaining(["packages/website/src/components/IconGallery.astro"]),
     );

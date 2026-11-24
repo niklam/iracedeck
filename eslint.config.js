@@ -125,7 +125,10 @@ const TS_FILES = ['**/*.ts', '**/*.mts'];
 // scripts/sim-boundary-coverage.test.mjs fails on a `packages/` glob that names
 // one extension without the others.
 const SCRIPT_EXTENSIONS = ['ts', 'mts', 'mjs'];
-const SOURCE_EXTENSIONS = [...SCRIPT_EXTENSIONS, 'astro'];
+// Exported so scripts/cross-package-reach.test.mjs can take every module source
+// in another extension (.js, .mdx), which no block here reads, as a root of its
+// runtime-closure walk (#1662).
+export const SOURCE_EXTENSIONS = Object.freeze([...SCRIPT_EXTENSIONS, 'astro']);
 
 // sources('packages/x/src/**/*'): that glob in every source extension.
 const sources = (stem) => SOURCE_EXTENSIONS.map((extension) => `${stem}.${extension}`);
