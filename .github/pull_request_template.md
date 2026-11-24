@@ -12,7 +12,8 @@ Fixes #
 
 ## Checklist
 
-- [ ] Linked to an approved issue
+- [ ] Linked to the issue it fixes
 - [ ] New code has unit tests
-- [ ] Changes registered in all applicable plugins (Stream Deck, Mirabox)
+- [ ] Changes registered in all applicable plugins (Stream Deck, Mirabox, Ulanzi)
+- [ ] A user-facing change has its website docs and a changelog fragment in `changelog.d/`
 - [ ] No unrelated changes included
