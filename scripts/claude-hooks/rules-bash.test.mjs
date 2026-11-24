@@ -5694,3 +5694,12 @@ describe("a startup option after the script word (#1659)", () => {
     expect(stopped(`bash --rcfile /dev/stdin scripts/inspect.sh`)).toContain("startup file");
   });
 });
+
+// CLI check of be3d79a4b: `watch -x` in a string runs its words with no shell.
+describe("watch -x inside a string (#1659)", () => {
+  it("passes a plain program, judges a merge it runs, and refuses a shell string it runs", () => {
+    passes(`bash -c 'watch -x date'`);
+    expect(deny(`bash -c 'watch -x gh pr merge 7 --squash'`)).not.toMatch(/form the hook does not read/);
+    expect(stopped(`bash -c 'watch -x bash -c ls'`)).toContain("a string inside a string");
+  });
+});

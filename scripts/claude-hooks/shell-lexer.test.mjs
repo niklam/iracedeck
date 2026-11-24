@@ -2743,3 +2743,30 @@ describe("the stopping rule: startup options only before the script (#1659 CLI c
     `bash +O extglob --rcfile /dev/stdin`,
   ])("refuses %s", (c) => expect(lexer.refusedForms(c)[0]?.form).toBe(STARTUP));
 });
+
+// CLI check of be3d79a4b: `watch -x` in a string runs its words with no
+// shell, so it hands over no string; what it runs is still read.
+describe("the stopping rule: watch -x inside a string (#1659 CLI check)", () => {
+  const NESTED = "a string inside a string";
+  it.each([
+    `bash -c 'watch -x date'`,
+    `bash -c 'watch --exec date'`,
+    `bash -c 'watch -n 1 -x date'`,
+    `bash -c 'watch -cx date'`,
+    `bash -c 'watch -x sh x.sh'`,
+    `bash -c 'watch -x watch -x date'`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+  it.each([
+    [`bash -c 'watch date'`, NESTED],
+    [`bash -c 'watch -x bash -c ls'`, NESTED],
+    [`bash -c 'watch -x nice bash -c ls'`, NESTED],
+    [`bash -c 'watch -x bash'`, NESTED],
+    [`bash -c 'watch -x watch date'`, NESTED],
+    [`bash -c 'watch -x pwsh -c ls'`, NESTED],
+    [`bash -c 'watch -x eval ls'`, "eval"],
+  ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+  it("reads what it runs as a program word", () => {
+    const at = `bash -c 'watch -x gh pr merge 7'`.indexOf("gh");
+    expect(lexer.view(`bash -c 'watch -x gh pr merge 7'`).programs.some((p) => p[0] === at)).toBe(true);
+  });
+});

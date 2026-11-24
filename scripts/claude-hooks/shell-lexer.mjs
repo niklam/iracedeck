@@ -1852,6 +1852,15 @@ function wordForm(chars, raw, subst) {
 }
 
 /**
+ * Whether the `watch` whose word ends at `from` of `text` is given `-x`
+ * (`--exec`, or a cluster holding `x`) before its program word at `program`:
+ * it then runs its words as they are, with no shell (#1646).
+ */
+function watchExecs(text, from, program) {
+  return program !== undefined && /(?:^|\s)(?:--exec|-[A-Za-z]*x[A-Za-z]*)(?=\s)/.test(text.slice(from, program));
+}
+
+/**
  * Whether the shell word `name`, its words read as {@link commandOf} gives
  * `r`, runs text it is handed rather than a file (#1659): a string switch's
  * string; the words `watch`, `parallel` and `trap` run, and the command
@@ -2272,6 +2281,11 @@ function fedStarts(command, text, fed, programs) {
       return refuse(STREAM_FORMS[L.outerStdin] ?? REFUSED.stdin, `${L.via} … ${stream.shape}`);
     if (name === "parallel" && parallelRunsInput(L.text, e, r))
       return refuse(REFUSED.parallel, `${L.via} … parallel …`);
+    // `watch -x` runs its words as they are, with no shell: no string inside
+    // the string, but a command whose program words are read as a wrapper's,
+    // a shell among them that runs a string (CLI check of be3d79a4b).
+    if (name === "watch" && watchExecs(L.text, e, r.program))
+      return leads(L, r.program, { how: "wrapper", via: "watch" });
     if (feedsText(name, r)) refuse(REFUSED.nested, `${L.via} … ${name} …`);
   };
   // `d` of the level `L`, and the position after each lead token from it, up
@@ -2431,10 +2445,7 @@ function fedStarts(command, text, fed, programs) {
           const kind = { how: "shell", via };
           // `watch -x` (`--exec`) runs its words as they are, no shell joining
           // them: each is kept one word (#1646).
-          const exec =
-            via === "watch" &&
-            r.program !== undefined &&
-            /(?:^|\s)(?:--exec|-[A-Za-z]*x[A-Za-z]*)(?=\s)/.test(text.slice(d, r.program));
+          const exec = via === "watch" && watchExecs(text, d, r.program);
           const join = exec ? "escaped" : JOINING_SHELLS.has(via) ? "plain" : undefined;
           if (via === "parallel" && parallelRunsInput(text, d, r)) {
             const w = r.program === undefined ? undefined : commandWordEnd(text, r.program);
