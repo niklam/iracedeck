@@ -112,9 +112,10 @@ if (typeof command === "string" && command.trim()) {
       ),
     ),
     // The merge gate's pure-rebase check (#1307), and its read of the files and
-    // commit authors of a PR merged under `--admin` (#1648).
-    replayRebase,
-    prChangedFiles,
+    // commit authors of a PR merged under `--admin` (#1648), once per head, base
+    // and directory: a curly-quoted PowerShell command is judged twice.
+    replayRebase: memo(replayRebase),
+    prChangedFiles: memo(prChangedFiles),
     // The status checks the base branch's rules require, which a qualifying
     // `--admin` merge must show green (#1648), read of the confirmed repository.
     requiredChecks: memo((repo, branch, dir) => requiredStatusChecks(repo, branch, dir, repoEnv(repo))),
