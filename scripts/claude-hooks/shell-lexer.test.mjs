@@ -2153,7 +2153,7 @@ describe("the stopping rule: a form the lexer does not read is found, and refuse
   // string before that shell parses it, and parallel with no command runs its
   // input as commands.
   describe("a shell string xargs or parallel fills in", () => {
-    const FILLED = "a shell string xargs or parallel fills in from its input";
+    const FILLED = "a shell string xargs, parallel or find fills in from its input";
     const PARALLEL = "parallel running its input as commands";
 
     it.each([
@@ -2201,5 +2201,26 @@ describe("the stopping rule: a form the lexer does not read is found, and refuse
       expect(r.advice).toContain(`xargs -I{} sh -c 'cat "$1"' _ {}`);
       expect(r.advice).toContain(String.raw`find … -exec sh -c '…' _ {} \;`);
     });
+
+    // #1659 second read: find substitutes `{}` anywhere in an `-exec`
+    // argument, a shell's string included, so a file name can be a command.
+    it.each([
+      String.raw`find . -name '*.md' -exec bash -c 'echo {}' \;`,
+      String.raw`find . -exec sh -c 'cat "{}"' \;`,
+      String.raw`find . -execdir sh -c '{}' \;`,
+      `find . -type f -exec bash -c {} +`,
+      String.raw`find . -exec pwsh -Command Get-Item {} \;`,
+      String.raw`find . -name x -exec /bin/sh -c 'echo {}; ls' \;`,
+    ])("refuses %s", (c) => {
+      const [r] = lexer.refusedForms(c);
+      expect(r?.form).toBe(FILLED);
+      expect(r.advice).toContain(String.raw`find … -exec sh -c '…' _ {} \;`);
+    });
+    it.each([
+      String.raw`find . -exec rm {} \;`,
+      `find . -name '*.ts' -exec grep -l x {} +`,
+      String.raw`find . -exec sh -c 'ls "$1"' _ {} \;`,
+      String.raw`find . -exec bash -c 'echo none' \;`,
+    ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
   });
 });

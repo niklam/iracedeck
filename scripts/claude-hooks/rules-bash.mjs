@@ -1314,7 +1314,7 @@ function manifestSources(command, commit, ctx, dir) {
  * too) or a startup file from (`--rcfile`, `BASH_ENV`, `ENV`), PowerShell's
  * `-EncodedCommand`, `eval`, a `sudo` that runs a shell, a string that is
  * not one plain level, a string inside a string, a program word in a string
- * that is not its plain name, a shell string xargs or parallel fills in from
+ * that is not its plain name, a shell string xargs, parallel or find fills in from
  * its input, parallel running its input as commands (`refusedForms` in
  * `shell-lexer.mjs`, #1659) —
  * is refused outright, before any rule's verdict and never as an ask: the

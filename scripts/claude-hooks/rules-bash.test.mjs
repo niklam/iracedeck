@@ -5414,7 +5414,7 @@ describe("the lexer's stopping rule: a form it does not read is refused outright
   // ruled (2026-11-24) that this refusal stands though three real commands
   // spelled a file listing so; the deny names the safe spellings.
   describe("a shell string xargs or parallel fills in", () => {
-    const FILLED = "a shell string xargs or parallel fills in from its input";
+    const FILLED = "a shell string xargs, parallel or find fills in from its input";
     it.each([
       `echo 'gh pr merge 7 --squash' | xargs -I{} bash -c '{}'`,
       String.raw`echo 'gh pr merge 7 --squash' | xargs -d '\n' -I% sh -c '%'`,
@@ -5422,6 +5422,9 @@ describe("the lexer's stopping rule: a form it does not read is refused outright
       `ls | xargs -I{} bash -c 'echo {}'`,
       `find . -name '*.md' | xargs -I{} sh -c 'echo "== {}"; cat {}'`,
       `echo '"gh pr merge 7 --squash"' | xargs bash -c`,
+      // #1659 second read: find fills `{}` into an `-exec` shell string too.
+      String.raw`find . -name '*.md' -exec bash -c 'echo {}' \;`,
+      String.raw`find . -execdir sh -c 'cat "{}"' \;`,
     ])("refuses %s, naming both safe spellings", (c) => {
       const v = refusal(c);
       expect(v).toContain(`(${FILLED})`);
