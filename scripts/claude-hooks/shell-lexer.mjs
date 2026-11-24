@@ -993,7 +993,9 @@ export function readCommand(spec, next) {
       // A startup file's value, in the next word or attached: the first stream one names.
       const value = o.value ? take() : o.startupAt === undefined ? undefined : w.slice(o.startupAt);
       if (o.value && value === undefined) break;
-      if (o.startup && value !== undefined && !out.startup) {
+      // Before the script word only: one after it is the script's argument
+      // (`bash x.sh --rcfile /dev/stdin`, CLI check of be3d79a4b).
+      if (o.startup && value !== undefined && !out.startup && out.program === undefined) {
         const stream = streamOf(value);
         if (stream) out.startup = { option: o.startup, stream };
         else if (expands(value)) out.startupExpands = true;

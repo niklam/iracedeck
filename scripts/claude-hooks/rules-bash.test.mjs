@@ -5686,3 +5686,11 @@ describe("PowerShell's eval where PowerShell runs it (#1659)", () => {
     expect(stopped(`pwsh -c 'ls | % { iex $_ }'`)).toContain("(eval)");
   });
 });
+
+// CLI check of be3d79a4b: a startup option after the script word is the script's argument.
+describe("a startup option after the script word (#1659)", () => {
+  it("passes one the script is handed, and refuses one before the script", () => {
+    passes(`bash scripts/inspect.sh --rcfile /dev/stdin`);
+    expect(stopped(`bash --rcfile /dev/stdin scripts/inspect.sh`)).toContain("startup file");
+  });
+});

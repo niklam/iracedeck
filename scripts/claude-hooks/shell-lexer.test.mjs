@@ -2722,3 +2722,24 @@ describe("the stopping rule: PowerShell's eval where PowerShell runs it (#1659 C
     (c) => expect(lexer.refusedForms(c)).toEqual([]),
   );
 });
+
+// CLI check of be3d79a4b: a startup option after the script word is the
+// script's argument, so it names no startup file.
+describe("the stopping rule: startup options only before the script (#1659 CLI check)", () => {
+  const STARTUP = "a shell startup file read from stdin, a descriptor or a process substitution";
+  it.each([
+    `bash scripts/inspect.sh --rcfile /dev/stdin`,
+    `bash x.sh --init-file <(echo y)`,
+    `bash -O extglob x.sh --rcfile /dev/stdin`,
+    `bash -o posix x.sh --rcfile /dev/stdin`,
+    `bash x.sh --rcfile "$F"`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+  it.each([
+    `bash --rcfile /dev/stdin`,
+    `bash --rcfile /dev/stdin x.sh`,
+    `bash --init-file <(echo y) -i`,
+    `bash -O extglob --rcfile /dev/stdin`,
+    `bash -o posix --rcfile /dev/stdin`,
+    `bash +O extglob --rcfile /dev/stdin`,
+  ])("refuses %s", (c) => expect(lexer.refusedForms(c)[0]?.form).toBe(STARTUP));
+});
