@@ -100,7 +100,12 @@ describe("feature counts (#1271)", () => {
     expect(checkFeatureCounts(real)).toEqual([]);
   });
 
-  describe("names each break (positive controls)", () => {
+  // The controls break a copy of the real tree, so they only mean something
+  // when that tree is clean. While it is not, the test above is already red and
+  // names the drift; running them too would add a dozen failures that all say
+  // the same thing. Skipping them never hides a break: it happens only on a
+  // run that is red already.
+  describe.skipIf(checkFeatureCounts(real).length > 0)("names each break (positive controls)", () => {
     it("a stale README headline, as #1271 found it", () => {
       const broken = withInput("readme", (t) => replaceOnce(t, `**${total.modes} modes**`, "**265+ modes**"));
       expect(checkFeatureCounts(broken)).toEqual([`README.md: states 265+ modes; the code has ${total.modes}`]);
