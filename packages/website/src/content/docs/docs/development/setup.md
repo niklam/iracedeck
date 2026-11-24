@@ -5,9 +5,10 @@ description: How to clone, build, and run iRaceDeck locally for development.
 
 ## Prerequisites
 
-- **Node.js** 24 or newer
-- **pnpm** (install with `npm install -g pnpm`)
-- **Windows** (required for the native addon and iRacing integration)
+- **Node.js 24.21.0**, the version pinned in the repository's `.nvmrc` (`nvm` and `fnm` read it). Use nothing older than 24.16.0: Node 24.15.0 crashes test workers on Windows with exit code `3221226505`.
+- **pnpm 12.6.0**, pinned in `packageManager` in the root `package.json`. Any pnpm 10 or later on your `PATH` switches itself to the pinned version.
+- **Windows** to run the plugin and build the native addons, since iRacing is Windows-only. On macOS (or Linux) `pnpm install`, `pnpm build` and `pnpm test` still work: the native addons are skipped and replaced by mocks, so you can work on everything but the live connection to iRacing and a deck host.
+- **Python 3** and **Visual Studio Build Tools** with the C++ workload, on Windows, to build the two native addons (`iracing-native` and `audio-native`)
 - **Stream Deck software** 7.1 or newer — required to run the Elgato plugin
 - **HotSpot StreamDock** (or another QT5 SVG Tiny 1.2 compatible Mirabox host) — only required if you're developing or testing the Mirabox plugin
 - **UlanziStudio** — only required if you're developing or testing the Ulanzi Deck plugin

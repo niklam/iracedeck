@@ -61,11 +61,13 @@
 
 **Prerequisites:**
 
-- Windows 10+ (iRacing is Windows-only)
-- [Node.js](https://nodejs.org/) 24+
-- [pnpm](https://pnpm.io/) 10+ — it switches itself to the version pinned in `package.json`
-- Python 3.x and [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the C++ workload (for the native addon)
-- [Elgato Stream Deck](https://docs.elgato.com/sdk/) software
+- Windows 10+ to run the plugin (iRacing is Windows-only); install, build and test also work on macOS, with the native addons mocked
+- [Node.js](https://nodejs.org/) 24.21.0, pinned in `.nvmrc` (never 24.15.0, which crashes test workers)
+- [pnpm](https://pnpm.io/) 12.6.0, pinned in `package.json`; any pnpm 10 or later switches itself to it
+- Python 3.x and [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the C++ workload (Windows only, for the native addons)
+- [Elgato Stream Deck](https://www.elgato.com/stream-deck) software; HotSpot StreamDock or VSD Craft (Mirabox) and UlanziStudio only for those plugins
+
+[CONTRIBUTING.md](CONTRIBUTING.md) has the full setup and the checks to run before a pull request.
 
 ```bash
 git clone https://github.com/niklam/iracedeck.git
@@ -301,28 +303,7 @@ A tag release deploys the catalog the tag carries, so **a `release/*` branch tha
 
 ## Contributing
 
-Contributions are welcome! Here's how to get started:
-
-1. Fork the repo and create a branch (`feature/123-your-feature`)
-2. Follow [conventional commits](https://www.conventionalcommits.org/) with package scope (e.g. `feat(iracing-plugin-stream-deck): add new action`)
-3. Add tests for new code (Vitest)
-4. Make sure `pnpm build` and `pnpm test` pass
-5. Open a pull request
-
-### Adding a new action
-
-Actions live in `packages/iracing-actions/src/actions/<action-name>/`, one folder per action. Each action needs:
-
-1. `<action-name>.ts` — action class extending `ConnectionStateAwareAction` from `@iracedeck/deck-core` (or `SimIRacingAction` from `@iracedeck/deck-iracing` when it reads iRacing telemetry directly)
-2. `<action-name>.test.ts` — unit tests
-3. `<action-name>.ejs` — Property Inspector template (compiled to `ui/<action-name>.html`)
-4. `icon.svg` + `key.svg` — static category and key icons (copied into each plugin's `imgs/actions/<name>/` at build time)
-5. Mustache SVGs in `packages/icons/<action-name>/` for any dynamic variants
-6. Registration in `packages/plugin-runtime/src/actions.ts` (`SHARED_ACTIONS`), once for all three plugins
-7. Manifest entry in each plugin's `manifest.json`
-8. Entries in `packages/iracing-actions/src/actions/data/{key-bindings,docs-urls,icon-defaults}.json` where applicable
-
-See the existing actions for reference, or check `packages/iracing-plugin-stream-deck/CLAUDE.md` for step-by-step instructions.
+Contributions are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) is the guide: picking an issue, the development setup, the checks to run, changelog fragments, pull requests, adding a new action, and working on the repository with Claude Code. Questions go to the [iRaceDeck Discord](https://discord.gg/c6nRYywpah).
 
 ## Troubleshooting
 
