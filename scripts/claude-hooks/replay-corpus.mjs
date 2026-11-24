@@ -38,7 +38,6 @@ import {
 import { createRequire, syncBuiltinESMExports } from "node:module";
 import os from "node:os";
 import path from "node:path";
-import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
@@ -135,13 +134,21 @@ export function transcriptFiles(dir, match) {
 export async function readCommands(files) {
   const commands = new CommandSet();
   let unparsed = 0;
+  const record = (line) => {
+    const found = extractCommands(line.endsWith("\r") ? line.slice(0, -1) : line);
+    if (found === null) unparsed++;
+    else for (const entry of found) commands.add(entry);
+  };
   for (const file of files) {
-    const lines = createInterface({ input: createReadStream(file, "utf8"), crlfDelay: Infinity });
-    for await (const line of lines) {
-      const found = extractCommands(line);
-      if (found === null) unparsed++;
-      else for (const entry of found) commands.add(entry);
+    // Records end at LF (CRLF accepted) only: readline would also split on
+    // U+2028 and U+2029, which JSON writes literally inside a string (PR #1798 review).
+    let rest = "";
+    for await (const chunk of createReadStream(file, "utf8")) {
+      const lines = (rest + chunk).split("\n");
+      rest = lines.pop();
+      for (const line of lines) record(line);
     }
+    if (rest) record(rest);
   }
   return { commands, unparsed };
 }

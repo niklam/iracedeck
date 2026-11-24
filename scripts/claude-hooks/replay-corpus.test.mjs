@@ -141,6 +141,27 @@ describe("walking and streaming a transcript folder", () => {
     expect(unparsed).toBe(1);
   });
 
+  // PR #1798 review: readline splits a line on U+2028 and U+2029 too, which
+  // JSON writes literally, so a command holding one broke its record in two.
+  it("splits records on LF or CRLF only, never on a line or paragraph separator", async () => {
+    const file = path.join(dir, "separators.jsonl");
+    const odd = "echo a b c";
+    fs.writeFileSync(
+      file,
+      `${line(toolUse("Bash", { command: odd }))}\r\n${line(toolUse("Bash", { command: "pwd -L" }))}\n`,
+    );
+    try {
+      const { commands, unparsed } = await readCommands([file]);
+      expect(commands.list()).toEqual([
+        { tool: "Bash", command: odd },
+        { tool: "Bash", command: "pwd -L" },
+      ]);
+      expect(unparsed).toBe(0);
+    } finally {
+      fs.rmSync(file);
+    }
+  });
+
   it("runs the census alone over the folder and prints its counts", async () => {
     const out = [];
     expect(await main(["--transcripts", dir, "--census-only"], (l) => out.push(l))).toBe(0);
