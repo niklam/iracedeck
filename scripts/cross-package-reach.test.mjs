@@ -12,11 +12,12 @@
 //
 // For every tracked source under `packages/<pkg>/` (`trackedPackageSources`,
 // which leaves out `dist/`, plugin bundle folders and vendored files), the
-// website's `.astro` components and `.mdx` pages included and read by their
-// module code alone — an `.astro` frontmatter and `<script>` bodies, an `.mdx`
-// page's import and export blocks (`moduleSources`, #1662) — every path the
+// website's `.astro` components and `.mdx` pages included, every path the
 // file names relative to itself is resolved and must not land inside
-// `packages/<other>/`:
+// `packages/<other>/`. An `.astro` component or `.mdx` page is read by its raw
+// text as well as as code (`componentLoads`, #1662): every `./` or `../`
+// literal in it, quoted or bare, in markup, prose or a fence as much as in its
+// frontmatter or a script, is such a path. In a code source a path is:
 //   * a relative module specifier — import, export, dynamic import, `require`,
 //     `import("…")` type, triple-slash `path` — read with `ts.preProcessFile`,
 //     resolved against the file's directory;
@@ -68,8 +69,17 @@
 // does not descend into a sim-neutral package by its specifier, because that
 // package's own sources are roots themselves. A load the walk cannot follow
 // fails, unless UNREAD_LOADS names it with the reason it loads nothing that is
-// not sim-neutral. The ESLint block stays as the editor's early word on a
-// static or type import.
+// not sim-neutral. An `.astro` component or `.mdx` page is not parsed but read
+// by its raw text (`componentLoads`): every literal specifier in it, anywhere,
+// counts as a load — a relative or root-absolute one is followed where it
+// resolves and ignored where it does not, since it then loads nothing, and an
+// `@iracedeck/` one is checked as an import is — and a computed load (an
+// `import(` or `require` of anything but one string literal, any
+// `createRequire`, a glob of module code) fails as unread. A structural reader
+// leaked three times where it disagreed with Astro and MDX; this one
+// over-approximates instead, and NAMED_NOT_LOADED names each literal that
+// loads nothing, with the reason. The ESLint block stays as the editor's early
+// word on a static or type import.
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
@@ -77,14 +87,13 @@ import { describe, expect, it } from "vitest";
 
 import { SIM_NEUTRAL_PACKAGES } from "../eslint.config.js";
 import {
+  COMPONENT,
+  componentLoads,
   isModuleSource,
   isTestSource,
-  markupLoads,
   moduleReferences,
-  moduleSources,
   packageOf,
   trackedPackageSources,
-  unreadStructure,
 } from "./lib/source-imports.mjs";
 import { trackedPackageDirs } from "./lib/workspace-packages.mjs";
 
@@ -218,36 +227,72 @@ const UNREAD_LOADS = {
 };
 
 /**
- * The problems of a walk that UNREAD_LOADS does not excuse, and a line for each
- * entry whose call the walk finds another number of times than it allows: none
- * at all, which is stale, or more or fewer, when none of them is excused.
+ * Literal specifiers in a sim-neutral package's `.astro` components and `.mdx`
+ * pages that load nothing (#1662): each file with the exact literals, as the
+ * walk reads them (`componentLoads`), and the reason. A component is read by
+ * its raw text, so a package named in its prose counts as a load; an entry
+ * says why one does not. A literal is excused as many times as the file
+ * spells it: once, or `count` times when it is written `{ literal, count }`.
+ * Exact, so another literal in that file still fails, and so does an entry
+ * the walk finds another number of times, none included.
  */
-export function unexcusedProblems(problems, unreadLoads) {
+const NAMED_NOT_LOADED = {
+  "packages/website/src/content/docs/changelog.mdx": {
+    literals: ["@iracedeck/actions", "@iracedeck/iracing-actions"],
+    reason:
+      "the released 1.14.0 section's prose records the package rename @iracedeck/actions → @iracedeck/iracing-actions; " +
+      "the page is Markdown text the release fold writes one bullet at a time, and holds no import or expression",
+  },
+};
+
+/**
+ * The problems of a walk that UNREAD_LOADS and NAMED_NOT_LOADED do not
+ * excuse, and a line for each entry the walk finds another number of times
+ * than it allows: none at all, which is stale, or more or fewer, when none of
+ * them is excused. An UNREAD_LOADS call matches a problem `<file> makes
+ * <call>,`; a NAMED_NOT_LOADED literal one `<file> names <literal>:` or `,`,
+ * whether the file is a root or further down a chain.
+ */
+export function unexcusedProblems(problems, unreadLoads, namedNotLoaded = {}) {
   const excused = new Set();
   const lines = [];
+  const entries = [
+    ...Object.entries(unreadLoads).flatMap(([file, { calls }]) =>
+      calls.map((entry) => ({ list: "UNREAD_LOADS", file, verb: "makes", ...countOf(entry, "call") })),
+    ),
+    ...Object.entries(namedNotLoaded).flatMap(([file, { literals }]) =>
+      literals.map((entry) => ({ list: "NAMED_NOT_LOADED", file, verb: "names", ...countOf(entry, "literal") })),
+    ),
+  ];
 
-  for (const [file, { calls }] of Object.entries(unreadLoads)) {
-    for (const entry of calls) {
-      const { call, count = 1 } = typeof entry === "string" ? { call: entry } : entry;
-      const made = `${file} makes ${call}, `;
-      const found = problems.flatMap((problem, at) =>
-        problem.startsWith(made) || problem.includes(` → ${made}`) ? [at] : [],
+  for (const { list, file, verb, what, count } of entries) {
+    const made = `${file} ${verb} ${what}`;
+    const found = problems.flatMap((problem, at) => {
+      const arrow = problem.indexOf(` → ${made}`);
+      const start = problem.startsWith(made) ? 0 : arrow === -1 ? -1 : arrow + " → ".length;
+      const next = problem[start + made.length];
+
+      return start !== -1 && (next === "," || next === ":") ? [at] : [];
+    });
+
+    if (found.length === count) {
+      for (const at of found) excused.add(at);
+    } else if (found.length === 0) {
+      lines.push(`${list} says ${made}, but the walk no longer finds it: remove it`);
+    } else {
+      lines.push(
+        `${list} says ${made} ${count} time(s), but the walk finds it ${found.length} times: ` +
+          "excuse each call site the entry's reason holds for, and no other",
       );
-
-      if (found.length === count) {
-        for (const at of found) excused.add(at);
-      } else if (found.length === 0) {
-        lines.push(`UNREAD_LOADS says ${file} makes ${call}, but the walk no longer finds it: remove it`);
-      } else {
-        lines.push(
-          `UNREAD_LOADS says ${file} makes ${call} ${count} time(s), but the walk finds it ${found.length} times: ` +
-            "excuse each call site the entry's reason holds for, and no other",
-        );
-      }
     }
   }
 
   return [...problems.filter((_problem, at) => !excused.has(at)), ...lines];
+}
+
+/** An allow-list entry, `"x"` or `{ [key]: "x", count }`, as `{ what, count }`. */
+function countOf(entry, key) {
+  return typeof entry === "string" ? { what: entry, count: 1 } : { what: entry[key], count: entry.count ?? 1 };
 }
 
 /** A relative module specifier: `./x`, `../x`, `.` or `..`. */
@@ -271,9 +316,8 @@ const PATH_MODULES = new Set(["path", "node:path", "path/posix", "node:path/posi
 const URL_MODULES = new Set(["url", "node:url"]);
 
 function scriptKind(file) {
-  // An .astro component's frontmatter is TypeScript; an .mdx page's ESM may hold JSX.
-  if (file.endsWith(".astro")) return ts.ScriptKind.TS;
-  if (/\.[cm]?tsx$|\.mdx$/.test(file)) return ts.ScriptKind.TSX;
+  // An .astro or .mdx file's whole text is read as code too, for the paths its code builds: as TSX, for its markup.
+  if (/\.[cm]?tsx$|\.(astro|mdx)$/.test(file)) return ts.ScriptKind.TSX;
   if (/\.[cm]?ts$/.test(file)) return ts.ScriptKind.TS;
   if (/\.[cm]?jsx$/.test(file)) return ts.ScriptKind.JSX;
 
@@ -377,31 +421,60 @@ function constInitializers(sf) {
  * Every path inside the repository that `file` names relative to itself or to
  * the directory it runs from, repo-relative with `/` separators and sorted. A
  * path is a module specifier, a `./` or `../` string literal, or a path the
- * file builds from its own location by constants (the header says which), read
- * in each of its modules (`moduleSources`). Pure: `source` is the file's text,
- * so the positive controls can plant one.
+ * file builds from its own location by constants (the header says which). An
+ * `.astro` component or `.mdx` page is read by its raw text too
+ * (`componentLoads`): every `./` or `../` literal in it, quoted or bare, in
+ * markup, prose or a fence as much as in its code, besides what the code
+ * reading finds over the whole text. Pure: `source` is the file's text, so the
+ * positive controls can plant one.
  *
  * @param {object} input
  * @param {string} input.file repo-relative, `/`-separated (`packages/<pkg>/…`)
  * @param {string} input.source
  * @returns {string[]}
  */
-export function pathsNamed({ file, source: text }) {
-  return [...new Set(moduleSources(file, text).flatMap((source) => modulePathsNamed(file, source)))].sort();
+export function pathsNamed({ file, source }) {
+  const named = codePathsNamed(file, source);
+
+  if (COMPONENT.test(file)) {
+    for (const candidate of componentLoads(source).candidates) named.push(...unanchoredPaths(file, candidate));
+  }
+
+  return [...new Set(named)].sort();
 }
 
-/** The paths one module of `file`, whose text laid out at the file's offsets is `source`, names. */
-function modulePathsNamed(file, source) {
-  const pkg = file.split("/")[1];
+/** The directory `file` runs from: the repository root for a test, its package root for anything else. */
+const runDirOf = (file) => (isTestSource(file) ? REPO : `${REPO}/packages/${file.split("/")[1]}`);
+
+/** `abs`, a path in the virtual tree, repo-relative; none when it lies outside the repository. */
+const inRepo = (abs) => (abs === REPO || abs.startsWith(`${REPO}/`) ? [P.relative(REPO, abs)] : []);
+
+/**
+ * The repo-relative paths `seg`, a path `file` spells without anchoring it,
+ * names: `./` or `../` against the file's directory and the run directory,
+ * `packages/…` against the run directory, as `fs` and `path.resolve` read it.
+ */
+function unanchoredPaths(file, seg) {
+  const dir = P.dirname(`${REPO}/${file}`);
+  const runDir = runDirOf(file);
+
+  if (RELATIVE_LITERAL.test(seg)) return [...inRepo(P.resolve(dir, seg)), ...inRepo(P.resolve(runDir, seg))];
+  if (RUN_DIR_LITERAL.test(seg)) return inRepo(P.resolve(runDir, seg));
+
+  return [];
+}
+
+/** The paths `file`, read as code from `source`, names: its module specifiers, path literals and built paths. */
+function codePathsNamed(file, source) {
   const fileAbs = `${REPO}/${file}`;
   const dir = P.dirname(fileAbs);
-  const runDir = isTestSource(file) ? REPO : `${REPO}/packages/${pkg}`;
+  const runDir = runDirOf(file);
   const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, scriptKind(file));
   const { pathModules, urlModules, functions } = moduleBindings(sf);
   const consts = constInitializers(sf);
   const named = new Set();
   const note = (abs) => {
-    if (abs === REPO || abs.startsWith(`${REPO}/`)) named.add(P.relative(REPO, abs));
+    for (const at of inRepo(abs)) named.add(at);
   };
 
   const specifierAt = new Set();
@@ -535,18 +608,9 @@ function modulePathsNamed(file, source) {
     return undefined;
   };
 
-  /**
-   * A path the file spells without anchoring it: `./` or `../` against the
-   * file's directory and the run directory, `packages/…` against the run
-   * directory, as `fs` and `path.resolve` read it.
-   */
+  /** A path the file spells without anchoring it (`unanchoredPaths`). */
   const noteUnanchored = (seg) => {
-    if (RELATIVE_LITERAL.test(seg)) {
-      note(P.resolve(dir, seg));
-      note(P.resolve(runDir, seg));
-    } else if (RUN_DIR_LITERAL.test(seg)) {
-      note(P.resolve(runDir, seg));
-    }
+    for (const at of unanchoredPaths(file, seg)) named.add(at);
   };
 
   const visit = (node, insidePath) => {
@@ -913,49 +977,30 @@ const LITERAL_EXTENSION = /^[\w-]+$/;
  * function handed on rather than called (`escapes`, `heldOrCalled`), since a
  * load through it is out of sight, and so does the `createRequire` factory
  * itself (`isFactory`), since a require function an alias of it makes is one
- * under a name this does not know, a Vite `import.meta.glob(…)` of module
+ * under a name this does not know, and a Vite `import.meta.glob(…)` of module
  * code, which this does not expand (one of data files is a leaf,
- * `isDataGlob`), and an
- * `import(` or `require(` in an `.astro` component's or `.mdx` page's markup
- * (`markupLoads`), since Astro and MDX evaluate a template expression and this
- * does not parse one. An `.astro` `<script src>` that names a module is read as
- * the import of it (`moduleSources`), since Astro bundles what it names. A
- * structure the reader of an `.astro` component or `.mdx` page cannot read
- * fails too (`unreadStructure`): an HTML comment, `<script>` or code fence that
- * never closes, a template expression or tag whose end it cannot find, an
- * `import` MDX may read as text, since each may hide what follows it.
+ * `isDataGlob`).
+ *
+ * An `.astro` component or `.mdx` page is not parsed: it is read by its raw
+ * text (`componentLoads`), so `loads` is empty and `candidates` holds every
+ * literal specifier the text spells, wherever it is — frontmatter, a script,
+ * markup, prose, a fence, a comment — for the walk to follow where it resolves
+ * (`runtimeClosure`); a load a literal cannot say (a computed `import(`, any
+ * `require` not called with one literal, any `createRequire`, a glob of module
+ * code) is `unread`.
  *
  * @param {object} input
  * @param {string} input.file repo-relative, `/`-separated
  * @param {string} input.source
- * @returns {{ loads: string[], unread: string[] }}
+ * @returns {{ loads: string[], candidates: string[], unread: string[] }}
  */
-export function runtimeImports({ file, source: text }) {
-  const loads = [];
-  const unread = [];
+export function runtimeImports({ file, source }) {
+  if (COMPONENT.test(file)) return { loads: [], ...componentLoads(source, { isDataGlob }) };
 
-  for (const source of moduleSources(file, text)) {
-    const made = moduleImports(file, source);
-
-    loads.push(...made.loads);
-    unread.push(...made.unread);
-  }
-  for (const { call, line } of markupLoads(file, text)) {
-    unread.push(
-      `an ${call} call in its markup (line ${line}), where a template expression is not read: make the load in ` +
-        `the module code (an .astro frontmatter or <script>, an .mdx import) so it can be followed`,
-    );
-  }
-  unread.push(...unreadStructure(file, text));
-
-  return { loads, unread };
+  return { ...moduleImports(file, source), candidates: [] };
 }
 
-/**
- * What one module of `file` loads and makes that this cannot follow, as
- * `runtimeImports` reads it: `source` is the module's text laid out at the
- * file's offsets (`moduleSources`).
- */
+/** What a code source `file`, whose text is `source`, loads and makes that this cannot follow (`runtimeImports`). */
 function moduleImports(file, source) {
   const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, scriptKind(file));
   const loads = [];
@@ -1205,9 +1250,20 @@ ${source}`;
  * so the controls need no disk.
  *
  * The rules of the walk:
- *   * Only what loads at runtime is an edge, as `runtimeImports` reads it; an
- *     `.astro` component and an `.mdx` page are read by their module code
- *     (`moduleSources`), so a walk passes through the website's pages too.
+ *   * Only what loads at runtime is an edge, as `runtimeImports` reads it, so
+ *     a walk passes through the website's pages too: an `.astro` component or
+ *     an `.mdx` page is read by its raw text, every literal specifier in it
+ *     counted as a load (the next rule), and a computed load failing as unread.
+ *   * A candidate of a component (`componentLoads`) is followed where it
+ *     resolves and ignored where it does not, because a specifier that
+ *     resolves to nothing cannot load anything: an import of it fails the
+ *     build, so the over-approximation drops no load by ignoring it. A relative
+ *     one resolves from the component's directory (`resolveRuntimeFiles`), a
+ *     root-absolute one from its package root and from that package's
+ *     `public/`, as Vite and the browser read one; a `#fragment` is dropped,
+ *     and a query other than `?raw` or `?url` on one that resolves fails. An
+ *     `@iracedeck/` one is checked as a package specifier is, so a mention in
+ *     prose fails like an import unless NAMED_NOT_LOADED excuses it.
  *   * A relative specifier is followed file by file, to every file it may
  *     load (`resolveRuntimeFiles`: TypeScript, tsx, Node and Vite can pick
  *     different ones), across package boundaries too. One that resolves to no
@@ -1260,9 +1316,82 @@ export function runtimeClosure({ roots, read, packageDirs, neutral }) {
 
     // A file with no extension at all is JavaScript to Node, which loads it as CommonJS.
     if (!isModuleSource(file) && P.extname(file) !== "") continue;
-    const { loads, unread } = memoizedImports(file, read(file));
+    const { loads, candidates, unread } = memoizedImports(file, read(file));
+    /** Queues each file `targets` names that the walk has not met, as loaded by `file`. */
+    const follow = (targets) => {
+      for (const target of targets) {
+        if (from.has(target)) continue;
+        from.set(target, file);
+        queue.push(target);
+      }
+    };
+    /**
+     * The failure, if any, of `file` loading the package `specifier` names, as
+     * `verb` says it does: one that names no workspace package, or one that is
+     * not sim-neutral.
+     */
+    const packageProblem = (verb, specifier) => {
+      const name = packageOf(specifier);
+      const dir = name === null ? undefined : packageDirs.get(name);
+
+      if (dir === undefined) {
+        return name?.startsWith("@iracedeck/")
+          ? `${chain(file)} ${verb} ${specifier}, which names no workspace package`
+          : undefined;
+      }
+      if (neutral.has(dir)) return undefined;
+
+      return verb === "imports"
+        ? `${chain(file)} imports ${specifier}: packages/${dir}/ is not sim-neutral (SIM_NEUTRAL_PACKAGES in ` +
+            `eslint.config.js), so ${chain(file).split(" → ")[0]} loads it at runtime. Cut the chain, or import only types from it ` +
+            "with `import type` (#1662)"
+        : `${chain(file)} names ${specifier}: packages/${dir}/ is not sim-neutral (SIM_NEUTRAL_PACKAGES in ` +
+            `eslint.config.js), and an .astro or .mdx file is read by its raw text, every literal specifier in it ` +
+            `a load, so ${chain(file).split(" → ")[0]} may load it at runtime. Cut the chain; a mention that loads ` +
+            "nothing goes in NAMED_NOT_LOADED with the reason (#1662)";
+    };
 
     for (const what of unread) problems.push(`${chain(file)} makes ${what}`);
+
+    const tried = new Set();
+
+    for (const candidate of candidates) {
+      if (candidate.startsWith("@")) {
+        const problem = packageProblem("names", candidate);
+
+        if (problem !== undefined) problems.push(problem);
+        continue;
+      }
+      if (tried.has(candidate)) continue;
+      tried.add(candidate);
+      const unhashed = candidate.replace(/#.*$/, "");
+      const query = unhashed.indexOf("?");
+      const base = query === -1 ? unhashed : unhashed.slice(0, query);
+      const own = `packages/${file.split("/")[1]}`;
+      const resolved = base.startsWith("/")
+        ? [`${own}/package.json`, `${own}/public/index.html`].map((at) => resolveRuntimeFiles(at, `.${base}`, read))
+        : [resolveRuntimeFiles(file, base, read)];
+      const targets = resolved.flatMap((each) => each.files);
+      const folders = resolved.flatMap((each) => each.unread);
+
+      // A specifier that resolves to nothing loads nothing: the build would fail on an import of it.
+      if (targets.length === 0 && folders.length === 0) continue;
+      if (query !== -1) {
+        if (!isDataSpecifier(unhashed)) {
+          problems.push(
+            `${chain(file)} names ${unhashed}, whose query this check does not follow: only ?raw and ?url, ` +
+              "which load no code, pass; import the module itself so it can be followed",
+          );
+        }
+        continue;
+      }
+      for (const folder of folders) {
+        problems.push(
+          `${chain(file)} names ${base}, ${folder}: import the file it loads by its own path so it can be followed`,
+        );
+      }
+      follow(targets);
+    }
 
     for (const specifier of loads) {
       if (RELATIVE_SPECIFIER.test(specifier)) {
@@ -1286,11 +1415,7 @@ export function runtimeClosure({ roots, read, packageDirs, neutral }) {
         if (targets.length === 0 && folders.length === 0) {
           problems.push(`${chain(file)} imports ${specifier}, which resolves to no file in the repository`);
         }
-        for (const target of targets) {
-          if (from.has(target)) continue;
-          from.set(target, file);
-          queue.push(target);
-        }
+        follow(targets);
         continue;
       }
 
@@ -1309,23 +1434,9 @@ export function runtimeClosure({ roots, read, packageDirs, neutral }) {
         continue;
       }
 
-      const name = packageOf(specifier);
-      const dir = name === null ? undefined : packageDirs.get(name);
+      const problem = packageProblem("imports", specifier);
 
-      if (dir === undefined) {
-        if (name?.startsWith("@iracedeck/")) {
-          problems.push(`${chain(file)} imports ${specifier}, which names no workspace package`);
-        }
-        continue;
-      }
-
-      if (!neutral.has(dir)) {
-        problems.push(
-          `${chain(file)} imports ${specifier}: packages/${dir}/ is not sim-neutral (SIM_NEUTRAL_PACKAGES in ` +
-            `eslint.config.js), so ${chain(file).split(" → ")[0]} loads it at runtime. Cut the chain, or import only types from it ` +
-            "with `import type` (#1662)",
-        );
-      }
+      if (problem !== undefined) problems.push(problem);
     }
   }
 
@@ -1333,7 +1444,7 @@ export function runtimeClosure({ roots, read, packageDirs, neutral }) {
 }
 
 const PACKAGES = new Set(trackedPackageDirs(ROOT));
-// The .astro components and .mdx pages too, read by their module code (#1662).
+// The .astro components and .mdx pages too, read by their raw text (#1662).
 const FILES = trackedPackageSources(ROOT, { components: true });
 
 function scan(files = FILES) {
@@ -1372,7 +1483,8 @@ function readRepoFile(file) {
  * package that runs, in any extension — `.ts`, `.mts`, `.mjs`, `.js`, an
  * `.astro` component, an `.mdx` page — inside its `src/` or out of it (a
  * build script, a Rollup config, the website's `public/` browser script). So
- * every load such a file makes is read here, the dynamic `import()` and
+ * every load such a file makes is read here (a component's by its raw text,
+ * `componentLoads`), the dynamic `import()` and
  * `require` the ESLint block cannot see as much as a static import, and the
  * walk stops at a sim-neutral package's specifier because that package's own
  * sources are roots too.
@@ -1460,7 +1572,7 @@ describe("a sim-neutral package loads no sim package at runtime (#1662)", () => 
   });
 
   it("loads only sim-neutral workspace packages from any of them, and reads every load it does not excuse", () => {
-    expect(unexcusedProblems(all.problems, UNREAD_LOADS)).toEqual([]);
+    expect(unexcusedProblems(all.problems, UNREAD_LOADS, NAMED_NOT_LOADED)).toEqual([]);
   });
 
   // The gap #1662's second read found: lint reads no dynamic import or require, and a
@@ -1479,18 +1591,22 @@ describe("a sim-neutral package loads no sim package at runtime (#1662)", () => 
         read: (at) => (at === file ? source : readRepoFile(at)),
         packageDirs: PACKAGE_DIRS,
         neutral: NEUTRAL,
-      }).problems.filter((problem) => problem.includes(`${file} imports @iracedeck/`));
+      }).problems.filter((problem) => new RegExp(`^${file} (imports|names) @iracedeck/`).test(problem));
 
     expect(roots).toContain(file);
     expect(loadsIn(real)).toEqual([]);
     expect(loadsIn(planted)).toEqual([
-      expect.stringMatching(new RegExp(`^${file} imports @iracedeck/iracing-(actions|sdk): packages/iracing-`)),
+      expect.stringMatching(new RegExp(`^${file} (imports|names) @iracedeck/iracing-(actions|sdk): packages/iracing-`)),
     ]);
   });
 
-  it("gives every UNREAD_LOADS entry a reason", () => {
+  it("gives every UNREAD_LOADS and NAMED_NOT_LOADED entry a reason", () => {
     for (const [file, { calls, reason }] of Object.entries(UNREAD_LOADS)) {
       expect(calls.length, file).toBeGreaterThan(0);
+      expect(reason.length, file).toBeGreaterThan(20);
+    }
+    for (const [file, { literals, reason }] of Object.entries(NAMED_NOT_LOADED)) {
+      expect(literals.length, file).toBeGreaterThan(0);
       expect(reason.length, file).toBeGreaterThan(20);
     }
   });
@@ -1617,7 +1733,7 @@ describe("the check itself (positive controls)", () => {
     expect(reach("packages/deck-core/src/a.test.ts", source)).toEqual({});
   });
 
-  // The website's components and pages, read by their module code (#1662).
+  // The website's components and pages, in their code (#1662).
   it("refuses a reach from an .astro frontmatter or <script>, and from an .mdx import", () => {
     const astro = "packages/deck-core/src/components/Planted.astro";
     const mdx = "packages/deck-core/src/content/planted.mdx";
@@ -1630,40 +1746,47 @@ describe("the check itself (positive controls)", () => {
       [astro, '<p>x</p>\n<script src="../../../iracing-actions/src/rows.js"></script>\n'],
       [mdx, '---\ntitle: x\n---\n\nimport { rows } from "../../../iracing-actions/src/rows.js";\n\n# Planted\n'],
       [mdx, 'import {\n  rows,\n} from "../../../iracing-actions/src/rows.js";\n\nProse.\n'],
+      // A path built from constants, which no literal spells: the code reading over the whole text finds it.
+      [
+        astro,
+        '---\nimport { join } from "node:path";\nconst ROWS = join(import.meta.dirname, "..", "..", "..", "iracing-actions", "src", "rows.js");\n---\n\n<p>{ROWS}</p>\n',
+      ],
     ]) {
       expect(reach(file, source), source).toEqual(target);
     }
   });
 
-  it("passes a mention in .astro markup or a comment, and in .mdx frontmatter, prose or fenced code", () => {
-    const astro = [
+  // Read by their raw text (#1662): a path is a reach wherever it is spelled, so none hides in markup or prose.
+  it("counts a relative path in .astro markup, a comment or a JSON script, and in .mdx frontmatter, prose or a fence", () => {
+    const astro = "packages/deck-core/src/components/Planted.astro";
+    const mdx = "packages/deck-core/src/content/planted.mdx";
+    const target = { "iracing-actions": ["packages/iracing-actions/src/rows.js"] };
+
+    for (const [file, source] of [
+      [astro, '<p>import { rows } from "../../../iracing-actions/src/rows.js"</p>'],
+      [astro, '<a href="../../../iracing-actions/src/rows.js">rows</a>'],
+      [astro, "<img src=../../../iracing-actions/src/rows.js>"],
+      [astro, '<!-- <script>import "../../../iracing-actions/src/rows.js";</script> -->'],
+      [astro, '<script type="application/json">{ "rows": "../../../iracing-actions/src/rows.js" }</script>'],
+      [mdx, '---\nhero: "../../../iracing-actions/src/rows.js"\n---\n'],
+      [mdx, "Prose: see ../../../iracing-actions/src/rows.js for the rows."],
+      [mdx, '```ts\nimport { rows } from "../../../iracing-actions/src/rows.js";\n```'],
+      [mdx, "![rows](../../../iracing-actions/src/rows.js)"],
+    ]) {
+      expect(reach(file, source), source).toEqual(target);
+    }
+  });
+
+  it("passes a component that names only its own package's files and package names", () => {
+    const source = [
       "---",
       'import Card from "./Card.astro";',
+      'import { x } from "@iracedeck/deck-core";',
       "---",
-      "",
-      '<p>import { rows } from "../../../iracing-actions/src/rows.js"</p>',
-      '<a href="../../../iracing-actions/src/rows.js">rows</a>',
-      '<!-- <script>import "../../../iracing-actions/src/rows.js";</script> -->',
-      '<script type="application/json">{ "rows": "../../../iracing-actions/src/rows.js" }</script>',
-      "",
-    ].join("\n");
-    const mdx = [
-      "---",
-      'hero: "../../../iracing-actions/src/rows.js"',
-      "---",
-      "",
-      'Prose: import { rows } from "../../../iracing-actions/src/rows.js".',
-      "",
-      "```ts",
-      'import { rows } from "../../../iracing-actions/src/rows.js";',
-      "```",
-      "",
-      '<Card src="../../../iracing-actions/src/rows.js" />',
-      "",
+      '<a href="/docs/actions/">Actions</a> and ../notes/ in prose.',
     ].join("\n");
 
-    expect(reach("packages/deck-core/src/components/Planted.astro", astro)).toEqual({});
-    expect(reach("packages/deck-core/src/content/planted.mdx", mdx)).toEqual({});
+    expect(reach("packages/deck-core/src/components/Planted.astro", source)).toEqual({});
   });
 
   it("does not guess a path built on something constants cannot say", () => {
@@ -2034,227 +2157,331 @@ describe("the runtime-closure check itself (positive controls, #1662)", () => {
     expect(problems).toEqual([]);
   });
 
-  // An .mdx page is a root, since ESLint reads none (#1662), and the walk
-  // passes through the .astro components it renders.
-  it("fails an .mdx page's package import and an .astro frontmatter's, through the chain, and no markup mention", () => {
+  // An .astro component or an .mdx page is read by its raw text (#1662): every literal specifier in it is a
+  // candidate load, followed where it resolves and ignored where it does not, and a load a literal cannot say
+  // fails as unread. Three rounds of a structural reader leaked where it disagreed with Astro and MDX.
+  describe("an .astro component or .mdx page, read by its raw text", () => {
     const page = "packages/website/src/content/docs/planted.mdx";
     const card = "packages/website/src/components/Card.astro";
-    const { visited, problems } = walk(
-      {
-        [page]: [
-          "---",
-          "title: Planted",
-          "---",
-          "",
-          'import Card from "../../components/Card.astro";',
-          'import { rows } from "@iracedeck/iracing-actions";',
-          "",
-          'Prose naming "@iracedeck/iracing-sdk" and `import("@iracedeck/deck-iracing")` in a code span.',
-          "",
-          "<Card />",
-        ].join("\n"),
-        [card]: [
-          "---",
-          'import { Image } from "astro:assets";',
-          'import data from "../data/generated.json";',
-          'import { Flags } from "@iracedeck/iracing-sdk";',
-          "---",
-          "",
-          '<p>import x from "@iracedeck/deck-iracing"</p>',
-          "<script>",
-          '  import "@iracedeck/iracing-sdk/dist/setup.js";',
-          "</script>",
-        ].join("\n"),
-      },
-      page,
-    );
+    const sim = "packages/iracing-actions/src/a.ts";
+    const SIM = { [sim]: 'import "@iracedeck/iracing-sdk";' };
+    /** The failure of `chainText` naming the non-neutral `specifier`. */
+    const names = (chainText, specifier) => expect.stringContaining(`${chainText} names ${specifier}: packages/`);
+    /** The failure of a walk from `chainText` into SIM's file, which imports a sim package. */
+    const intoSim = (chainText) => expect.stringContaining(`${chainText} → ${sim} imports @iracedeck/iracing-sdk: `);
 
-    expect(visited).toEqual([page, card]);
-    expect(problems).toEqual([
-      expect.stringMatching(
-        /^packages\/website\/src\/content\/docs\/planted\.mdx imports @iracedeck\/iracing-actions: /,
-      ),
-      expect.stringMatching(
-        /planted\.mdx → packages\/website\/src\/components\/Card\.astro imports @iracedeck\/iracing-sdk: /,
-      ),
-      expect.stringMatching(/Card\.astro imports @iracedeck\/iracing-sdk\/dist\/setup\.js: /),
-    ]);
-  });
+    it("fails a package an .mdx page or .astro component names anywhere, through the chain it follows", () => {
+      const { visited, problems } = walk(
+        {
+          [page]: [
+            "---",
+            "title: Planted",
+            "---",
+            "",
+            'import Card from "../../components/Card.astro";',
+            'import { rows } from "@iracedeck/iracing-actions";',
+            "",
+            'Prose naming @iracedeck/iracing-sdk and `import("@iracedeck/deck-iracing")` in a code span.',
+            "",
+            "<Card />",
+          ].join("\n"),
+          [card]: [
+            "---",
+            'import { Image } from "astro:assets";',
+            'import data from "../data/generated.json";',
+            "---",
+            "",
+            '<p>import x from "@iracedeck/iracing-sdk"</p>',
+            '<!-- <script>import "@iracedeck/iracing-sdk/dist/setup.js";</script> -->',
+          ].join("\n"),
+        },
+        page,
+      );
 
-  it("follows an .astro <script src> as the import Astro bundles it into, and fails a template's load", () => {
-    const card = "packages/website/src/components/Card.astro";
-    const viaSrc = walk(
-      {
-        [card]: '<p>x</p>\n<script src="../../../iracing-actions/src/a.ts"></script>\n',
-        "packages/iracing-actions/src/a.ts": 'import "@iracedeck/iracing-sdk";',
-      },
-      card,
-    );
-
-    expect(viaSrc.visited).toEqual([card, "packages/iracing-actions/src/a.ts"]);
-    expect(viaSrc.problems).toEqual([
-      expect.stringContaining(`${card} → packages/iracing-actions/src/a.ts imports @iracedeck/iracing-sdk: `),
-    ]);
-    expect(walk({ [card]: "<script src='@iracedeck/iracing-sdk'></script>" }, card).problems).toEqual([
-      expect.stringContaining(`${card} imports @iracedeck/iracing-sdk: `),
-    ]);
-    expect(walk({ [card]: '---\n---\n<p>{import("@iracedeck/iracing-sdk")}</p>\n' }, card).problems).toEqual([
-      `${card} makes an import( call in its markup (line 3), where a template expression is not read: make the load ` +
-        "in the module code (an .astro frontmatter or <script>, an .mdx import) so it can be followed",
-    ]);
-    // The browser's own fetch is no module of the repository's, and nor is an is:inline script's src.
-    expect(walk({ [card]: '<script src="https://cdn.example.com/x.js"></script>' }, card).problems).toEqual([]);
-    expect(walk({ [card]: '<script is:inline src="/diagram-zoom.js"></script>' }, card)).toEqual({
-      visited: [card],
-      problems: [],
+      expect(visited).toEqual([page, card]);
+      expect(problems).toEqual([
+        names(page, "@iracedeck/iracing-actions"),
+        names(page, "@iracedeck/iracing-sdk"),
+        `${page} names @iracedeck/deck-iracing, which names no workspace package`,
+        names(`${page} → ${card}`, "@iracedeck/iracing-sdk"),
+        names(`${page} → ${card}`, "@iracedeck/iracing-sdk/dist/setup.js"),
+      ]);
     });
-    // A processed script's root-absolute src is an absolute path the walk cannot follow.
-    expect(walk({ [card]: '<script src="/diagram-zoom.js"></script>' }, card).problems).toEqual([
-      `${card} imports /diagram-zoom.js, an absolute path or URL this check cannot follow`,
-    ]);
-  });
 
-  it("reads a <script> body past a comment opener in it, and fails a markup comment that never closes", () => {
-    const card = "packages/website/src/components/Card.astro";
-    const script = '<script>\n  const marker = "<!--";\n  await import("@iracedeck/iracing-sdk");\n</script>\n';
+    // A processed <script src> is the import Astro bundles; an is:inline one, a comment's or a fence's loads
+    // nothing, but the raw rule does not model them: following them is the over-approximation, accepted.
+    it.each([
+      ["a processed <script src>", card, '<script src="../../../iracing-actions/src/a.ts"></script>'],
+      ["an is:inline <script src>", card, '<script is:inline src="../../../iracing-actions/src/a.ts"></script>'],
+      ["an unquoted <script src>", card, "<script src=../../../iracing-actions/src/a.ts></script>"],
+      ["a <script src> in an HTML comment", card, '<!-- <script src="../../../iracing-actions/src/a.ts"></script> -->'],
+      ["a Markdown image", page, "![diagram](../../../../iracing-actions/src/a.ts)"],
+      ["a Markdown reference definition", page, "[diagram]: ../../../../iracing-actions/src/a.ts"],
+      ["an import in a fence alone", page, '```ts\nimport "../../../../iracing-actions/src/a.ts";\n```'],
+    ])("follows a relative literal wherever it is: %s", (_name, file, source) => {
+      expect(walk({ [file]: source, ...SIM }, file)).toEqual({ visited: [file, sim], problems: [intoSim(file)] });
+    });
 
-    expect(walk({ [card]: script }, card).problems).toEqual([
-      expect.stringContaining(`${card} imports @iracedeck/iracing-sdk: `),
-    ]);
-    expect(walk({ [card]: `<!-- ${script} -->` }, card).problems).toEqual([]);
-    expect(walk({ [card]: `<p>x</p><!-- never closed\n${script}` }, card).problems).toEqual([
-      `${card} makes an HTML comment opened on line 1 that never closes, which hides the rest of the file: close it ` +
-        "with --> so what follows can be read",
-    ]);
-  });
+    // Soundness: a specifier that resolves to no file loads nothing, since an import of it fails the build.
+    it("ignores a relative literal that resolves to nothing", () => {
+      const source = [
+        '<script src="./missing.ts"></script>',
+        '<script src="../../../iracing-actions/src/gone.ts"></script>',
+        "See ../elsewhere/ and ./notes.",
+      ].join("\n");
 
-  // A template expression is JavaScript, where "<!--" opens no comment and so hides nothing after it.
-  it("reads past a comment opener in a template expression to the <script src> and body after it", () => {
-    const card = "packages/website/src/components/Card.astro";
+      expect(walk({ [card]: source, ...SIM }, card)).toEqual({ visited: [card], problems: [] });
+    });
 
-    for (const source of [
-      '<p>{"<!--"}</p>\n<script src="../../../iracing-actions/src/a.ts"></script>\n<!-- note -->\n',
-      "<p>{`<!--`}</p>\n<script>import \"@iracedeck/iracing-sdk\";</script>\n<p>-->{'x'}</p>\n",
-    ]) {
-      const { problems } = walk(
-        { [card]: source, "packages/iracing-actions/src/a.ts": 'import "@iracedeck/iracing-sdk";' },
+    it("follows a root-absolute literal from the package root and its public/, and ignores a URL", () => {
+      const zoom = "packages/website/public/diagram-zoom.js";
+      const shared = "packages/website/src/shared.ts";
+      const source = [
+        '<script src="/diagram-zoom.js"></script>',
+        '<script src="/src/shared.ts"></script>',
+        '<a href="/docs/actions/">Actions</a>',
+        '<script src="https://cdn.example.com/x.js"></script>',
+        '<script src="//cdn.example.com/y.js"></script>',
+      ].join("\n");
+      const { visited, problems } = walk(
+        { [card]: source, [zoom]: 'import "@iracedeck/iracing-sdk";', [shared]: 'import "./a.js";' },
         card,
       );
 
-      expect(problems, source).toEqual([expect.stringMatching(/imports @iracedeck\/iracing-sdk: /)]);
-    }
-  });
+      expect(visited).toEqual([card, zoom, shared]);
+      expect(problems).toEqual([
+        expect.stringContaining(`${card} → ${zoom} imports @iracedeck/iracing-sdk: `),
+        `${card} → ${shared} imports ./a.js, which resolves to no file in the repository`,
+      ]);
+    });
 
-  // Astro compiles each script alone: a `//` comment ending one hides nothing after it on its line.
-  it("reads a <script src> after a script that ends in a line comment on the same line", () => {
-    const card = "packages/website/src/components/Card.astro";
-    const { problems } = walk(
-      {
-        [card]: '<script>// Setup</script><script src="../../../iracing-actions/src/a.ts"></script>\n',
-        "packages/iracing-actions/src/a.ts": 'import "@iracedeck/iracing-sdk";',
-      },
-      card,
-    );
-
-    expect(problems).toEqual([
-      expect.stringContaining(`${card} → packages/iracing-actions/src/a.ts imports @iracedeck/iracing-sdk: `),
-    ]);
-  });
-
-  // A backtick in an MDX expression opens a template literal, not a code span, so the load in it runs.
-  it("fails a load in a template literal inside an .mdx expression, and passes one in a code span", () => {
-    const page = "packages/website/src/content/docs/planted.mdx";
-
-    expect(walk({ [page]: 'Prose {`${String(import("./client.js"))}`}.\n' }, page).problems).toEqual([
-      `${page} makes an import( call in its markup (line 1), where a template expression is not read: make the ` +
-        "load in the module code (an .astro frontmatter or <script>, an .mdx import) so it can be followed",
-    ]);
-    expect(walk({ [page]: 'Prose `import("./client.js")` in a code span.\n' }, page).problems).toEqual([]);
-  });
-
-  // qa's false negative: a fence after downloads.mdx's line-19 expression, which holds JSX, was read as module
-  // code, so the comment its example opened hid the real import after it (#1662).
-  describe("a fenced example after downloads.mdx's line-19 expression", () => {
-    const page = "packages/website/src/content/docs/planted.mdx";
-    const badge = readRepoFile("packages/website/src/content/docs/downloads.mdx")
-      .split(/\r?\n/)
-      .find((line) => line.startsWith("{version && <p "));
-    const planted = (tail) =>
+    // qa's 319d61a0b a7 plant: Astro decodes a character reference in a src, and a build loads what it spells.
+    it.each([
       [
-        "---",
-        "title: Planted",
-        "---",
+        "numeric character references",
+        '<script src="&#46;&#46;/&#46;&#46;/&#x2e;&#x2E;/iracing-actions/src/a.ts"></script>',
+      ],
+      ["named character references", '<script src="&period;&period;&sol;../../iracing-actions/src/a.ts"></script>'],
+      ["JavaScript escapes", '---\nconst m = await import("\\x2e\\u002e/../../iracing-actions/src/a.ts");\n---\n'],
+      ["percent-encoding", '<script src="%2E%2E/../../iracing-actions/src/a.ts"></script>'],
+      ["Windows separators", '<script src="..\\..\\..\\iracing-actions\\src\\a.ts"></script>'],
+    ])("reads a specifier spelled with %s", (_name, source) => {
+      expect(walk({ [card]: source, ...SIM }, card)).toEqual({ visited: [card, sim], problems: [intoSim(card)] });
+    });
+
+    it("reads a package name in any case, through a character reference, and without a sentence's full stop", () => {
+      for (const source of [
+        "Mention @IRACEDECK/Iracing-SDK here.",
+        "Mention &commat;iracedeck/iracing-sdk here.",
+        "This needs @iracedeck/iracing-sdk.",
+      ]) {
+        expect(walk({ [page]: source }, page).problems, source).toEqual([names(page, "@iracedeck/iracing-sdk")]);
+      }
+    });
+
+    it.each([
+      ["a template literal with ${…}", "<p>{import(`../x/${name}`)}</p>", "import"],
+      ["a name", "<p>{import(name)}</p>", "import"],
+      ["a comment before a name", "<p>{import(/* x */ name)}</p>", "import"],
+      ["nothing", "<p>{import()}</p>", "import"],
+      ["a concatenation", '<p>{require("../x/" + name)}</p>', "require"],
+      ["a require handed on", "<p>{[name].map(require)}</p>", "require"],
+      ["a require whose name is escaped", "<p>{requ\\u0069re(name)}</p>", "require"],
+      ["a property of require", "<p>{require.call(null, name)}</p>", "require"],
+    ])("fails a load a literal cannot say: %s", (_name, source, word) => {
+      const message =
+        word === "import"
+          ? "an import( on line 1 whose specifier is not a single string literal, a load this check cannot read: " +
+            "write the specifier as a literal"
+          : "a require on line 1 that is not called with a single string literal, a load this check cannot read: " +
+            "write the specifier as a literal";
+
+      expect(walk({ [card]: source }, card).problems).toEqual([`${card} makes ${message}`]);
+    });
+
+    // MDX compiles its ESM into one module, so a require function a block makes loads in the next: under a name the
+    // raw text cannot follow, so any createRequire is refused.
+    it("fails any createRequire, whose require functions load under names this does not know", () => {
+      const source = [
+        'import { createRequire as cr } from "node:module";',
         "",
-        'export const version = "1.0.0";',
+        "export const req = cr(import.meta.url);",
         "",
-        badge,
-        "",
-        "```md",
-        'import { ECOSYSTEMS } from "../../data/brands"; /*',
-        "```",
-        ...tail,
+        "export const sdk = req(name);",
       ].join("\n");
 
-    it("copies the shape it guards: an expression holding an element with an attribute and an expression", () => {
-      expect(badge).toMatch(/^\{version && <p class="[^"]+">.*\{version\}.*<\/p>\}$/);
+      expect(walk({ [page]: source }, page).problems).toEqual([
+        `${page} makes a createRequire on line 1, whose require functions this check cannot follow under the names ` +
+          "they get: load the module with import and a string literal",
+      ]);
     });
 
-    it("fails the real import after it, naming it, and passes the fenced one alone", () => {
-      expect(walk({ [page]: planted(["", 'import X from "@iracedeck/iracing-actions";', ""]) }, page).problems).toEqual(
-        [
-          expect.stringMatching(
-            /^packages\/website\/src\/content\/docs\/planted\.mdx imports @iracedeck\/iracing-actions: /,
-          ),
+    it("passes a glob of data files or by ?raw or ?url, and fails one of module code or one it cannot read", () => {
+      for (const source of [
+        '---\nconst logos = import.meta.glob<string>("../assets/brands/*.{svg,png}", { eager: true });\n---\n',
+        '---\nconst raw = import.meta.glob("../x/*.ts", { query: "?raw" });\n---\n',
+      ]) {
+        expect(walk({ [card]: source }, card).problems, source).toEqual([]);
+      }
+      for (const source of [
+        '---\nconst modules = import.meta.glob("../x/*.ts");\n---\n',
+        "---\nconst modules = import.meta.glob(patterns);\n---\n",
+        "---\nconst glob = import.meta.glob;\n---\n",
+      ]) {
+        expect(walk({ [card]: source }, card).problems, source).toEqual([
+          `${card} makes an import.meta.glob on line 2 that is not a glob of data files, which this check does not ` +
+            "expand: import each module by a string literal",
+        ]);
+      }
+    });
+
+    it("takes ?raw and ?url as a leaf, fails another query on a file that exists, and follows past a fragment", () => {
+      const local = "packages/website/src/components/a.ts";
+      const tree = { [local]: 'import "@iracedeck/iracing-sdk";' };
+
+      expect(walk({ ...tree, [card]: '<script src="./a.ts?raw"></script> "./a.ts?url"' }, card)).toEqual({
+        visited: [card],
+        problems: [],
+      });
+      expect(walk({ ...tree, [card]: '<script src="./a.ts?worker"></script> "./missing.ts?worker"' }, card)).toEqual({
+        visited: [card],
+        problems: [
+          `${card} names ./a.ts?worker, whose query this check does not follow: only ?raw and ?url, which load no ` +
+            "code, pass; import the module itself so it can be followed",
         ],
-      );
-      expect(walk({ [page]: planted([""]) }, page)).toEqual({ visited: [page], problems: [] });
+      });
+      expect(walk({ ...tree, [card]: '<a href="./a.ts#top">x</a>' }, card).problems).toEqual([
+        expect.stringContaining(`${card} → ${local} imports @iracedeck/iracing-sdk: `),
+      ]);
     });
 
-    it("fails an expression it cannot read rather than read what follows it as code", () => {
-      const source = planted(["", 'import X from "@iracedeck/iracing-actions";', ""]).replace("</p>}", "</div>}");
-
-      expect(walk({ [page]: source }, page).problems).toContain(
-        `${page} makes a template expression opened on line 7 that this check cannot read (an end tag that closes ` +
-          "no open <p>, on line 7), so what follows it is not read either: write it so its end can be found",
-      );
+    // qa's earlier reproducers, each a place a structural reader read the wrong thing as code or as text.
+    it.each([
+      [
+        "a comment opener in an expression before a <script src>",
+        card,
+        '<p>{"<!--"}</p>\n<script src="../../../iracing-actions/src/a.ts"></script>\n<!-- note -->\n',
+      ],
+      [
+        "a script ending in a line comment before a <script src> on its line",
+        card,
+        '<script>// Setup</script><script src="../../../iracing-actions/src/a.ts"></script>\n',
+      ],
+      [
+        "a load in a template literal inside an .mdx expression",
+        page,
+        'Prose {`${String(import("../../../../iracing-actions/src/a.ts"))}`}.\n',
+      ],
+      [
+        "a regular expression after a ) whose backtick opens no template",
+        card,
+        '{(() => { if (1) /`/.test(""); return null })()}\n<script src="../../../iracing-actions/src/a.ts"></script>\n{"`" + "})()}"}\n',
+      ],
+      [
+        "a regular expression after a block's }",
+        card,
+        '{(() => { { } /`/.test(""); return null })()}\n<script src="../../../iracing-actions/src/a.ts"></script>\n{"`" + "})()}"}\n',
+      ],
+    ])("follows past %s", (_name, file, source) => {
+      expect(walk({ [file]: source, ...SIM }, file).problems).toEqual([intoSim(file)]);
     });
   });
 
-  // MDX reads ESM only where a block starts: straight after a line of text, an import line is that text.
-  it("fails an .mdx import straight after a line of text, which may hide the real import after it", () => {
-    const page = "packages/website/src/content/docs/planted.mdx";
-    const source = [
-      "Some paragraph",
-      'import "./y.js"; /*',
-      "",
-      'import X from "@iracedeck/iracing-actions";',
-      "",
-    ].join("\n");
+  // A walk from a real page with qa's plants in it, each a false negative a structural reader gave (#1662): F1 and F2
+  // at 319d61a0b, the rest from the two rounds before. Every one fails now, by the literal it spells.
+  describe("qa's reproducers, planted into the real pages they were found on", () => {
+    const downloads = "packages/website/src/content/docs/downloads.mdx";
+    const notFound = "packages/website/src/pages/404.astro";
+    const cameraGroups = "../../../iracing-actions/src/actions/camera-controls/camera-groups.ts";
+    const hidden = (opener) =>
+      `\n\`\`\`md\nimport { ECOSYSTEMS } from "../../data/brands"; ${opener}\n\`\`\`\n\nimport X from "@iracedeck/iracing-actions";\n`;
+    const indented = (indent) =>
+      `\n${indent}\`\`\`md\n\nimport { ECOSYSTEMS } from "../../data/brands"; /*\n${indent}\`\`\`\n\nimport X from "@iracedeck/iracing-actions";\n\n*/\n`;
+    const realWalk = (file, source) =>
+      runtimeClosure({
+        roots: [file],
+        read: (at) => (at === file ? source : readRepoFile(at)),
+        packageDirs: PACKAGE_DIRS,
+        neutral: NEUTRAL,
+      }).problems;
+    const namesActions = (file) => new RegExp(`^${file} names @iracedeck/iracing-actions: packages/iracing-actions/`);
+    const loadsSdk = (file) =>
+      new RegExp(
+        `^${file} → packages/iracing-actions/src/actions/camera-controls/camera-groups\\.ts imports @iracedeck/iracing-sdk: `,
+      );
 
-    expect(walk({ [page]: source, "packages/website/src/content/docs/y.js": "" }, page).problems).toEqual([
-      `${page} makes an import or export on line 2 straight after a line of text, which MDX may read as that text ` +
-        "rather than as module code: put a blank line before it",
-      expect.stringMatching(
-        /^packages\/website\/src\/content\/docs\/planted\.mdx imports @iracedeck\/iracing-actions: /,
-      ),
-    ]);
-  });
+    it.each([
+      ["F1, a code fence indented four spaces", downloads, indented("    "), namesActions],
+      ["F1, a code fence indented by a tab", downloads, indented("\t"), namesActions],
+      [
+        "F2, a regular expression after a )",
+        notFound,
+        `\n{(() => { if (1) /\`/.test(""); return null })()}\n<script src="${cameraGroups}"></script>\n{"\`" + "})()}"}\n`,
+        loadsSdk,
+      ],
+      [
+        "F2, a regular expression after a block's }",
+        notFound,
+        `\n{(() => { { } /\`/.test(""); return null })()}\n<script src="${cameraGroups}"></script>\n{"\`" + "})()}"}\n`,
+        loadsSdk,
+      ],
+      ["a fenced comment opener hiding an import after it", downloads, hidden("/*"), namesActions],
+      ["a fenced double quote hiding an import after it", downloads, hidden('const s = "'), namesActions],
+      ["a fenced single quote hiding an import after it", downloads, hidden("const s = '"), namesActions],
+      ["a fenced backtick hiding an import after it", downloads, hidden("const s = `"), namesActions],
+      [
+        "a fence an indented fence of another kind does not close",
+        downloads,
+        '\n```md\n  ```bash\nnot a fence close\n```\n\nimport X from "@iracedeck/iracing-actions";\n',
+        namesActions,
+      ],
+      [
+        "a fence that never closes",
+        downloads,
+        '\n```md\n  ```bash\nnot a fence close\n\nimport X from "@iracedeck/iracing-actions";\n```\n',
+        namesActions,
+      ],
+      // Over-approximation, accepted: an import in a fence loads nothing, and fails as one that does.
+      [
+        "an import in a fence alone",
+        downloads,
+        '\n```md\nimport X from "@iracedeck/iracing-actions";\n```\n',
+        namesActions,
+      ],
+      [
+        "an .mdx relative import of camera-groups",
+        downloads,
+        `\nimport Cam from "../${cameraGroups}";\n`,
+        (file) =>
+          new RegExp(
+            `^${file} → packages/iracing-actions/src/actions/camera-controls/camera-groups\\.ts imports @iracedeck/iracing-sdk: `,
+          ),
+      ],
+      ["a processed <script src>", notFound, `\n<script src="${cameraGroups}"></script>\n`, loadsSdk],
+      [
+        "an is:inline <script src>, the over-approximation",
+        notFound,
+        `\n<script is:inline src="${cameraGroups}"></script>\n`,
+        loadsSdk,
+      ],
+      [
+        "a <script src> spelled with character references",
+        notFound,
+        `\n<script src="${cameraGroups.replaceAll(".", "&#46;")}"></script>\n`,
+        loadsSdk,
+      ],
+      [
+        "an import( in a template expression",
+        notFound,
+        '\n<div>{import("@iracedeck/iracing-actions")}</div>\n',
+        namesActions,
+      ],
+    ])("fails %s", (_name, file, plant, expected) => {
+      const real = readRepoFile(file);
 
-  // MDX compiles its ESM blocks into one module, so a require function one block makes loads in the next.
-  it("follows a require function an .mdx block makes into the next block", () => {
-    const page = "packages/website/src/content/docs/planted.mdx";
-    const source = [
-      'import { createRequire as cr } from "node:module";',
-      "",
-      "export const req = cr(import.meta.url);",
-      "",
-      'export const sdk = req("@iracedeck/iracing-sdk");',
-      "",
-    ].join("\n");
-
-    expect(walk({ [page]: source }, page).problems).toEqual([
-      expect.stringMatching(/^packages\/website\/src\/content\/docs\/planted\.mdx imports @iracedeck\/iracing-sdk: /),
-    ]);
+      expect(realWalk(file, real)).toEqual([]);
+      expect(realWalk(file, real + plant)).toEqual([expect.stringMatching(expected(file))]);
+    });
   });
 
   it("passes a missing data file, which loads nothing, and still fails a missing component or module", () => {
@@ -2432,6 +2659,33 @@ describe("the runtime-closure check itself (positive controls, #1662)", () => {
     expect(unexcusedProblems([made, made], twice)).toEqual([]);
     expect(unexcusedProblems([made], twice)).toEqual([made, mismatch(2, 1)]);
     expect(unexcusedProblems([made, made, made], twice)).toEqual([made, made, made, mismatch(2, 3)]);
+  });
+
+  it("excuses only the exact NAMED_NOT_LOADED literal in its own file, as many times as allowed, and fails a stale entry", () => {
+    const page = "packages/a/src/page.mdx";
+    const namedNotLoaded = { [page]: { literals: ["@iracedeck/x"], reason: "a control's excused mention" } };
+    const names = (file, literal) => `${file} names ${literal}: packages/x/ is not sim-neutral`;
+    const unknown = (file, literal) => `${file} names ${literal}, which names no workspace package`;
+
+    expect(unexcusedProblems([names(page, "@iracedeck/x")], {}, namedNotLoaded)).toEqual([]);
+    expect(unexcusedProblems([unknown(page, "@iracedeck/x")], {}, namedNotLoaded)).toEqual([]);
+    expect(unexcusedProblems([`packages/r/x.mdx → ${names(page, "@iracedeck/x")}`], {}, namedNotLoaded)).toEqual([]);
+    for (const other of [
+      names(page, "@iracedeck/y"),
+      names("packages/b/src/page.mdx", "@iracedeck/x"),
+      names(page, "@iracedeck/x-other"),
+    ]) {
+      expect(unexcusedProblems([other, names(page, "@iracedeck/x")], {}, namedNotLoaded)).toEqual([other]);
+    }
+    expect(unexcusedProblems([names(page, "@iracedeck/x"), names(page, "@iracedeck/x")], {}, namedNotLoaded)).toEqual([
+      names(page, "@iracedeck/x"),
+      names(page, "@iracedeck/x"),
+      `NAMED_NOT_LOADED says ${page} names @iracedeck/x 1 time(s), but the walk finds it 2 times: excuse each call ` +
+        "site the entry's reason holds for, and no other",
+    ]);
+    expect(unexcusedProblems([], {}, namedNotLoaded)).toEqual([
+      `NAMED_NOT_LOADED says ${page} names @iracedeck/x, but the walk no longer finds it: remove it`,
+    ]);
   });
 
   it("walks several roots once each, naming a failure by the first root that reaches it", () => {
