@@ -1557,22 +1557,32 @@ describe("nothing relinks a deck host without Niklas's go", () => {
     stopped(relinked(c), linked);
   });
   // The shapes with no relink spelling: a stop, a start, an integration-build
-  // restart and a base64 line are found, and pass; a base64 relink asks.
+  // restart and a base64 line are found, and pass; a base64 relink asks. A
+  // base64 line typed is refused by the stopping rule (#1659); one a runner
+  // hands PowerShell, which the lexer does not read, is still decoded here.
   it.each([
     `git status; bash -c "node scripts/integration-build.mjs --restart fix/1-a"`,
     `C:/Windows/System32/cmd.exe /c "taskkill /IM StreamDeck.exe /F"`,
     `powershell.exe -command "Stop-Process -Name StreamDeck"`,
     `pwsh.exe -NoLogo -c "Stop-Process -Name StreamDeck"`,
-    `pwsh -EncodedCommand ${encoded("pnpm restart:stream-deck")}`,
-    `pwsh -ec ${encoded("Stop-Process -Name StreamDeck")}`,
+    `pnpm exec pwsh -EncodedCommand ${encoded("pnpm restart:stream-deck")}`,
+    `npx pwsh -ec ${encoded("Stop-Process -Name StreamDeck")}`,
   ])("finds what a shell wrapper's command string stops or starts: %s", (c) => {
     expect(restarts(c, ctx())).toMatch(/`[^`]+` → .*deck host/);
     restarts(c, linked);
   });
-  it("asks for a relink in a base64 PowerShell line", () =>
-    expect(asks(`pwsh -EncodedCommand ${encoded("pnpm relink:stream-deck")}`)).toMatch(
+  it("asks for a relink in a base64 PowerShell line a runner hands over", () =>
+    expect(asks(`pnpm exec pwsh -EncodedCommand ${encoded("pnpm relink:stream-deck")}`)).toMatch(
       /`pwsh -EncodedCommand` → `pnpm relink:stream-deck` links, unlinks or relinks a deck host/,
     ));
+  it.each([
+    `pwsh -EncodedCommand ${encoded("pnpm restart:stream-deck")}`,
+    `pwsh -ec ${encoded("pnpm relink:stream-deck")}`,
+  ])("refuses a base64 PowerShell line typed, from either tool (#1659): %s", (c) => {
+    stopped(c);
+    stopped(c, linked);
+    stopped(c, { ...linked, shell: POWERSHELL });
+  });
   it("judges a wrapper's string in the directory it runs in", () => {
     asks(`bash -c "cd ../ir-integration && pnpm dev:voices on"`, elsewhere);
     asks(`cd ../ir-integration && bash -c "pnpm dev:voices on"`, elsewhere);
@@ -1599,7 +1609,7 @@ describe("nothing relinks a deck host without Niklas's go", () => {
       `cmd /c dir`,
       `pwsh -c "pnpm build"`,
       `pwsh -File scripts/restart.ps1`,
-      `pwsh -EncodedCommand ${encoded("pnpm build")}`,
+      `pnpm exec pwsh -EncodedCommand ${encoded("pnpm build")}`,
       `npx -c "pnpm build"`,
       `echo "bash -c 'pnpm restart:stream-deck'"`,
       `echo "pnpm build:with-restart"`,
@@ -5346,6 +5356,29 @@ describe("the lexer's stopping rule: a form it does not read is refused outright
       `git commit -m "BASH_ENV=<(x) bash -c true" -- x.md`,
       `git add . && git status`,
     ])("passes a script or startup file that is a file: %s", (c) => passes(c));
+  });
+
+  // Review finding on #1659: the decoder form Decision 4 refuses passed from both tools.
+  describe("an encoded command", () => {
+    const b64 = Buffer.from("gh pr merge 7 --squash", "utf16le").toString("base64");
+    it.each([
+      `pwsh -EncodedCommand ${b64}`,
+      `powershell -e ${b64}`,
+      `pwsh -ec ${b64}`,
+      `pwsh -NoProfile -enc ${b64}`,
+      `powershell.exe -EncodedC ${b64}`,
+    ])("refuses %s from either tool", (c) => {
+      expect(refusal(c)).toContain("(an encoded command)");
+      expect(refusal(c, pwshCtx())).toContain("(an encoded command)");
+    });
+    it("names the shape it refused", () => expect(refusal(`pwsh -ec ${b64}`)).toContain("`pwsh -EncodedCommand …`"));
+    it.each([`pwsh -File x.ps1`, `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/x.ps1`])(
+      "passes %s from either tool",
+      (c) => {
+        passes(c);
+        passes(c, pwshCtx());
+      },
+    );
   });
 
   describe("every read form is still read and judged", () => {

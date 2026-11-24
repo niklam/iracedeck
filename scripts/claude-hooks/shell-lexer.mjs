@@ -12,7 +12,8 @@
  * {@link fedStarts}), one level deep. A form that hands text to a shell the
  * lexer does not read — a printer or any command piped into a shell, a
  * here-string, heredoc, process substitution or descriptor a shell reads its
- * script or startup file from (`source` and `.` too), `eval`, a `sudo` that
+ * script or startup file from (`source` and `.` too), PowerShell's
+ * `-EncodedCommand`, `eval`, a `sudo` that
  * runs a shell, a string that is not one plain level, a string inside a string, a program
  * word in a string that is not its plain name — is listed by {@link
  * refusedForms}, and `checkBash` refuses it before any rule (#1659, the
@@ -955,6 +956,7 @@ function commandOf(spec, text, from, limit) {
     script: r.script,
     scriptAt: at(r.dash ?? r.program),
     startup: r.startup,
+    encoded: Boolean(r.stop?.encoded),
     stop: r.stop !== undefined,
     file: Boolean(r.stop?.file),
   };
@@ -1454,6 +1456,7 @@ const REFUSED = Object.freeze({
   processSubstitution: "a shell reading its script from a process substitution",
   descriptor: "a shell reading its script from a descriptor",
   startup: "a shell startup file read from stdin, a descriptor or a process substitution",
+  encoded: "an encoded command",
   eval: "eval",
   sudo: "a sudo that runs a shell",
   ansi: "an ANSI-C string",
@@ -1496,9 +1499,11 @@ const STARTUP_VARIABLE = /(?<=^|[\s;&|(\x60])(BASH_ENV|ENV)=/g;
  * it runs a string, a file, or nothing the hook could tell. A shell with no
  * string and no file reads stdin; `source` and `.` read it only through its
  * name. A startup file that names a stream (`bash --rcfile <(…)`) is
- * refused whatever the shell runs, since it runs first.
+ * refused whatever the shell runs, since it runs first; so is PowerShell's
+ * `-EncodedCommand`, a script the hook would have to decode.
  */
 function scriptStream(name, r, t) {
+  if (r.encoded) return { form: REFUSED.encoded, shape: `${name} -EncodedCommand …` };
   if (r.startup) return { form: REFUSED.startup, shape: `${name} ${r.startup.option} …` };
   if (r.string !== undefined) return undefined;
   const word = () => {
@@ -1679,8 +1684,9 @@ function sudoShell(t, from, limit) {
  * What the hook does not read is refused, never modelled (#1659): a printer
  * or any other command piped into a shell, a shell fed a here-string or a
  * heredoc, one reading its script from stdin by name, a process substitution
- * or a descriptor, `source` and `.` included, and a startup file read from
- * one (`--rcfile`, `BASH_ENV`, `ENV`; {@link scriptStream}), `eval`, a `sudo`
+ * or a descriptor, `source` and `.` included, a startup file read from
+ * one (`--rcfile`, `BASH_ENV`, `ENV`) and PowerShell's `-EncodedCommand`
+ * ({@link scriptStream}), `eval`, a `sudo`
  * that runs a shell, a string that is not one plain
  * level ({@link stringForm}), a shell inside a string that runs text it is
  * handed ({@link feedsText}), and a program word in a string that is not its

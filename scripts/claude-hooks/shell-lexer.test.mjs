@@ -2110,4 +2110,42 @@ describe("the stopping rule: a form the lexer does not read is found, and refuse
       expect(lexer.refusedForms(c)).toEqual([]),
     );
   });
+
+  // Review finding on #1659: PowerShell's base64 command is the decoder form
+  // the stopping rule refuses, and passed from both tools.
+  describe("an encoded command", () => {
+    const ENCODED = "an encoded command";
+    const B64 = Buffer.from("gh pr merge 7 --squash", "utf16le").toString("base64");
+    const fromPowerShell = (c) => lexer.refusedForms(lexer.powershellAsBash(c), lexer.POWERSHELL);
+
+    it.each([
+      `pwsh -EncodedCommand ${B64}`,
+      `powershell -e ${B64}`,
+      `powershell.exe -e ${B64}`,
+      `pwsh -ec ${B64}`,
+      `pwsh -enc ${B64}`,
+      `pwsh -EncodedC ${B64}`,
+      `pwsh -NoProfile -ExecutionPolicy Bypass -e ${B64}`,
+      `pwsh /enc ${B64}`,
+      `pwsh -e:${B64}`,
+      `"C:/Program Files/PowerShell/7/pwsh.exe" -ec ${B64}`,
+    ])("refuses %s, from either tool", (c) => {
+      expect(lexer.refusedForms(c)[0]?.form).toBe(ENCODED);
+      expect(fromPowerShell(c)[0]?.form).toBe(ENCODED);
+    });
+
+    it.each([`bash -c 'pwsh -ec ${B64}'`, `pwsh -Command "powershell -e ${B64}"`])("refuses %s in a string", (c) =>
+      expect(lexer.refusedForms(c)[0]?.form).toBe(ENCODED),
+    );
+
+    it.each([
+      `pwsh -File x.ps1`,
+      `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/x.ps1 -e y`,
+      `pwsh -c "Get-Date"`,
+      `powershell -NoProfile -Command "Get-ChildItem -e x"`,
+    ])("reads and refuses nothing in %s, from either tool", (c) => {
+      expect(lexer.refusedForms(c)).toEqual([]);
+      expect(fromPowerShell(c)).toEqual([]);
+    });
+  });
 });
