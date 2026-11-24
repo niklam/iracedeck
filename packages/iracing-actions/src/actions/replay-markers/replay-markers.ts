@@ -458,7 +458,8 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
    * ({@link awaitMarkerStepStart}): the replay's pending target while the
    * replay has not reached it (#1230, #1430), so a press right after a turn or
    * another press steps on; while a search of the plugin's is on its way, its
-   * landing, which the press waits for; else the cursor. With none — the
+   * landing, which the press waits for with the key's still mark showing (the
+   * wait carries its context id); else the cursor. With none — the
    * replay left while it waited, or a saved replay's tick read mid-seek past
    * the grace with no hold — nothing is sent. A throw once the start has
    * settled is logged.
@@ -502,6 +503,7 @@ export class ReplayMarkers extends SimIRacingAction<ReplayMarkersSettings> {
         this.logger.debug(`current=${context.frame}, anchor=${start.frame} (${start.from}), target=${target.frame}`);
         followMarkerJump(this.logger, `${mode} marker`, target.frame, jump);
       },
+      contextId,
     ).catch((err: unknown) => {
       this.logger.error(`${mode} marker: step failed: ${err instanceof Error ? err.message : String(err)}`);
     });

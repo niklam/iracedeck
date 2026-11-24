@@ -320,13 +320,16 @@ export function resolveMarkerViewStart(context: ReplayContext): number | null {
  * cursor, or why there is none (`not in a replay`, `no cursor`), never the
  * context's `frame`. `act` decides and sends synchronously — a jump records
  * its target before it returns ({@link jumpToMarkerFrame}) — so a press
- * waiting behind it steps on from that target. The wait carries no origin
- * token, so no busy mark shows while a marker press waits. Resolves with what
- * `act` returns; a throw in `act` rejects it.
+ * waiting behind it steps on from that target. While it waits the press
+ * shows as `waiting` for `origin`, the pressed key's or the turned dial's
+ * context id (the replay command gate's state seam), so the surface draws its
+ * still mark as Replay Control's do, handed straight over to the jump `act`
+ * sends. Resolves with what `act` returns; a throw in `act` rejects it.
  */
 export function awaitMarkerStepStart<T>(
   readContext: () => ReplayContextResult,
   act: (context: ReplayContextResult, start: SettledReplayWalkStart) => T,
+  origin: string,
 ): Promise<Awaited<T>> {
   return awaitReplayWalkStart(
     () => {
@@ -341,6 +344,7 @@ export function awaitMarkerStepStart<T>(
       return context.ok ? context.telemetry : null;
     },
     (start) => act(readContext(), start),
+    { origin },
   );
 }
 

@@ -3,6 +3,7 @@ import { ReplayPosMode, replaySpeedToSdk, type TelemetryData } from "@iracedeck/
 import {
   beginReplayJump,
   describeReplayJump,
+  getReplayGateView,
   pressReplayCommand,
   type ReplayJumpOutcome,
 } from "@iracedeck/replay-engine";
@@ -848,11 +849,15 @@ describe("where a step starts: a view reads it at once, a press waits for a sear
   /** A press's step: where it started, and the Next marker from there. */
   function pressNext(): { starts: string[]; done: Promise<number | null> } {
     const starts: string[] = [];
-    const done = awaitMarkerStepStart(readContext, (context, start) => {
-      starts.push(start.frame === null ? start.reason : `${start.from} ${start.frame}`);
+    const done = awaitMarkerStepStart(
+      readContext,
+      (context, start) => {
+        starts.push(start.frame === null ? start.reason : `${start.from} ${start.frame}`);
 
-      return context.ok ? (resolveJumpTarget("next", context, start.frame)?.frame ?? null) : null;
-    });
+        return context.ok ? (resolveJumpTarget("next", context, start.frame)?.frame ?? null) : null;
+      },
+      "marker-key",
+    );
 
     return { starts, done };
   }
@@ -902,6 +907,8 @@ describe("where a step starts: a view reads it at once, a press waits for a sear
     const { starts, done } = pressNext();
 
     expect(starts).toEqual([]);
+    // The press shows as waiting under the origin it was handed.
+    expect(getReplayGateView("marker-key").waiting).not.toBeNull();
 
     await vi.advanceTimersByTimeAsync(3_000);
 
@@ -937,9 +944,13 @@ describe("where a step starts: a view reads it at once, a press waits for a sear
 
     const handed: Array<[ReplayContextResult, string]> = [];
 
-    await awaitMarkerStepStart(readContext, (context, start) => {
-      handed.push([context, start.frame === null ? start.reason : "a frame"]);
-    });
+    await awaitMarkerStepStart(
+      readContext,
+      (context, start) => {
+        handed.push([context, start.frame === null ? start.reason : "a frame"]);
+      },
+      "marker-key",
+    );
 
     expect(handed).toEqual([[{ ok: false, reason: "Not connected to iRacing" }, "not in a replay"]]);
   });

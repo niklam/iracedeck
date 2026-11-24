@@ -322,7 +322,8 @@ export class ReplayMarkersDialSurface extends ReleaseDialSurfaceBase<
    * from (`awaitMarkerStepStart`): the replay's pending target (#1230,
    * #1430), a jump any surface sent that the replay has not reached yet;
    * while a search of the plugin's is on its way, its landing, which the turn
-   * waits for; else the cursor. With none — the replay left while it waited,
+   * waits for with the dial's still mark showing (the wait carries the dial's
+   * context id, the token its jumps carry); else the cursor. With none — the replay left while it waited,
    * or a saved replay's tick read mid-seek past the grace with no hold —
    * nothing is sent. A throw once the start has settled is logged.
    */
@@ -370,6 +371,7 @@ export class ReplayMarkersDialSurface extends ReleaseDialSurfaceBase<
         // A dial that left the screen while the turn waited is not drawn.
         if (this.contextsState.get(ctx.action.id) === ctx) this.scheduleRender(ctx);
       },
+      ctx.action.id,
     ).catch((err: unknown) => {
       this.host.logger.error(
         `Dial ${direction} marker: step failed: ${err instanceof Error ? err.message : String(err)}`,

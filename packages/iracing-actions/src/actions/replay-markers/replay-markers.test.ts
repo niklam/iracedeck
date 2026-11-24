@@ -1,5 +1,5 @@
 import { ReplayPosMode, replaySpeedToSdk, type TelemetryData } from "@iracedeck/iracing-sdk";
-import { pressReplayCommand } from "@iracedeck/replay-engine";
+import { getReplayGateView, pressReplayCommand } from "@iracedeck/replay-engine";
 import {
   _resetReplayCursor,
   cancelReplayCursorOwner,
@@ -900,6 +900,26 @@ describe("ReplayMarkers", () => {
         expect(sim.frame()).toBe(25_000);
         expect(sim.thrown).toBe(0);
         expect(action["logger"].info).toHaveBeenCalledWith("Jumped to next marker");
+      });
+
+      it("a waiting Next shows as waiting on its key, then hands over to its jump", async () => {
+        mocks.markers.list.mockReturnValue(markersAt(5_000, 15_000, 25_000));
+        const { action } = actionOverSim();
+
+        pressReplayCommand({ kind: "search", search: "nextSession" }, { by: "next-session", origin: "rc-key" });
+        await vi.advanceTimersByTimeAsync(REPLAY_EXIT_GRACE_MS + 100);
+        await action.onKeyDown(keyDown({ mode: "next" }, "marker-key"));
+
+        expect(getReplayGateView("marker-key")).toMatchObject({
+          waiting: { since: expect.any(Number) },
+          underWay: null,
+        });
+
+        // The search lands at 1.5 s; the jump it hands over to takes another 1.5 s.
+        await vi.advanceTimersByTimeAsync(1_000);
+
+        expect(getReplayGateView("marker-key").waiting).toBeNull();
+        expect(getReplayGateView("marker-key").underWay).not.toBeNull();
       });
 
       it.each(["next", "previous"])(

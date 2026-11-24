@@ -225,7 +225,8 @@ function log(): ILogger {
  *   is not the slot and sends nothing; `act` runs in the same gate change
  *   that ends it, as `sent-on-landing` (or `replay-left` when the start is
  *   `not in a replay`), so what it sends takes over the still mark without a
- *   not-done. With no origin (Replay Markers) nothing shows.
+ *   not-done. Replay Control's key and dial and Replay Markers' key and dial
+ *   each pass their context id; with no origin nothing shows.
  *
  * A throw from `act` rejects this press's promise and the queue goes on.
  */

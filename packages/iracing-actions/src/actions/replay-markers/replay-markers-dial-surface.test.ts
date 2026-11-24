@@ -982,6 +982,28 @@ describe("ReplayMarkersDialSurface", () => {
       expect(logger.info).toHaveBeenCalledWith("Dial jumped to next marker");
     });
 
+    it("a waiting turn shows as waiting on the dial, then hands over to its jump", async () => {
+      setMarkers([5_000, 15_000, 25_000]);
+      const surface = surfaceOverSim();
+      const ctx = dialContext("marker-dial");
+      await appear(surface, ctx);
+
+      pressReplayCommand({ kind: "search", search: "nextSession" }, { by: "next-session", origin: "rc-key" });
+      await vi.advanceTimersByTimeAsync(REPLAY_EXIT_GRACE_MS + 100);
+      surface.rotate(ctx as never, dial(), 1, false);
+
+      expect(getReplayGateView("marker-dial")).toMatchObject({
+        waiting: { since: expect.any(Number) },
+        underWay: null,
+      });
+
+      // The search lands at 1.5 s; the jump it hands over to takes another 1.5 s.
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(getReplayGateView("marker-dial").waiting).toBeNull();
+      expect(getReplayGateView("marker-dial").underWay).not.toBeNull();
+    });
+
     it("two turns during one search step twice from its landing, the second from the first's marker", async () => {
       setMarkers([5_000, 15_000, 25_000, 30_000]);
       const surface = surfaceOverSim();
