@@ -643,6 +643,35 @@ function leaveCase(c) {
   else fs.rmSync(c.owned, { recursive: true, force: true });
 }
 
+/**
+ * When what an escaped writer returned has finished, as a promise that never
+ * rejects (CLI check of be3d79a4b). A stream is no promise, so its errors are
+ * heard and it is stopped: one that owns its descriptor is destroyed and its
+ * `close` waited for, by which the descriptor is released; one on a
+ * descriptor it does not close (`autoClose: false`, the case's own) is ended
+ * and its `finish` or error waited for, since destroying it would close that
+ * descriptor under the case. Anything else settles as a promise would.
+ */
+function completionOf(returned) {
+  if (returned && typeof returned.on === "function" && typeof returned.destroy === "function")
+    return new Promise((resolve) => {
+      if (returned.autoClose === false) {
+        returned.on("error", () => resolve());
+        returned.on("finish", () => resolve());
+        returned.end();
+        return;
+      }
+      returned.on("error", () => {});
+      if (returned.closed) resolve();
+      else returned.on("close", () => resolve());
+      returned.destroy();
+    });
+  return Promise.resolve(returned).then(
+    () => {},
+    () => {},
+  );
+}
+
 describe("side effects while judging", () => {
   it("make a spawn or a file write throw until restored, through ESM bindings too", () => {
     const spawnSync = childProcess.spawnSync;
@@ -754,10 +783,7 @@ describe("side effects while judging", () => {
         restore();
       }
       if (!threw) {
-        const settled = Promise.resolve(returned).then(
-          () => {},
-          () => {},
-        );
+        const settled = completionOf(returned);
         const callback = write.length > 1 ? called : Promise.resolve();
         // Still pending past the bound: this case's descriptor and folder stay
         // until the write settles, so the OS cannot hand that descriptor to a
@@ -812,6 +838,26 @@ describe("side effects while judging", () => {
 
     it("is held well under the test timeout", () => {
       expect(SETTLE_BOUND_MS).toBeLessThanOrEqual(2000);
+    });
+
+    // CLI check of be3d79a4b: an escaped write stream was waited on as a
+    // promise, which a stream is not, so it went on writing past the case.
+    it("as a write stream is stopped, its errors heard, and waited for, its own descriptor closed and the case's kept", async () => {
+      const stream = fs.createWriteStream(path.join(dir, "stream.txt"));
+      let closed = false;
+      stream.on("close", () => (closed = true));
+      await completionOf(stream);
+      expect(stream.destroyed).toBe(true);
+      expect(closed).toBe(true);
+      const failing = fs.createWriteStream(path.join(dir, "missing", "stream.txt"));
+      await completionOf(failing);
+      expect(failing.destroyed).toBe(true);
+      const onDescriptor = fs.createWriteStream(null, { fd, autoClose: false });
+      onDescriptor.write("x");
+      await completionOf(onDescriptor);
+      expect(onDescriptor.writableFinished).toBe(true);
+      expect(open()).toBe(true);
+      await expect(completionOf(Promise.reject(new Error("x")))).resolves.toBeUndefined();
     });
 
     it("released in time goes back to the case's own cleanup", async () => {
