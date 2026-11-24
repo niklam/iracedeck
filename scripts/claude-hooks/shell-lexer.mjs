@@ -1203,8 +1203,9 @@ function levelOf(chars, extra = {}) {
  * joined as `watch -x` keeps it, a backslash before every character but a
  * letter, a digit, `_`, `-`, `$` and `=`, so it stays one word. So the raw
  * text's quoting is undone once: `bash -c "X=\"a b\" gh …"` reads `X="a b"
- * gh …`. A string whose form is not one plain level (an ANSI-C or locale
- * string, a splice) is refused before it gets here ({@link stringForm}).
+ * gh …`, and a splice `'a '"$V"' b'` reads as bash joins it. A string whose
+ * form is not one plain level (an ANSI-C or locale string) is refused before
+ * it gets here ({@link stringForm}).
  * `from` and `to` are the view indices its words
  * span; `parts`, where a joined level has more than one, each word joined as
  * `{ first, last, from, to }`: its span in the level and in the view.
@@ -1316,7 +1317,6 @@ const REFUSED = Object.freeze({
   sudo: "a sudo that runs a shell",
   ansi: "an ANSI-C string",
   locale: "a locale string",
-  splice: "a string spliced from several quoted pieces",
   nested: "a string inside a string",
   substitution: "a substitution at command position in a string",
   program: "a program word that is not its plain name",
@@ -1336,27 +1336,24 @@ const clip = (w) => (w.length > 40 ? `${w.slice(0, 40)}…` : w);
 /**
  * Why the string a shell is handed at `d` of the raw `t` is not one plain
  * level (#1659), or `undefined` when it is: an ANSI-C `$'…'` or a locale
- * `$"…"` piece, or a word spliced from several pieces one of which is quoted
- * (`'a'"b"`). Read word by word up to `stop` where the shell joins its words
- * (`join`), else the one word. An unquoted word is one plain piece however
- * many characters it has.
+ * `$"…"` piece in it. Read word by word up to `stop` where the shell joins
+ * its words (`join`), else the one word. A word spliced from quoted pieces and
+ * outer expansions (`'…'"$VAR"'…'`) is one plain level, read with bash's quote
+ * removal ({@link readLevel}): agents type it, so the stopping rule's
+ * re-opening clause reads it (#1659). A splice inside a program word of the
+ * string is refused where that word is read ({@link fedStarts}).
  */
 function stringForm(t, d, stop, join) {
   for (let i = d; i < stop;) {
     const end = wordEnd(t, i);
     const e = end < 0 ? stop : Math.min(end, stop);
     if (e <= i) break;
-    let pieces = 0;
-    let quoted = false;
     for (let k = i; k < e;) {
       if (t[k] === "$" && t[k + 1] === "'") return REFUSED.ansi;
       if (t[k] === "$" && t[k + 1] === '"') return REFUSED.locale;
-      if (t[k] === "'" || t[k] === '"') quoted = true;
-      pieces++;
       const n = pieceEnd(t, k);
       k = n < 0 ? e : n;
     }
-    if (quoted && pieces > 1) return REFUSED.splice;
     if (!join) break;
     i = e;
     while (i < stop && (t[i] === " " || t[i] === "\t")) i++;
@@ -1550,10 +1547,15 @@ function fedStarts(command, text, fed, programs) {
     // runs no program, unless the call operator `&` runs it. One the typed
     // command's shell expands is not known, so it is judged as a name.
     if (ps && !outer(0) && /^[$'"[(@{\d-]/.test(raw) && !/(?:^|[^&])&\s*$/.test(L.text.slice(0, d))) return;
+    const shape = () => `${L.via} … ${clip(command.slice(L.at[d], L.end[d + raw.length - 1]))} …`;
+    // A word whose characters come from several quoted pieces of the raw text
+    // (`bash -c 'g'"h"' pr merge 7'`): no raw text spells its name in place.
+    for (let k = d + 1; k < d + raw.length; k++)
+      if (L.at[k] !== L.at[k - 1] && L.at[k] !== L.end[k - 1]) return refuse(REFUSED.program, shape());
     const chars = levelChars(raw, L.via, outer);
     const subst = (x) => /^(?:\$\(|\x60)/.test(outer(x.at) ? command.slice(L.at[d + x.at]) : raw.slice(x.at));
     const form = wordForm(chars, raw, subst);
-    if (form) return refuse(form, `${L.via} … ${clip(command.slice(L.at[d], L.end[d + raw.length - 1]))} …`);
+    if (form) return refuse(form, shape());
     const name = programName(chars)?.name;
     if (name === "eval" || (ps && PS_EVAL.has(name))) return refuse(REFUSED.eval, `${name} …`);
     if (name === "sudo") {

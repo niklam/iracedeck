@@ -643,15 +643,14 @@ describe("the program-word rewrite's second read (#1606)", () => {
     for (const re of SHAPES) if (re.test(command)) expect(re.test(text), String(re)).toBe(true);
   });
 
-  it("finds the merge inside the string, read as its shell reads it (#1646)", () => {
-    const c = UNTRUSTED.at(-5);
+  it.each(UNTRUSTED.slice(-5, -3))("finds the merge inside the string, read as its shell reads it (#1646): %s", (c) => {
     expect(lexer.has(c, SHAPES[1])).toBe(true);
     expect(view(c).unsettled).toBe(false);
   });
 
-  // #1659: a spliced or ANSI-C string, a printer piped into a shell and a sudo
-  // that runs a shell are refused rather than read.
-  it.each(UNTRUSTED.slice(-4))("refuses the form a string is handed in, never reads it (#1659): %s", (c) =>
+  // #1659: an ANSI-C string, a printer piped into a shell and a sudo that runs
+  // a shell are refused rather than read.
+  it.each(UNTRUSTED.slice(-3))("refuses the form a string is handed in, never reads it (#1659): %s", (c) =>
     expect(lexer.refusedForms(c)).not.toEqual([]),
   );
 
@@ -1360,11 +1359,14 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
     expect(lexer.decodeWord(String.raw`$'\x41'`).some((x) => x.live)).toBe(true));
 
   // The raw text of a string a shell runs is not always the text it reads: an
-  // outer double-quoted string carries escaped quotes. It is read as the shell
-  // reads it (a splice, an ANSI-C string, a string inside a string, a printer,
-  // a here-string, eval and sudo -s are refused instead, #1659).
+  // outer double-quoted string carries escaped quotes, a `'\''` splice joins
+  // pieces. It is read as the shell reads it (an ANSI-C string, a string
+  // inside a string, a printer, a here-string, eval and sudo -s are refused
+  // instead, #1659).
   it.each([
     `bash -c "X=\\"a b\\" gh pr merge 7"`,
+    String.raw`bash -c 'X='\''a b'\'' gh pr merge 7'`,
+    "bash -c X=1' gh pr merge 7'",
     `bash -c "ls; X=\\"a b\\" gh pr merge 7"`,
     `bash -c "nice env X=\\"a;b\\" gh pr merge 7"`,
     "bash -c '2>\"a b\" gh pr merge 7'",
@@ -1508,13 +1510,16 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
     `bash -c 'g'"h"' pr merge 7'`,
     `bash -c 'X="a b" g'"h"' pr merge 7'`,
     `bash -c 'echo hi; g'"h"' pr merge 7'`,
-  ])("refuses a string spliced from quoted pieces rather than read its program (#1659): %s", (c) =>
-    expect(lexer.refusedForms(c).map((r) => r.form)).toEqual(["a string spliced from several quoted pieces"]),
+  ])("refuses a program spliced from quoted pieces rather than read it (#1659): %s", (c) =>
+    expect(lexer.refusedForms(c).map((r) => r.form)).toEqual(["a program word that is not its plain name"]),
   );
 
-  it.each(["bash -c 'gh pr merge 7'", `bash -c "X='a b' gh pr merge 7"`])(
-    "lists nothing respelled where the raw text spells the program: %s",
-    (c) => expect(lexer.respelledPrograms(c)).toEqual({ respelled: [], spliced: [] }),
+  it.each([
+    "bash -c 'gh pr merge 7'",
+    `bash -c "X='a b' gh pr merge 7"`,
+    String.raw`bash -c 'X='\''a b'\'' gh pr merge 7'`,
+  ])("lists nothing respelled where the raw text spells the program: %s", (c) =>
+    expect(lexer.respelledPrograms(c)).toEqual({ respelled: [], spliced: [] }),
   );
 
   it("sets no unclosed lead for cmd.exe, which has no single quotes", () => {
@@ -1793,7 +1798,6 @@ describe("the stopping rule: a form the lexer does not read is found, and refuse
   const SUDO = "a sudo that runs a shell";
   const ANSI = "an ANSI-C string";
   const LOCALE = "a locale string";
-  const SPLICE = "a string spliced from several quoted pieces";
   const NESTED = "a string inside a string";
   const SUBSTITUTION = "a substitution at command position in a string";
   const PROGRAM = "a program word that is not its plain name";
@@ -1860,10 +1864,9 @@ describe("the stopping rule: a form the lexer does not read is found, and refuse
     [String.raw`bash -c $'cd\x20../ir-5; pnpm test'`, ANSI],
     [String.raw`pwsh -Command $'gh\x20pr merge 7'`, ANSI],
     [`bash -c $"gh pr merge 7"`, LOCALE],
-    [String.raw`bash -c 'X='\''a b'\'' gh pr merge 7'`, SPLICE],
-    [`bash -c X=1' gh pr merge 7'`, SPLICE],
-    [`bash -c 'g'"h"' pr merge 7'`, SPLICE],
-    [`cmd /c dir "a"'b'`, SPLICE],
+    [`bash -c 'g'"h"' pr merge 7'`, PROGRAM],
+    [`bash -c 'echo hi; /usr/'"bin"'/gh pr merge 7'`, PROGRAM],
+    [`pwsh -Command '& g''h pr merge 7'`, PROGRAM],
     [`bash -c "sh -c 'X=\\"a b\\" gh pr merge 7'"`, NESTED],
     [`bash -c "sh -c 'nice env X=\\"a;b\\" gh pr merge 7'"`, NESTED],
     [`winpty bash.exe -c "cmd.exe /c gh pr merge 7"`, NESTED],
@@ -1895,6 +1898,13 @@ describe("the stopping rule: a form the lexer does not read is found, and refuse
   it.each([
     `bash -c 'gh pr merge 7'`,
     `timeout 1500 sh -c 'pnpm install && pnpm build'`,
+    // A splice of quoted pieces and outer expansions at the level the string is
+    // handed over is read, re-opened under the stopping rule's clause (#1659).
+    `timeout 600 bash -c 'until test -s '"$OUT"'/done.txt; do sleep 30; done'`,
+    `bash -c 'X='\\''a b'\\'' gh pr merge 7'`,
+    `bash -c X=1' gh pr merge 7'`,
+    `cmd /c dir "a"'b'`,
+    `powershell -NoProfile -Command '$p = Get-Process -Name ''node''; $p.Count'`,
     `bash -o pipefail -c "pnpm test | tail -5"`,
     `bash -c "X=\\"a b\\" gh pr merge 7"`,
     `bash -c '"gh" pr merge 7'`,

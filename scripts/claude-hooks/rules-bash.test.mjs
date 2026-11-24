@@ -4687,13 +4687,13 @@ describe("a carried merge or tag push behind a quoted lead value (#1646)", () =>
     "bash -c 'nice env GH_PAGER=\"less -R\" gh pr merge 7 --squash'",
     "bash -c 'nice env X=\"a;b\" gh pr merge 7'",
     `bash -c "X=\\"a b\\" gh pr merge 7"`,
+    String.raw`bash -c 'X='\''a b'\'' gh pr merge 7'`,
   ])("refuses the merge as carried, before reading the PR: %s", (c) =>
     expect(refused(c)).toMatch(/is not its own command/),
   );
-  // #1659: a splice, a string inside a string, a printer and eval are refused
-  // outright, before the merge gate reads anything.
+  // #1659: a string inside a string, a printer and eval are refused outright,
+  // before the merge gate reads anything.
   it.each([
-    String.raw`bash -c 'X='\''a b'\'' gh pr merge 7'`,
     `bash -c "sh -c 'X=\\"a b\\" gh pr merge 7'"`,
     "echo 'X=\"a b\" gh pr merge 7' | bash",
     `eval "X=\\"a b\\"" gh pr merge 7`,
@@ -4789,8 +4789,8 @@ describe("a carried merge or tag push behind a quoted lead value (#1646)", () =>
     `bash -c 'g'"h"' pr merge 7'`,
     `bash -c 'X="a b" g'"h"' pr merge 7'`,
     `bash -c 'echo hi; g'"h"' pr merge 7'`,
-  ])("refuses a string spliced from quoted pieces: %s", (c) =>
-    expect(refused(c)).toMatch(/a string spliced from several quoted pieces/),
+  ])("refuses a program spliced from quoted pieces: %s", (c) =>
+    expect(refused(c)).toMatch(/a program word that is not its plain name/),
   );
 
   it.each([
@@ -5228,7 +5228,7 @@ describe("the lexer's stopping rule: a form it does not read is refused outright
     [`sudo bash -c 'ls -la'`, "a sudo that runs a shell"],
     [String.raw`bash -c $'ls\x20-la'`, "an ANSI-C string"],
     [`bash -c $"ls -la"`, "a locale string"],
-    [`bash -c 'ls'" -la"`, "a string spliced from several quoted pieces"],
+    [`bash -c 'l'"s"' -la'`, "a program word that is not its plain name"],
     [`bash -c "sh -c 'ls -la'"`, "a string inside a string"],
     [`bash -c "$(echo ls) -la"`, "a substitution at command position"],
     [String.raw`bash -c 'l\s -la'`, "a program word that is not its plain name"],
@@ -5257,6 +5257,8 @@ describe("the lexer's stopping rule: a form it does not read is refused outright
     refusal(`Invoke-Expression 'ls'`, pwshCtx());
     refusal(`pwsh -NoProfile -Command "iex 'ls'"`);
     refusal(`'dir' | powershell -Command -`, pwshCtx());
+    // PowerShell splices `"& \"` and `C:\…\gh.exe\"`: the program word is spliced (#1787 item 3).
+    deny(String.raw`pwsh -Command "& \"C:\tools\gh.exe\" pr merge 7"`, pwshCtx());
   });
 
   describe("every read form is still read and judged", () => {
@@ -5269,7 +5271,17 @@ describe("the lexer's stopping rule: a form it does not read is refused outright
       `bash -c 'X="a b" ls -la'`,
       `bash scripts/run.sh`,
       `sudo apt-get update`,
+      // A splice at the level the string is handed over is read, re-opened
+      // under the stopping rule's clause since agents type it (#1659).
+      `bash -c 'ls'" -la"`,
+      `timeout 600 bash -c 'until test -s '"$OUT"'/done.txt; do sleep 30; done'`,
+      `timeout 900 bash -c 'H='"$REF"'; until git ls-remote origin | grep -q "$H"; do sleep 60; done'`,
+      `powershell -NoProfile -Command '$p = Get-Process -Name ''node''; "count: " + @($p).Count'`,
     ])("passes %s", (c) => passes(c));
+    it("judges what a spliced string runs as its shell reads it", () =>
+      expect(deny(`timeout 60 bash -c 'sleep 5; gh pr merge '"$PR"' --squash'`)).toMatch(
+        /`gh pr merge` as its own command/,
+      ));
 
     it.each([`powershell -NoProfile -Command "Get-ChildItem"`, `cmd /c "dir"`])(
       "passes %s from the PowerShell tool",
