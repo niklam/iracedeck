@@ -977,7 +977,8 @@ export function generateCarControlSvg(
   // Ignition and Starter are tri-state telemetry keys (issue #561). Both go through the
   // shared toggle renderer rather than repeating the resolve/render pipeline a fourth
   // time; the artwork stays state-neutral and the status bar plus the state-driven
-  // border carry on/off/na, the same language as the pit limiter and DRS.
+  // border carry on/off/na, the same language as DRS and Push To Pass (the pit limiter
+  // shares the bar and border, and its number circle's ring carries the state too, #1685).
   if (control === "ignition" || control === "starter") {
     const isIgnition = control === "ignition";
     const template = isIgnition ? ignitionTemplate : starterTemplate;
