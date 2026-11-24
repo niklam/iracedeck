@@ -671,6 +671,125 @@ describe("hold preview centre (#1120)", () => {
     expect(plain).toBe(renderCarCarousel({ ...base, center: "42", left: "99", right: "3", pending: null }));
     expect(plain).not.toContain("data-pending-bar");
   });
+
+  describe("fitted between the side slots (#1656)", () => {
+    const autoOff = { text: "AUTO OFF", color: "#2ecc71" };
+
+    /** Bold Arial advance widths (em) of the characters these strips draw, kept apart from the renderer's table. */
+    const ADVANCE: Record<string, number> = {
+      " ": 0.278,
+      "#": 0.556,
+      ...Object.fromEntries([..."0123456789"].map((digit) => [digit, 0.556])),
+      A: 0.722,
+      E: 0.667,
+      F: 0.611,
+      G: 0.778,
+      N: 0.722,
+      O: 0.778,
+      P: 0.667,
+      R: 0.722,
+      S: 0.667,
+      T: 0.611,
+      U: 0.722,
+      Y: 0.667,
+    };
+
+    const width = (text: string, size: number): number =>
+      [...text].reduce((em, char) => em + (ADVANCE[char] ?? Number.NaN), 0) * size;
+
+    /** The centre preview's font size, read from the strip. */
+    function centreSize(svg: string, text: string): number {
+      return Number(new RegExp(`<text x="100"[^>]*font-size="(\\d+)"[^>]*>${text}<`).exec(svg)?.[1]);
+    }
+
+    /** The dimmed side labels: each one's x, font size and text. */
+    function sides(svg: string): { x: number; size: number; text: string }[] {
+      return [...svg.matchAll(/<text x="([\d.]+)"[^>]*font-size="(\d+)"[^>]*opacity="0\.4\d?">([^<]+)</g)].map((m) => ({
+        x: Number(m[1]),
+        size: Number(m[2]),
+        text: m[3],
+      }));
+    }
+
+    /** Asserts the centre text stays clear of every side label, horizontally. */
+    function expectClearOfSides(svg: string, text: string): void {
+      const size = centreSize(svg, text);
+      const half = width(text, size) / 2;
+      const drawn = sides(svg);
+
+      expect(size).toBeGreaterThan(0);
+      expect(drawn).toHaveLength(2);
+
+      for (const side of drawn) {
+        const sideHalf = width(side.text, side.size) / 2;
+
+        if (side.x < 100) expect(100 - half).toBeGreaterThanOrEqual(side.x + sideHalf);
+        else expect(100 + half).toBeLessThanOrEqual(side.x - sideHalf);
+      }
+    }
+
+    it("keeps AUTO OFF clear of both side badges on the car-number strip", () => {
+      for (const [left, right] of [
+        ["99", "3"],
+        ["122", "124"],
+      ]) {
+        const svg = renderCarCarousel({ ...base, center: "123", left, right, pending: autoOff });
+
+        expectClearOfSides(svg, "AUTO OFF");
+      }
+    });
+
+    it("keeps AUTO OFF clear of the sides on the race-position, sub-camera and camera strips", () => {
+      const race = renderRacePositionCarousel({
+        ...base,
+        centerPosition: 11,
+        centerCarNumber: "42",
+        leftPosition: 12,
+        rightPosition: 10,
+        pending: autoOff,
+      });
+      const sub = renderSubCameraCarousel({
+        ...base,
+        current: "Roll Bar",
+        left: "Nose",
+        right: "Gyro",
+        pending: autoOff,
+      });
+      const cam = renderCameraCarousel({
+        ...base,
+        current: { name: "Cockpit", glyph: null },
+        left: { name: "Nose", glyph: null },
+        right: { name: "Gear", glyph: null },
+        pending: autoOff,
+      });
+
+      for (const svg of [race, sub, cam]) expectClearOfSides(svg, "AUTO OFF");
+    });
+
+    it("keeps a car-number preview at the full 40 px between the side badges", () => {
+      const twoDigit = renderCarCarousel({ ...base, center: "42", left: "99", right: "3", pending });
+      const threeDigit = renderCarCarousel({
+        ...base,
+        center: "42",
+        left: "122",
+        right: "124",
+        pending: { text: "#123", color: "#2ecc71" },
+      });
+
+      expect(centreSize(twoDigit, "#99")).toBe(40);
+      expect(centreSize(threeDigit, "#123")).toBe(40);
+      expectClearOfSides(threeDigit, "#123");
+    });
+
+    it("uses the whole panel when no side is drawn", () => {
+      const withSides = renderCarCarousel({ ...base, center: "42", left: "99", right: "3", pending: autoOff });
+      const alone = renderCarCarousel({ ...base, center: "42", left: null, right: null, pending: autoOff });
+
+      expect(centreSize(alone, "AUTO OFF")).toBeGreaterThan(centreSize(withSides, "AUTO OFF"));
+      // Panel interior at 200×100: 200 - 2 × (inset 5 + stroke 5 + 8) = 164.
+      expect(width("AUTO OFF", centreSize(alone, "AUTO OFF"))).toBeLessThanOrEqual(164);
+    });
+  });
 });
 
 describe("CameraDialSurface", () => {
@@ -3016,7 +3135,9 @@ describe("the Auto Group on/off gesture (#1656)", () => {
 
       const size = Number(decodeLast(ctx).match(/font-size="(\d+)"[^>]*>AUTO OFF</)?.[1]);
 
-      expect(size).toBeGreaterThan(20);
+      // Shrunk to fit between the camera strip's side slots (19 px), never
+      // below a readable size.
+      expect(size).toBeGreaterThan(15);
       expect(size).toBeLessThan(40);
     });
 
