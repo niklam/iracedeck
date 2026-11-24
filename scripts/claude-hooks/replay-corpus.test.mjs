@@ -1,6 +1,7 @@
 import * as childProcess from "node:child_process";
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
+import { createRequire, syncBuiltinESMExports } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -612,6 +613,52 @@ describe("the command line", () => {
       fs.rmSync(owned, { recursive: true, force: true });
     }
   });
+
+  // CodeRabbit CLI on #1659: an unlistable subfolder threw out of main.
+  it("exits 3 when a transcript folder cannot be listed, naming it", async () => {
+    const owned = fs.mkdtempSync(path.join(os.tmpdir(), "replay-corpus-main-"));
+    const locked = path.join(owned, "t", "locked");
+    fs.mkdirSync(locked, { recursive: true });
+    const cjs = createRequire(import.meta.url)("node:fs");
+    const readdirSync = cjs.readdirSync;
+    cjs.readdirSync = function (p, ...rest) {
+      if (path.resolve(String(p)) === locked)
+        throw Object.assign(new Error(`EACCES: permission denied, scandir '${locked}'`), { code: "EACCES" });
+      return readdirSync.call(this, p, ...rest);
+    };
+    syncBuiltinESMExports();
+    try {
+      const out = [];
+      const status = await main(["--transcripts", path.join(owned, "t"), "--census-only"], (l) => out.push(l), {
+        root: owned,
+      });
+      expect(status).toBe(3);
+      expect(out.join("\n")).toContain(locked);
+    } finally {
+      cjs.readdirSync = readdirSync;
+      syncBuiltinESMExports();
+      fs.rmSync(owned, { recursive: true, force: true });
+    }
+  });
+
+  // CodeRabbit CLI on #1659: the base copy is removed whatever stops the run once it exists.
+  it("removes the base copy when the workspace cannot be read", async () => {
+    const copies = () => fs.readdirSync(os.tmpdir()).filter((n) => /^replay-corpus-[A-Za-z0-9]{6}$/.test(n));
+    const before = new Set(copies());
+    const owned = fs.mkdtempSync(path.join(os.tmpdir(), "replay-corpus-main-"));
+    try {
+      fs.mkdirSync(path.join(owned, "t"));
+      fs.mkdirSync(path.join(owned, "checkout", "packages", "odd", "package.json"), { recursive: true });
+      const out = [];
+      const status = await main(["--transcripts", path.join(owned, "t"), "--base", "HEAD"], (l) => out.push(l), {
+        root: path.join(owned, "checkout"),
+      });
+      expect(status, out.join("\n")).toBe(3);
+      expect(copies().filter((n) => !before.has(n))).toEqual([]);
+    } finally {
+      fs.rmSync(owned, { recursive: true, force: true });
+    }
+  }, 60_000);
 
   it("exits 2 on a usage error, naming the problem", async () => {
     const out = [];

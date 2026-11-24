@@ -698,88 +698,100 @@ export async function main(argv, print = (line) => process.stdout.write(`${line}
   }
   const started = Date.now();
 
-  const files = transcriptFiles(opts.transcripts, opts.match);
-  const { commands, unparsed } = await readCommands(files);
+  let files;
+  let commands;
+  let unparsed;
+  try {
+    files = transcriptFiles(opts.transcripts, opts.match);
+    ({ commands, unparsed } = await readCommands(files));
+  } catch (e) {
+    // An unlistable folder or an unreadable file names its path (CodeRabbit CLI on #1659).
+    print(`replay-corpus: could not read the transcripts: ${messageOf(e)}`);
+    return 3;
+  }
   const list = commands.list();
 
+  // The base copy is removed whatever stops the run once it exists (CodeRabbit CLI on #1659).
   let base;
-  let head;
   try {
-    head = await loadSide(headRoot);
-    if (!opts.censusOnly) {
-      base = extractScripts(REPO_ROOT, opts.base);
-      try {
+    let head;
+    try {
+      head = await loadSide(headRoot);
+      if (!opts.censusOnly) {
+        base = extractScripts(REPO_ROOT, opts.base);
         Object.assign(base, await loadSide(base.dir));
-      } catch (e) {
-        rmSync(base.dir, { recursive: true, force: true });
-        throw e;
       }
+    } catch (e) {
+      print(`replay-corpus: could not load a side: ${messageOf(e)}`);
+      return 3;
     }
-  } catch (e) {
-    print(`replay-corpus: could not load a side: ${e instanceof Error ? e.message : e}`);
-    return 3;
-  }
+    let workspace;
+    try {
+      workspace = readWorkspace(root);
+    } catch (e) {
+      print(`replay-corpus: could not read the workspace: ${messageOf(e)}`);
+      return 3;
+    }
 
-  const census = new Census();
-  const differences = [];
-  let judged = 0;
-  let identical = 0;
-  let workspace;
-  try {
-    workspace = readWorkspace(root);
-  } catch (e) {
-    if (base?.dir) rmSync(base.dir, { recursive: true, force: true });
-    print(`replay-corpus: could not read the workspace: ${e instanceof Error ? e.message : e}`);
-    return 3;
-  }
-  const contexts = {
-    Bash: fixedContext({ cwd: root, shell: head.lexer.BASH, workspace }),
-    PowerShell: fixedContext({ cwd: root, shell: head.lexer.POWERSHELL, workspace }),
-  };
-  const restore = forbidSideEffects();
-  try {
-    list.forEach(({ tool, command }, i) => {
-      // What checkBash reads: a PowerShell command as bash (`checkBash`'s own first step).
-      let one;
-      try {
-        one = censusOf(head.view(tool === "PowerShell" ? head.powershellAsBash(command) : command));
-      } catch {
-        one = null;
-      }
-      census.add(one, isProbe(command));
-      // pre-bash.mjs judges only a non-blank string, and hands it over raw.
-      if (opts.censusOnly || !command.trim()) return;
-      judged++;
-      const ctx = contexts[tool];
-      const b = verdictOf(base.checkBash, command, ctx);
-      const h = verdictOf(head.checkBash, command, ctx);
-      if (b === h) identical++;
-      else differences.push({ index: i + 1, tool, command, base: b, head: h });
-    });
+    const census = new Census();
+    const differences = [];
+    let judged = 0;
+    let identical = 0;
+    const contexts = {
+      Bash: fixedContext({ cwd: root, shell: head.lexer.BASH, workspace }),
+      PowerShell: fixedContext({ cwd: root, shell: head.lexer.POWERSHELL, workspace }),
+    };
+    // The guard is restored only once installed.
+    let restore;
+    try {
+      restore = forbidSideEffects();
+      list.forEach(({ tool, command }, i) => {
+        // What checkBash reads: a PowerShell command as bash (`checkBash`'s own first step).
+        let one;
+        try {
+          one = censusOf(head.view(tool === "PowerShell" ? head.powershellAsBash(command) : command));
+        } catch {
+          one = null;
+        }
+        census.add(one, isProbe(command));
+        // pre-bash.mjs judges only a non-blank string, and hands it over raw.
+        if (opts.censusOnly || !command.trim()) return;
+        judged++;
+        const ctx = contexts[tool];
+        const b = verdictOf(base.checkBash, command, ctx);
+        const h = verdictOf(head.checkBash, command, ctx);
+        if (b === h) identical++;
+        else differences.push({ index: i + 1, tool, command, base: b, head: h });
+      });
+    } finally {
+      restore?.();
+    }
+
+    print(`transcripts read: ${files.length}`);
+    print(`tool-use lines not JSON: ${unparsed}`);
+    print(`distinct commands: ${list.length} (real ${census.totals.real}, probe ${census.totals.probe})`);
+    print(`head: ${headRoot}`);
+    print(`context: cwd ${root}, ${workspace.manifests.length} package manifests`);
+    if (!opts.censusOnly) {
+      print(`base: ${opts.base} (${base.sha})`);
+      print(`commands judged: ${judged}`);
+      print(`identical verdicts: ${identical}`);
+      print(differenceSummary(differences));
+      for (const d of differences) for (const line of formatDifference(d, opts)) print(line);
+    }
+    print("");
+    print("census (program positions by kind; flags count commands):");
+    for (const line of census.format()) print(line);
+    print("");
+    print(`elapsed: ${((Date.now() - started) / 1000).toFixed(1)} s`);
+    return differences.length ? 1 : 0;
   } finally {
-    restore();
     if (base?.dir) rmSync(base.dir, { recursive: true, force: true });
   }
-
-  print(`transcripts read: ${files.length}`);
-  print(`tool-use lines not JSON: ${unparsed}`);
-  print(`distinct commands: ${list.length} (real ${census.totals.real}, probe ${census.totals.probe})`);
-  print(`head: ${headRoot}`);
-  print(`context: cwd ${root}, ${workspace.manifests.length} package manifests`);
-  if (!opts.censusOnly) {
-    print(`base: ${opts.base} (${base.sha})`);
-    print(`commands judged: ${judged}`);
-    print(`identical verdicts: ${identical}`);
-    print(differenceSummary(differences));
-    for (const d of differences) for (const line of formatDifference(d, opts)) print(line);
-  }
-  print("");
-  print("census (program positions by kind; flags count commands):");
-  for (const line of census.format()) print(line);
-  print("");
-  print(`elapsed: ${((Date.now() - started) / 1000).toFixed(1)} s`);
-  return differences.length ? 1 : 0;
 }
+
+/** An error's message, or the thrown value as text. */
+const messageOf = (e) => (e instanceof Error ? e.message : String(e));
 
 if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) {
   process.exitCode = await main(process.argv.slice(2));
