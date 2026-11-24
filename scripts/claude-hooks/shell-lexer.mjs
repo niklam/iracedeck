@@ -1178,7 +1178,7 @@ const viewEnd = (L, i) => (L.end ? L.end[i] : i + 1);
 
 /**
  * A {@link level} built from characters, each `{ c, at, end, live }` with
- * `at` and `end` view indices ({@link readLevel}, {@link unescaped}).
+ * `at` and `end` view indices ({@link readLevel}).
  */
 function levelOf(chars, extra = {}) {
   const at = new Int32Array(chars.length);
@@ -3707,8 +3707,8 @@ export function words(command) {
  * The words of one command segment, `{ word, shape }` each: with a trusted mask
  * the `flat` text's words, each with its raw text, so a quoted value is one word
  * however many separators or flags it carries; without one the raw segment split
- * by `words` in `shell-lexer.mjs`, every word its own shape. Shared by {@link parseMerge} and
- * {@link parseIssueEdit}.
+ * by {@link words}, every word its own shape. Shared by `parseMerge` in `merge-gate.mjs` and
+ * `parseIssueEdit` in `rules-bash.mjs`.
  */
 export function segmentTokens({ raw, flat, trusted }) {
   return trusted
@@ -3778,7 +3778,7 @@ function leadToken(open) {
  * bounded by the hook's spawn deadline.
  *
  * A heuristic, not a shell parser: the hooks catch mistakes, not deliberate
- * obfuscation. A string handed to a shell (`bash -c`, `eval`) is not lexed —
+ * obfuscation. A string handed to a shell (`bash -c`, `cmd /c`) is not lexed —
  * the rules read the raw text of the list element that hands it over then
  * ({@link view}, #1607), and its commands, past a lead of these tokens, are
  * read in the text that shell reads ({@link fedStarts}, #1634, #1646).

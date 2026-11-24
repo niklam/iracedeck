@@ -836,8 +836,8 @@ function deckReach(c, cwd, ctx, shell, trail, lostDir = false) {
     [...chainCommands(c, cwd, re, shell)].map((m) => ({ ...m, read, whole, re })),
   );
   const again = repeatsAt(c, shell);
-  // A command its shell reads differently from the text here (#1646: a string
-  // printf or `echo -e` prints, words `eval` joins) is judged on what that
+  // A command its shell reads differently from the text here (#1646: a quote
+  // its shell removes, words cmd.exe or PowerShell join) is judged on what that
   // shell reads, and its decoded hit excused only once judged; a shape the
   // decoded text does not hold leaves the hit standing, which `checkBash`
   // refuses (CodeRabbit CLI on #1646).
@@ -883,8 +883,9 @@ function deckReach(c, cwd, ctx, shell, trail, lostDir = false) {
     // which string a program word at command position feeds; the string a
     // runner hands a shell (`pnpm exec sh -c '…'`) it does not know, so a match
     // inside any string whose decoded text this reader has already judged as
-    // a line is left to it. A string a shell reads on stdin, and what `sudo`,
-    // `trap`, `watch` or `su` run, no wrapper reads, so those are judged here.
+    // a line is left to it. What `sudo`, `trap`, `watch` or `su` run no
+    // wrapper reads, so those are judged here (a string a shell reads on stdin
+    // is refused before any rule, #1659).
     if (how === "shell" && !stdin && isWrapper(via)) {
       leave();
       continue;
@@ -911,7 +912,7 @@ function deckReach(c, cwd, ctx, shell, trail, lostDir = false) {
     // ends at the first (#1607) — and the lexer's own match past it is the
     // one skipped above.
     // A command its shell reads differently from the text here (#1646: a
-    // string printf or `echo -e` prints, an escape the shell decodes) is read
+    // quote or an escape its shell removes, words it joins) is read
     // from what that shell reads, past the runner the rule's shape matched
     // there; its decoded hit is excused only once its words are judged. A
     // shape the decoded text does not hold leaves the hit standing.
@@ -1066,8 +1067,8 @@ const PS_LOOP_WORD = /(?<=(?:^|[\n;&|(){}])[ \t]*(?::\w+[ \t]+)?)(?:while|do|for
  * Where a shell is fed, the lexer sets its mask aside and the raw text shows
  * the strings (#1737 second read): a loop word or a bracket inside one is a
  * character of that string, never the loop's (`sh -c 'echo "done"'`, `cmd /c
- * "echo }"`). A string read by a shell on stdin, or one a non-reader (`watch`,
- * `trap`, `su`) runs, is judged here, so the loops in its text count, read
+ * "echo }"`). A string a non-reader (`watch`, `trap`, `su`) runs is judged
+ * here, so the loops in its text count, read
  * from that text; a wrapper's string is read through its own line ({@link
  * wrapperRuns}).
  */

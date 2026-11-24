@@ -256,7 +256,7 @@ export function prChangedFiles({ head, base, dir }) {
  * gate confirmed; `opts` go to {@link run} (the gate passes it as `GH_REPO`
  * too, as for its other reads). A rule set it cannot read whole is a failure;
  * one requiring no check is `contexts: []`, which the gate accepts only for
- * a PR that is not BLOCKED (`adminVerdict` in `rules-bash.mjs`).
+ * a PR that is not BLOCKED (`adminVerdict` in `merge-gate.mjs`).
  */
 export function requiredStatusChecks(repo, branch, dir, opts) {
   if (typeof repo !== "string" || !/^[\w.-]+\/[\w.-]+$/.test(repo))

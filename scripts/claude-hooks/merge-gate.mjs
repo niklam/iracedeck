@@ -302,7 +302,7 @@ const names = (paths, mark = () => "") =>
  * newest review object, S is what CodeRabbit last saw and the replay starts
  * from it; otherwise R is the start, as before.
  *
- * The replay (`replayRebase` in `lib.mjs`): the reviewed change re-applied
+ * The replay (`replayRebase` in `merge-gate-reads.mjs`): the reviewed change re-applied
  * onto the head's base must give the head's exact tree. Every file the
  * replay reports as conflicted gets a line check, and a line match still only
  * earns the ask — it cannot see where a line sits. A follow-up push is refused
@@ -402,7 +402,7 @@ export const GITHUB_COMMITTER = "GitHub <noreply@github.com>";
  * prose (`NO_REVIEW_PATHS`) and no skill's or agent's frontmatter, which is
  * configuration, changed between the merge-base and the head (an added or
  * deleted skill or agent file counts as changed). All of it is read with git
- * at the head (`prChangedFiles` in `lib.mjs`), never from the `no-coderabbit`
+ * at the head (`prChangedFiles` in `merge-gate-reads.mjs`), never from the `no-coderabbit`
  * label, which only decides whether CodeRabbit spends a review. A Dependabot
  * PR carrying anyone else's commit is judged on its files like any PR. A read
  * that fails is a no, never a pass, and a release back-merge is never one:
@@ -459,7 +459,7 @@ function adminQualifies(pr, ctx, isBackMerge) {
  *   `--match-head-commit <head>`, the head the files were read at, so a push
  *   between the read and the merge cannot slip a file in; and every status
  *   check the base branch's rules require must be in the rollup and green
- *   (`requiredStatusChecks` in `lib.mjs`), since BLOCKED, which the bypass
+ *   (`requiredStatusChecks` in `merge-gate-reads.mjs`), since BLOCKED, which the bypass
  *   sets aside for the missing approval, also stands for a required check
  *   that never reported. A rule set the gate cannot read refuses; one that
  *   requires no check (a `release/*` base today) passes, unless the PR is

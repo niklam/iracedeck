@@ -3,7 +3,7 @@
  * in (#1307).
  *
  * The gate's real test is a replay: the reviewed change re-applied onto the
- * head's base must give the head's exact tree (`replayRebase` in `lib.mjs`).
+ * head's base must give the head's exact tree (`replayRebase` in `merge-gate-reads.mjs`).
  * A file the replay reported as conflicted cannot match, since the replay
  * holds conflict markers where the head holds a resolution. For those files
  * this compares the added and removed lines of the two changes, each against

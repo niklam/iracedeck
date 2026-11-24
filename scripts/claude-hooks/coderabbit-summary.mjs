@@ -19,7 +19,7 @@
  * acceptance, never create one. Spec:
  * `docs/superpowers/specs/2026-10-10-issue-1386-changelog-fragments-merge-gate.md`, part B.
  *
- * Pure. Input is the PR's `comments` connection as `prComments` in `lib.mjs`
+ * Pure. Input is the PR's `comments` connection as `prComments` in `merge-gate-reads.mjs`
  * reads it: `{ totalCount, pageInfo: { hasNextPage }, nodes: [{ author:
  * { login, __typename }, editor, isMinimized, createdAt, lastEditedAt, body,
  * userContentEdits? }] }`, where the summary comment's node carries its edit
