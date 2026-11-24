@@ -1047,6 +1047,7 @@ function restItemWrite(args) {
 export const rules = [
   {
     name: "code-review is a Skill, never --fix",
+    occurrence: true,
     test: (c) =>
       has(c, /code-review[^\n|;&]*--fix\b/) &&
       "Never run /code-review with --fix: findings are candidates, not verdicts, and one bare run wrote eight files into master. Report only; apply verified findings by hand (.claude/rules/code-review.md).",
@@ -1483,6 +1484,7 @@ export const rules = [
   },
   {
     name: "never rewrite the board's Status options",
+    occurrence: true,
     test: (c) =>
       has(c, /updateProjectV2Field/) &&
       "`updateProjectV2Field` replaces the option list and regenerates its ids, which clears every card's lane. Add a lane in the UI instead.",
@@ -1597,6 +1599,7 @@ export const rules = [
   {
     name: "heredocs collapse doubled backslashes",
     bashOnly: true,
+    occurrence: true,
     test: (c) =>
       has(c, /<<-?\s*['"]?\w+/) &&
       has(c, /[A-Za-z]:\\\\/) &&
@@ -2174,6 +2177,20 @@ export function checkBash(command, ctx) {
   return checkText(powershell ? powershellAsBash(command) : command, ctx, powershell, 0);
 }
 
+/**
+ * The first deny of the rules marked `occurrence` — those that fire on any
+ * occurrence of a text in the raw command, wherever it sits — over `text`
+ * ({@link checkText}), or `null`.
+ */
+function occurrences(text, ctx, powershell) {
+  for (const rule of rules) {
+    if (!rule.occurrence || (powershell && rule.bashOnly)) continue;
+    const v = rule.test(text, ctx);
+    if (typeof v === "string") return v;
+  }
+  return null;
+}
+
 /** {@link checkBash} over the command read as bash (`text`); `depth` counts the re-judges with a respelled name in place. */
 function checkText(text, ctx, powershell, depth) {
   const { respelled, spliced, reprinted } = respelledPrograms(text);
@@ -2182,6 +2199,11 @@ function checkText(text, ctx, powershell, depth) {
   if (reprinted.length || respelled.length) {
     if (depth > 0)
       return `A program in a string this command hands to a shell is quoted, escaped or printed so the hook cannot read it in place${respelled.length ? ` (\`${respelled[0].word}\`)` : ""}. Spell the program as a plain word.`;
+    // The rules that fire on any occurrence of a text read this command's own
+    // first: a re-judge reads a rebuilt text, which drops a printer's operands
+    // (`printf '%d%.0s\n' 5 '<marker>'`, CodeRabbit on PR #1788).
+    const occurrence = occurrences(text, ctx, powershell);
+    if (occurrence) return occurrence;
   }
   if (reprinted.length) {
     // An echo -e or printf whose output holds a word its raw text cannot spell

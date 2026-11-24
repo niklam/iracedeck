@@ -15,6 +15,7 @@ import {
   issueEdits,
   issueFromWorktreePath,
   missingSpecParts,
+  rules,
   worktreeAddTarget,
 } from "./rules-bash.mjs";
 import { deckFindings } from "./script-runs.mjs";
@@ -6689,4 +6690,25 @@ describe("a carried merge or tag push behind a quoted lead value (#1646)", () =>
 
   it("passes an echo whose operands past a redirection run nothing guarded", () =>
     passes(String.raw`echo 'echo first;' 2>/dev/null 'ls' | bash`));
+
+  // The PR #1788 review (CodeRabbit at 7e8cd2e37): a reprint drops a printer's
+  // operands, so the rules that fire on any occurrence read the command itself.
+  it.each([
+    [String.raw`printf '%d%.0s\n' 5 'updateProjectV2Field' | bash`, /Status options|option list/],
+    [String.raw`printf '%%%.0s\n' 'updateProjectV2Field' | bash`, /option list/],
+    [String.raw`printf '%d%.0s\n' 5 '/code-review high --fix' | bash`, /--fix/],
+    [`cat <<EOF > f.txt\nx\nEOF\nprintf '%d%.0s\\n' 5 'C:\\\\temp' | bash`, /doubled backslash/],
+  ])("reads an occurrence rule's marker in a printer operand a reprint drops: %s", (c, why) =>
+    expect(deny(c)).toMatch(why),
+  );
+
+  it("passes a reprinted printer whose dropped operand carries no marker", () =>
+    passes(String.raw`printf '%d%.0s\n' 5 'harmless' | bash`));
+
+  it("marks exactly the rules that fire on any occurrence of a text", () =>
+    expect(rules.filter((r) => r.occurrence).map((r) => r.name)).toEqual([
+      "code-review is a Skill, never --fix",
+      "never rewrite the board's Status options",
+      "heredocs collapse doubled backslashes",
+    ]));
 });
