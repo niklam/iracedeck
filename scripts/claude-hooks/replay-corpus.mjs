@@ -381,24 +381,23 @@ const FLAGS = Object.freeze([
   ["unreadable", (v) => v.unreadable?.length > 0],
   ["respelled", (v) => v.respelled?.length > 0],
   ["spliced", (v) => v.spliced?.length > 0],
-  ["reprinted", (v) => v.reprinted?.length > 0],
   ["unsettled", (v) => Boolean(v.unsettled)],
   ["unclosedLead", (v) => Boolean(v.unclosedLead)],
-  ["unprintable", (v) => Boolean(v.unprintable)],
+  // A form the lexer's stopping rule refuses rather than reads (#1659).
+  ["refused", (v) => v.refused?.length > 0],
   ["!sure", (v) => !v.sure],
 ]);
 
 /**
  * A program position's kind as the census names it, from the fifth element of
  * a `view().programs` entry: `command` for a word at command position,
- * `shell:<via>` for the first word a fed shell runs (`(stdin)` or `(piped
- * stdin)` when the shell reads it there), `wrapper:<via>` for the word a
- * wrapper runs.
+ * `shell:<via>` for the first word a fed shell runs, `wrapper:<via>` for the
+ * word a wrapper runs. A shell reading its script on stdin is refused since
+ * #1659, so no position is read there.
  */
 export function kindName(kind) {
   if (!kind || kind.how === "command") return "command";
-  const feed = kind.stdin ? (kind.piped ? " (piped stdin)" : " (stdin)") : "";
-  return `${kind.how}:${kind.via ?? "?"}${feed}`;
+  return `${kind.how}:${kind.via ?? "?"}`;
 }
 
 /** One command's census: `{ positions: Map<kind, count>, flags: string[] }`, from its `view()`. */

@@ -370,8 +370,6 @@ describe("the census", () => {
     expect(kindName(undefined)).toBe("command");
     expect(kindName({ how: "command" })).toBe("command");
     expect(kindName({ how: "shell", via: "bash" })).toBe("shell:bash");
-    expect(kindName({ how: "shell", via: "sh", stdin: true })).toBe("shell:sh (stdin)");
-    expect(kindName({ how: "shell", via: "bash", stdin: true, piped: true })).toBe("shell:bash (piped stdin)");
     expect(kindName({ how: "wrapper", via: "find -exec" })).toBe("wrapper:find -exec");
   });
 
@@ -386,17 +384,16 @@ describe("the census", () => {
       unreadable: [{ start: 0 }],
       respelled: [],
       spliced: [],
-      reprinted: [],
       unsettled: false,
       unclosedLead: true,
-      unprintable: false,
+      refused: [{ form: "eval", shape: "eval …" }],
     };
     const one = censusOf(view);
     expect([...one.positions]).toEqual([
       ["command", 2],
       ["shell:bash", 1],
     ]);
-    expect(one.flags).toEqual(["unreadable", "unclosedLead", "!sure"]);
+    expect(one.flags).toEqual(["unreadable", "unclosedLead", "refused", "!sure"]);
 
     const census = new Census();
     census.add(one, false);
@@ -416,6 +413,7 @@ describe("the census", () => {
     expect(table[0].split(/\s{2,}/)).toEqual(["row", "real cmds", "real pos", "probe cmds", "probe pos"]);
     expect(table.slice(1).map((l) => l.split(/\s{2,}/)[0])).toEqual([
       "flag !sure",
+      "flag refused",
       "flag unclosedLead",
       "flag unreadable",
       "program command",

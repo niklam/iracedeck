@@ -161,10 +161,11 @@ export function firstMerge(command) {
 
 /**
  * The deny for a `gh pr merge` that is not its own command (#1634): the first
- * word of a string a shell runs (`bash -c 'gh pr merge 7'`, `eval "…"`, `echo
- * '…' | bash`, `pwsh -Command "…"`), or the program a wrapper runs (`sudo gh
- * pr merge 7`, `nice gh …`), or a later command of such a string (`printf
- * 'gh pr %s 7\n' view merge | bash`, #1646). Until #1634 no trap saw either,
+ * word of a string a shell runs (`bash -c 'gh pr merge 7'`, `pwsh -Command
+ * "…"`), or the program a wrapper runs (`sudo gh pr merge 7`, `nice gh …`),
+ * or a later command of such a string (`bash -c 'ls; gh pr merge 7'`, #1646);
+ * `eval`, a printer piped into a shell and a here-string are refused before
+ * the gate (#1659). Until #1634 no trap saw either,
  * so such a merge passed the gate unread; the gate reads the PR before the command runs and
  * cannot follow what a shell or a wrapper does to the repository, the
  * checkout or the environment in between, so it refuses rather than judge
@@ -174,7 +175,7 @@ const carriedMerge = (m) =>
   m.how === "command"
     ? `This \`gh pr merge\` is not its own command: it is a command of a string \`${m.shell}\` runs, and the gate cannot read what that shell does around it — where it runs, what reaches it, what else it runs. Type the merge directly, as its own command: \`gh pr merge <pr> --squash\` (#1634, #1646).`
     : m.how === "shell"
-      ? `This \`gh pr merge\` is not its own command: it is the first word of a string \`${m.via}\` runs${m.stdin ? " from its stdin" : ""}, and the gate cannot read what that shell does around it — where it runs, what reaches it, what else it runs. Type the merge directly, as its own command: \`gh pr merge <pr> --squash\` (#1634).`
+      ? `This \`gh pr merge\` is not its own command: it is the first word of a string \`${m.via}\` runs, and the gate cannot read what that shell does around it — where it runs, what reaches it, what else it runs. Type the merge directly, as its own command: \`gh pr merge <pr> --squash\` (#1634).`
       : `This \`gh pr merge\` is not its own command: it runs under \`${m.via}\`, which can change what gh resolves the PR and the repository to after the gate has read them. Type the merge directly, as its own command, with nothing ahead of it but a plain \`cd <dir> &&\` (#1634).`;
 
 /**
