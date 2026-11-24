@@ -5306,7 +5306,10 @@ describe("a group holding a word an object inherits (#1659)", () => {
 // CodeRabbit CLI on #1659: a later `exec` that surely runs resets the stdin.
 describe("an exec chain's last stdin (#1659)", () => {
   it("passes a stdin the chain resets, and refuses one it may not", () => {
-    passes(`exec <<< ':' && exec </dev/null && bash`);
+    passes(`exec <<< ':'; exec </dev/null; bash`);
+    expect(stopped(`exec <<< 'gh pr merge 7 --squash'; false && exec </dev/null; bash`)).toContain(
+      "from a here-string",
+    );
     expect(stopped(`exec <<< 'gh pr merge 7 --squash' || exec </dev/null; bash`)).toContain("from a here-string");
   });
 });

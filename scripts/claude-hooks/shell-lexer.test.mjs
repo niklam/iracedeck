@@ -2418,7 +2418,7 @@ describe("the stopping rule: the pipe that feeds a stdin shell (#1659 CodeRabbit
 describe("the stopping rule: an exec chain's last stdin (#1659 CodeRabbit)", () => {
   const HERE_STRING = "a shell reading its script from a here-string";
   it.each([
-    `exec <<< ':' && exec </dev/null && bash`,
+    `exec <<< ':'; exec </dev/null; bash`,
     `exec <<< ':'; exec < in.txt; bash`,
     `exec 0<<<x\nexec 0</dev/null\nbash`,
   ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
@@ -2474,4 +2474,21 @@ describe("the stopping rule: the xargs that runs a shell (#1659 CodeRabbit)", ()
     `ls | env A=1 xargs -I{} sh -c 'cat {}'`,
     `ls | /usr/bin/xargs -I{} zsh -c 'cat {}'`,
   ])("refuses %s", (c) => expect(lexer.refusedForms(c)[0]?.form).toBe(FILLED));
+});
+
+// PR #1798 review: an exec after `&&` may not run, and one sent to the
+// background runs in another shell: neither resets the stdin an earlier exec set.
+describe("the stopping rule: an exec reset that surely runs in this shell (#1659 PR review)", () => {
+  const HERE_STRING = "a shell reading its script from a here-string";
+  it.each([
+    `exec <<<'gh pr merge 5 --squash'; false && exec </dev/null; bash`,
+    `exec <<<'gh pr merge 5 --squash' && exec </dev/null && bash`,
+    `exec <<<'gh pr merge 5 --squash'; exec </dev/null & bash`,
+    `exec <<<'gh pr merge 5 --squash'; exec </dev/null | cat; bash`,
+  ])("refuses %s", (c) => expect(lexer.refusedForms(c)[0]?.form).toBe(HERE_STRING));
+  it.each([
+    `exec <<< x; exec </dev/null; bash`,
+    `exec <<< x\nexec </dev/null\nbash`,
+    `exec <<< x; ls; exec < in.txt; bash`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
 });

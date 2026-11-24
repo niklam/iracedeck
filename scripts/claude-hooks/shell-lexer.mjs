@@ -1658,11 +1658,13 @@ const CLOSER = /(?:(?<=^|[\s;&|])(?:\}|done|fi|esac)|\))(?=[\s<0-9]|$)/g;
 const EXEC_WORD = /(?<=^|[\s;&|(])exec(?=\s)/g;
 /**
  * Text between two `exec`s across which the later one may not run, or not in
- * the same shell (`fedStarts`' `stdinAround`): a pipe, `||`, a group, a
- * subshell or a compound command's word.
+ * the same shell (`fedStarts`' `stdinAround`): a pipe, `&&`, `||` or `&` (any
+ * `&`, a redirect's too, erring to deny), a group, a subshell or a compound
+ * command's word. Only `;`, newlines and plain commands count as surely
+ * running (PR #1798 review).
  */
 const UNSURE_CHAIN =
-  /[|(){}\x60]|\$\(|(?:^|[\s;&])(?:if|then|else|elif|fi|while|until|for|select|do|done|case|esac|function)(?=[\s;&]|$)/;
+  /[|&(){}\x60]|\$\(|(?:^|[\s;&])(?:if|then|else|elif|fi|while|until|for|select|do|done|case|esac|function)(?=[\s;&]|$)/;
 /** The refused form of each stdin kind ({@link readCommand}) a stdin shell may not read its script from. */
 const STREAM_FORMS = Object.freeze({
   hereString: REFUSED.hereString,
@@ -2091,8 +2093,9 @@ function fedStarts(command, text, fed, programs) {
     }
     // The last `exec` that sets stdin wins, but one that resets it to a file
     // only when it surely runs in the same shell after the one it overrides:
-    // nothing but `;`, `&&`, newlines and plain commands between them, no
-    // `|`, `||`, group, subshell or compound command (CodeRabbit CLI on #1659).
+    // nothing but `;`, newlines and plain commands between them, no `&&`,
+    // `|`, `||`, group, subshell or compound command, and the reset itself
+    // not piped or sent to the background (CodeRabbit CLI on #1659, PR #1798).
     let found;
     let after = 0;
     for (const m of text.slice(0, p).matchAll(EXEC_WORD)) {
@@ -2100,7 +2103,8 @@ function fedStarts(command, text, fed, programs) {
       if (r.program !== undefined || r.stdin === "pipe") continue;
       const stream = formOf(r.stdin, "exec <…;");
       if (stream) found = stream;
-      else if (found && !UNSURE_CHAIN.test(text.slice(after, m.index))) found = undefined;
+      else if (found && !UNSURE_CHAIN.test(text.slice(after, m.index)) && !/[|&]/.test(text[base.ends[m.index]] ?? ""))
+        found = undefined;
       after = m.index + m[0].length;
     }
     return found;
