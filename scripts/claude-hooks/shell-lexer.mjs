@@ -3518,18 +3518,98 @@ export const unclosedLead = (command) => view(command).unclosedLead;
  * The forms in `command` that hand text to a shell in a way the hook refuses
  * rather than reads (#1659, {@link REFUSED}), each `{ form, shape }`, in the
  * order {@link fedStarts} found them: `checkBash` refuses a command with any,
- * before any rule judges it. A command typed to PowerShell (`shell`) refuses
- * its `eval` too, `Invoke-Expression` or `iex`, wherever it is a program word.
+ * before any rule judges it. PowerShell's `eval`, `Invoke-Expression` or
+ * `iex`, is refused where PowerShell runs it (CLI check of be3d79a4b): a
+ * program position of the typed text when PowerShell reads that (`shell`),
+ * never one in a string a shell is handed (`bash -c 'iex -S mix'` runs
+ * Elixir's), whose level its own shell judges ({@link view}); and a statement
+ * of a script block or subexpression, which bash's reading holds no position
+ * for (`ls | % { iex $_ }`), in that typed text and in each PowerShell string
+ * ({@link powershellStatementEvals}).
  */
 export function refusedForms(command, shell = BASH) {
   const v = view(command);
   const out = [...v.refused];
-  if (shell === POWERSHELL)
+  const evals = [];
+  if (shell === POWERSHELL) {
+    const inString = new Set(v.decoded.map(([p]) => p));
     for (const p of v.byName.keys()) {
+      if (inString.has(p)) continue;
       PROGRAM_WORD.lastIndex = p;
       const name = PROGRAM_WORD.exec(v.text)?.[0];
-      if (PS_EVAL.has(name)) out.unshift({ form: REFUSED.eval, shape: `${name} …` });
+      if (PS_EVAL.has(name)) evals.push(name);
     }
+    evals.push(...powershellStatementEvals(command));
+  }
+  const strings = new Set(v.decoded.map(([, L]) => L).filter((L) => POWERSHELLS.has(L.via)));
+  for (const L of strings) evals.push(...powershellStatementEvals(L.text));
+  if (evals.length) out.unshift({ form: REFUSED.eval, shape: `${evals[0]} …` });
+  return out;
+}
+
+/**
+ * The names of PowerShell's eval (`iex`, `Invoke-Expression`) that start a
+ * statement of the PowerShell `text`, lowercased: at its start or after a
+ * newline, `;`, `|`, `&`, `=`, `{` or `(`, so a script block's and a
+ * subexpression's statements count, a double-quoted string's `$(…)` among
+ * them, while an argument (`Get-Help iex`), a single-quoted string and a
+ * comment do not ({@link refusedForms}, CLI check of be3d79a4b).
+ */
+export function powershellStatementEvals(text) {
+  // A word up to the next blank, operator, bracket, quote, backtick or `#`.
+  const PS_WORD = /[^\s;|&={}()'"\x60#]+/y;
+  const out = [];
+  // Frames: a double-quoted string, or a `$(…)` in one, with its paren depth.
+  const stack = [];
+  let lead = "\n";
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    const top = stack.at(-1);
+    if (top?.kind === "dq") {
+      if (c === "\x60") i++;
+      else if (c === '"' && text[i + 1] === '"') i++;
+      else if (c === '"') stack.pop();
+      else if (c === "$" && text[i + 1] === "(") {
+        stack.push({ kind: "sub", depth: 0 });
+        i++;
+        lead = "(";
+      }
+      continue;
+    }
+    if (c === "\x60") {
+      i++;
+      lead = "x";
+    } else if (c === "'") {
+      // A single-quoted string, `''` its quote.
+      for (i++; i < text.length && !(text[i] === "'" && text[i + 1] !== "'"); i++) if (text[i] === "'") i++;
+      lead = "x";
+    } else if (c === '"') {
+      stack.push({ kind: "dq" });
+      lead = "x";
+    } else if (c === "<" && text[i + 1] === "#") {
+      const end = text.indexOf("#>", i + 2);
+      i = end < 0 ? text.length : end + 1;
+    } else if (c === "#" && /^[\s;|&({]?$/.test(text[i - 1] ?? "")) {
+      const end = text.indexOf("\n", i);
+      i = end < 0 ? text.length : end - 1;
+    } else if (c === ")" && top?.kind === "sub" && top.depth === 0) {
+      stack.pop();
+    } else if (c === "(" || c === ")") {
+      if (top?.kind === "sub") top.depth += c === "(" ? 1 : -1;
+      lead = c;
+    } else if (/\s/.test(c)) {
+      if (c === "\n") lead = "\n";
+    } else if (/[;|&={}]/.test(c)) {
+      lead = c;
+    } else {
+      PS_WORD.lastIndex = i;
+      const word = PS_WORD.exec(text)?.[0] ?? c;
+      const name = word.toLowerCase();
+      if (PS_EVAL.has(name) && /[\n;|&={(]/.test(lead)) out.push(name);
+      i += word.length - 1;
+      lead = "x";
+    }
+  }
   return out;
 }
 

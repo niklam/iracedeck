@@ -2680,3 +2680,45 @@ describe("the stopping rule: the nearest closer that redirects stdin (#1659 PR r
     `exec <<< x; bash; { cat; } </dev/null`,
   ])("refuses %s", (c) => expect(lexer.refusedForms(c)[0]?.form).toBe(HERE_STRING));
 });
+
+// CLI check of be3d79a4b: the PowerShell tool's eval scan read every program
+// position, a bash string's among them, and missed the statements of a
+// PowerShell script block, which bash does not read as positions.
+describe("the stopping rule: PowerShell's eval where PowerShell runs it (#1659 CLI check)", () => {
+  const EVAL = "eval";
+  const ps = (c) => lexer.refusedForms(lexer.powershellAsBash(c), lexer.POWERSHELL);
+  it.each([
+    `bash -c 'iex -S mix'`,
+    `bash -c 'ls; iex -S mix'`,
+    `bash -c '{ iex; }'`,
+    `wsl -- bash -c 'iex -S mix'`,
+    `Write-Host '{ iex x }'`,
+    `git commit -m "a; iex b"`,
+    `Get-Help iex`,
+    `Get-Content x.txt # ; iex x`,
+    'Write-Host "a `$(iex x)"',
+    `Write-Host 'it''s; iex'`,
+  ])("reads and refuses nothing in %s from the PowerShell tool", (c) => expect(ps(c)).toEqual([]));
+  it.each([
+    `iex x`,
+    `ls; Invoke-Expression x`,
+    `& { iex x }`,
+    `ls | % { iex $_ }`,
+    `ls | ForEach-Object { Invoke-Expression $_ }`,
+    `$s = { iex x }; & $s`,
+    `Invoke-Command -ScriptBlock { iex x }`,
+    `if ($a) { "x" } else { iex x }`,
+    `$(iex x)`,
+    `Write-Host "$(iex x)"`,
+    `bash -c "echo $(iex x)"`,
+    `pwsh -c 'iex x'`,
+  ])("refuses %s from the PowerShell tool", (c) => expect(ps(c)[0]?.form).toBe(EVAL));
+  it.each([`pwsh -c 'ls | % { iex $_ }'`, `powershell -Command "& { Invoke-Expression x }"`])(
+    "refuses %s from bash",
+    (c) => expect(lexer.refusedForms(c)[0]?.form).toBe(EVAL),
+  );
+  it.each([`iex -S mix`, `bash -c '{ iex; }'`, `pwsh -c 'Write-Host "{ iex }"'`])(
+    "reads and refuses nothing in %s from bash",
+    (c) => expect(lexer.refusedForms(c)).toEqual([]),
+  );
+});

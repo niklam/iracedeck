@@ -5675,3 +5675,14 @@ describe("the lexer's stopping rule: a form it does not read is refused outright
     );
   });
 });
+
+// CLI check of be3d79a4b: PowerShell's eval is refused where PowerShell runs
+// it, a script block's statements included, and nowhere else.
+describe("PowerShell's eval where PowerShell runs it (#1659)", () => {
+  const ps = () => ctx({ shell: POWERSHELL });
+  it("passes Elixir's iex in a bash string, and refuses one in a script block", () => {
+    passes(`bash -c 'iex -S mix'`, ps());
+    expect(stopped(`ls | % { iex $_ }`, ps())).toContain("(eval)");
+    expect(stopped(`pwsh -c 'ls | % { iex $_ }'`)).toContain("(eval)");
+  });
+});
