@@ -1,8 +1,9 @@
 import * as childProcess from "node:child_process";
 import * as fs from "node:fs";
+import * as fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import {
   Census,
@@ -10,6 +11,7 @@ import {
   CommandSet,
   CONTEXT_FIELDS,
   cut,
+  differenceSummary,
   extractCommands,
   fixedContext,
   forbidSideEffects,
@@ -19,6 +21,7 @@ import {
   kindName,
   main,
   NO_WORKSPACE,
+  opensForWriting,
   parseCli,
   probeReasons,
   readCommands,
@@ -359,9 +362,31 @@ describe("verdicts", () => {
     expect(cut("x".repeat(400), 300)).toBe(`${"x".repeat(300)}...`);
     const d = { index: 7, tool: "Bash", command: "gh pr merge 5", base: "PASS", head: `DENY: ${"y".repeat(400)}` };
     const plain = formatDifference(d);
-    expect(plain).toEqual(["#7 Bash", "  base: PASS", `  head: DENY: ${"y".repeat(294)}...`]);
+    expect(plain).toEqual(["#7 Bash", "  probe: real", "  base: PASS", `  head: DENY: ${"y".repeat(294)}...`]);
     expect(plain.join("\n")).not.toContain("gh pr merge");
     expect(formatDifference(d, { showCommands: true })[1]).toBe("  command: gh pr merge 5");
+  });
+
+  // #1659 review: the acceptance gate (no real command changes verdict) is
+  // applied by reading which pattern made each difference a probe.
+  it("name the probe patterns a difference matched, or say it is real", () => {
+    const d = { index: 3, tool: "PowerShell", base: "PASS", head: "DENY: x" };
+    expect(formatDifference({ ...d, command: "ls" })[1]).toBe("  probe: real");
+    expect(formatDifference({ ...d, command: "gh pr merge 99999 # shell-lexer" })[1]).toBe(
+      "  probe: a PR number of 99999 or more; a hook module named",
+    );
+    expect(formatDifference({ ...d, command: "x" }, { showCommands: true }).slice(1, 3)).toEqual([
+      "  command: x",
+      "  probe: real",
+    ]);
+  });
+
+  it("count the differences, real apart from probes", () => {
+    const d = (command) => ({ index: 1, tool: "Bash", command, base: "PASS", head: "DENY: x" });
+    expect(differenceSummary([])).toBe("differing verdicts: 0 (real 0, probe 0)");
+    expect(differenceSummary([d("ls"), d("ls -la"), d("echo zz-probe")])).toBe(
+      "differing verdicts: 3 (real 2, probe 1)",
+    );
   });
 });
 
@@ -440,6 +465,79 @@ describe("side effects while judging", () => {
     }
     expect(childProcess.spawnSync).toBe(spawnSync);
     expect(fs.writeFileSync).toBe(writeFileSync);
+  });
+
+  // #1659 review: the promise API, the async writers, the copy and link
+  // writers, and an open for writing escaped the list.
+  const never = path.join(os.tmpdir(), "replay-corpus-never-written.txt");
+  // A writer that got through would leave its file: removed, so it fails once.
+  afterEach(async () => {
+    await new Promise((r) => setTimeout(r, 0));
+    for (const p of [never, `${never}.2`]) fs.rmSync(p, { recursive: true, force: true });
+  });
+  it.each([
+    ["fs.promises.writeFile", () => fs.promises.writeFile(never, "x")],
+    ["fs.promises.appendFile", () => fs.promises.appendFile(never, "x")],
+    ["fs.promises.mkdir", () => fs.promises.mkdir(never)],
+    ["fs.promises.rm", () => fs.promises.rm(never)],
+    ["fs.promises.rmdir", () => fs.promises.rmdir(never)],
+    ["fs.promises.unlink", () => fs.promises.unlink(never)],
+    ["fs.promises.rename", () => fs.promises.rename(never, `${never}.2`)],
+    ["fs.promises.copyFile", () => fs.promises.copyFile(never, `${never}.2`)],
+    ["fs.promises.cp", () => fs.promises.cp(never, `${never}.2`)],
+    ["fs.promises.symlink", () => fs.promises.symlink(never, `${never}.2`)],
+    ["fs/promises writeFile through its ESM binding", () => fsp.writeFile(never, "x")],
+    ["fs.writeFile", () => fs.writeFile(never, "x", () => {})],
+    ["fs.appendFile", () => fs.appendFile(never, "x", () => {})],
+    ["fs.cp", () => fs.cp(never, `${never}.2`, () => {})],
+    ["fs.cpSync", () => fs.cpSync(never, `${never}.2`)],
+    ["fs.symlinkSync", () => fs.symlinkSync(never, `${never}.2`)],
+    ["fs.writeSync", () => fs.writeSync(1, "x")],
+    ["fs.openSync for writing", () => fs.openSync(never, "w")],
+    ["fs.openSync for appending", () => fs.openSync(never, "a")],
+    ["fs.openSync for reading and writing", () => fs.openSync(never, "r+")],
+    ["fs.openSync with a numeric write flag", () => fs.openSync(never, fs.constants.O_WRONLY)],
+    ["fs.openSync with a numeric create flag", () => fs.openSync(never, fs.constants.O_RDONLY | fs.constants.O_CREAT)],
+  ])("make %s throw while judging", (_, write) => {
+    const restore = forbidSideEffects();
+    try {
+      expect(write).toThrow(/was called while judging|for writing while judging/);
+    } finally {
+      restore();
+    }
+    expect(fs.existsSync(never)).toBe(false);
+  });
+
+  it("tell an open's flags that write from those that read", () => {
+    const c = fs.constants;
+    for (const f of ["w", "wx", "w+", "a", "ax", "a+", "as+", "r+", "rs+", c.O_WRONLY, c.O_RDWR, c.O_CREAT, c.O_APPEND])
+      expect(opensForWriting(f, c), String(f)).toBe(true);
+    for (const f of [undefined, null, "r", "rs", c.O_RDONLY, () => {}])
+      expect(opensForWriting(f, c), String(f)).toBe(false);
+  });
+
+  it("leave a read alone, an open for reading among them, and restore every writer", () => {
+    const originals = {
+      writeFile: fs.promises.writeFile,
+      cpSync: fs.cpSync,
+      openSync: fs.openSync,
+      fspWriteFile: fsp.writeFile,
+    };
+    const here = path.join(import.meta.dirname, "pre-bash.mjs");
+    const restore = forbidSideEffects();
+    try {
+      const fd = fs.openSync(here, "r");
+      fs.closeSync(fd);
+      const fd2 = fs.openSync(here);
+      fs.closeSync(fd2);
+      expect(fs.readFileSync(here, "utf8")).toContain("checkBash");
+    } finally {
+      restore();
+    }
+    expect(fs.promises.writeFile).toBe(originals.writeFile);
+    expect(fs.cpSync).toBe(originals.cpSync);
+    expect(fs.openSync).toBe(originals.openSync);
+    expect(fsp.writeFile).toBe(originals.fspWriteFile);
   });
 });
 

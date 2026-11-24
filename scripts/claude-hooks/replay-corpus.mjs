@@ -366,11 +366,29 @@ export function cut(text, n) {
   return one.length > n ? `${one.slice(0, n)}...` : one;
 }
 
-/** The lines one difference prints; the command only when asked for. */
+/**
+ * The lines one difference prints; the command only when asked for. Each
+ * says which {@link PROBE_PATTERNS} its command matched ({@link
+ * probeReasons}), or that it is real, so the acceptance gate — no real
+ * command changes its verdict — is applied by reading the names rather than
+ * by trusting a loose heuristic (#1659 review).
+ */
 export function formatDifference({ index, tool, command, base, head }, { showCommands = false } = {}) {
-  const lines = [`#${index} ${tool}`, `  base: ${cut(base, VERDICT_CUT)}`, `  head: ${cut(head, VERDICT_CUT)}`];
+  const reasons = probeReasons(command);
+  const lines = [
+    `#${index} ${tool}`,
+    `  probe: ${reasons.length ? reasons.join("; ") : "real"}`,
+    `  base: ${cut(base, VERDICT_CUT)}`,
+    `  head: ${cut(head, VERDICT_CUT)}`,
+  ];
   if (showCommands) lines.splice(1, 0, `  command: ${cut(command, COMMAND_CUT)}`);
   return lines;
+}
+
+/** The count of `differences`, real commands apart from probes ({@link isProbe}). */
+export function differenceSummary(differences) {
+  const probes = differences.filter((d) => isProbe(d.command)).length;
+  return `differing verdicts: ${differences.length} (real ${differences.length - probes}, probe ${probes})`;
 }
 
 // ---------------------------------------------------------------------------
@@ -462,41 +480,79 @@ export class Census {
 // ---------------------------------------------------------------------------
 // No side effects while judging
 
+/** The file writers of `fs`, each also on `fs.promises` but those marked sync-only or callback-only. */
+const FS_WRITERS = Object.freeze({
+  both: ["writeFile", "appendFile", "mkdir", "rm", "rmdir", "unlink", "rename", "copyFile", "cp", "symlink", "link"],
+  sync: [
+    "writeFileSync",
+    "appendFileSync",
+    "mkdirSync",
+    "rmSync",
+    "rmdirSync",
+    "unlinkSync",
+    "renameSync",
+    "copyFileSync",
+    "cpSync",
+    "symlinkSync",
+    "linkSync",
+    "writeSync",
+    "truncateSync",
+  ],
+  callback: ["write", "truncate"],
+});
+
 /**
- * Makes every process spawn and the usual file writes throw until the
- * returned function is called, ESM bindings included
- * (`syncBuiltinESMExports`): a rule that reached past `ctx` would otherwise
- * run git or gh, and differ by what the machine answered.
+ * Whether the `flags` an `open` is given write: a string with `w`, `a` or `+`
+ * (`"w"`, `"ax"`, `"r+"`), or a number with a write, create, truncate or
+ * append bit. None — `open`'s default `"r"`, or a callback in their place —
+ * reads.
+ */
+export function opensForWriting(flags, constants) {
+  if (typeof flags === "number") {
+    const { O_WRONLY = 0, O_RDWR = 0, O_CREAT = 0, O_TRUNC = 0, O_APPEND = 0 } = constants;
+    return (flags & (O_WRONLY | O_RDWR | O_CREAT | O_TRUNC | O_APPEND)) !== 0;
+  }
+  return typeof flags === "string" && /[wa+]/.test(flags);
+}
+
+/**
+ * Makes every process spawn and every file write throw until the returned
+ * function is called, ESM bindings included (`syncBuiltinESMExports`): a rule
+ * that reached past `ctx` would otherwise run git or gh, and differ by what
+ * the machine answered. The writers are `fs`'s sync, callback and promise
+ * ones ({@link FS_WRITERS}), and an `open` whose flags write ({@link
+ * opensForWriting}); an `open` for reading still works.
  */
 export function forbidSideEffects() {
   const require = createRequire(import.meta.url);
+  const fs = require("node:fs");
+  const refuse = (name) => () => {
+    throw new Error(`replay-corpus: ${name} was called while judging`);
+  };
+  // An open passes through for reading and throws for writing.
+  const opener = (name, open) =>
+    function (path, flags, ...rest) {
+      if (opensForWriting(flags, fs.constants))
+        throw new Error(`replay-corpus: ${name} opened a file for writing while judging`);
+      return open.call(this, path, flags, ...rest);
+    };
   const targets = [
-    [require("node:child_process"), ["spawn", "spawnSync", "exec", "execSync", "execFile", "execFileSync", "fork"]],
-    [
-      require("node:fs"),
-      [
-        "writeFileSync",
-        "appendFileSync",
-        "mkdirSync",
-        "rmSync",
-        "rmdirSync",
-        "unlinkSync",
-        "renameSync",
-        "copyFileSync",
-      ],
-    ],
+    [require("node:child_process"), "", ["spawn", "spawnSync", "exec", "execSync", "execFile", "execFileSync", "fork"]],
+    [fs, "", [...FS_WRITERS.both, ...FS_WRITERS.sync, ...FS_WRITERS.callback]],
+    [fs.promises, "fs.promises.", [...FS_WRITERS.both, "truncate"]],
   ];
   const saved = [];
-  for (const [mod, names] of targets)
-    for (const name of names) {
-      saved.push([mod, name, mod[name]]);
-      mod[name] = () => {
-        throw new Error(`replay-corpus: ${name} was called while judging`);
-      };
-    }
+  const replace = (mod, name, fn) => {
+    saved.push([mod, name, mod[name]]);
+    mod[name] = fn;
+  };
+  for (const [mod, prefix, names] of targets) for (const name of names) replace(mod, name, refuse(prefix + name));
+  replace(fs, "openSync", opener("openSync", fs.openSync));
+  replace(fs, "open", opener("open", fs.open));
+  replace(fs.promises, "open", opener("fs.promises.open", fs.promises.open));
   syncBuiltinESMExports();
   return () => {
-    for (const [mod, name, fn] of saved) mod[name] = fn;
+    for (const [mod, name, fn] of saved.reverse()) mod[name] = fn;
     syncBuiltinESMExports();
   };
 }
@@ -699,7 +755,7 @@ export async function main(argv, print = (line) => process.stdout.write(`${line}
     print(`base: ${opts.base} (${base.sha})`);
     print(`commands judged: ${judged}`);
     print(`identical verdicts: ${identical}`);
-    print(`differing verdicts: ${differences.length}`);
+    print(differenceSummary(differences));
     for (const d of differences) for (const line of formatDifference(d, opts)) print(line);
   }
   print("");
