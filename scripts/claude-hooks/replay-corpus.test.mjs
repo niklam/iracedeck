@@ -654,9 +654,20 @@ function leaveCase(c) {
  * `close` waited for, by which the descriptor is released; one on a
  * descriptor it does not close (`autoClose: false`, the case's own) is ended
  * and its `finish` or error waited for, since destroying it would close that
- * descriptor under the case. Anything else settles as a promise would.
+ * descriptor under the case. A descriptor an escaped open returned (`opens`:
+ * the writer is an open, since a write returns a count, no descriptor), or a
+ * file handle its promise gives, is closed (CodeRabbit on 164de4f80).
+ * Anything else settles as a promise would.
  */
-function completionOf(returned) {
+function completionOf(returned, opens = false) {
+  if (opens && typeof returned === "number") {
+    try {
+      fs.closeSync(returned);
+    } catch {
+      // Closed already.
+    }
+    return Promise.resolve();
+  }
   if (returned && typeof returned.on === "function" && typeof returned.destroy === "function")
     return new Promise((resolve) => {
       if (returned.autoClose === false) {
@@ -671,7 +682,7 @@ function completionOf(returned) {
       returned.destroy();
     });
   return Promise.resolve(returned).then(
-    () => {},
+    (value) => (value && typeof value.close === "function" ? value.close().catch(() => {}) : undefined),
     () => {},
   );
 }
@@ -787,7 +798,7 @@ describe("side effects while judging", () => {
         restore();
       }
       if (!threw) {
-        const settled = completionOf(returned);
+        const settled = completionOf(returned, /\bopen(?:Sync)?\b/.test(_));
         const callback = write.length > 1 ? called : Promise.resolve();
         // Still pending past the bound: this case's descriptor and folder stay
         // until the write settles, so the OS cannot hand that descriptor to a
@@ -862,6 +873,17 @@ describe("side effects while judging", () => {
       expect(onDescriptor.writableFinished).toBe(true);
       expect(open()).toBe(true);
       await expect(completionOf(Promise.reject(new Error("x")))).resolves.toBeUndefined();
+    });
+
+    // CodeRabbit on 164de4f80: an escaped open's descriptor stayed open.
+    it("as a descriptor or a file handle is closed", async () => {
+      const file = path.join(dir, "fixture.txt");
+      const escaped = fs.openSync(file, "r");
+      await completionOf(escaped, true);
+      expect(() => fs.fstatSync(escaped)).toThrow();
+      const handle = await fs.promises.open(file, "r");
+      await completionOf(Promise.resolve(handle));
+      expect(handle.fd).toBe(-1);
     });
 
     it("released in time goes back to the case's own cleanup", async () => {
