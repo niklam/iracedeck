@@ -9,7 +9,6 @@ import path from "node:path";
 
 import {
   applyVerdict,
-  baseChangedSince,
   currentBranch,
   ghJson,
   git,
@@ -17,18 +16,21 @@ import {
   linkTargets,
   mainRepoRoot,
   originMasterFresh,
-  prChangedFiles,
-  prComments,
   readIndexFile,
   readInput,
   readRepoFile,
-  replayRebase,
-  requiredStatusChecks,
   setHookDeadline,
   specFilenames,
   toplevel,
   workspacePackages,
 } from "./lib.mjs";
+import {
+  baseChangedSince,
+  prChangedFiles,
+  prComments,
+  replayRebase,
+  requiredStatusChecks,
+} from "./merge-gate-reads.mjs";
 import { checkBash } from "./rules-bash.mjs";
 import { BASH, POWERSHELL } from "./shell-lexer.mjs";
 

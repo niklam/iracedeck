@@ -24,7 +24,8 @@ import {
   setBoardStatus,
   setHookDeadline,
 } from "./lib.mjs";
-import { firstMerge, GIT_WORKTREE_ADD, issueEdits, issueFromWorktreePath, worktreeAddTarget } from "./rules-bash.mjs";
+import { firstMerge } from "./merge-gate.mjs";
+import { GIT_WORKTREE_ADD, issueEdits, issueFromWorktreePath, worktreeAddTarget } from "./rules-bash.mjs";
 import {
   assignedGhRepo,
   boardIssues,

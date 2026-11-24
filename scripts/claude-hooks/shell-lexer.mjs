@@ -3838,6 +3838,34 @@ export function words(command) {
 }
 
 /**
+ * The words of one command segment, `{ word, shape }` each: with a trusted mask
+ * the `flat` text's words, each with its raw text, so a quoted value is one word
+ * however many separators or flags it carries; without one the raw segment split
+ * by `words` in `shell-lexer.mjs`, every word its own shape. Shared by {@link parseMerge} and
+ * {@link parseIssueEdit}.
+ */
+export function segmentTokens({ raw, flat, trusted }) {
+  return trusted
+    ? [...flat.matchAll(/\S+/g)].map((m) => ({ word: raw.slice(m.index, m.index + m[0].length), shape: m[0] }))
+    : words(raw).map((w) => ({ word: w, shape: w }));
+}
+
+/** Whether a {@link segmentTokens} word is a plain literal: its raw text is its flat shape. */
+export const literal = (t) => t !== undefined && t.word === t.shape;
+
+/**
+ * A word's value when the hook can know it: a plain literal, or one in quotes
+ * that expand nothing; `null` for anything else, a missing word included. The
+ * mask leaves a bare `$REPO` as it is, so a `$` is refused here.
+ */
+export function plainValue(t) {
+  if (t === undefined || /[$`]/.test(t.word)) return null;
+  if (literal(t)) return t.word;
+  const quoted = /^'([^']*)'$/.exec(t.word) ?? /^"([^"$`\\]*)"$/.exec(t.word);
+  return quoted ? quoted[1] : null;
+}
+
+/**
  * An anchored rule ({@link cmd}) finds its command as {@link matchesAt} does —
  * at command position, or as the first word a fed shell or a wrapper runs
  * (#1634) — and stops at the first, with no sort and no groups read; an
