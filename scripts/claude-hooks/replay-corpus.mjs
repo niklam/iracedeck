@@ -554,11 +554,25 @@ export class Census {
 
 /** The file writers of `fs`, each also on `fs.promises` but those marked sync-only or callback-only. */
 const FS_WRITERS = Object.freeze({
-  both: ["writeFile", "appendFile", "mkdir", "rm", "rmdir", "unlink", "rename", "copyFile", "cp", "symlink", "link"],
+  both: [
+    "writeFile",
+    "appendFile",
+    "mkdir",
+    "mkdtemp",
+    "rm",
+    "rmdir",
+    "unlink",
+    "rename",
+    "copyFile",
+    "cp",
+    "symlink",
+    "link",
+  ],
   sync: [
     "writeFileSync",
     "appendFileSync",
     "mkdirSync",
+    "mkdtempSync",
     "rmSync",
     "rmdirSync",
     "unlinkSync",

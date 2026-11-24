@@ -627,35 +627,64 @@ describe("side effects while judging", () => {
     ["fs.promises.cp", () => fs.promises.cp(never, `${never}.2`)],
     ["fs.promises.symlink", () => fs.promises.symlink(never, `${never}.2`)],
     ["fs/promises writeFile through its ESM binding", () => fsp.writeFile(never, "x")],
-    ["fs.writeFile", () => fs.writeFile(never, "x", () => {})],
-    ["fs.appendFile", () => fs.appendFile(never, "x", () => {})],
-    ["fs.cp", () => fs.cp(never, `${never}.2`, () => {})],
+    ["fs.writeFile", (_, done) => fs.writeFile(never, "x", done)],
+    ["fs.appendFile", (_, done) => fs.appendFile(never, "x", done)],
+    ["fs.cp", (_, done) => fs.cp(never, `${never}.2`, done)],
     ["fs.cpSync", () => fs.cpSync(never, `${never}.2`)],
     ["fs.symlinkSync", () => fs.symlinkSync(never, `${never}.2`)],
     ["fs.writeSync", (fd) => fs.writeSync(fd, "x")],
     ["fs.writevSync", (fd) => fs.writevSync(fd, [x()])],
-    ["fs.writev", (fd) => fs.writev(fd, [x()], () => {})],
+    ["fs.writev", (fd, done) => fs.writev(fd, [x()], done)],
     ["fs.openSync for writing", () => fs.openSync(never, "w")],
     ["fs.openSync for appending", () => fs.openSync(never, "a")],
     ["fs.openSync for reading and writing", () => fs.openSync(never, "r+")],
     ["fs.openSync with a numeric write flag", () => fs.openSync(never, fs.constants.O_WRONLY)],
     ["fs.openSync with a numeric create flag", () => fs.openSync(never, fs.constants.O_RDONLY | fs.constants.O_CREAT)],
+    // PR #1798 review: a temp folder is a write too.
+    ["fs.mkdtempSync", () => fs.mkdtempSync(path.join(owned, "made-"))],
+    ["fs.mkdtemp", (_, done) => fs.mkdtemp(path.join(owned, "made-"), done)],
+    ["fs.promises.mkdtemp", () => fs.promises.mkdtemp(path.join(owned, "made-"))],
   ])("make %s throw while judging", async (_, write) => {
     fs.writeFileSync(fixture, "");
     const fd = fs.openSync(fixture, "r+");
     try {
+      // A writer that returns rather than throws has its promise or callback
+      // settled before the test fails or cleans up, so nothing it does escapes
+      // the test (PR #1798 review).
+      let threw;
+      let returned;
+      let done;
+      const called = new Promise((r) => (done = r));
       const restore = forbidSideEffects();
       try {
-        expect(() => write(fd)).toThrow(/was called while judging|for writing while judging/);
+        returned = write(fd, () => done());
+      } catch (e) {
+        threw = e;
       } finally {
         restore();
       }
-      await new Promise((r) => setTimeout(r, 0));
+      if (!threw) {
+        const settled = Promise.resolve(returned).then(
+          () => {},
+          () => {},
+        );
+        const callback = write.length > 1 ? called : Promise.resolve();
+        await Promise.race([Promise.all([settled, callback]), new Promise((r) => setTimeout(r, 2000))]);
+      }
+      expect(threw?.message).toMatch(/was called while judging|for writing while judging/);
       expect(fs.existsSync(never)).toBe(false);
       expect(fs.readFileSync(fixture, "utf8")).toBe("");
+      expect(fs.readdirSync(owned)).toEqual(["fixture.txt"]);
     } finally {
       fs.closeSync(fd);
     }
+  });
+
+  it("let a temp folder be made again once restored", async () => {
+    forbidSideEffects()();
+    const made = [fs.mkdtempSync(path.join(owned, "a-")), await fs.promises.mkdtemp(path.join(owned, "b-"))];
+    made.push(await new Promise((r, j) => fs.mkdtemp(path.join(owned, "c-"), (e, d) => (e ? j(e) : r(d)))));
+    for (const d of made) expect(fs.statSync(d).isDirectory()).toBe(true);
   });
 
   it("tell an open's flags that write from those that read", () => {
