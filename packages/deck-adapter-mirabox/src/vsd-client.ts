@@ -9,7 +9,8 @@
  *   argv[3] = port
  *   argv[5] = plugin UUID
  *   argv[7] = register event name
- *   argv[9] = JSON info (includes application.language)
+ *   argv[9] = JSON info (includes application.language; application.version
+ *             read for the host version, #1678)
  */
 import type { ILogger } from "@iracedeck/logger";
 import { silentLogger } from "@iracedeck/logger";
@@ -45,6 +46,13 @@ export interface VSDConnectionParams {
   port: string;
   pluginUuid: string;
   registerEvent: string;
+  /**
+   * The VSD Craft version from the registration info's `application.version`
+   * (`argv[9]`), or `null` when the info is missing, unparseable or carries
+   * none (#1678). Not used for the connection; the adapter reports it as its
+   * host's version.
+   */
+  hostVersion: string | null;
 }
 
 /**
@@ -67,7 +75,38 @@ export function parseConnectionParams(): VSDConnectionParams {
     port: process.argv[3] ?? "",
     pluginUuid: process.argv[5] ?? "",
     registerEvent: process.argv[7] ?? "",
+    hostVersion: parseHostVersion(process.argv[9]),
   };
+}
+
+/**
+ * Read `application.version` from VSD Craft's registration info JSON
+ * (`argv[9]`) — a non-empty string, else `null` (#1678). Tolerant by design:
+ * VSD Craft 3.10 sends it (its internal version, e.g. `3.10.188.226`, not the
+ * StreamDock exe's file version), but an older or other host may not, and a
+ * missing or unparseable info argument must never stop the plugin starting,
+ * so nothing here throws.
+ */
+export function parseHostVersion(info: string | undefined): string | null {
+  if (info === undefined) return null;
+
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(info);
+  } catch {
+    return null;
+  }
+
+  if (parsed === null || typeof parsed !== "object") return null;
+
+  const application = (parsed as { application?: unknown }).application;
+
+  if (application === null || typeof application !== "object") return null;
+
+  const version = (application as { version?: unknown }).version;
+
+  return typeof version === "string" && version !== "" ? version : null;
 }
 
 /**

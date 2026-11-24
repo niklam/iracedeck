@@ -201,6 +201,12 @@ export interface IDeckActionHandler<T = unknown> {
 }
 
 /**
+ * The deck host software the plugin runs in (#1678): its name, and its version
+ * when the host's registration reports one (`null` when it does not).
+ */
+export type HostApplication = { name: string; version: string | null };
+
+/**
  * Platform adapter that bridges platform-specific SDKs to the deck-core abstraction.
  * Each platform (Elgato, VSDinside, Mirabox) implements this interface.
  * The global-settings read/write and `onHostReady` live on `SettingsHost` in
@@ -312,4 +318,12 @@ export interface IDeckPlatformAdapter extends SettingsHost {
    * watchdog's target and the CPU-profile folder (`<log dir>/profiles`).
    */
   readonly logLocation: LogLocation | undefined;
+  /**
+   * The deck host software the plugin runs in, as the host's registration
+   * reported it (#1678); `undefined` only when the adapter cannot name its host
+   * at all. Required, so every adapter decides what it reports rather than
+   * silently dropping the host from the logs' `Build:` line and the Telemetry
+   * Snapshot. Read by `plugin-runtime`'s `readBuildInfo`.
+   */
+  readonly hostApplication: HostApplication | undefined;
 }

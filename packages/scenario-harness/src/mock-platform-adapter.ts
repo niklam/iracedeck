@@ -76,6 +76,12 @@ export class MockPlatformAdapter implements IDeckPlatformAdapter {
   /** The harness writes no log file of its own; nothing in it starts a watchdog. */
   readonly logLocation = undefined;
 
+  /**
+   * The harness runs in no deck host, so it names none (#1678): the `Build:`
+   * line and the snapshot leave the host part out.
+   */
+  readonly hostApplication = undefined;
+
   async openUrl(_url: string): Promise<void> {
     // intentionally unused
   }

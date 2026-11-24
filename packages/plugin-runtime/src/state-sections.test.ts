@@ -12,8 +12,10 @@ import {
   updateGlobalSettings,
 } from "@iracedeck/settings";
 import { _resetSimEventsIracing, readSimState } from "@iracedeck/sim-events-iracing";
+import { arch, release } from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { readBuildInfo } from "./build-info.js";
 import type { NativeAddonStatuses } from "./native-addons.js";
 import { registerStateSections } from "./state-sections.js";
 import type { Core } from "./types.js";
@@ -73,9 +75,13 @@ let sdkConnected = false;
 /** Both addons loaded natively: the healthy install. */
 const NATIVE_ADDONS: NativeAddonStatuses = { iracing: { kind: "native" }, audio: { kind: "native" } };
 
+/** The deck host the adapter reports (#1678); the `environment` section carries it. */
+const ADAPTER = { hostApplication: { name: "Stream Deck", version: "7.1.0" } };
+
 /** A `Core` whose controller answers `sdkConnected`, and whose paths are real-looking Windows ones. */
 function createCore(nativeAddons: NativeAddonStatuses = NATIVE_ADDONS): Core {
   return {
+    adapter: ADAPTER,
     binDir: BIN_DIR,
     logLocation: { kind: "file", path: LOG_PATH },
     controller: { getConnectionStatus: () => sdkConnected },
@@ -123,7 +129,11 @@ describe("registerStateSections (#1387)", () => {
     it("reads nothing at registration", () => {
       const getConnectionStatus = vi.fn(() => false);
 
-      registerStateSections({ controller: { getConnectionStatus }, nativeAddons: NATIVE_ADDONS } as unknown as Core);
+      registerStateSections({
+        adapter: ADAPTER,
+        controller: { getConnectionStatus },
+        nativeAddons: NATIVE_ADDONS,
+      } as unknown as Core);
 
       expect(getConnectionStatus).not.toHaveBeenCalled();
 
@@ -141,6 +151,9 @@ describe("registerStateSections (#1387)", () => {
         pluginVersion: "9.8.7-test",
         host: "stream-deck",
         node: process.version,
+        hostApplication: { name: "Stream Deck", version: "7.1.0" },
+        windows: release(),
+        arch: arch(),
         sdkConnected: false,
         iRacingActive: false,
         elevationMismatch: false,
@@ -148,6 +161,42 @@ describe("registerStateSections (#1387)", () => {
         settingsStoreSource: null,
         nativeAddons: { iracing: { kind: "native" }, audio: { kind: "native" } },
       });
+    });
+
+    // #1678: the snapshot and the log's `Build:` line read one function, so a
+    // log and a snapshot from the same run can never name different builds.
+    it("carries the same build facts readBuildInfo returns", () => {
+      registerStateSections(createCore());
+
+      const build = readBuildInfo(ADAPTER);
+
+      expect(collect().state.environment).toMatchObject({
+        pluginVersion: build.pluginVersion,
+        host: build.platform,
+        node: build.node,
+        hostApplication: build.hostApplication,
+        windows: build.windows,
+        arch: build.arch,
+      });
+    });
+
+    it("reports a null host application for an adapter that names no host, keeping the key", () => {
+      registerStateSections({ ...createCore(), adapter: { hostApplication: undefined } } as unknown as Core);
+
+      const environment = collect().state.environment as Record<string, unknown>;
+
+      expect(environment).toHaveProperty("hostApplication", null);
+      // Positive control: the section is the real one, not an error entry.
+      expect(environment.pluginVersion).toBe("9.8.7-test");
+    });
+
+    it("keeps a host application whose version is null", () => {
+      registerStateSections({
+        ...createCore(),
+        adapter: { hostApplication: { name: "UlanziStudio", version: null } },
+      } as unknown as Core);
+
+      expect(collect().state.environment).toMatchObject({ hostApplication: { name: "UlanziStudio", version: null } });
     });
 
     // #1373: a snapshot from a broken install says why its telemetry is empty.
@@ -206,6 +255,9 @@ describe("registerStateSections (#1387)", () => {
         pluginVersion: "9.9.0-later",
         host: "mirabox",
         node: process.version,
+        hostApplication: { name: "Stream Deck", version: "7.1.0" },
+        windows: release(),
+        arch: arch(),
         sdkConnected: true,
         iRacingActive: true,
         elevationMismatch: true,

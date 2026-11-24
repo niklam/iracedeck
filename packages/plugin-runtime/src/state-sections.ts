@@ -17,7 +17,7 @@
  * Decision record: `docs/superpowers/specs/2026-10-10-issue-1387-snapshot-plugin-state.md`.
  */
 import { raceEngineerStateHeadline, readRaceEngineerState } from "@iracedeck/audio-scenarios/pit-crew";
-import { getPluginPlatform, getPluginVersion } from "@iracedeck/deck-core";
+import type { HostApplication } from "@iracedeck/deck-core";
 import { hasElevationMismatch, isIRacingActive } from "@iracedeck/deck-iracing";
 import { type HeadlineRow, registerStateSection } from "@iracedeck/diagnostics";
 import {
@@ -28,6 +28,7 @@ import {
 } from "@iracedeck/settings";
 import { readSimState, simStateHeadline } from "@iracedeck/sim-events-iracing";
 
+import { readBuildInfo } from "./build-info.js";
 import { type NativeAddonSnapshot, snapshotNativeAddons } from "./native-addons.js";
 import type { Core } from "./types.js";
 
@@ -39,6 +40,9 @@ import type { Core } from "./types.js";
  * location, the settings file) all sit under the Windows profile, so a path
  * would put the user's account name in a file they send to someone else, and
  * it would add nothing the version and the host do not already say.
+ *
+ * The build facts come from `readBuildInfo`, the reader the log's `Build:` line
+ * uses (#1678), so a log and a snapshot from the same run name the same build.
  */
 export type EnvironmentState = {
   pluginVersion: string;
@@ -46,6 +50,16 @@ export type EnvironmentState = {
   host: string;
   /** `process.version` of the host's Node runtime. */
   node: string;
+  /**
+   * The deck host software and its version as the adapter reports it (#1678):
+   * `{ name: "Stream Deck", version: "7.1.0" }`, a `null` version when the
+   * host's registration names none, `null` when the adapter cannot name its host.
+   */
+  hostApplication: HostApplication | null;
+  /** `os.release()`: the Windows version, whose build number tells Windows 10 from 11 (#1678). */
+  windows: string;
+  /** `os.arch()`, e.g. "x64" (#1678). */
+  arch: string;
   /** Whether the SDK controller is connected to iRacing's telemetry. */
   sdkConnected: boolean;
   /** Whether the app monitor sees iRacing running. */
@@ -75,10 +89,15 @@ export type EnvironmentState = {
  * after `initCore`, so a value captured there would describe startup.
  */
 function readEnvironment(core: Core): EnvironmentState {
+  const build = readBuildInfo(core.adapter);
+
   return {
-    pluginVersion: getPluginVersion(),
-    host: getPluginPlatform(),
-    node: process.version,
+    pluginVersion: build.pluginVersion,
+    host: build.platform,
+    node: build.node,
+    hostApplication: build.hostApplication,
+    windows: build.windows,
+    arch: build.arch,
     sdkConnected: core.controller.getConnectionStatus(),
     iRacingActive: isIRacingActive(),
     elevationMismatch: hasElevationMismatch(),

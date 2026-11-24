@@ -77,6 +77,7 @@ function createMockAdapter() {
     onOpenSettingsRequest: vi.fn(),
     setLogLevel: vi.fn(),
     logLocation: undefined,
+    hostApplication: undefined,
     // Helpers for testing
     _simulateLaunch: (app: string) => {
       launchCallbacks.forEach((cb) => cb(app));

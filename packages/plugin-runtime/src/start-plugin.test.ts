@@ -74,7 +74,8 @@ vi.mock("./phases/sim.js", async (importOriginal) => {
  * because the translator takes its reader at construction. So is the camera
  * catalog (#1653): the sim phase builds it and starts its load, and the
  * services phase subscribes its publisher to it and to the controller, after
- * the replay session subscriber.
+ * the replay session subscriber. And so is the `Build:` line's session-start
+ * subscription (#1678), beside the resource monitor.
  */
 function expectedOrder(withExtension: boolean): string[] {
   return [
@@ -84,6 +85,7 @@ function expectedOrder(withExtension: boolean): string[] {
     "adapter.setLogLevel",
     "startMainThreadWatchdog",
     "startResourceMonitor",
+    "onIRacingStarted", // the Build line's session-start repeat (#1678)
     "onGlobalSettingsChange", // setup-warning validation
     "validateSetupWarningPatterns",
     "initializeSDK",

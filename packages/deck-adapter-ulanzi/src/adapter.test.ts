@@ -74,6 +74,12 @@ describe("UlanziPlatformAdapter", () => {
     return call[2];
   };
 
+  describe("hostApplication (#1678)", () => {
+    it("names UlanziStudio with no version, since its launch arguments carry none", () => {
+      expect(adapter.hostApplication).toEqual({ name: "UlanziStudio", version: null });
+    });
+  });
+
   describe("connect", () => {
     it("should delegate to UlanziClient.connect", () => {
       adapter.connect();
