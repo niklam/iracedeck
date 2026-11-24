@@ -2419,7 +2419,7 @@ describe("the stopping rule: an exec chain's last stdin (#1659 CodeRabbit)", () 
   const HERE_STRING = "a shell reading its script from a here-string";
   it.each([
     `exec <<< ':'; exec </dev/null; bash`,
-    `exec <<< ':'; exec < in.txt; bash`,
+    `exec <<< ':'; exec 0< /dev/null; bash`,
     `exec 0<<<x\nexec 0</dev/null\nbash`,
   ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
   it.each([
@@ -2489,7 +2489,7 @@ describe("the stopping rule: an exec reset that surely runs in this shell (#1659
   it.each([
     `exec <<< x; exec </dev/null; bash`,
     `exec <<< x\nexec </dev/null\nbash`,
-    `exec <<< x; ls; exec < in.txt; bash`,
+    `exec <<< x; ls; exec <'/dev/null'; bash`,
   ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
 });
 
@@ -2582,5 +2582,24 @@ describe("the stopping rule: an exec only at a command's start (#1659 PR review)
     `exec >log; bash`,
     `exec 3</dev/null; bash`,
     `exec <<< ':'; exec </dev/null; bash`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+});
+
+// CodeRabbit CLI on f62995d39: in bash's default mode a failed `exec <file`
+// prints an error and keeps the earlier stdin, so only `/dev/null`, whose
+// open cannot fail, clears a stream an earlier exec set.
+describe("the stopping rule: an exec reset only to /dev/null (#1659 PR review)", () => {
+  const HERE_STRING = "a shell reading its script from a here-string";
+  it.each([
+    `exec <<< x; exec </nonexistent; bash`,
+    `exec <<< x; exec <file.sh; bash`,
+    `exec <<< x; exec <"$F"; bash`,
+    `exec <<< x; exec < in.txt; bash`,
+    `exec <<< x; exec </dev/null/x; bash`,
+  ])("refuses %s", (c) => expect(lexer.refusedForms(c)[0]?.form).toBe(HERE_STRING));
+  it.each([
+    `exec <<< x; exec </dev/null; bash`,
+    `exec <<< x; exec <"/dev/null"; bash`,
+    `exec <<< x; exec 0<'/dev/null'; bash`,
   ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
 });

@@ -5327,6 +5327,14 @@ describe("a group holding a word an object inherits (#1659)", () => {
   });
 });
 
+// CodeRabbit CLI on f62995d39: a failed `exec <file` keeps the earlier stdin.
+describe("an exec reset only to /dev/null (#1659)", () => {
+  it("refuses a reset to another file, and passes one to /dev/null", () => {
+    expect(stopped(`exec <<< 'gh pr merge 7 --squash'; exec </nonexistent; bash`)).toContain("from a here-string");
+    passes(`exec <<< 'gh pr merge 7 --squash'; exec </dev/null; bash`);
+  });
+});
+
 // A judge on PR #1798: only an `exec` at a command's start sets or resets stdin.
 describe("an exec only at a command's start (#1659)", () => {
   it("refuses a stream a mentioned exec does not reset, and passes a mentioned one", () => {

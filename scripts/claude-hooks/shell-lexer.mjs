@@ -792,6 +792,18 @@ function pathStream(p) {
 }
 
 /**
+ * Whether a redirection target is `/dev/null` written literally, quoted or
+ * not but never through an expansion: the one file an `exec <` is sure to
+ * open, so the one that surely resets stdin (`stdinAround` in {@link
+ * fedStarts}, CodeRabbit CLI on #1659).
+ */
+const isDevNull = (target) => {
+  if (target === undefined) return false;
+  const chars = decodeWord(target);
+  return !chars.some((x) => x.live) && chars.map((x) => x.c).join("") === "/dev/null";
+};
+
+/**
  * Where a redirection's `target` word ends when another redirection is glued
  * to it (`':'</dev/null`, `/dev/null<<<'…'`; {@link readCommand}, PR #1798
  * review): at its first `<` or `>` outside quotes, an escape, a command
@@ -921,7 +933,7 @@ export function readCommand(spec, next) {
         rest.unshift(target.slice(end));
         target = target.slice(0, end);
       }
-      if (input) out.stdin = stdinFrom(input[1], target, out.stdin);
+      if (input) Object.assign(out, { stdin: stdinFrom(input[1], target, out.stdin), stdinTarget: target });
       if (target === undefined) break;
       continue;
     }
@@ -1025,6 +1037,7 @@ function commandOf(spec, text, from, limit) {
     string: at(r.string, r.offset),
     attached: r.attached,
     stdin: r.stdin,
+    stdinTarget: r.stdinTarget,
     script: r.script,
     scriptAt: at(r.dash ?? r.program),
     startup: r.startup,
@@ -2151,6 +2164,9 @@ function fedStarts(command, text, fed, programs) {
     // not piped or sent to the background (CodeRabbit CLI on #1659, PR #1798).
     // Only an `exec` at a command's start counts: one that is an argument
     // (`echo exec <<< x`) sets nothing and resets nothing (a judge on PR #1798).
+    // And only `/dev/null`, written literally, resets: in bash's default mode
+    // an `exec <file` that fails to open keeps the earlier stdin, and no
+    // other file is sure to open (CodeRabbit CLI on f62995d39).
     let found;
     let after = 0;
     for (const at of commandExecs()) {
@@ -2160,7 +2176,12 @@ function fedStarts(command, text, fed, programs) {
       if (r.program !== undefined || r.stdin === "pipe") continue;
       const stream = formOf(r.stdin, "exec <…;");
       if (stream) found = stream;
-      else if (found && !UNSURE_CHAIN.test(text.slice(after, at)) && !/[|&]/.test(text[base.ends[at]] ?? ""))
+      else if (
+        found &&
+        isDevNull(r.stdinTarget) &&
+        !UNSURE_CHAIN.test(text.slice(after, at)) &&
+        !/[|&]/.test(text[base.ends[at]] ?? "")
+      )
         found = undefined;
       after = end;
     }
