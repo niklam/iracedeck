@@ -5841,11 +5841,43 @@ describe("PowerShell's curly quotes (#1659)", () => {
   it("refuses an iex after a curly-closed string in a PowerShell string", () => {
     expect(stopped(`pwsh -c "Write-Host 'a\u2019; iex x; echo \u2018x'"`)).toContain("(eval)");
   });
-  it.each([`Write-Host \u201cexample; iex text\u201d`, `Write-Host 'it\u2019\u2019s'; Get-Date`])(
-    "passes %j from the PowerShell tool",
-    (c) => passes(c, ps()),
+  it("passes a curly quote PowerShell doubles", () => passes(`Write-Host 'it\u2019\u2019s'; Get-Date`, ps()));
+  // A curly quote is also read as the plain character PowerShell takes it for
+  // in a few places, and the stricter reading stands, so an `iex` in a
+  // curly-quoted string is refused as that reading finds it (a judge on
+  // 44cfd34a5): an accepted false deny.
+  it("refuses an iex in a curly-quoted string, as the plain-character reading finds it", () => {
+    expect(deny(`Write-Host \u201cexample; iex text\u201d`, ps())).toMatch(/\(eval\)/);
+    expect(stopped(`pwsh -c "Write-Host \u2018a; iex x\u2019"`)).toContain("(eval)");
+  });
+});
+
+// A judge on 44cfd34a5: PowerShell takes a curly quote as a plain character in
+// a braced variable name, a block comment, a here-string and after `--%`, so
+// two of them there do not hide the command between them.
+describe("a curly quote PowerShell reads as a plain character (#1659)", () => {
+  const ps = (o = {}) => ctx({ shell: POWERSHELL, ...o });
+  const carriers = [
+    (c) => `$v = \${\u2018}; ${c}; $w = \${\u2018}`,
+    (c) => `$v = \${x:-\u201c}; ${c}; $w = \${x:-\u201c}`,
+    (c) => `$v = \${env:a\u2018}; ${c}; $w = \${env:a\u2018}`,
+    (c) => `Write-Output <# \u2018 #>\n${c}\nWrite-Output <# \u2018 #>`,
+    (c) => `$v = @'\n\u2018\n'@\n; ${c}; $w = @'\n\u2018\n'@\n`,
+    (c) => `$v = @"\n\u201c\n"@\n; ${c}; $w = @"\n\u201c\n"@\n`,
+    (c) => `Write-Output --% \u2018\n\n${c}\nWrite-Output --% \u2018\n`,
+  ];
+  const cases = carriers.flatMap((wrap, k) => [
+    [`carrier ${k}: a merge`, wrap("gh pr merge 7 --squash")],
+    [`carrier ${k}: a merge in a bash string`, wrap("bash -c 'gh pr merge 7 --squash'")],
+    [`carrier ${k}: an iex`, wrap("iex 'pnpm relink:stream-deck'")],
+    [`carrier ${k}: a vitest run`, wrap("pnpm exec vitest")],
+    [`carrier ${k}: a project item edit`, wrap("gh project item-edit --id x")],
+  ]);
+  it.each(cases)("denies %s", (_, c) => expect(deny(c, ps())).toBeTruthy());
+  it.each(carriers.map((wrap, k) => [k, wrap("git push origin v1.2.3")]))(
+    "asks before the tag push in carrier %s",
+    (_, c) => asks(c, ps()),
   );
-  it("passes an iex in a curly-quoted PowerShell string", () => passes(`pwsh -c "Write-Host \u2018a; iex x\u2019"`));
 });
 
 // A judge on 15ce351a1: an exec sets the stdin of the shell it runs in.

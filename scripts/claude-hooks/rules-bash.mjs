@@ -31,6 +31,7 @@ import {
   chainCommands,
   cmd,
   commandEnd,
+  CURLY_QUOTE,
   excuseDecodedHit,
   GIT_GLOBALS,
   gitPlace,
@@ -48,6 +49,7 @@ import {
   resolveDir,
   respelledPrograms,
   segmentTokens,
+  straightQuotes,
   stringBounds,
   stringEnd,
   takeDecodedHits,
@@ -1322,7 +1324,15 @@ function manifestSources(command, commit, ctx, dir) {
  */
 export function checkBash(command, ctx) {
   const powershell = ctx.shell === POWERSHELL;
-  return checkText(powershell ? powershellAsBash(command) : command, ctx, powershell, 0);
+  const read = (c) => checkText(powershell ? powershellAsBash(c) : c, ctx, powershell, 0);
+  // PowerShell takes a curly quote as a plain one, except in a braced
+  // variable name, a block comment, a here-string or after `--%`, where it is
+  // a plain character. A command holding one, typed to PowerShell or handing
+  // a string to it, is judged both ways and the stricter verdict stands, as a
+  // respelled program word is (a judge on 15ce351a1).
+  if (!CURLY_QUOTE.test(command) || (!powershell && !/(?:pwsh|powershell)/i.test(command))) return read(command);
+  const verdicts = [read(command), read(straightQuotes(command))];
+  return verdicts.find((v) => typeof v === "string") ?? verdicts.find((v) => v) ?? null;
 }
 
 /**
