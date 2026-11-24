@@ -2317,3 +2317,26 @@ describe("the stopping rule: a shell word glued to its redirection (#1659 second
     expect(lexer.refusedForms(c)).toEqual([]),
   );
 });
+
+// #1659 second read: fish's `-C` / `--init-command` runs a string too.
+describe("fish's init command is a string it runs (#1659 second read)", () => {
+  const MERGE = cmd(/gh\s+pr\s+merge\b/);
+  it.each([
+    `fish -C 'gh pr merge 7 --squash'`,
+    `fish --init-command 'gh pr merge 7 --squash'`,
+    `fish --init-command='gh pr merge 7 --squash' -c true`,
+    `fish -C'gh pr merge 7 --squash'`,
+    `fish -i -C 'gh pr merge 7 --squash'`,
+    `fish -C true -c 'gh pr merge 7 --squash'`,
+    `fish -c true -C 'gh pr merge 7 --squash'`,
+  ])("reads the merge in %s", (c) => {
+    expect(lexer.has(c, MERGE)).toBe(true);
+    expect(lexer.refusedForms(c)).toEqual([]);
+  });
+  it("refuses fish's init command as a string inside a string", () =>
+    expect(lexer.refusedForms(`bash -c "fish -C 'ls'"`)[0]?.form).toBe("a string inside a string"));
+  it("reads an init command next to a script file", () => {
+    expect(lexer.has(`fish -C 'gh pr merge 7' x.fish`, MERGE)).toBe(true);
+    expect(lexer.has(`fish -d 3 x.fish`, MERGE)).toBe(false);
+  });
+});

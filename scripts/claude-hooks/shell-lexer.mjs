@@ -456,8 +456,10 @@ const ANGLED_PIECE = piece(true);
  * no option is the string it runs (`-c`, in a cluster too: `-lc`, `-eo
  * pipefail -c`), and `longString` its long forms (`--command`, `--command=…`);
  * `plus`, whether `+o` is an option as well; `startup`, its long options whose
- * value is a startup file the shell runs (`--rcfile`, `--init-file`, #1659).
- * `read` replaces all of that for a
+ * value is a startup file the shell runs (`--rcfile`, `--init-file`, #1659);
+ * `extra` and `longExtra`, an option whose value is a second string the
+ * shell runs, read wherever it sits (fish's `-C`, `--init-command`; the
+ * reader's `extras`). `read` replaces all of that for a
  * syntax of its own: PowerShell's parameters and cmd's switches. An option not
  * listed takes no value, and `--` ends the options. A value option always
  * takes its value, so `sudo -u gh pr merge 7` runs `pr` as the user `gh`, and
@@ -547,11 +549,14 @@ const OPTION_SPECS = new Map([
   [
     "fish",
     {
-      value: "CdDo",
-      long: ["--init-command", "--debug", "--debug-output", "--debug-stack-frames", "--profile", "--profile-startup"],
+      value: "dDo",
+      long: ["--debug", "--debug-output", "--debug-stack-frames", "--profile", "--profile-startup"],
       string: "c",
       longString: ["--command"],
       attachedString: true,
+      // `-C` / `--init-command` runs its string before the rest (#1659 second read).
+      extra: "C",
+      longExtra: ["--init-command"],
     },
   ],
   // `su [options] [-] [user [argument…]]`: the user is the first word that is no option, the string follows `-c`.
@@ -678,6 +683,7 @@ function readOption(spec, w) {
     const eq = w.indexOf("=");
     const name = eq < 0 ? w : w.slice(0, eq);
     if (spec.longString?.includes(name)) return eq < 0 ? { string: true } : { string: true, attached: eq + 1 };
+    if (spec.longExtra?.includes(name)) return { extra: true, extraAt: eq < 0 ? undefined : eq + 1 };
     const startup = spec.startup?.includes(name) ? { startup: name, startupAt: eq < 0 ? undefined : eq + 1 } : {};
     return { value: eq < 0 && spec.long.includes(name), ...startup };
   }
@@ -689,6 +695,8 @@ function readOption(spec, w) {
       // `fish -c'…'`); bash reads `-cx` as the flags `c` and `x`.
       if (spec.string && w[k] === spec.string && spec.attachedString && k < w.length - 1)
         return { string: true, attached: k + 1 };
+      if (spec.extra && w[k] === spec.extra)
+        return { string, positional, extra: true, extraAt: k < w.length - 1 ? k + 1 : undefined };
       if (spec.string && w[k] === spec.string) string = true;
       else if (spec.positional && w[k] === spec.positional) positional = true;
       else if (spec.value.includes(w[k])) return { string, positional, value: k === w.length - 1 };
@@ -856,6 +864,7 @@ export function readCommand(spec, next) {
     script: undefined,
     dash: undefined,
     dirs: [],
+    extras: [],
     stop: undefined,
   };
   const scansOn = Boolean(spec.string || spec.longString || spec.read);
@@ -880,6 +889,17 @@ export function readCommand(spec, next) {
       if (input) out.stdin = stdinFrom(input[1], target, out.stdin);
       if (target === undefined) break;
       continue;
+    }
+    // A second string the shell runs (fish's `-C`), read wherever it sits,
+    // past the first string too (#1659 second read).
+    if (options && (spec.extra || spec.longExtra)) {
+      const x = readOption(spec, w);
+      if (x?.extra) {
+        if (x.extraAt !== undefined) out.extras.push({ index: k, offset: x.extraAt });
+        else if (take() !== undefined) out.extras.push({ index: k, offset: 0 });
+        else break;
+        continue;
+      }
     }
     if (tail) {
       if (++scanned > SCANNED_WORDS) break;
@@ -979,6 +999,7 @@ function commandOf(spec, text, from, limit) {
     dangling: Boolean(r.dangling),
     stop: r.stop !== undefined,
     file: Boolean(r.stop?.file),
+    extras: r.extras.map((x) => ats[x.index] + x.offset),
   };
 }
 
@@ -1740,7 +1761,7 @@ function wordForm(chars, raw, subst) {
  * string and no file, so its stdin.
  */
 function feedsText(name, r) {
-  if (name === "eval" || r.string !== undefined || r.script !== undefined) return true;
+  if (name === "eval" || r.string !== undefined || r.script !== undefined || r.extras?.length) return true;
   if (["watch", "parallel", "trap", "pwsh", "powershell"].includes(name) && r.program !== undefined) return true;
   if (POWERSHELLS.has(name) && r.stop) return !r.file;
   return STDIN_SHELLS.has(name) && r.program === undefined && !r.stop && r.stdin !== "other";
@@ -2130,8 +2151,8 @@ function fedStarts(command, text, fed, programs) {
             // subshell or loop it sits in, or by an earlier `exec`.
             const around = stdinAround(p, b);
             if (around) return refuse(around.form, `${around.shape} ${via}`);
-            if (stream.named) refuse(REFUSED.stdin, stream.shape);
-            return;
+            if (stream.named) return refuse(REFUSED.stdin, stream.shape);
+            // Unrefused, it may still run a string of its own (fish's `-C`).
           }
           const kind = { how: "shell", via };
           // `watch -x` (`--exec`) runs its words as they are, no shell joining
@@ -2161,6 +2182,8 @@ function fedStarts(command, text, fed, programs) {
             // What the string's shell was given on stdin, for a script word in it that expands.
             if (N) Object.assign(N, { outerStdin: r.stdin, outerPiped: own.pipes.some((x) => x < p) });
           }
+          // fish's `-C` / `--init-command` string, read as its `-c` one is (#1659 second read).
+          for (const x of r.extras) stringAt(x, kind, join);
         },
       ]);
     }

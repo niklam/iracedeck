@@ -5294,6 +5294,18 @@ describe("a shell word glued to its redirection (#1659)", () => {
   it.each([`bash</dev/null x.sh`, `bash</dev/null -c 'pnpm build'`])("passes %s", (c) => passes(c));
 });
 
+// #1659 second read: fish's `-C` / `--init-command` string ran unread.
+describe("fish's init command (#1659)", () => {
+  it.each([
+    `fish -C 'gh pr merge 7 --squash'`,
+    `fish --init-command='gh pr merge 7 --squash' -c true`,
+    `fish -C true -c 'gh pr merge 7 --squash'`,
+  ])("judges the merge in %s with the merge gate's own message", (c) =>
+    expect(deny(c)).toMatch(/first word of a string `fish` runs/),
+  );
+  it.each([`fish -C 'set -x A 1' -c 'pnpm build'`, `fish -d 3 x.fish`])("passes %s", (c) => passes(c));
+});
+
 describe("the lexer's stopping rule: a form it does not read is refused outright (#1659)", () => {
   const REFUSAL = /hands text to a shell in a form the hook does not read/;
   const refusal = (c, o = ctx()) => {
