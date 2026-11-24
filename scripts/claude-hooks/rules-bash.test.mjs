@@ -5315,6 +5315,39 @@ describe("the lexer's stopping rule: a form it does not read is refused outright
       expect(deny(`bash --rcfile $(x) -c 'gh pr merge 7 --squash'`)).toMatch(/first word of a string `bash` runs/));
   });
 
+  // Review findings on #1659: each passed every rule, here and on master.
+  describe("a script sourced from a stream, and a startup file read from one", () => {
+    const STARTUP = "a shell startup file read from stdin, a descriptor or a process substitution";
+    it.each([
+      [`source <(echo gh pr merge 7 --squash)`, "from a process substitution"],
+      [`. <(echo gh pr merge 7 --squash)`, "from a process substitution"],
+      [`source /dev/stdin <<< 'gh pr merge 7 --squash'`, "from a here-string"],
+      [`. /dev/stdin <<< 'gh pr merge 7 --squash'`, "from a here-string"],
+      [`echo 'gh pr merge 7 --squash' | source /dev/stdin`, "a printer piped into a shell"],
+      [`echo 'gh pr merge 7 --squash' | . /dev/stdin`, "a shell reading its script from stdin"],
+      [`bash --init-file <(echo gh pr merge 7 --squash)`, STARTUP],
+      [`bash --rcfile <(echo gh pr merge 7 --squash) -i`, STARTUP],
+      [`BASH_ENV=<(echo gh pr merge 7 --squash) bash -c true`, STARTUP],
+      [`ENV=<(echo gh pr merge 7 --squash) sh -i`, STARTUP],
+      [`export BASH_ENV=<(echo gh pr merge 7); bash -c true`, STARTUP],
+    ])("refuses %s (%s)", (c, form) => expect(refusal(c)).toContain(form));
+
+    it("names the startup file it refused", () => {
+      expect(refusal(`bash --init-file <(echo ls)`)).toContain("`bash --init-file …`");
+      expect(refusal(`ENV=<(echo ls) sh -i`)).toContain("`ENV=…`");
+    });
+
+    it.each([
+      `source x.sh`,
+      `. ./env.sh`,
+      `. "$HOME/.profile" && pnpm build`,
+      `BASH_ENV=x.sh bash -c true`,
+      `bash --rcfile x.rc -i`,
+      `git commit -m "BASH_ENV=<(x) bash -c true" -- x.md`,
+      `git add . && git status`,
+    ])("passes a script or startup file that is a file: %s", (c) => passes(c));
+  });
+
   describe("every read form is still read and judged", () => {
     it.each([
       `timeout 1500 sh -c 'pnpm install && pnpm build'`,

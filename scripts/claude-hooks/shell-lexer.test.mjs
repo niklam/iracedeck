@@ -2025,7 +2025,7 @@ describe("the stopping rule: a form the lexer does not read is found, and refuse
       const MERGE = cmd(/gh\s+pr\s+merge\b/);
       expect(lexer.has(`bash --rcfile $(x) -c 'gh pr merge 7 --squash'`, MERGE)).toBe(true);
       expect(lexer.has(`bash -o \`x\` -c 'gh pr merge 7 --squash'`, MERGE)).toBe(true);
-      expect(lexer.has(`bash --rcfile <(x) -c 'gh pr merge 7 --squash'`, MERGE)).toBe(true);
+      expect(lexer.has(`bash --rcfile x$(y)z -c 'gh pr merge 7 --squash'`, MERGE)).toBe(true);
     });
 
     it("tells the stream a shell's stdin is redirected from", () => {
@@ -2059,5 +2059,55 @@ describe("the stopping rule: a form the lexer does not read is found, and refuse
       expect(read("pwsh", ["-File", "x.ps1"])).toBeUndefined();
       expect(read("powershell", ["-Command", "-"])).toBe("stdin");
     });
+  });
+
+  // Review findings on #1659: a script sourced from a stream, or a startup
+  // file a shell reads from one, passed every rule.
+  describe("a script sourced from a stream, and a startup file read from one", () => {
+    const PROCESS = "a shell reading its script from a process substitution";
+    const DESCRIPTOR = "a shell reading its script from a descriptor";
+    const STARTUP = "a shell startup file read from stdin, a descriptor or a process substitution";
+
+    it.each([
+      [`source <(echo gh pr merge 7 --squash)`, PROCESS],
+      [`. <(echo gh pr merge 7 --squash)`, PROCESS],
+      [`true && . <(echo gh pr merge 7 --squash)`, PROCESS],
+      [`source /dev/stdin <<< 'gh pr merge 7 --squash'`, HERE_STRING],
+      [`. /dev/stdin <<< 'gh pr merge 7 --squash'`, HERE_STRING],
+      [`. "/dev/stdin" <<< 'gh pr merge 7 --squash'`, HERE_STRING],
+      [`echo 'gh pr merge 7 --squash' | source /dev/stdin`, PRINTER],
+      [`echo 'gh pr merge 7 --squash' | . /dev/stdin`, STDIN],
+      [`. /dev/fd/3 3<x`, DESCRIPTOR],
+      [`bash -c 'source <(echo ls)'`, PROCESS],
+      [`bash -c '. <(echo ls)'`, PROCESS],
+      [`bash -c '. /dev/fd/3'`, DESCRIPTOR],
+      [`bash --init-file <(echo gh pr merge 7 --squash)`, STARTUP],
+      [`bash --rcfile <(echo gh pr merge 7 --squash) -i`, STARTUP],
+      [`bash --rcfile=<(echo gh pr merge 7 --squash) -i`, STARTUP],
+      [`bash --rcfile /dev/stdin -i <<< 'gh pr merge 7'`, STARTUP],
+      [`BASH_ENV=<(echo gh pr merge 7 --squash) bash -c true`, STARTUP],
+      [`ENV=<(echo gh pr merge 7 --squash) sh -i`, STARTUP],
+      [`env BASH_ENV=/dev/stdin bash -c true <<< 'gh pr merge 7'`, STARTUP],
+      [`export BASH_ENV=<(echo gh pr merge 7); bash -c true`, STARTUP],
+      [`BASH_ENV=<(echo gh pr merge 7) node x.js`, STARTUP],
+      [`bash -c 'BASH_ENV=<(echo ls) node x.js'`, STARTUP],
+    ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+
+    it.each([
+      `source x.sh`,
+      `. ./env.sh`,
+      `. "$HOME/.profile"`,
+      `source "$HOME/.nvm/nvm.sh" && nvm use`,
+      `bash -c '. ./env.sh && pnpm build'`,
+      `BASH_ENV=x.sh bash -c true`,
+      `bash --rcfile x.rc -i`,
+      `echo ENV=prod`,
+      `grep ENV= .env`,
+      `git commit -m "BASH_ENV=<(x) bash -c true"`,
+      `git add . && git commit -m x`,
+      `diff <(ls a) <(ls b)`,
+    ])("reads and refuses nothing where the script or startup file is a file: %s", (c) =>
+      expect(lexer.refusedForms(c)).toEqual([]),
+    );
   });
 });

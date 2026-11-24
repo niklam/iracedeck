@@ -1310,8 +1310,9 @@ function manifestSources(command, commit, ctx, dir) {
  * First of all, a command that hands text to a shell in a form the hook does
  * not read — a printer or any command piped into a shell, a here-string,
  * heredoc, process substitution or descriptor a shell reads its script from
- * (stdin named by a path or PowerShell's `-` included), `eval`, a `sudo`
- * that runs a shell, a string that is
+ * (stdin named by a path or PowerShell's `-` included; `source` and `.`
+ * too) or a startup file from (`--rcfile`, `BASH_ENV`, `ENV`), `eval`, a
+ * `sudo` that runs a shell, a string that is
  * not one plain level, a string inside a string, a program word in a string
  * that is not its plain name (`refusedForms` in `shell-lexer.mjs`, #1659) —
  * is refused outright, before any rule's verdict and never as an ask: the

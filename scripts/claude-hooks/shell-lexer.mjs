@@ -12,8 +12,8 @@
  * {@link fedStarts}), one level deep. A form that hands text to a shell the
  * lexer does not read — a printer or any command piped into a shell, a
  * here-string, heredoc, process substitution or descriptor a shell reads its
- * script from, `eval`, a `sudo` that runs a shell, a
- * string that is not one plain level, a string inside a string, a program
+ * script or startup file from (`source` and `.` too), `eval`, a `sudo` that
+ * runs a shell, a string that is not one plain level, a string inside a string, a program
  * word in a string that is not its plain name — is listed by {@link
  * refusedForms}, and `checkBash` refuses it before any rule (#1659, the
  * stopping rule). On top of it, {@link cmd} anchors a regex to command
@@ -452,13 +452,22 @@ const ANGLED_PIECE = piece(true);
  * `--user=me`); `string`, the short option after which the first word that is
  * no option is the string it runs (`-c`, in a cluster too: `-lc`, `-eo
  * pipefail -c`), and `longString` its long forms (`--command`, `--command=…`);
- * `plus`, whether `+o` is an option as well. `read` replaces all of that for a
+ * `plus`, whether `+o` is an option as well; `startup`, its long options whose
+ * value is a startup file the shell runs (`--rcfile`, `--init-file`, #1659).
+ * `read` replaces all of that for a
  * syntax of its own: PowerShell's parameters and cmd's switches. An option not
  * listed takes no value, and `--` ends the options. A value option always
  * takes its value, so `sudo -u gh pr merge 7` runs `pr` as the user `gh`, and
  * `bash -o pipefail -c '…'` reaches its string.
  */
-const SH_OPTIONS = { value: "oO", long: ["--rcfile", "--init-file"], string: "c", positional: "s", plus: true };
+const SH_OPTIONS = {
+  value: "oO",
+  long: ["--rcfile", "--init-file"],
+  startup: ["--rcfile", "--init-file"],
+  string: "c",
+  positional: "s",
+  plus: true,
+};
 const NO_OPTIONS = { value: "", long: [] };
 /** PowerShell's parameters that take a value, with the shortest prefix pwsh takes for each. */
 const PS_VALUE_PARAMS = [
@@ -655,7 +664,8 @@ const SCANNED_WORDS = 64;
  * which nothing can be read; `{ value }` when it takes the next word; `{
  * string, attached }` when the string it runs follows (attached at that offset
  * of `w`, or as the first later word that is no option); `{}` for a plain
- * switch. A short cluster is read letter by letter: a value letter not last
+ * switch; `startup` with a startup-file option, its name (#1659), and the
+ * offset of its value in `w` when attached (`--rcfile=…`). A short cluster is read letter by letter: a value letter not last
  * takes the rest of the word (`-ume`), last it takes the next word (`-Eu me`).
  */
 function readOption(spec, w) {
@@ -665,7 +675,8 @@ function readOption(spec, w) {
     const eq = w.indexOf("=");
     const name = eq < 0 ? w : w.slice(0, eq);
     if (spec.longString?.includes(name)) return eq < 0 ? { string: true } : { string: true, attached: eq + 1 };
-    return { value: eq < 0 && spec.long.includes(name) };
+    const startup = spec.startup?.includes(name) ? { startup: name, startupAt: eq < 0 ? undefined : eq + 1 } : {};
+    return { value: eq < 0 && spec.long.includes(name), ...startup };
   }
   if (/^-[A-Za-z]/.test(w) || (spec.plus && /^\+[A-Za-z]/.test(w))) {
     let string = false;
@@ -808,7 +819,10 @@ function stdinFrom(op, target, previous) {
  * redirection wins (`< /dev/stdin` changes nothing, {@link stdinFrom}), an
  * output redirection changes nothing. `script` is the stream the script file
  * names ({@link streamOf}: `bash /dev/stdin`, `bash <(…)`), or `"stdin"` for
- * PowerShell's bare `-` or `-File -`, at the word `dash` (#1659). A value
+ * PowerShell's bare `-` or `-File -`, at the word `dash`, and `startup` the
+ * first startup file that names a stream, as `{ option, stream }` (`bash
+ * --rcfile <(…)`), each read past the script for the redirections that set
+ * its stdin (#1659). A value
  * option takes its value, a redirection its target, `--` ends
  * the options, a positional switch (bash's `-s`) makes the later plain words
  * arguments rather than a script file, and past the program the words are
@@ -838,6 +852,8 @@ export function readCommand(spec, next) {
   let stringNext = false;
   let stringSwitch;
   let positional = false;
+  // Past the script, only the redirections are read: where its stdin comes from (#1659).
+  let tail = false;
   let scanned = 0;
   let k = -1;
   const take = () => {
@@ -854,20 +870,26 @@ export function readCommand(spec, next) {
       if (target === undefined) break;
       continue;
     }
+    if (tail) {
+      if (++scanned > SCANNED_WORDS) break;
+      continue;
+    }
     const o = options ? readOption(spec, w) : null;
     // PowerShell's bare `-`, alone or as `-Command`'s string: the command is read from stdin.
     if (o?.stdinScript) {
       Object.assign(out, { script: "stdin", dash: k });
-      break;
+      tail = true;
+      continue;
     }
     if (o?.stop) {
       out.stop = { index: k, ...o };
       // `-File -` reads the command from stdin too.
-      if (o.file) {
-        const file = take();
-        if (file !== undefined && wordValue(file) === "-") Object.assign(out, { script: "stdin", dash: k });
-      }
-      break;
+      if (!o.file) break;
+      const file = take();
+      if (file === undefined || wordValue(file) !== "-") break;
+      Object.assign(out, { script: "stdin", dash: k });
+      tail = true;
+      continue;
     }
     if (o?.end) {
       options = false;
@@ -885,7 +907,13 @@ export function readCommand(spec, next) {
         stringNext = true;
         stringSwitch = k;
       }
-      if (o.value && take() === undefined) break;
+      // A startup file's value, in the next word or attached: the first stream one names.
+      const value = o.value ? take() : o.startupAt === undefined ? undefined : w.slice(o.startupAt);
+      if (o.value && value === undefined) break;
+      if (o.startup && value !== undefined && !out.startup) {
+        const stream = streamOf(value);
+        if (stream) out.startup = { option: o.startup, stream };
+      }
       continue;
     }
     if (stringNext) {
@@ -893,7 +921,8 @@ export function readCommand(spec, next) {
       break;
     }
     if (!positional && out.program === undefined) Object.assign(out, { program: k, script: streamOf(w) });
-    if (!scansOn || ++scanned > SCANNED_WORDS) break;
+    if (!scansOn) tail = true;
+    else if (++scanned > SCANNED_WORDS) break;
   }
   return out;
 }
@@ -925,6 +954,7 @@ function commandOf(spec, text, from, limit) {
     stdin: r.stdin,
     script: r.script,
     scriptAt: at(r.dash ?? r.program),
+    startup: r.startup,
     stop: r.stop !== undefined,
     file: Boolean(r.stop?.file),
   };
@@ -1423,6 +1453,7 @@ const REFUSED = Object.freeze({
   heredoc: "a shell reading its script from a heredoc",
   processSubstitution: "a shell reading its script from a process substitution",
   descriptor: "a shell reading its script from a descriptor",
+  startup: "a shell startup file read from stdin, a descriptor or a process substitution",
   eval: "eval",
   sudo: "a sudo that runs a shell",
   ansi: "an ANSI-C string",
@@ -1445,6 +1476,12 @@ const FILE_RUNNERS = new Set(["bash", "sh", "zsh", "dash", "ksh", "fish", "su", 
  * file in the shell itself and read stdin only when the file names it.
  */
 const SCRIPT_READERS = new Set([...STDIN_SHELLS, "source", "."]);
+/**
+ * An assignment of a variable that names a startup file a shell runs before
+ * its script, at a word's start ({@link fedStarts}, #1659): bash's `BASH_ENV`
+ * (any non-interactive bash) and POSIX `ENV` (an interactive `sh`).
+ */
+const STARTUP_VARIABLE = /(?<=^|[\s;&|(\x60])(BASH_ENV|ENV)=/g;
 
 /**
  * Where the {@link SCRIPT_READERS} word `name`, its words read in `t` as
@@ -1458,9 +1495,11 @@ const SCRIPT_READERS = new Set([...STDIN_SHELLS, "source", "."]);
  * names stdin itself (`bash /dev/stdin`, PowerShell's `-`); `undefined` where
  * it runs a string, a file, or nothing the hook could tell. A shell with no
  * string and no file reads stdin; `source` and `.` read it only through its
- * name.
+ * name. A startup file that names a stream (`bash --rcfile <(…)`) is
+ * refused whatever the shell runs, since it runs first.
  */
 function scriptStream(name, r, t) {
+  if (r.startup) return { form: REFUSED.startup, shape: `${name} ${r.startup.option} …` };
   if (r.string !== undefined) return undefined;
   const word = () => {
     const w = r.scriptAt === undefined ? undefined : commandWordEnd(t, r.scriptAt);
@@ -1640,7 +1679,9 @@ function sudoShell(t, from, limit) {
  * What the hook does not read is refused, never modelled (#1659): a printer
  * or any other command piped into a shell, a shell fed a here-string or a
  * heredoc, one reading its script from stdin by name, a process substitution
- * or a descriptor ({@link scriptStream}), `eval`, a `sudo` that runs a shell, a string that is not one plain
+ * or a descriptor, `source` and `.` included, and a startup file read from
+ * one (`--rcfile`, `BASH_ENV`, `ENV`; {@link scriptStream}), `eval`, a `sudo`
+ * that runs a shell, a string that is not one plain
  * level ({@link stringForm}), a shell inside a string that runs text it is
  * handed ({@link feedsText}), and a program word in a string that is not its
  * plain name ({@link wordForm}). Positions are recorded, never searched for,
@@ -1660,11 +1701,24 @@ function fedStarts(command, text, fed, programs) {
   const refuse = (form, shape) => {
     if (!refused.some((r) => r.form === form && r.shape === shape)) refused.push({ form, shape });
   };
-  // Nothing fed and no wrapper: nothing to read, and no text to walk (#1646).
+  // A startup file `BASH_ENV` or `ENV` names a stream with, wherever either is
+  // assigned — a command's prefix, through `env` or `export` (#1659): found in
+  // `found`, read from `read` at the same index. At the typed level that is
+  // the view's text, so a quoted mention is no assignment, and the command;
+  // in a string, its level's text both.
+  const startupFiles = (found, read) => {
+    for (const m of found.matchAll(STARTUP_VARIABLE)) {
+      const v = m.index + m[0].length;
+      const e = PROCESS_SUBSTITUTION.test(read.slice(v, v + 2)) ? closeAt(read, v + 2, "(") : wordEnd(read, v, true);
+      if (e > v && streamOf(read.slice(v, e))) refuse(REFUSED.startup, `${m[1]}=…`);
+    }
+  };
+  startupFiles(text, command);
+  // Nothing fed, no wrapper and no `.`: nothing to read, and no text to walk (#1646).
   const named = (p) => {
     PROGRAM_WORD.lastIndex = p;
     const name = PROGRAM_WORD.exec(text)?.[0];
-    return WRAPPER_NAMES.has(name) || name === "find";
+    return WRAPPER_NAMES.has(name) || name === "find" || name === ".";
   };
   if (!fed.length && ![...byName.keys()].some(named))
     return { starts, words, decoded, quotes, quoteKinds, unclosed, refused };
@@ -1870,6 +1924,17 @@ function fedStarts(command, text, fed, programs) {
     }
   }
   for (const [, run] of sources.sort((x, y) => x[0] - y[0])) run();
+  for (const L of levels) if (!L.file) startupFiles(L.text, L.text);
+  // bash's `.`, which is `source` but no word that feeds a span: what it runs
+  // at the typed level, read from the command; one in a string is judged with
+  // that string's program words ({@link inLevel}).
+  for (const p of byName.keys()) {
+    PROGRAM_WORD.lastIndex = p;
+    if (PROGRAM_WORD.exec(text)?.[0] !== "." || levelAt(p) !== base) continue;
+    const stream = scriptStream(".", commandOf(NO_OPTIONS, command, p + 1, command.length), command);
+    // `.` reads stdin only through its name, so a pipe into it reads the script from stdin.
+    if (stream) refuse(stream.piped ? REFUSED.stdin : stream.form, stream.shape);
+  }
   // The wrappers and the `find`s among the program words: what each runs, read
   // in the level that holds it.
   for (const p of byName.keys()) {
