@@ -9,6 +9,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   Census,
   censusOf,
+  commandCensus,
   CommandSet,
   CONTEXT_FIELDS,
   cut,
@@ -445,6 +446,19 @@ describe("the census", () => {
     expect(kindName({ how: "command" })).toBe("command");
     expect(kindName({ how: "shell", via: "bash" })).toBe("shell:bash");
     expect(kindName({ how: "wrapper", via: "find -exec" })).toBe("wrapper:find -exec");
+  });
+
+  // CodeRabbit CLI on #1659: the `refused` flag read the view alone, so a
+  // PowerShell eval the hook refuses for the PowerShell tool was not counted.
+  it("flags a refused form as the hook refuses it, with the command's shell", async () => {
+    const lexer = await import("./shell-lexer.mjs");
+    const flags = (tool, c) => commandCensus(lexer, tool, c).flags;
+    expect(flags("PowerShell", `iex "Get-Location"`)).toContain("refused");
+    expect(flags("PowerShell", `Invoke-Expression 'ls'`)).toContain("refused");
+    expect(flags("PowerShell", `Get-Location`)).not.toContain("refused");
+    expect(flags("Bash", `iex -S mix`)).not.toContain("refused");
+    expect(flags("Bash", `eval ls`)).toContain("refused");
+    expect([...commandCensus(lexer, "Bash", "gh pr view 7").positions]).toEqual([["command", 1]]);
   });
 
   it("counts positions by kind and the flags a view raises", () => {

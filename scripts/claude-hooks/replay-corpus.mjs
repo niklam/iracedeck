@@ -439,6 +439,20 @@ export function kindName(kind) {
   return `${kind.how}:${kind.via ?? "?"}`;
 }
 
+/**
+ * The census of one transcript `command` typed to `tool`, read through a
+ * side's `lexer` as `checkBash` reads it: a PowerShell command as bash, and
+ * the `refused` flag from `refusedForms` with the command's shell, the hook's
+ * own call, so PowerShell's `iex` counts where the hook refuses it
+ * (CodeRabbit CLI on #1659).
+ */
+export function commandCensus(lexer, tool, command) {
+  const powershell = tool === "PowerShell";
+  const text = powershell ? lexer.powershellAsBash(command) : command;
+  const refused = lexer.refusedForms(text, powershell ? lexer.POWERSHELL : lexer.BASH);
+  return censusOf({ ...lexer.view(text), refused });
+}
+
 /** One command's census: `{ positions: Map<kind, count>, flags: string[] }`, from its `view()`. */
 export function censusOf(v) {
   const positions = new Map();
@@ -767,7 +781,7 @@ export async function main(argv, print = (line) => process.stdout.write(`${line}
         // What checkBash reads: a PowerShell command as bash (`checkBash`'s own first step).
         let one;
         try {
-          one = censusOf(head.view(tool === "PowerShell" ? head.powershellAsBash(command) : command));
+          one = commandCensus(head.lexer, tool, command);
         } catch {
           one = null;
         }
