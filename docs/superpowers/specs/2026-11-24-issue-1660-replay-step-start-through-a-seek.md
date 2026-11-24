@@ -34,7 +34,7 @@ The website already promises, for Replay Control, that "a press made while a …
 - **Engine, `replay-record-walk.ts`.** `resolveReplayWalkStart` stays synchronous and gains a fourth answer, `{ frame: null, reason: "search on its way" }`. A new async companion returns the step start once any such search has ended, and both presses call it. Its wait is the gate's own landing verdict (`waitForReplaySearchLanding`), bounded as the paced search bounds it: `replaySearchPatienceMs` while nothing shows the search (a paused replay), else up to the landing or `REPLAY_JUMP_MAX_WAIT_MS`. Whatever the outcome (landed, found nothing, not landed, gave up, superseded), it re-reads the start from the top. So a search replaced by a jump anchors on that jump's target, and one that found nothing anchors on the cursor.
 - **Presses that wait together resolve in press order, each from the start as it reads at that moment.** The first one's jump records its target before the second one reads, so two quick presses during one search step twice from its landing, never twice to the same entry. The engine keeps one queue of waiting starts, so the order does not depend on poll timers. It is not a lane in the gate. The gate's table and its one waiting slot are unchanged, and a waiting start sends nothing until it resolves.
 - **Views do not wait.** A key's greyed state, the dial's side marks and its value read the synchronous answer. During a search they read the cursor, and they redraw when it lands.
-- **Busy mark.** A Replay Control press waiting on a landing shows the busy mark on its key, as a press waiting in the gate does. Replay Markers has no busy mark and gets none here.
+- **Busy mark.** A Replay Control or Replay Markers press waiting on a landing shows the still mark on its key or dial, as a press waiting in the gate does. Both register with the replay busy indicator and their jumps carry the context id.
 
 **Why this option.** Three were weighed for point 2:
 
@@ -86,7 +86,7 @@ A **Replay Control** Lap or Session step or a **Replay Markers** jump pressed wh
   - Replay Control key and dial: a Lap step pressed during a search past the grace waits and lands from the landing, not the pre-search frame.
   - Replay Markers key and dial: the same.
   - Replay Markers in a saved replay mid-seek with no hold sends nothing.
-  - The busy mark shows on a waiting Replay Control key.
+  - The busy mark shows on a waiting Replay Control key and on a waiting Replay Markers key and dial.
 - **Hands-free sim probe**, on Niklas's saved replay, real action code (`IRACEDECK_REAL_NATIVE=1`):
   1. Paused at rest for more than 2 s: `IsReplayPlaying` reads true on every tick. This is the load-bearing fact; stop and amend if it fails.
   2. A long Next Session search from the start of the tape, with a Replay Markers Next and then a Replay Control Next Lap pressed through the actions about 50 ms into it. The search lands, and each press lands on the entry after the landing, in press order. Record what telemetry read at each send.
