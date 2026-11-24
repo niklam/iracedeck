@@ -35,8 +35,8 @@ import {
   cmd,
   COMMAND_LEAD,
   commandEnd,
+  excuseDecodedHit,
   GIT_GLOBALS,
-  gitCwd,
   gitPlace,
   gitPlaceAt,
   has,
@@ -48,11 +48,15 @@ import {
   programStart,
   ranges,
   resolveDir,
+  respelledPrograms,
   stringBounds,
   stringEnd,
   stringKind,
+  takeDecodedHits,
   trustedIn,
   trustedMask,
+  unclosedLead,
+  unprintable,
   unreadablePrograms,
   unsettled,
   view,
@@ -290,6 +294,14 @@ const gitVerb = (verb) => cmd(new RegExp(`git${GIT_GLOBALS}${verb}`));
 const movedRepo = (verb) =>
   `This \`git ${verb}\` names its repository, work tree or index apart from its directory (--git-dir, --work-tree, core.worktree, GIT_DIR, GIT_COMMON_DIR, GIT_WORK_TREE or GIT_INDEX_FILE), or through a \`-C\` that expands, so the hook cannot tell which branch, index and files it acts on. Run it as \`git -C <dir> ${verb} …\` with the directory written out, in the tree itself instead (#1606).`;
 
+/**
+ * The refusal of a git command whose directory a `cd` ahead of it leaves
+ * unknown (#1646, CodeRabbit on PR #1788): its branch, index and files are
+ * those of a checkout the hook cannot name.
+ */
+const lostDir = (verb) =>
+  `A \`cd\` ahead of this \`git ${verb}\` may not run, runs in a pipeline's last stage, expands or runs under \`eval\`, so the hook cannot tell which checkout it acts on. Write the directory out: a plain \`cd <dir> &&\` ahead of it, or \`git -C <dir> ${verb} …\` (#1646).`;
+
 /** The git shapes whose rules read a `-C`; exported so the post-hook scopes the same way. */
 export const GIT_PUSH = gitVerb(String.raw`push\b`);
 export const GIT_COMMIT = gitVerb(String.raw`commit\b`);
@@ -391,6 +403,53 @@ const REDIRECT_WORD = /^\d*(?:<<<|[<>]&|&>>?|>>|>\||<>|<|>)(.*)$/;
 /** The deny of the piped-pnpm rule. */
 const PIPED_PNPM =
   "Piping `pnpm build/test/...` hides its exit code (you get tail's). Prefix `set -o pipefail;` or check the log before claiming green.";
+/** `s` with its quoted text and its comments blanked: what its shell runs as code ({@link pipedPnpm}). */
+function liveText(s) {
+  return maskInert(s).masked.replace(/(^|[\s;&|()])#[^\n]*/g, "$1");
+}
+
+/** The pnpm commands whose exit code a pipe hides ({@link pipedPnpm}). */
+const PIPED_PNPM_RE = cmd(/pnpm\s+(?:run\s+)?(?:build|test|typecheck|lint|format)\b/);
+
+/**
+ * Whether the pnpm `m` matched ({@link PIPED_PNPM_RE}) has its exit code
+ * hidden by a pipe no `pipefail` covers, in `c` and its trusted text `text`,
+ * `piped` saying whether a text starts with such a pipe. The pipe that hides
+ * it is the one after the pnpm in its own command, or, inside a string a shell
+ * runs, the one after the string's close that pipes that shell on. A pnpm its
+ * shell reads differently from the text here (`decoded`, #1646) is judged on
+ * what it reads: the separator that ends it there, and a `pipefail` the
+ * shell that owns the pipe sets — in its own text ahead of it, live, or as
+ * its own option (`before`; an ancestor's excuses nothing, CodeRabbit on PR
+ * #1788).
+ */
+function pipedPnpm(c, text, m, piped) {
+  const end = m.index + m[0].length;
+  const string = stringBounds(c, m.program);
+  const decoded = m.decoded !== undefined;
+  if (!string)
+    return !/pipefail/.test(text.slice(0, m.index)) && (decoded ? /^\|(?!\|)/.test(m.sep) : piped(text.slice(end)));
+  const [open, close] = string;
+  // Where the command that runs the shell starts: after the last operator ahead of the string.
+  const from = text.slice(0, open).search(/[^\n;&|()\x60]*$/);
+  // The shell's own `-o pipefail`, alone or ending a cluster (`-eo pipefail`);
+  // a `+o pipefail` turns it off, so it excuses nothing (#1634).
+  const option = (s) => /(?<!\S)-[A-Za-z]*o\s+pipefail\b/.test(s);
+  let inner;
+  if (decoded) {
+    // The owning level's own text, and the word handing it its string: in the
+    // level holding it, or in the typed text for the outermost string.
+    const lines = m.before ?? [];
+    const parent = lines.at(-2)?.text;
+    const handing = parent === undefined ? text.slice(from, open) : parent.slice(parent.search(/[^\n;&|()\x60]*$/));
+    inner = /\bpipefail\b/.test(liveText(lines.at(-1)?.text ?? "")) || option(handing);
+  } else inner = /pipefail/.test(text.slice(open, m.index)) || option(text.slice(from, open));
+  if (!inner && (decoded ? /^\|(?!\|)/.test(m.sep) : piped(text.slice(end, close)))) return true;
+  if (/pipefail/.test(text.slice(0, from))) return false;
+  const after = /^(?:>&\d|&>|[^;&\n])*/.exec(text.slice(close + 1))[0];
+  const pipes = (after.match(/(?<!\|)\|(?!\|)/g) ?? []).length;
+  return pipes >= (stringKind(c, m.program)?.piped ? 2 : 1);
+}
 
 /** `gh pr merge` flags that take a value, so the value is never read as the PR or as a flag. */
 const MERGE_VALUE_FLAGS = new Set([
@@ -463,16 +522,19 @@ export function firstMerge(command) {
  * The deny for a `gh pr merge` that is not its own command (#1634): the first
  * word of a string a shell runs (`bash -c 'gh pr merge 7'`, `eval "…"`, `echo
  * '…' | bash`, `pwsh -Command "…"`), or the program a wrapper runs (`sudo gh
- * pr merge 7`, `nice gh …`). Until #1634 no trap saw either, so such a merge
- * passed the gate unread; the gate reads the PR before the command runs and
+ * pr merge 7`, `nice gh …`), or a later command of such a string (`printf
+ * 'gh pr %s 7\n' view merge | bash`, #1646). Until #1634 no trap saw either,
+ * so such a merge passed the gate unread; the gate reads the PR before the command runs and
  * cannot follow what a shell or a wrapper does to the repository, the
  * checkout or the environment in between, so it refuses rather than judge
  * the merge as if typed directly. `m` is the `matchesAt` result.
  */
 const carriedMerge = (m) =>
-  m.how === "shell"
-    ? `This \`gh pr merge\` is not its own command: it is the first word of a string \`${m.via}\` runs${m.stdin ? " from its stdin" : ""}, and the gate cannot read what that shell does around it — where it runs, what reaches it, what else it runs. Type the merge directly, as its own command: \`gh pr merge <pr> --squash\` (#1634).`
-    : `This \`gh pr merge\` is not its own command: it runs under \`${m.via}\`, which can change what gh resolves the PR and the repository to after the gate has read them. Type the merge directly, as its own command, with nothing ahead of it but a plain \`cd <dir> &&\` (#1634).`;
+  m.how === "command"
+    ? `This \`gh pr merge\` is not its own command: it is a command of a string \`${m.shell}\` runs, and the gate cannot read what that shell does around it — where it runs, what reaches it, what else it runs. Type the merge directly, as its own command: \`gh pr merge <pr> --squash\` (#1634, #1646).`
+    : m.how === "shell"
+      ? `This \`gh pr merge\` is not its own command: it is the first word of a string \`${m.via}\` runs${m.stdin ? " from its stdin" : ""}, and the gate cannot read what that shell does around it — where it runs, what reaches it, what else it runs. Type the merge directly, as its own command: \`gh pr merge <pr> --squash\` (#1634).`
+      : `This \`gh pr merge\` is not its own command: it runs under \`${m.via}\`, which can change what gh resolves the PR and the repository to after the gate has read them. Type the merge directly, as its own command, with nothing ahead of it but a plain \`cd <dir> &&\` (#1634).`;
 
 /**
  * Every `gh pr merge` in the RAW text — the backstop for a separator the split
@@ -993,6 +1055,7 @@ function restItemWrite(args) {
 export const rules = [
   {
     name: "code-review is a Skill, never --fix",
+    occurrence: true,
     test: (c) =>
       has(c, /code-review[^\n|;&]*--fix\b/) &&
       "Never run /code-review with --fix: findings are candidates, not verdicts, and one bare run wrote eight files into master. Report only; apply verified findings by hand (.claude/rules/code-review.md).",
@@ -1015,11 +1078,14 @@ export const rules = [
     test: (c) => {
       const text = trustedMask(c);
       const segments = ranges(text, CHAIN_AND_BACKGROUND);
-      const tagPush = [...matchesAt(c, GIT_PUSH)].some((m) => {
+      // Every push is judged, so each one read as its shell reads it is excused
+      // only once judged, never left behind an earlier tag (CodeRabbit CLI on #1646).
+      const pushes = [...matchesAt(c, GIT_PUSH)].map((m) => {
         // The segment holding the program word: an anchored match's `index` is its boundary.
         const [, b] = segments.find(([s, e]) => s <= m.program && m.program < e);
         // From the raw word's start, not its rewritten name's: `"git" push` begins at the quote (CodeRabbit on #1634).
-        const own = c.slice(programStart(c, m.program), Math.min(b, stringEnd(c, m.program) ?? b));
+        // A push its shell reads differently from the text here is judged as it reads it (#1646).
+        const own = m.decoded ?? c.slice(programStart(c, m.program), Math.min(b, stringEnd(c, m.program) ?? b));
         // Its inert text blanked, a comment included, which the raw text of a fed span keeps.
         // The comment starts at the `#` the lexer's top-level text blanks to a space: a quoted
         // `#` is `_` there (`git -c 'user.name=CI #1' push …`), never a comment (CodeRabbit CLI on #1634).
@@ -1027,9 +1093,11 @@ export const rules = [
         let comment = -1;
         for (let i = 0; i < own.length && comment < 0; i++) if (own[i] === "#" && top[i] === " ") comment = i;
         const live = comment < 0 ? own : own.slice(0, comment);
-        return !/--dry-run\b/.test(code) && /\bpush(?:\s[^|&;]*)?\s["']?(--tags\b|v\d+\.\d+)/.test(live);
+        const tag = !/--dry-run\b/.test(code) && /\bpush(?:\s[^|&;]*)?\s["']?(--tags\b|v\d+\.\d+)/.test(live);
+        if (m.decoded !== undefined) excuseDecodedHit(c, GIT_PUSH, m.occurrence);
+        return tag;
       });
-      return tagPush && { ask: "Pushing a tag cuts a release. The maintainer confirms." };
+      return pushes.some(Boolean) && { ask: "Pushing a tag cuts a release. The maintainer confirms." };
     },
   },
   {
@@ -1039,20 +1107,37 @@ export const rules = [
     // it runs in, so `cd ../ir-integration && git push` is caught.
     name: "git push: the integration branch is never pushed",
     test: (c, ctx) => {
-      for (const { base, start, args } of chainCommands(c, ctx.cwd, GIT_PUSH, ctx.shell)) {
+      for (const { base, start, args, occurrence, decoded, lost } of chainCommands(c, ctx.cwd, GIT_PUSH, ctx.shell)) {
         // Every `-C`, in order (#1606). The push reads the current branch only
         // when no refspec names one, and only then does a `--git-dir` or
         // `GIT_DIR`, which hides whose branch that is, refuse it.
         const { dir, movesRepo } = gitPlaceAt(c, start, base, ctx.shell);
+        // A push its shell reads differently from the text here is judged on
+        // what it reads (#1646): its refspecs past the verb the rule's own
+        // shape matched there, git's global options and their values skipped
+        // as `GIT_GLOBALS` reads them (`git -c 'x.push=integration' push
+        // origin main` names no `integration`), and, apart from that, a `-C`,
+        // `--git-dir` or `--work-tree` among those options as moving the
+        // repository. A shape it cannot place is judged as moving it.
+        let read = args;
+        // A `cd` ahead of it in its string that cannot be known leaves its tree unknown too (#1646).
+        let moved = movesRepo || Boolean(lost);
+        if (decoded !== undefined) {
+          const verb = new RegExp(GIT_PUSH.inner.source, "y").exec(decoded);
+          read = verb ? decoded.slice(verb[0].length) : "";
+          moved ||= !verb || /(?:^|\s)(?:-C|--git-dir|--work-tree)(?=[\s=]|$)/.test(verb[0]);
+        }
         let unknown = false;
         const fromIntegration = () =>
-          movesRepo
+          moved
             ? (unknown = true)
             : ctx.branch(dir) === INTEGRATION_BRANCH || path.basename(ctx.toplevel?.(dir) ?? dir) === INTEGRATION_TREE;
-        if (pushReachesIntegration(words(args), fromIntegration))
+        if (pushReachesIntegration(words(read), fromIntegration))
           return unknown
             ? movedRepo("push")
             : `The \`${INTEGRATION_BRANCH}\` branch is local and never pushed: it is origin/${MAIN_BRANCH} plus the branches under manual test, rebuilt by scripts/integration-build.mjs (#1520). Push each issue branch from its own ../ir-<issue> tree.`;
+        // Judged as its shell reads it: its decoded hit is excused only now.
+        if (decoded !== undefined) excuseDecodedHit(c, GIT_PUSH, occurrence);
       }
       return null;
     },
@@ -1099,7 +1184,7 @@ export const rules = [
           return "One `gh pr merge` per command: each merge is checked on its own, so run them one at a time.";
         // No segment starts with the merge: it is the first word of a string a
         // shell runs, or the program a wrapper runs (#1634), named as such.
-        const carried = [...matchesAt(c, MERGE_AT)].find((m) => m.how !== "command");
+        const carried = [...matchesAt(c, MERGE_AT)].find((m) => m.how !== "command" || m.shell);
         if (carried) return carriedMerge(carried);
         return "Could not isolate the `gh pr merge` in this command; run it on its own.";
       }
@@ -1210,6 +1295,8 @@ export const rules = [
       for (const commit of chainCommands(c, ctx.cwd, GIT_COMMIT, ctx.shell)) {
         // Every `-C`, in order; a repository or work tree named apart from the
         // directory leaves the branch, the index and the files unknown (#1606).
+        // A `cd` ahead of it the hook cannot follow leaves the checkout unknown: refused before any read (#1646).
+        if (commit.lost) return lostDir("commit");
         const { dir, movesRepo, movesTree, movesIndex } = gitPlaceAt(c, commit.start, commit.base, ctx.shell);
         if (movesRepo || movesTree || movesIndex) return movedRepo("commit");
         // A `git add` ahead of it that stages into a moved repository, tree or
@@ -1277,6 +1364,8 @@ export const rules = [
       if (!has(c, GIT_COMMIT)) return null;
       // Each commit in the tree its own `cd`s and `-C` land in, as for the spec rule (#1594 review).
       for (const commit of chainCommands(c, ctx.cwd, GIT_COMMIT, ctx.shell)) {
+        // A `cd` ahead of it the hook cannot follow leaves the checkout unknown: refused before any read (#1646).
+        if (commit.lost) return lostDir("commit");
         const { dir, movesRepo, movesTree, movesIndex } = gitPlaceAt(c, commit.start, commit.base, ctx.shell);
         if (movesRepo || movesTree || movesIndex) return movedRepo("commit");
         // A `git add` ahead of it that stages into a moved repository, tree or
@@ -1353,8 +1442,13 @@ export const rules = [
       if (!m) return null;
       const target = words(m[1]).find((w) => !w.startsWith("-"));
       if (!target) return null;
-      const resolved = resolveDir(gitCwd(c, ctx.cwd, GIT_WORKTREE_REMOVE, ctx.shell), target, { shell: ctx.shell });
-      const held = ctx.linkTargets().filter((l) => l.target && ctx.isInside(l.target, resolved));
+      const place = gitPlace(c, ctx.cwd, GIT_WORKTREE_REMOVE, ctx.shell);
+      const resolved = resolveDir(place.dir, target, { shell: ctx.shell });
+      const links = ctx.linkTargets().filter((l) => l.target);
+      // A `cd` ahead of it the hook cannot follow leaves a relative target unknown (#1646).
+      if (place.lost && !path.isAbsolute(target) && links.length)
+        return `A \`cd\` ahead of this \`git worktree remove\` may or may not run, or runs in a pipeline's last stage, so the hook cannot tell which tree \`${target}\` names while a deck host is linked. Run the remove on its own, with a plain \`cd <dir> &&\` ahead of it at most.`;
+      const held = links.filter((l) => ctx.isInside(l.target, resolved));
       if (held.length)
         return `${held.map((l) => l.host).join(" and ")} plugin link points into ${resolved}. Do not relink it yourself, not even to master — leave the link and the worktree as they are and tell Niklas.`;
       return null;
@@ -1382,6 +1476,11 @@ export const rules = [
     name: "nothing relinks a deck host without Niklas's go",
     test: (c, ctx) => {
       const found = deckFindings(c, ctx.cwd, ctx, ctx.shell);
+      // One that relinks only in a linked tree, run where a `cd` ahead of it
+      // leaves the tree unknown, is refused, as a lost command is elsewhere (#1646).
+      const lost = found.find((f) => f.kind === "lost");
+      if (lost)
+        return `${lost.text}: it relinks the hosts linked to that tree, and the hook cannot tell which tree it is (a \`cd\` that may not run, sits in a pipeline's last stage, expands, or runs under \`eval\`). Run the \`cd\` as a plain \`cd <dir> &&\` ahead of it.`;
       if (found.every((f) => f.kind === "restart")) return null;
       return {
         ask: `${[...new Set(found.map((f) => f.text))].join("; ")}. No deck host is relinked, linked or unlinked, nor restarted over and over by a watch or a loop, without Niklas's go (#1520, #1737): confirm only once he has said go. A restart, stop or start asks no prompt: it waits for his go in the conversation. Builds and installs need none.`,
@@ -1397,6 +1496,7 @@ export const rules = [
   },
   {
     name: "never rewrite the board's Status options",
+    occurrence: true,
     test: (c) =>
       has(c, /updateProjectV2Field/) &&
       "`updateProjectV2Field` replaces the option list and regenerates its ids, which clears every card's lane. Add a lane in the UI instead.",
@@ -1455,25 +1555,11 @@ export const rules = [
       // run with nothing after it takes the whole redirect rather than stopping
       // at its `&`.
       const piped = (s) => /^(?:>&\d|&>|[^|&;\n])*\|(?!\|)/.test(s);
-      for (const m of matchesAt(c, cmd(/pnpm\s+(?:run\s+)?(?:build|test|typecheck|lint|format)\b/))) {
-        const end = m.index + m[0].length;
-        const string = stringBounds(c, m.program);
-        if (!string) {
-          if (!/pipefail/.test(text.slice(0, m.index)) && piped(text.slice(end))) return PIPED_PNPM;
-          continue;
-        }
-        const [open, close] = string;
-        // Where the command that runs the shell starts: after the last operator ahead of the string.
-        const from = text.slice(0, open).search(/[^\n;&|()\x60]*$/);
-        // The shell's own `-o pipefail`, alone or ending a cluster (`-eo pipefail`);
-        // a `+o pipefail` turns it off, so it excuses nothing (#1634).
-        const inner =
-          /pipefail/.test(text.slice(open, m.index)) || /(?<!\S)-[A-Za-z]*o\s+pipefail\b/.test(text.slice(from, open));
-        if (!inner && piped(text.slice(end, close))) return PIPED_PNPM;
-        if (/pipefail/.test(text.slice(0, from))) continue;
-        const after = /^(?:>&\d|&>|[^;&\n])*/.exec(text.slice(close + 1))[0];
-        const pipes = (after.match(/(?<!\|)\|(?!\|)/g) ?? []).length;
-        if (pipes >= (stringKind(c, m.program)?.piped ? 2 : 1)) return PIPED_PNPM;
+      for (const m of matchesAt(c, PIPED_PNPM_RE)) {
+        if (pipedPnpm(c, text, m, piped)) return PIPED_PNPM;
+        // A pnpm its shell reads differently from the text here was judged on
+        // what that shell reads: its decoded hit is excused (#1646).
+        if (m.decoded !== undefined) excuseDecodedHit(c, PIPED_PNPM_RE, m.occurrence);
       }
       return null;
     },
@@ -1525,6 +1611,7 @@ export const rules = [
   {
     name: "heredocs collapse doubled backslashes",
     bashOnly: true,
+    occurrence: true,
     test: (c) =>
       has(c, /<<-?\s*['"]?\w+/) &&
       has(c, /[A-Za-z]:\\\\/) &&
@@ -1665,7 +1752,7 @@ function addsAhead(command, commit, ctx) {
       return {
         args: gitArgs(argTokens(command, add.at), ADD_OPTIONS),
         dir: place.dir,
-        moved: place.movesRepo || place.movesTree || place.movesIndex,
+        moved: place.movesRepo || place.movesTree || place.movesIndex || Boolean(add.lost),
       };
     });
 }
@@ -2089,16 +2176,93 @@ const checkName = (c) => c.name ?? c.context ?? c.__typename ?? "?";
  * words after it as the command (#1606 second read), so it is judged once more
  * blanked out, at the same length, which puts the next word at command
  * position.
+ *
+ * A program word a string handed to a shell spells so the text cannot show
+ * the name it runs (#1646, `respelledPrograms` in `shell-lexer.mjs`): one
+ * spliced from quoted pieces (`bash -c 'g'"h"' pr merge 7'`) is refused,
+ * naming it; one escaped within its string (`bash -c "\"gh\" pr merge 7"`,
+ * pwsh's `& \"C:\…\gh.exe\"`) is judged with the name its shell runs in its
+ * place, and that verdict stands.
  */
 export function checkBash(command, ctx) {
   const powershell = ctx.shell === POWERSHELL;
-  const text = powershell ? powershellAsBash(command) : command;
+  return checkText(powershell ? powershellAsBash(command) : command, ctx, powershell, 0);
+}
+
+/**
+ * The first deny of the rules marked `occurrence` — those that fire on any
+ * occurrence of a text in the raw command, wherever it sits — over `text`
+ * ({@link checkText}), or `null`.
+ */
+function occurrences(text, ctx, powershell) {
+  for (const rule of rules) {
+    if (!rule.occurrence || (powershell && rule.bashOnly)) continue;
+    const v = rule.test(text, ctx);
+    if (typeof v === "string") return v;
+  }
+  return null;
+}
+
+/** {@link checkBash} over the command read as bash (`text`); `depth` counts the re-judges with a respelled name in place. */
+function checkText(text, ctx, powershell, depth) {
+  const { respelled, spliced, reprinted } = respelledPrograms(text);
+  if (spliced.length)
+    return `The program \`${spliced[0].word}\` in a string this command hands to a shell is spliced from quoted pieces, so the hook cannot read which program it runs. Spell the program as one plain word.`;
+  if (reprinted.length || respelled.length) {
+    if (depth > 0)
+      return `A program in a string this command hands to a shell is quoted, escaped or printed so the hook cannot read it in place${respelled.length ? ` (\`${respelled[0].word}\`)` : ""}. Spell the program as a plain word.`;
+    // The rules that fire on any occurrence of a text read this command's own
+    // first: a re-judge reads a rebuilt text, which drops a printer's operands
+    // (`printf '%d%.0s\n' 5 '<marker>'`, CodeRabbit on PR #1788).
+    const occurrence = occurrences(text, ctx, powershell);
+    if (occurrence) return occurrence;
+  }
+  if (reprinted.length) {
+    // An echo -e or printf whose output holds a word its raw text cannot spell
+    // is judged as printing that output plainly, from the last, so the earlier
+    // ones keep their indices (#1646). Its redirections inside the span it
+    // replaces go with it, so a substitution in one is still judged
+    // (`printf '%d\n' >"$(gh pr merge 7)" 5 | bash`, CodeRabbit CLI).
+    let plain = text;
+    const seen = new Set();
+    for (const { from, to, text: out, kept } of [...reprinted].sort((x, y) => y.from - x.from)) {
+      if (seen.has(from)) continue;
+      seen.add(from);
+      const redirs = kept?.length ? ` ${kept.join(" ")}` : "";
+      plain = `${plain.slice(0, from)}printf '%s' '${out.replace(/'/g, "'\\''")}'${redirs}${plain.slice(to)}`;
+    }
+    return checkText(plain, ctx, powershell, depth + 1);
+  }
+  if (respelled.length) {
+    // Each word replaced by the name its shell runs, from the last, so the
+    // earlier ones keep their indices; and once more by the name its raw text
+    // spells, where that differs, the stricter verdict standing.
+    const named = (key) => {
+      let out = text;
+      for (const w of [...respelled].sort((x, y) => y.start - x.start))
+        out = out.slice(0, w.start) + w[key] + out.slice(w.end);
+      return out;
+    };
+    // A substitution that gives back the command unchanged reads nothing new.
+    const verdicts = [named("name"), named("rawName")]
+      .filter((c, k, all) => all.indexOf(c) === k && c !== text)
+      .map((c) => checkText(c, ctx, powershell, depth + 1));
+    if (verdicts.length) return verdicts.find((v) => typeof v === "string") ?? verdicts.find((v) => v) ?? null;
+  }
   // Shells or wrappers nested past the lexer's depth leave the program at the
   // bottom unread by every rule, and a re-judge hits the same depth, so the
   // command is refused whole rather than passed (#1634, an independent judge
   // on PR #1637: `nice` nested nine times let a merge through).
   if (unsettled(text))
     return "This command nests shells or wrappers (`bash -c`, `sudo`, `nice`, `env` …) deeper than the hook can read, so it cannot see what runs at the bottom. Run the inner command directly, or with fewer wrappers around it.";
+  // A lead in a string a shell runs that opens a quote it never closes, or a
+  // heredoc with no delimiter: which word runs after it cannot be read, so the
+  // command is refused whole rather than passed on a guess (#1646).
+  if (unclosedLead(text))
+    return "A command this one hands to a shell (`bash -c`, `eval`, a piped script …) starts with a quote that never closes, or has a heredoc with no delimiter, so the hook cannot read which program it runs. Close the quote, or run the inner command directly.";
+  // printf output piped to a shell that the hook cannot work out (#1646).
+  if (unprintable(text))
+    return "This command pipes `printf` output to a shell, and part of that output cannot be known here — a `*` width, a number that is no literal, an argument that expands — so the hook cannot read which program the shell runs. Run the inner command directly.";
   const verdict = judge(text, ctx, powershell);
   if (typeof verdict === "string") return verdict;
   // An ask the command carries anyway, from another command of the chain, is
@@ -2154,13 +2318,27 @@ const GUARDED_PROGRAM = /\b(?:gh|git)\b/i;
 const GUARDED_VERB = /^(?:pr|merge|create|push|commit|worktree|api|project|issue|add)$/;
 
 /** The rules' verdict on `text`, already read as bash ({@link checkBash}). */
+/** The refusal of a command a rule reads mis-sliced ({@link judge}, #1646). */
+const DECODED_REFUSAL =
+  "A command this one hands to a shell is spelled so that shell reads its words differently from how they are written here (an escape it decodes, words `eval` or `printf` join), and the hook cannot read its arguments as that shell does. Spell the command as plain words.";
+
 function judge(text, ctx, powershell) {
   const asks = [];
   for (const rule of rules) {
     if (powershell && rule.bashOnly) continue;
+    takeDecodedHits(text);
     const v = rule.test(text, ctx);
-    if (!v) continue;
+    // A rule that found its command in what a shell reads from a string, but
+    // reads its arguments from raw text that differs (an escape it decodes,
+    // words `eval` or `printf` join), never passes on them (#1646; reading
+    // them as that shell does is #1783). A rule that read that command as
+    // its shell does excused its match (`excuseDecodedHit`). Nor does it ask
+    // on them: an ask the rule raised over another command of the chain says
+    // nothing of the one it read mis-sliced, which the prompt would run
+    // unnamed (CodeRabbit CLI on #1646). A deny stands as it is.
     if (typeof v === "string") return v;
+    if (takeDecodedHits(text).size) return DECODED_REFUSAL;
+    if (!v) continue;
     asks.push(v.ask);
   }
   // Every ask in one prompt: a chain the maintainer approves runs whole, so a

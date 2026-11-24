@@ -618,6 +618,14 @@ describe("the program-word rewrite's second read (#1606)", () => {
     "bash -c 'a; b' && git push origin integration # x/'y",
     `sudo x "a;b"/gh pr merge 5; git.exe push --tags; echo "q/r"`,
     "sudo x `a; b`/c; gh pr merge 5 | echo 'd/e'",
+    // #1646 review: a backslashed word rewritten.
+    String.raw`bash -c "\gh.exe pr merge 5; \ls"; git push origin integration; echo "a/b"`,
+    // #1646: words read inside a string at the level its shell reads it.
+    `bash -c "X=\\"a; b\\" gh.exe pr merge 5"; git push origin integration; echo "a/b"`,
+    String.raw`bash -c 'X='\''a b'\'' /usr/bin/gh pr merge 5' && git.exe push --tags; echo 'c/d'`,
+    String.raw`bash -c $'ls\ngh.exe pr merge 5\x3bGIT push --tags'; echo "e/f"`,
+    `printf '%s\\n' 'gh.exe pr merge 5' | sh; git push origin integration; echo 'g/h'`,
+    `sudo -s env X="a b" gh.exe pr merge 5; echo "i/j"`,
   ];
   const SHAPES = [/git\s+push\b/, /gh\s+pr\s+merge\b/, /git\s+commit\b/, /gh\s+pr\s+create\b/].map((re) => cmd(re));
   // Since #1607 the raw text is read only over the element that feeds a shell;
@@ -634,6 +642,14 @@ describe("the program-word rewrite's second read (#1606)", () => {
     }
     for (const re of SHAPES) if (re.test(command)) expect(re.test(text), String(re)).toBe(true);
   });
+
+  it.each(UNTRUSTED.slice(-5))("finds the merge inside the string, read as its shell reads it (#1646): %s", (c) => {
+    expect(lexer.has(c, SHAPES[1])).toBe(true);
+    expect(view(c).unsettled).toBe(false);
+  });
+
+  it("finds a push a string's ANSI-C escape separates from the command before it (#1646)", () =>
+    expect(lexer.has(UNTRUSTED.at(-3), SHAPES[0])).toBe(true));
 
   it("still rewrites a plain program word in an untrusted view", () => {
     expect(trustedMask(`"bash" -c 'x' && gh.exe pr merge 5`)).toBe(`  bash -c 'x' &&     gh pr merge 5`);
@@ -1101,9 +1117,12 @@ describe("the #1634 review round: options, cuts and program positions", () => {
     expect(trustedMask("find . -exec GH.EXE pr merge {} \\;")).toBe("find . -exec     gh pr merge {} \\;");
     expect(lexer.programKind("find . -exec gh pr merge {} \\;", 13)).toEqual({ how: "wrapper", via: "find -exec" });
     expect(lexer.programKind("sudo nice gh pr merge 7", 10)).toEqual({ how: "wrapper", via: "nice" });
-    // The gap that stays: a program quoted whole in a string a shell joins from its words.
-    expect(trustedMask('eval "gh" pr merge 7')).toBe('eval "gh" pr merge 7');
-    expect(lexer.has('eval "gh" pr merge 7', MERGE)).toBe(false);
+    // A program quoted whole among the words a shell joins is read whole too,
+    // its own quotes with it, as `sudo "gh"`'s are; another word's stay (#1646).
+    expect(trustedMask('eval "gh" pr merge 7')).toBe("eval   gh pr merge 7");
+    expect(lexer.has('eval "gh" pr merge 7', MERGE)).toBe(true);
+    const joined = `eval "gh.exe" pr merge 5 "x;y"; git.exe push --tags`;
+    expect(trustedMask(joined)).toBe(`eval ${" ".repeat(6)}gh pr merge 5 "x;y";     git push --tags`);
   });
 
   it("has no fedCommandStart export: programKind says how a word is the program", () =>
@@ -1311,5 +1330,649 @@ describe("commandWordsRaw stops at a limit (#1634)", () => {
     // The words of the `pnpm` inside the string end at the string's close.
     expect(lexer.commandWordsRaw(c, 13, lexer.stringEnd(c, 12))).toEqual(["run", "y"]);
     expect(lexer.commandWordsRaw(c, 13)).toEqual(["run", "y' 'z"]);
+  });
+});
+
+// #1646: inside a shell-fed string the raw text was read one level deep, so a
+// lead assignment whose quoted value holds a blank (`X="a b" gh …`) or a `;`
+// ended early, and the program after it was never recorded. The text a shell
+// runs is now read as that shell reads it.
+describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
+  const MERGE = cmd(/gh\s+pr\s+merge\b/);
+  const PUSH = cmd(/git\s+push\b/);
+  /** The kind of the program word `gh` or `git` at its last occurrence, as {@link lexer.programKind} reads it. */
+  const kindAt = (c, word) => lexer.programKind(c, c.lastIndexOf(`${word} `));
+
+  it.each([
+    ["bash -c 'X=\"a b\" gh pr merge 7'", { how: "shell", via: "bash" }],
+    ["bash -c 'env X=\"a b\" gh pr merge 7'", { how: "shell", via: "bash" }],
+    [`bash -c "env X='a b' gh pr merge 7"`, { how: "shell", via: "bash" }],
+    ["bash -c 'nice env GH_PAGER=\"less -R\" gh pr merge 7 --squash'", { how: "wrapper", via: "nice" }],
+    ["bash -c 'nice env X=\"a;b\" gh pr merge 7'", { how: "wrapper", via: "nice" }],
+  ])("records the program after the quoted value: %s", (c, kind) => {
+    expect(lexer.has(c, MERGE)).toBe(true);
+    expect(kindAt(c, "gh")).toEqual(kind);
+  });
+
+  it("records a tag push after a quoted value under a wrapper, and after a wrapper's quoted option value", () => {
+    const c = "bash -c 'nice env X=\"a b\" git push origin v1.2.3'";
+    expect(lexer.has(c, PUSH)).toBe(true);
+    expect(kindAt(c, "git")).toEqual({ how: "wrapper", via: "nice" });
+    expect(lexer.has("bash -c 'env -C \"a b\" git push origin v1.2.3'", PUSH)).toBe(true);
+  });
+
+  // sudo -s escapes every character of its words but a letter, a digit, `_`,
+  // `-` and `$` before its shell reads them: `X=a\ b` is then the program. The
+  // reader leaves `=` unescaped, so a leading assignment is stepped over and
+  // the word after it counts as a program: a false one here, the real one in
+  // `sudo -s env X=1 gh …`.
+  it("errs to a program after a leading assignment sudo -s escapes", () => {
+    expect(lexer.has('sudo -s X="a b" gh pr merge 7', MERGE)).toBe(true);
+    expect(lexer.has("sudo -s echo X=1 gh pr merge 7", MERGE)).toBe(false);
+  });
+
+  it("decodes every ANSI-C escape of a string a shell runs, as bash does", () => {
+    const text = (w) =>
+      lexer
+        .decodeWord(w, true)
+        .map((x) => x.c)
+        .join("");
+    expect(text(String.raw`$'a\nb\tc\x41\101\u00e9\cA\q\'\\'`)).toBe("a\nb\tcAA\u00e9\x01\\q'\\");
+    // Without `ansi` an escape it cannot read whole stays live, as a program name reads it (#1606).
+    expect(lexer.decodeWord(String.raw`$'\x41'`).some((x) => x.live)).toBe(true);
+    expect(lexer.decodeWord(String.raw`$'a\nb'`, true).map((x) => [x.at, x.end])).toEqual([
+      [2, 3],
+      [3, 5],
+      [5, 6],
+    ]);
+  });
+
+  // The raw text of a string a shell runs is not always the text it reads: an
+  // outer double-quoted string carries escaped quotes, a `'\''` splice joins
+  // pieces, `$'…'` decodes escapes. Each is read as the shell reads it.
+  it.each([
+    `bash -c "X=\\"a b\\" gh pr merge 7"`,
+    String.raw`bash -c 'X='\''a b'\'' gh pr merge 7'`,
+    "bash -c X=1' gh pr merge 7'",
+    `bash -c "ls; X=\\"a b\\" gh pr merge 7"`,
+    String.raw`bash -c $'ls\ngh pr merge 7'`,
+    String.raw`bash -c $'X=\'a b\' gh pr merge 7'`,
+    `bash -c "sh -c 'X=\\"a b\\" gh pr merge 7'"`,
+    `bash -c "nice env X=\\"a;b\\" gh pr merge 7"`,
+    "bash -c '2>\"a b\" gh pr merge 7'",
+    "bash -c 'X=${Y:-a b} gh pr merge 7'",
+    "bash -c 'X=$(echo a b)c gh pr merge 7'",
+    "echo 'X=\"a b\" gh pr merge 7' | bash",
+    "bash <<< 'X=\"a b\" gh pr merge 7'",
+    "eval 'X=\"a b\" gh pr merge 7'",
+    `eval "X=\\"a b\\"" gh pr merge 7`,
+    "watch 'X=\"a b\" gh pr merge 7'",
+    "trap 'X=\"a b\" gh pr merge 7' EXIT",
+    String.raw`find . -exec sh -c 'X="a b" gh pr merge 7' \;`,
+    `bash <<< "X=\\"a b\\" gh pr merge 7"`,
+    `bash -c "sh -c 'nice env X=\\"a;b\\" gh pr merge 7'"`,
+    "bash -c 'cd x && X=\"a b\" gh pr merge 7'",
+    "bash -c 'if true; then X=\"a b\" gh pr merge 7; fi'",
+    "bash -c 'X=\"a b\" 2>/dev/null gh pr merge 7'",
+    "bash -c 'X=ab 2>/dev/null gh pr merge 7'",
+    "bash -c 'exec -a \"my name\" gh pr merge 7'",
+    "printf 'X=\"a b\" gh pr merge 7\\n' | sh",
+    "sudo -s env X=1 gh pr merge 7",
+  ])("reads the string as the shell it is handed to reads it: %s", (c) => {
+    expect(lexer.has(c, MERGE)).toBe(true);
+    expect(view(c).unclosedLead).toBe(false);
+  });
+
+  // The same misreading outside any shell string: a `${…}` or `$(…)` value with a blank in it.
+  it.each(["X=${Y:-a b} gh pr merge 7", "X=$(echo a b)c gh pr merge 7"])(
+    "reads a value whose expansion holds a blank at command position: %s",
+    (c) => expect(lexer.has(c, MERGE)).toBe(true),
+  );
+
+  it.each([
+    "bash -c 'X=\"a b gh pr merge 7'",
+    `bash -c "X=\\"a b gh pr merge 7"`,
+    "bash -c '\"gh pr merge 7'",
+    "echo 'X=\"a gh pr merge 7' | bash",
+  ])("reports a lead whose quote never closes, which the hook cannot read: %s", (c) =>
+    expect(view(c).unclosedLead).toBe(true),
+  );
+
+  it.each([
+    "bash -c 'X=ab gh pr merge 7'",
+    String.raw`bash -c 'echo "it'\''s"; gh pr merge 7'`,
+    `bash -c 'echo "unclosed'`,
+    "gh pr merge 7",
+    `X="a b" gh pr merge 7`,
+  ])("reports nothing unread where every lead closes its quotes: %s", (c) => expect(view(c).unclosedLead).toBe(false));
+
+  it.each([
+    "bash -c 'X=ab gh pr merge 7'",
+    "bash -c 'env X=ab gh pr merge 7'",
+    "bash -c 'nice env X=ab gh pr merge 7'",
+    `X="a b" gh pr merge 7`,
+    `nice env X="a b" gh pr merge 7`,
+  ])("still reads the lead with no quoted value, and one outside a string: %s", (c) =>
+    expect(lexer.has(c, MERGE)).toBe(true),
+  );
+
+  it.each([
+    "bash -c 'echo \"gh pr merge 7\"'",
+    "bash -c 'X=\"a b\" echo gh pr merge 7'",
+    "bash -c 'X=\"gh pr merge 7\" true'",
+    `bash -c "X='gh pr merge 7' true"`,
+    `bash -c "X=\\"gh pr merge 7\\" true"`,
+    // echo joins its words: the shell reads `X=a b gh …`, which runs `b`.
+    'echo X="a b" gh pr merge 7 | bash',
+    // `-c` takes one word: `gh` is the shell's `$0`, never run.
+    "bash -c 'X=1' gh pr merge 7",
+    // An ANSI-C blank is a blank to the shell that reads the string: it runs `b`.
+    String.raw`bash -c $'X=a\x20b gh pr merge 7'`,
+  ])("finds no merge where it is a value or an argument: %s", (c) => {
+    expect(lexer.has(c, MERGE)).toBe(false);
+    expect(lexer.matchAt(c, MERGE)).toBeNull();
+  });
+
+  it("records each command a string runs after a separator, as the shell reads the string", () => {
+    const c = `bash -c "ls; X=\\"a b\\" gh pr merge 7"`;
+    expect(kindAt(c, "gh")).toEqual({ how: "command" });
+    expect(lexer.matchAt(c, MERGE)).not.toBeNull();
+  });
+
+  it(
+    "reads a long run of quoted values, wrappers and strings in time linear in their length",
+    { timeout: TIMING_TIMEOUT_MS },
+    () => {
+      readsLinearly((n) => `bash -c '${'X="a b" '.repeat(n)}gh pr merge 7'`, 2000, MERGE, true);
+      readsLinearly((n) => `bash -c "${'X=\\"a b\\" '.repeat(n)}gh pr merge 7"`, 2000, MERGE, true);
+      readsLinearly((n) => `bash -c 'nice env ${'X="a;b" '.repeat(n)}gh pr merge 7'`, 2000, MERGE, true);
+      readsLinearly((n) => `${"bash -c 'X=\"a b\" true'; ".repeat(n)}echo`, 500, MERGE, false);
+      // An unclosed quote in a lead: the value's pieces are each one parse, so
+      // a failed token backtracks once per piece, never exponentially.
+      readsLinearly((n) => `bash -c 'X=${'"a"'.repeat(n)}"b gh pr merge 7'`, 2000, MERGE, false);
+    },
+  );
+
+  // A program word a fed string's shell expands is one the hook cannot read,
+  // as at top level: listed, so `checkBash` judges it as gh and as git. A
+  // substitution or backtick is no word the raw text holds whole, so it was
+  // skipped; an escaped `$` in a double-quoted string started no word, and is
+  // named by its raw spelling, from its backslash.
+  it.each([
+    ['bash -c "$(echo gh) pr merge 7"', "$(echo gh)"],
+    ['bash -c "`echo gh` pr merge 7"', "`echo gh`"],
+    ["bash -c '$(echo gh) pr merge 7'", "$(echo gh)"],
+    ["bash -c '`echo gh` pr merge 7'", "`echo gh`"],
+    [`bash -c 'X="a b" $(echo gh) pr merge 7'`, "$(echo gh)"],
+    [String.raw`eval "\$GH pr merge 7"`, String.raw`\$GH`],
+    [String.raw`bash -c "\$GH pr merge 7"`, String.raw`\$GH`],
+  ])("lists a program word the string's shell expands as unreadable: %s", (c, word) =>
+    expect(lexer.unreadablePrograms(c).map((u) => u.word)).toContain(word),
+  );
+
+  it.each(["bash -c 'echo \"$(date)\"'", "bash -c 'X=$(echo a b) true'", 'bash -c "echo $(date)"'])(
+    "lists no argument or assignment that expands as a program: %s",
+    (c) => expect(lexer.unreadablePrograms(c)).toEqual([]),
+  );
+
+  // A program word starting with a backslash: its rewrite drops the backslash,
+  // and the next round read the word from its name and found the raw backslash
+  // ahead of it, so the recorded starts alternated and never settled.
+  it.each([
+    String.raw`bash -c '\cp -f a b'`,
+    String.raw`bash -c "\ls -la"`,
+    String.raw`bash -c 'X=1 \ls'`,
+    String.raw`bash -c $'\\x67h pr merge 7'`,
+    String.raw`bash -c '\gh pr merge 7'`,
+    String.raw`bash -c "nice \gh pr merge 7"`,
+  ])("settles a program word that starts with a backslash: %s", (c) => expect(view(c).unsettled).toBe(false));
+
+  it("reads the program after a backslash as its shell does", () => {
+    expect(lexer.has(String.raw`bash -c '\gh pr merge 7'`, MERGE)).toBe(true);
+    expect(lexer.has(String.raw`bash -c $'\\x67h pr merge 7'`, MERGE)).toBe(false);
+    expect(lexer.respelledPrograms(String.raw`bash -c $'g\x68 pr merge 7'`).respelled.map((w) => w.name)).toEqual([
+      "gh",
+    ]);
+  });
+
+  // A program spelled so the raw text cannot show the name its shell runs.
+  it.each([
+    [String.raw`bash -c "\"gh\" pr merge 7"`, String.raw`\"gh\"`, "gh"],
+    [String.raw`pwsh -Command "& \"C:\Program Files\GitHub CLI\gh.exe\" pr merge 7"`, null, "gh"],
+    [String.raw`bash -c "\"git\" push origin v1.2.3"`, String.raw`\"git\"`, "git"],
+  ])("lists a program escaped within its string with the name its shell runs: %s", (c, word, name) => {
+    const { respelled, spliced } = lexer.respelledPrograms(c);
+    expect(spliced).toEqual([]);
+    expect(respelled.map((w) => w.name)).toEqual([name]);
+    if (word) expect(respelled[0].word).toBe(word);
+  });
+
+  it.each([
+    `bash -c 'g'"h"' pr merge 7'`,
+    `bash -c 'X="a b" g'"h"' pr merge 7'`,
+    `bash -c 'echo hi; g'"h"' pr merge 7'`,
+  ])("lists a program spliced from quoted pieces: %s", (c) =>
+    expect(lexer.respelledPrograms(c).spliced.map((w) => w.word)).toEqual([`g'"h`]),
+  );
+
+  it.each([
+    "bash -c 'gh pr merge 7'",
+    `bash -c "X='a b' gh pr merge 7"`,
+    `echo '"gh" pr merge 7' | bash`,
+    String.raw`bash -c 'X='\''a b'\'' gh pr merge 7'`,
+  ])("lists nothing respelled where the raw text spells the program: %s", (c) =>
+    expect(lexer.respelledPrograms(c)).toEqual({ respelled: [], spliced: [], reprinted: [] }),
+  );
+
+  // What echo -e and printf print is the script the piped shell reads.
+  it.each([
+    String.raw`echo -e 'x\ngh pr merge 7' | bash`,
+    String.raw`echo -ne 'x\ngh pr merge 7' | bash`,
+    String.raw`echo -e 'x\x0agh pr merge 7' | bash`,
+    String.raw`echo -e 'x\012gh pr merge 7' | bash`,
+    String.raw`printf 'x\ngh pr merge 7\n' | bash`,
+    String.raw`printf 'x\012gh pr merge 7' | sh`,
+    String.raw`printf '%b' 'x\ngh pr merge 7' | bash`,
+  ])("reads what echo -e or printf prints, its escapes decoded: %s", (c) => expect(lexer.has(c, MERGE)).toBe(true));
+
+  it.each([
+    String.raw`echo 'x\ngh pr merge 7' | bash`,
+    String.raw`echo -eE 'x\ngh pr merge 7' | bash`,
+    String.raw`printf '%s' 'x\ngh pr merge 7' | bash`,
+  ])("keeps an escape echo or printf prints as written: %s", (c) => expect(lexer.has(c, MERGE)).toBe(false));
+
+  it("sets no unclosed lead for cmd.exe, which has no single quotes", () => {
+    expect(view(`cmd /c "it's.bat"`).unclosedLead).toBe(false);
+    expect(view(`bash -c "it's"`).unclosedLead).toBe(true);
+  });
+
+  // Second read on 9b4dfb0de: a lead value nesting a quote in a substitution
+  // or expansion inside `"…"`, or a substitution three deep, ended early in
+  // the lead regex. The lead is now stepped with the one word reader, at top
+  // level too, so the program after it is a known program position.
+  it.each([
+    `bash -c 'X="$(echo "a b")" gh pr merge 7'`,
+    `bash -c 'X="\${Y:-"a b"}" gh pr merge 7'`,
+    "bash -c 'X=a$(a $(b $(c)))b gh pr merge 7'",
+    'bash -c \'X="`echo "a b"`" gh pr merge 7\'',
+    'X=$(a $(b $(c)))"" gh pr merge 7',
+    `X="\${Y:-"a b"}" gh pr merge 7`,
+    "nice env X=a$(a $(b $(c)))b gh pr merge 7",
+  ])("finds the program after a lead value that nests: %s", (c) => {
+    expect(lexer.has(c, MERGE)).toBe(true);
+    expect(view(c).unclosedLead).toBe(false);
+  });
+
+  it("finds a push after such a value, in a string and at top level", () => {
+    expect(lexer.has(`bash -c 'X="$(echo "a b")" git push origin v1.2.3'`, PUSH)).toBe(true);
+    expect(lexer.has('X=$(a $(b $(c)))"" git push origin v1.2.3', PUSH)).toBe(true);
+  });
+
+  it.each([`bash -c 'X="$(echo "a b")" echo gh pr merge 7'`, "X=$(a $(b $(c)))b echo gh pr merge 7"])(
+    "finds no merge where the word after the value is an argument: %s",
+    (c) => expect(lexer.has(c, MERGE)).toBe(false),
+  );
+
+  // printf's output, as it prints it, read by the piped shell.
+  it.each([
+    String.raw`printf '%s\ngh pr merge 7\n' x | bash`,
+    String.raw`printf '%%\ngh pr merge 7\n' | bash`,
+    String.raw`printf '%s\n' 'gh pr merge 7' | bash`,
+    String.raw`printf '%s\n%s\n' 'cd x' 'gh pr merge 7' | bash`,
+    String.raw`printf '%s\n' a 'gh pr merge 7' | bash`,
+    String.raw`printf '%5s\ngh pr merge 7\n' x | bash`,
+    String.raw`printf '%d\ngh pr merge 7\n' 5 | bash`,
+  ])("reads what printf prints from its format and arguments: %s", (c) => expect(lexer.has(c, MERGE)).toBe(true));
+
+  it.each([
+    String.raw`printf 'echo %s\n' 'gh pr merge 7' | bash`,
+    String.raw`printf '%s\n' 'echo hi' | bash`,
+    String.raw`printf '%b' 'x\cgh pr merge 7' | bash`,
+  ])("finds no merge printf does not print at a command's start: %s", (c) => expect(lexer.has(c, MERGE)).toBe(false));
+
+  it.each([
+    String.raw`printf '%d\ngh pr merge 7\n' "$N" | bash`,
+    String.raw`printf '%*s\n' 5 x | bash`,
+    String.raw`printf '%s\n' "$CMD" | bash`,
+    String.raw`printf '%f\n' 1 | bash`,
+  ])("reports printf output it cannot know: %s", (c) => expect(view(c).unprintable).toBe(true));
+
+  it.each([
+    String.raw`printf '%s\n' 'echo hi' | bash`,
+    String.raw`printf '%d\n' 5 | bash`,
+    String.raw`printf '%s\n' "$X"`,
+  ])("reports nothing unknown where printf's output is known or goes to no shell: %s", (c) =>
+    expect(view(c).unprintable).toBe(false),
+  );
+
+  // A `#` comment and a heredoc body hold no command: a quote in them closes nothing.
+  it.each([
+    String.raw`bash -c $'ls #\'\ngh pr merge 7'`,
+    String.raw`printf "ls #'\ngh pr merge 7\n" | bash`,
+    String.raw`bash -c $'cat <<E\nx it\'s\nE\ngh pr merge 7'`,
+    String.raw`bash -c $'cat <<\'E\'\nx it\'s\nE\ngh pr merge 7'`,
+    String.raw`bash -c $'cat <<-E\n\tx it\'s\n\tE\ngh pr merge 7'`,
+  ])("reads the command after a comment or a heredoc body: %s", (c) => {
+    expect(lexer.has(c, MERGE)).toBe(true);
+    expect(view(c).unclosedLead).toBe(false);
+  });
+
+  it.each([
+    String.raw`bash -c $'cat <<E\n\'x\nE\necho hi'`,
+    String.raw`bash -c $'#it\'s\nls'`,
+    String.raw`bash -c $'cat <<E\ngh pr merge 7\nE'`,
+    String.raw`bash -c 'echo a#b'`,
+  ])("reads no command, and no unclosed quote, in a comment or a heredoc body: %s", (c) => {
+    expect(lexer.has(c, MERGE)).toBe(false);
+    expect(view(c).unclosedLead).toBe(false);
+  });
+
+  it("reports a heredoc operator with no delimiter, which the shell refuses", () =>
+    expect(view(String.raw`bash -c $'cat <<\ngh pr merge 7'`).unclosedLead).toBe(true));
+
+  it("reads a shift in an arithmetic command as no heredoc", () =>
+    expect(lexer.has(String.raw`bash -c $'(( x = 1 << 3 ))\ngh pr merge 7'`, MERGE)).toBe(true));
+
+  // An escaped `$` opens no ANSI-C string: `\$'x\'` is `$` and a plain `'x\'`.
+  it("reads an escaped `$` before a quote as no ANSI-C opener", () => {
+    const c = String.raw`echo -e \$'x\' 'y\ngh pr merge 7' | bash`;
+    expect(view(c).quotes.map(([a, b]) => c.slice(a, b + 1))).toEqual([
+      String.raw`'x\'`,
+      String.raw`'y\ngh pr merge 7'`,
+    ]);
+    expect(lexer.ansiOpen(c, c.indexOf("'"))).toBe(false);
+    expect(lexer.ansiOpen("$'x'", 1)).toBe(true);
+    expect(lexer.ansiOpen(String.raw`\\$'x'`, 3)).toBe(true);
+  });
+
+  // Round 3 (#1646): a rule's shape is also tested in the decoded text of each
+  // string a shell runs, so a command its shell joins or decodes is found.
+  it.each([
+    String.raw`bash -c $'gh\x20pr merge 7'`,
+    `eval "gh pr" merge 7`,
+    `eval gh "pr merge" 7`,
+    String.raw`printf '%s %s\n' gh 'pr merge 7' | bash`,
+  ])("finds a merge its shell reads only once it decodes or joins the words: %s", (c) => {
+    expect(lexer.has(c, MERGE)).toBe(true);
+    const m = lexer.matchAt(c, MERGE);
+    expect(m.decoded).toMatch(/^gh pr merge 7/);
+    expect(lexer.takeDecodedHits(c).size).toBeGreaterThan(0);
+  });
+
+  it("finds a push the same way, with the push as its shell reads it", () => {
+    const c = String.raw`bash -c $'git\x20push origin v1.2.3'`;
+    expect(lexer.matchAt(c, PUSH).decoded).toBe("git push origin v1.2.3");
+  });
+
+  it.each([
+    String.raw`bash -c $'echo gh\x20pr merge 7'`,
+    `eval "echo gh pr" merge 7`,
+    String.raw`printf '%s %s\n' echo 'gh pr merge 7' | bash`,
+  ])("finds no merge where the decoded text only mentions it: %s", (c) => expect(lexer.has(c, MERGE)).toBe(false));
+
+  it("records no decoded hit where the string reads as it is written", () => {
+    const c = "bash -c 'gh pr merge 7'";
+    lexer.takeDecodedHits(c);
+    expect(lexer.has(c, MERGE)).toBe(true);
+    expect(lexer.matchAt(c, MERGE).decoded).toBeUndefined();
+    expect(lexer.takeDecodedHits(c).size).toBe(0);
+    // An outer expansion is read as written at top level too: no hit for it.
+    const d = `bash -c "pnpm test $FILE"`;
+    lexer.has(d, cmd(/pnpm\s+test\b/));
+    expect(lexer.takeDecodedHits(d).size).toBe(0);
+  });
+
+  it("drops a decoded hit a consumer excuses", () => {
+    const c = `eval "gh pr" merge 7`;
+    lexer.takeDecodedHits(c);
+    const m = lexer.matchAt(c, MERGE);
+    lexer.excuseDecodedHit(c, MERGE, m.occurrence);
+    expect(lexer.takeDecodedHits(c).size).toBe(0);
+  });
+
+  // Round 4 (#1646, the CodeRabbit CLI findings at 760adedc2).
+  it.each([
+    String.raw`printf '%999999999s\ngh pr merge 7' x | bash`,
+    String.raw`printf '%60000s' a b c d e f g h | bash`,
+    `printf '%s' '${"x".repeat(70_000)}' | bash`,
+  ])("refuses printf output past its budget, fast, without building it: %s", (c) => {
+    const started = performance.now();
+    lexer.view.last = undefined;
+    expect(view(c.slice(0, 200_000)).unprintable).toBe(true);
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
+  it("still builds printf output with a small width", () => {
+    expect(lexer.has(String.raw`printf '%5s\ngh pr merge 7\n' x | bash`, MERGE)).toBe(true);
+    expect(view(String.raw`printf '%-3s|\n' x | bash`).unprintable).toBe(false);
+  });
+
+  it("maps a word after an astral character in printf output to its own raw word", () => {
+    const c = `printf '%s\\n' 'echo 😀; gh pr merge 7' | bash`;
+    const m = lexer.matchAt(c, MERGE);
+    expect(m).not.toBeNull();
+    expect(c.slice(lexer.programStart(c, m.program))).toMatch(/^gh pr merge 7/);
+    expect(lexer.has(`printf '%s\\n' 'echo 😀;  echo ready' | bash`, MERGE)).toBe(false);
+    // Only the printed map places these: no raw anchor stands before the `gh`.
+    for (const d of [`printf '%s\\n%s\\n' 😀 'gh pr merge 7' | bash`, `printf '%s\\n' 'x😀x' 'gh pr merge 7' | bash`]) {
+      const found = lexer.matchAt(d, MERGE);
+      expect(d.slice(lexer.programStart(d, found.program)), d).toMatch(/^gh pr merge 7/);
+    }
+  });
+
+  it.each([
+    "bash -c 'constructor -x y'",
+    "constructor -x y",
+    "bash -c 'toString -u v gh pr merge 7'",
+    "__proto__ -x y gh pr merge 7",
+    "bash -c 'hasOwnProperty -x y'",
+    "valueOf --unset x y",
+  ])("reads a command word named like an Object.prototype member as a plain word: %s", (c) => {
+    lexer.view.last = undefined;
+    expect(() => view(c)).not.toThrow();
+    expect(lexer.has(c, MERGE)).toBe(false);
+  });
+
+  it("reads the whole words of a long eval join in time linear in their count", { timeout: TIMING_TIMEOUT_MS }, () => {
+    readsLinearly((n) => `eval ${'"echo ready;" '.repeat(n)}`, 1500, MERGE, false);
+  });
+
+  // Round 5 (#1646, the CodeRabbit CLI findings at 87efe3f78).
+  it("keeps a reprinted printer's redirections, a substitution in one included", () => {
+    const [r] = lexer.respelledPrograms(String.raw`printf '%d\n' >"$(gh pr merge 7)" 5 | bash`).reprinted;
+    expect(r.kept).toEqual(['>"$(gh pr merge 7)"']);
+    // An unquoted substitution with blanks in it is one redirection target, not printed words.
+    const [s] = lexer.respelledPrograms(String.raw`printf '%d\n' >$(gh pr merge 7) 5 | bash`).reprinted;
+    expect(s.kept).toEqual([">$(gh pr merge 7)"]);
+    expect(s.text).toBe("5\n");
+    // One past the last argument is outside the span replaced, and kept where it is.
+    const [t] = lexer.respelledPrograms(String.raw`printf '%d\n' 5 >/dev/null | bash`).reprinted;
+    expect(t.kept).toEqual([]);
+  });
+
+  it.each([
+    String.raw`printf '%s -c "gh pr merge 7"\n' bash | bash`,
+    String.raw`printf '%s -o pipefail -c "gh pr merge 7"\n' bash | bash`,
+    String.raw`printf '%s %s -c "gh pr merge 7"\n' nice bash | bash`,
+    String.raw`printf 'bash -c "gh pr %s 7"\n' view merge | bash`,
+  ])("reads a shell's options and string in printf output whose words are out of view order: %s", (c) =>
+    expect(lexer.has(c, MERGE)).toBe(true),
+  );
+
+  it("reads no merge in printf output whose shell string only mentions one", () =>
+    expect(lexer.has(String.raw`printf '%s -c "echo gh pr merge 7"\n' bash | bash`, MERGE)).toBe(false));
+
+  it.each([
+    String.raw`echo -e 'first\ngh pr merge 7' | bash`,
+    String.raw`echo "-e" 'first\ngh pr merge 7' | bash`,
+    String.raw`echo -e'' 'first\ngh pr merge 7' | bash`,
+    String.raw`echo '-ne' 'first\ngh pr merge 7' | bash`,
+    String.raw`echo -ne 'first\ngh pr merge 7' | bash`,
+    String.raw`echo "-E" -e 'first\ngh pr merge 7' | bash`,
+  ])("reads echo's options with their quotes removed, as echo gets them: %s", (c) =>
+    expect(lexer.has(c, MERGE)).toBe(true),
+  );
+
+  it.each([
+    String.raw`echo '-E' 'first\ngh pr merge 7' | bash`,
+    String.raw`echo "-e" -E 'first\ngh pr merge 7' | bash`,
+    String.raw`echo first "-e" 'x\ngh pr merge 7' | bash`,
+  ])("decodes no escapes where echo reads none: %s", (c) => expect(lexer.has(c, MERGE)).toBe(false));
+
+  // Round 6 (#1646, the CodeRabbit CLI finding at 3212c3d97).
+  describe("the directory a string's `cd`s leave", () => {
+    const bash = (text) => ({ text, shell: lexer.BASH });
+    it("follows each cd and pushd at the start of a segment, as the typed command's are", () => {
+      expect(lexer.dirAfter([bash("cd ../ir-5; ")], MASTER)).toBe(tree("ir-5"));
+      expect(lexer.dirAfter([bash("true && pushd ../ir-5 && cd sub && ")], MASTER)).toBe(tree("ir-5", "sub"));
+      expect(lexer.dirAfter([bash("cd ../ir-5; "), bash("cd ../ir-6; ")], MASTER)).toBe(tree("ir-6"));
+      expect(lexer.dirAfter([bash("echo cd x; (cd ../ir-5); ")], MASTER)).toBe(MASTER);
+      expect(lexer.dirAfter([{ text: "Set-Location ../ir-5; ", shell: POWERSHELL }], MASTER)).toBe(tree("ir-5"));
+    });
+
+    it.each(['cd "$X"; ', "cd -; ", "cd; ", "pushd; ", "popd; ", "cd ~/x; ", "cd -P ../ir-5; ", "cd `pwd`; "])(
+      "cannot know where `%s` leaves it",
+      (text) => expect(lexer.dirAfter([bash(text)], MASTER)).toBeUndefined(),
+    );
+
+    const where = (c) => [...lexer.chainCommands(c, MASTER, cmd(/pnpm\b/))].map(({ base, lost }) => ({ base, lost }));
+    it("moves a command a string runs by the cds ahead of it there, once", () => {
+      expect(where(String.raw`printf 'cd %s; pnpm %s\n' ../ir-5 test | bash`)).toEqual([
+        { base: tree("ir-5"), lost: undefined },
+      ]);
+      expect(where(String.raw`bash -c $'cd\x20../ir-5; pnpm test'`)).toEqual([{ base: tree("ir-5"), lost: undefined }]);
+      // A cd the chain ranges read inside the string moves it once, not twice.
+      expect(where("su -c 'true; cd sub && pnpm x'")).toEqual([{ base: path.join(MASTER, "sub"), lost: undefined }]);
+      expect(where("cd ../ir-5 && echo 'cd sub; pnpm x' | bash")).toEqual([
+        { base: tree("ir-5", "sub"), lost: undefined },
+      ]);
+      expect(
+        where(String.raw`printf 'cd %s; pnpm %s; cd %s; pnpm %s\n' ../ir-5 test ../ir-6 x | bash`).map((x) => x.base),
+      ).toEqual([tree("ir-5"), tree("ir-6")]);
+    });
+
+    it("marks a command lost where a cd ahead of it in its string cannot be known", () =>
+      expect(where(String.raw`printf 'cd "$X"; pnpm %s\n' test | bash`)).toEqual([{ base: MASTER, lost: true }]));
+  });
+
+  it("decodes every ANSI-C escape of a word a wrapper is handed", () => {
+    expect(lexer.wordText(String.raw`$'cd\x20../x;\040pnpm\ttest'`)).toBe("cd ../x; pnpm\ttest");
+    expect(lexer.wordText(String.raw`$'it\'s'`)).toBe("it's");
+  });
+
+  // Round 7 (#1646, the CodeRabbit CLI findings at 28552cfbe).
+  it("finds each command a reused printf format prints, each its own occurrence", () => {
+    const c = String.raw`printf 'git push origin %s\n' main v1.2.3 | bash`;
+    lexer.takeDecodedHits(c);
+    const pushes = [...lexer.matchesAt(c, PUSH)];
+    expect(pushes.map((m) => m.decoded)).toEqual(["git push origin main", "git push origin v1.2.3"]);
+    expect(new Set(pushes.map((m) => m.occurrence)).size).toBe(2);
+    // Excusing one occurrence leaves the other's hit standing.
+    lexer.excuseDecodedHit(c, PUSH, pushes[0].occurrence);
+    expect([...lexer.takeDecodedHits(c)]).toEqual([`${PUSH.source}@${pushes[1].occurrence}`]);
+  });
+
+  it("finds a merge a reused format prints second, and reads it as a command of the string", () => {
+    const m = [...lexer.matchesAt(String.raw`printf 'gh pr %s 7\n' view merge | bash`, MERGE)];
+    expect(m.map((x) => [x.decoded, x.shell])).toEqual([["gh pr merge 7", "bash"]]);
+  });
+
+  it.each([
+    [String.raw`echo 'echo first;' 2>/dev/null 'gh pr merge 7' | bash`, true],
+    [String.raw`echo 'echo first;' >/dev/null 'gh pr merge 7' | bash`, true],
+    [String.raw`echo 'echo first;' 2>/dev/null 'ls' | bash`, false],
+  ])("reads an echo's operands past a redirection between them: %s", (c, merges) =>
+    expect(lexer.has(c, MERGE)).toBe(merges),
+  );
+
+  describe("a cd in a pipeline or a compound command", () => {
+    const bash = (text) => ({ text, shell: lexer.BASH });
+    it.each(["cd ../ir-5 | cat; ", "cd ../ir-5 |& cat; ", "echo cd x; (cd ../ir-5); "])(
+      "moves nothing after `%s`",
+      (text) => expect(lexer.dirAfter([bash(text)], MASTER)).toBe(MASTER),
+    );
+    it("moves after an or-list's cd", () =>
+      expect(lexer.dirAfter([bash("cd ../ir-5 || exit; ")], MASTER)).toBe(tree("ir-5")));
+    it.each(["{ cd ../ir-5; ", "if true; then cd ../ir-5; fi; ", "(cd ../ir-5; ", "! cd ../ir-5; "])(
+      "cannot know where `%s` leaves it",
+      (text) => expect(lexer.dirAfter([bash(text)], MASTER)).toBeUndefined(),
+    );
+    it("moves no command the typed chain runs after a cd in a pipeline", () => {
+      const bases = (c) => [...lexer.chainCommands(c, MASTER, cmd(/pnpm\b/))].map((x) => x.base);
+      expect(bases("cd ../ir-5 | cat; pnpm x")).toEqual([MASTER]);
+      expect(bases("cd ../ir-5; pnpm x")).toEqual([tree("ir-5")]);
+      expect(lexer.cwdAt("cd ../ir-5 | cat; pnpm x", MASTER, 18)).toBe(MASTER);
+    });
+
+    // Whether bash runs a final stage in itself (`lastpipe`, no job control)
+    // the hook cannot see: a profile or BASH_ENV may set it, and a `shopt` in
+    // the command may come after the pipeline (CodeRabbit on PR #1788, the
+    // CodeRabbit CLI at ef788cc00).
+    it("leaves a pipeline's final-stage cd unknown, lastpipe or not, and follows no other stage's", () => {
+      expect(lexer.dirAfter([bash("true | cd ../ir-5; ")], MASTER)).toBeUndefined();
+      expect(lexer.dirAfter([bash("shopt -s lastpipe; true | cd ../ir-5; ")], MASTER)).toBeUndefined();
+      expect(lexer.dirAfter([bash("shopt -s lastpipe; cd ../ir-5 | cat; ")], MASTER)).toBe(MASTER);
+      const where = (c) => [...lexer.chainCommands(c, MASTER, cmd(/pnpm\b/))].map(({ base, lost }) => ({ base, lost }));
+      expect(where("true | cd ../ir-5; pnpm x")).toEqual([{ base: tree("ir-5"), lost: true }]);
+      expect(where("bash -c 'true | cd ../ir-5; pnpm x'")).toEqual([{ base: MASTER, lost: true }]);
+      expect(where("shopt -s lastpipe; true | cd ../ir-5; pnpm x")).toEqual([{ base: tree("ir-5"), lost: true }]);
+      expect(where("true | cd ../ir-5; shopt -s lastpipe; pnpm x")).toEqual([{ base: tree("ir-5"), lost: true }]);
+      expect(where("true | cd ../ir-5 | cat; pnpm x")).toEqual([{ base: MASTER, lost: undefined }]);
+      expect(lexer.cwdAt("true | cd ../ir-5; pnpm x", MASTER, 19)).toBeUndefined();
+      expect(lexer.cwdAt("shopt -s lastpipe; true | cd ../ir-5; pnpm x", MASTER, 38)).toBeUndefined();
+    });
+  });
+
+  // The PR #1788 review (CodeRabbit at 7e8cd2e37).
+  describe("a cd that may not run, or runs in a child shell", () => {
+    const bash = (text) => ({ text, shell: lexer.BASH });
+    const where = (c) => [...lexer.chainCommands(c, MASTER, cmd(/pnpm\b/))].map(({ base, lost }) => ({ base, lost }));
+
+    it("leaves the directory unknown after a cd a short-circuit may skip", () => {
+      expect(lexer.dirAfter([bash("false && cd ../ir-5; ")], MASTER)).toBeUndefined();
+      expect(lexer.dirAfter([bash("true || cd ../ir-5; ")], MASTER)).toBeUndefined();
+      expect(where("false && cd ../ir-5; pnpm x")).toEqual([{ base: tree("ir-5"), lost: true }]);
+      expect(lexer.cwdAt("false && cd ../ir-5; pnpm x", MASTER, 21)).toBeUndefined();
+    });
+
+    it("follows a conditional cd into what can only run after it", () => {
+      expect(lexer.dirAfter([bash("true && cd ../ir-5 && ")], MASTER)).toBe(tree("ir-5"));
+      expect(where("true && cd ../ir-5 && pnpm x")).toEqual([{ base: tree("ir-5"), lost: undefined }]);
+      expect(where("cd ../ir-5 && pnpm x")).toEqual([{ base: tree("ir-5"), lost: undefined }]);
+      expect(where("cd ../ir-5 || exit; pnpm x")).toEqual([{ base: tree("ir-5"), lost: undefined }]);
+    });
+
+    // The PR #1788 re-review (CodeRabbit at 578854b81): `||` runs what follows after the cd failed.
+    it("reads a cd by the outcome that reaches the command", () => {
+      expect(lexer.dirAfter([bash("cd ../ir-5 || ")], MASTER)).toBe(MASTER);
+      expect(lexer.dirAfter([bash("cd ../ir-5 && ")], MASTER)).toBe(tree("ir-5"));
+      expect(lexer.dirAfter([bash("cd ../ir-5 && true || ")], MASTER)).toBeUndefined();
+      expect(lexer.dirAfter([bash("cd ../ir-5 || true && ")], MASTER)).toBeUndefined();
+      expect(lexer.dirAfter([bash("cd ../ir-5 || exit; ")], MASTER)).toBe(tree("ir-5"));
+      expect(where("cd ../ir-5 || pnpm x")).toEqual([{ base: MASTER, lost: undefined }]);
+      expect(where("cd ../ir-5 && true || pnpm x")[0].lost).toBe(true);
+      expect(lexer.cwdAt("cd ../ir-5 || pnpm x", MASTER, 14)).toBe(MASTER);
+    });
+
+    it("moves the typed command by no cd a child shell's string runs", () => {
+      expect(where("bash -c 'true; cd ../ir-5; true'; pnpm x")).toEqual([{ base: MASTER, lost: undefined }]);
+      expect(where("cd ../ir-6 && bash -c 'true; cd ../ir-5; true'; pnpm x")).toEqual([
+        { base: tree("ir-6"), lost: undefined },
+      ]);
+      expect(lexer.cwdAt("bash -c 'true; cd ../ir-5; true'; pnpm x", MASTER, 34)).toBe(MASTER);
+      // The child's own command still runs where its cd moved it.
+      expect(where("bash -c 'true; cd ../ir-5; pnpm x'")).toEqual([{ base: tree("ir-5"), lost: undefined }]);
+    });
+
+    it("leaves the directory unknown after a cd a string eval runs", () =>
+      expect(where("eval 'true; cd ../ir-5'; pnpm x")[0].lost).toBe(true));
+
+    it.each([
+      [String.raw`printf 'echo a\\ #b; gh pr %s 7\n' merge | bash`, true],
+      [String.raw`printf 'echo a\\;#b; gh pr %s 7\n' merge | bash`, true],
+      [String.raw`printf 'echo a #b; gh pr %s 7\n' merge | bash`, false],
+    ])("starts a comment only at a word's start, past an escaped blank or separator: %s", (c, merges) =>
+      expect(lexer.has(c, MERGE)).toBe(merges),
+    );
   });
 });

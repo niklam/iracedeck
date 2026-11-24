@@ -50,10 +50,12 @@
 import { Buffer } from "node:buffer";
 
 import {
+  ansiOpen,
   BASH,
   chainCommands,
   cmd,
   commandWordsRaw,
+  excuseDecodedHit,
   matchesAt,
   POWERSHELL,
   powershellAsBash,
@@ -797,6 +799,16 @@ export function deckFindings(c, cwd, ctx, shell, trail = []) {
 }
 
 /**
+ * The shape of the {@link cmd} regex `re` (its `inner`) at the start of
+ * `decoded`, a command as its shell reads it (#1646), its flags kept, or
+ * `null` ({@link deckReach}).
+ */
+function shapeAt(re, decoded) {
+  const shape = re.inner ?? re;
+  return new RegExp(shape.source, `${shape.flags.replace(/[gy]/g, "")}y`).exec(decoded);
+}
+
+/**
  * {@link deckFindings}'s recursion: the findings, and `cycles`, the keys of
  * the scripts above whose bodies this line runs again — the cycle guard cut
  * there (#1737, CodeRabbit CLI). The level that expanded such a script makes
@@ -808,11 +820,12 @@ export function deckFindings(c, cwd, ctx, shell, trail = []) {
  * (a line that closes a known cycle is no unread body), for {@link
  * deckFindings} to judge.
  */
-function deckReach(c, cwd, ctx, shell, trail) {
+function deckReach(c, cwd, ctx, shell, trail, lostDir = false) {
   const found = [];
   const cycles = new Set();
   let cut;
-  const finding = (text, kind, again) => found.push(repeated(text, kind, again));
+  // A lost finding stays one, whatever repeats it: it is refused, never asked.
+  const finding = (text, kind, again) => found.push(kind === "lost" ? { text, kind } : repeated(text, kind, again));
   const links = ctx.linkTargets().filter((l) => l.target);
   // Every command this reader judges, each with `at`, where its program word
   // ends, and the lexer's `via`: the Stream Deck CLI, what stops or starts a
@@ -820,23 +833,34 @@ function deckReach(c, cwd, ctx, shell, trail) {
   const cli = [...matchesAt(c, STREAMDECK_CLI)].map((m) => ({ m, at: m.index + m[0].length, via: m.via }));
   const hosts = [...chainCommands(c, cwd, HOST_CONTROL, shell)];
   const matches = RUNNERS.flatMap(({ re, read, whole }) =>
-    [...chainCommands(c, cwd, re, shell)].map((m) => ({ ...m, read, whole })),
+    [...chainCommands(c, cwd, re, shell)].map((m) => ({ ...m, read, whole, re })),
   );
   const again = repeatsAt(c, shell);
+  // A command its shell reads differently from the text here (#1646: a string
+  // printf or `echo -e` prints, words `eval` joins) is judged on what that
+  // shell reads, and its decoded hit excused only once judged; a shape the
+  // decoded text does not hold leaves the hit standing, which `checkBash`
+  // refuses (CodeRabbit CLI on #1646).
   for (const { m, at, via } of cli) {
+    const shape = m.decoded === undefined ? null : shapeAt(STREAMDECK_CLI, m.decoded);
+    if (m.decoded !== undefined && !shape) continue;
     // The match starts at the operator ahead of the command (`&& streamdeck link`).
-    const text = m[0].replace(/^[\s|;&()`]+/, "").trim();
+    const text = (shape ? shape[0] : m[0]).replace(/^[\s|;&()`]+/, "").trim();
     const kind = STREAMDECK_KIND[text.split(/\s+/).pop()];
     finding(`\`${text}\` ${FINDING_KINDS[kind]}`, kind, again(at, via));
+    if (shape) excuseDecodedHit(c, STREAMDECK_CLI, m.occurrence);
   }
-  for (const { head, args, at, via } of hosts) {
-    const app = args.match(HOST_APP);
+  for (const { head, args, at, via, decoded, occurrence } of hosts) {
+    const shape = decoded === undefined ? null : shapeAt(HOST_CONTROL, decoded);
+    if (decoded !== undefined && !shape) continue;
+    const app = (shape ? decoded.slice(shape[0].length) : args).match(HOST_APP);
     if (app)
       finding(
-        `\`${head.replace(/^[\s|;&()`]+/, "").trim()} … ${app[0]}\` stops or starts a deck host app`,
+        `\`${(shape ? shape[0] : head).replace(/^[\s|;&()`]+/, "").trim()} … ${app[0]}\` stops or starts a deck host app`,
         "restart",
         again(at, via),
       );
+    if (shape) excuseDecodedHit(c, HOST_CONTROL, occurrence);
   }
   // The runners' commands are read in order of position: a command is read
   // before the lexer's matches inside the strings it hands on come up, so
@@ -846,7 +870,10 @@ function deckReach(c, cwd, ctx, shell, trail) {
   const judged = [];
   const runs = new Map();
   for (const m of [...matches].sort((x, y) => x.start - y.start)) {
-    const { base, start, args, at, cut, how, via, stdin, read, whole } = m;
+    const { base, start, args, at, cut, how, via, stdin, read, whole, re, occurrence } = m;
+    // A match this reader leaves to a wrapper's reader of the whole string is
+    // read as its shell reads it, so a decoded hit there is no mis-slice (#1646).
+    const leave = () => excuseDecodedHit(c, re, occurrence);
     // A command inside a string a shell wrapper is handed (#1634) is read
     // through that wrapper's own string, as a command line with its own
     // `cd`s, with the same option spec the lexer found the string by ({@link
@@ -858,11 +885,20 @@ function deckReach(c, cwd, ctx, shell, trail) {
     // inside any string whose decoded text this reader has already judged as
     // a line is left to it. A string a shell reads on stdin, and what `sudo`,
     // `trap`, `watch` or `su` run, no wrapper reads, so those are judged here.
-    if (how === "shell" && !stdin && isWrapper(via)) continue;
+    if (how === "shell" && !stdin && isWrapper(via)) {
+      leave();
+      continue;
+    }
     const string = stringBounds(c, at - 1);
     if (string) {
-      const text = wordText(c.slice(string[0], string[1] + 1));
-      if (judged.some((line) => line === text || line.startsWith(`${text} `))) continue;
+      // An ANSI-C string is read from its `$`, so its escapes are decoded as the
+      // judged line has them; an escaped `$` opens none (#1646).
+      const open = string[0] - (ansiOpen(c, string[0]) ? 1 : 0);
+      const text = wordText(c.slice(open, string[1] + 1));
+      if (judged.some((line) => line === text || line.startsWith(`${text} `))) {
+        leave();
+        continue;
+      }
     }
     // A shell wrapper's name as the rewritten text spells it (#1606): `bash`
     // for `"/usr/bin/bash"`, `pwsh` for `pwsh.exe`.
@@ -874,14 +910,29 @@ function deckReach(c, cwd, ctx, shell, trail) {
     // string among them is one word however many `&&` it holds, where `args`
     // ends at the first (#1607) — and the lexer's own match past it is the
     // one skipped above.
-    const words = commandWordsRaw(c, at, stringEnd(c, at - 1));
-    const tokens = whole ? [name(), ...words] : words.map(wordText);
+    // A command its shell reads differently from the text here (#1646: a
+    // string printf or `echo -e` prints, an escape the shell decodes) is read
+    // from what that shell reads, past the runner the rule's shape matched
+    // there; its decoded hit is excused only once its words are judged. A
+    // shape the decoded text does not hold leaves the hit standing.
+    const shape = m.decoded === undefined ? null : shapeAt(re, m.decoded);
+    // `base` follows the `cd`s the string ran ahead of it ({@link
+    // chainCommands}); where one cannot be known (`cd "$X"`, `cd -`) it is
+    // lost, and a decoded runner's hit is left standing, refused, rather than
+    // judged in the wrong tree (#1646, CodeRabbit CLI).
+    if (shape && m.lost) continue;
+    const words = shape
+      ? commandWordsRaw(m.decoded, shape[0].length, m.decoded.length)
+      : commandWordsRaw(c, at, stringEnd(c, at - 1));
+    const runner = () => (shape ? (shape[0].match(/[^\s|;&()\x60]+$/)?.[0] ?? "") : name());
+    const tokens = whole ? [runner(), ...words] : words.map(wordText);
     // A substitution cut the arguments short: it and what follows it are
     // unread. Glued to a word (`$(`, `--x=\``), it ends that word.
-    if (!whole && (cut === "(" || cut === "\x60"))
+    if (!shape && !whole && (cut === "(" || cut === "\x60"))
       if (tokens.length && !/\s$/.test(args)) tokens.push(tokens.pop().replace(/\$$/, "") + UNREAD);
       else tokens.push(UNREAD);
     const own = read(tokens, base, shell);
+    if (shape) leave();
     // What a command run over and over runs, it runs over and over: a rollup
     // hook or a `turbo watch` task keeps its own reason.
     const reason = again(at, via);
@@ -889,6 +940,10 @@ function deckReach(c, cwd, ctx, shell, trail) {
       judged.push(...(r.lines ?? []));
       if (reason) r.repeats ??= reason;
     }
+    // A runner whose directory a `cd` ahead of it leaves unknown (`lost`, or
+    // read in a line that is) is never judged in the fallback tree where the
+    // tree decides (#1646, CodeRabbit on PR #1788).
+    if (m.lost || lostDir) for (const r of own) r.lost = true;
     runs.set(m, own);
   }
   for (const m of matches)
@@ -903,6 +958,11 @@ function deckReach(c, cwd, ctx, shell, trail) {
         // so what it runs is still read, and a `restart:x` that relinks asks.
         if (kind !== "restart") continue;
       } else if (DECK_IF_LINKED.test(name)) {
+        // With no host linked, no tree changes the verdict (CodeRabbit on PR #1788).
+        if (run.lost && links.length) {
+          finding(`\`${run.label}\` runs in a directory a \`cd\` ahead of it leaves unknown`, "lost");
+          continue;
+        }
         const root = ctx.toplevel?.(run.dir) ?? run.dir;
         const held = links.filter((l) => ctx.isInside(l.target, root));
         if (held.length) {
@@ -937,12 +997,13 @@ function deckReach(c, cwd, ctx, shell, trail) {
         const [text, lineShell] = lineAs(line, as);
         // A lifecycle script is named in the path ({@link bodyLines}).
         const via = step ? `\`${run.label}\` → \`${step}\`` : `\`${run.label}\``;
-        const inner = deckReach(text, dir, ctx, lineShell, [...trail, key]);
+        const inner = deckReach(text, dir, ctx, lineShell, [...trail, key], Boolean(run.lost));
         const itself = key && inner.cycles.delete(key);
         for (const k of inner.cycles) cycles.add(k);
         if (inner.cut) cut ??= `${via} → ${inner.cut}`;
         for (const f of inner.found) {
-          const g = itself ? repeated(f.text, f.kind, RUNS_ITSELF) : f;
+          // A lost finding stays a refusal; a repeat escalates the rest (CodeRabbit on PR #1788).
+          const g = itself && f.kind !== "lost" ? repeated(f.text, f.kind, RUNS_ITSELF) : f;
           // Under a restart's own name, the restarts it runs are that restart,
           // named once already; what else it reaches is reported.
           if (kind === "restart" && g.kind === "restart") continue;

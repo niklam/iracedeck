@@ -424,6 +424,36 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", { timeout: 30_00
       sameDir(readBack(`cd ${there}/removed && gh pr merge 5 --squash`), ROOT);
     });
 
+    // #1646, the CodeRabbit CLI at ef788cc00: a `cd` ahead of the merge that
+    // may not run leaves its directory unknown.
+    it("leaves a merge of the checkout's PR to a check by hand where its directory is unknown", () => {
+      // A bare number too: gh resolves it against the checkout's repository (CodeRabbit on PR #1788).
+      for (const command of [
+        "cd ../ir-7 && cd .; gh pr merge --squash",
+        "false && cd ..; gh pr merge --squash",
+        "cd ../ir-7 && cd .; gh pr merge 5 --squash",
+        // A named repository picks the repository, never the branch: a merge
+        // with no PR is still the checkout's (CodeRabbit on PR #1788, round 3).
+        "cd ../ir-7 && cd .; GH_REPO=niklam/iracedeck gh pr merge --squash",
+        "cd ../ir-7 && cd .; gh pr merge -R niklam/iracedeck --squash",
+      ]) {
+        const { note, calls } = fireWithGh(command, open);
+        expect(note, command).toMatch(/directory unknown, so the hook cannot tell which repository's or branch's PR/);
+        expect(calls, command).toEqual([]);
+      }
+    });
+
+    it("still reads a PR back where the merge's directory is unknown but the PR names its repository", () => {
+      const url = "https://github.com/niklam/iracedeck/pull/5";
+      expect(readBack(`cd ../ir-7 && cd .; gh pr merge ${url} --squash`).args).toContain(url);
+      expect(readBack("cd ../ir-7 && cd .; gh pr merge 5 -R niklam/iracedeck --squash").GH_REPO).toBe(
+        "niklam/iracedeck",
+      );
+      expect(readBack("cd ../ir-7 && cd .; GH_REPO=niklam/iracedeck gh pr merge 5 --squash").GH_REPO).toBe(
+        "niklam/iracedeck",
+      );
+    });
+
     it("moves no card for a worktree added in another repository's checkout", () => {
       const checkout = path.join(SCRATCH, "foreign", "master");
       mkdirSync(checkout, { recursive: true });

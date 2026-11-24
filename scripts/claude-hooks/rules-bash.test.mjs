@@ -15,6 +15,7 @@ import {
   issueEdits,
   issueFromWorktreePath,
   missingSpecParts,
+  rules,
   worktreeAddTarget,
 } from "./rules-bash.mjs";
 import { deckFindings } from "./script-runs.mjs";
@@ -6173,4 +6174,594 @@ describe("a carried merge is refused before the PR is read (#1634)", () => {
       /is not its own command/,
     );
   });
+});
+
+// #1646: a merge or tag push carried in a shell-fed string behind a lead
+// assignment whose quoted value holds a blank or a `;` passed every gate, since
+// the lead was read one level deep in the raw text and ended inside the value.
+describe("a carried merge or tag push behind a quoted lead value (#1646)", () => {
+  const head = "1111111111111111111111111111111111111111";
+  const reads = [];
+  const green = (...args) => {
+    reads.push(args);
+    return {
+      number: 7,
+      url: "https://github.com/niklam/iracedeck/pull/7",
+      state: "OPEN",
+      headRefOid: head,
+      headRefName: "ir-7",
+      reviewDecision: "APPROVED",
+      mergeStateStatus: "CLEAN",
+      statusCheckRollup: [
+        { __typename: "CheckRun", name: "Tests", status: "COMPLETED", conclusion: "SUCCESS" },
+        { __typename: "StatusContext", context: "CodeRabbit", state: "SUCCESS" },
+      ],
+      reviews: [{ author: { login: "coderabbitai" }, state: "APPROVED", commit: { oid: head } }],
+    };
+  };
+  const refused = (c) => {
+    reads.length = 0;
+    const v = deny(c, ctx({ prView: green }));
+    expect(reads, c).toEqual([]);
+    return v;
+  };
+
+  it.each([
+    "bash -c 'X=\"a b\" gh pr merge 7'",
+    "bash -c 'env X=\"a b\" gh pr merge 7'",
+    `bash -c "env X='a b' gh pr merge 7"`,
+    "bash -c 'nice env GH_PAGER=\"less -R\" gh pr merge 7 --squash'",
+    "bash -c 'nice env X=\"a;b\" gh pr merge 7'",
+    `bash -c "X=\\"a b\\" gh pr merge 7"`,
+    String.raw`bash -c 'X='\''a b'\'' gh pr merge 7'`,
+    `bash -c "sh -c 'X=\\"a b\\" gh pr merge 7'"`,
+    "echo 'X=\"a b\" gh pr merge 7' | bash",
+    `eval "X=\\"a b\\"" gh pr merge 7`,
+  ])("refuses the merge as carried, before reading the PR: %s", (c) =>
+    expect(refused(c)).toMatch(/is not its own command/),
+  );
+
+  // The post-hook's merge trigger reads the same program positions (`matchesAt`),
+  // so it moves the card for a merge these strings run, and for none they mention.
+  it("gives the post-hook's trigger the same merges, and no mention", () => {
+    for (const c of [
+      "bash -c 'X=\"a b\" gh pr merge 7'",
+      `bash -c "X=\\"a b\\" gh pr merge 7"`,
+      "bash -c 'nice env X=\"a;b\" gh pr merge 7'",
+    ])
+      expect(firstMerge(c), c).toMatchObject({ ref: "7", readable: true });
+    expect(firstMerge("bash -c 'X=\"a b\" echo gh pr merge 7'")).toBeUndefined();
+  });
+
+  it("refuses a merge after a separator inside a double-quoted string", () => {
+    refused(`bash -c "ls; X=\\"a b\\" gh pr merge 7 --squash"`);
+    refused(String.raw`bash -c $'ls\ngh pr merge 7 --squash'`);
+  });
+
+  it("asks for a tag push behind a quoted value under a wrapper", () => {
+    expect(asks("bash -c 'nice env X=\"a b\" git push origin v1.2.3'")).toMatch(/Pushing a tag cuts a release/);
+    expect(asks(`bash -c "X=\\"a b\\" git push origin v1.2.3"`)).toMatch(/Pushing a tag cuts a release/);
+  });
+
+  it.each(["bash -c 'X=\"a b gh pr merge 7'", "bash -c 'X=\"a b git push origin v1.2.3'", `bash -c '"echo hi'`])(
+    "refuses a string whose lead opens a quote it never closes: %s",
+    (c) => expect(refused(c)).toMatch(/quote that never closes/),
+  );
+
+  it("refuses the same merge with no quoted value, as before", () => {
+    expect(refused("bash -c 'X=ab gh pr merge 7'")).toMatch(/is not its own command/);
+    expect(refused("bash -c 'nice env X=ab gh pr merge 7'")).toMatch(/is not its own command/);
+  });
+
+  it.each([
+    "bash -c 'echo \"gh pr merge 7\"'",
+    "bash -c 'X=\"a b\" echo gh pr merge 7'",
+    `bash -c "X='gh pr merge 7' true"`,
+    "bash -c 'nice env X=\"a b\" git push origin main'",
+    `bash -c 'echo "unclosed'`,
+  ])("passes a mention, an argument and a push of no tag: %s", (c) => passes(c));
+
+  // A program word the string's shell expands is judged as at top level: as
+  // gh and as git, so a merge it may run is refused before any PR read.
+  it.each([
+    'bash -c "$(echo gh) pr merge 7"',
+    'bash -c "`echo gh` pr merge 7"',
+    "bash -c '$(echo gh) pr merge 7'",
+    `bash -c 'X="a b" $(echo gh) pr merge 7'`,
+    "bash -c '$GH pr merge 7'",
+    "eval '$GH pr merge 7'",
+    String.raw`eval "\$GH pr merge 7"`,
+    String.raw`eval "\`echo gh\` pr merge 7"`,
+  ])("refuses a merge whose program word a fed shell expands: %s", (c) =>
+    expect(refused(c)).toMatch(/Could not read the program/),
+  );
+
+  it("refuses the same word at top level as before", () =>
+    expect(deny("$(echo gh) pr merge 7")).toMatch(/Could not read the program `\$\(echo gh\)`; judged as gh/));
+
+  it.each(["bash -c 'echo \"$(date)\"'", 'echo "$(date)"', "bash -c '$EDITOR notes.md'", "$EDITOR notes.md"])(
+    "passes an expansion that is an argument, or a program no guard reads, as at top level: %s",
+    (c) => passes(c),
+  );
+
+  // The /code-review (xhigh) round on 4d4729246.
+  it.each([
+    String.raw`bash -c '\cp -f a b'`,
+    String.raw`bash -c "\ls -la"`,
+    String.raw`bash -c 'X=1 \ls'`,
+    String.raw`bash -c $'\\x67h pr merge 7'`,
+    String.raw`cmd /c "it's.bat"`,
+    String.raw`bash -c "\"ls\" -la"`,
+    String.raw`echo 'x\ngh pr merge 7' | bash`,
+    String.raw`printf '%s' 'x\ngh pr merge 7' | bash`,
+  ])("passes as master does: %s", (c) => passes(c));
+
+  it("keeps the asks a backslashed program word reaches", () => {
+    expect(asks(String.raw`bash -c "\git push origin v1.2.3"`)).toMatch(/Pushing a tag cuts a release/);
+    expect(asks(String.raw`bash -c "\pnpm relink:stream-deck"`)).toMatch(/relink/);
+  });
+
+  it.each([String.raw`bash -c '\gh pr merge 7'`, String.raw`eval "\gh pr merge 7"`])(
+    "refuses a backslashed merge as one handed to a shell, never as unsettled: %s",
+    (c) => expect(refused(c)).toMatch(/is not its own command/),
+  );
+
+  it.each([
+    `bash -c 'g'"h"' pr merge 7'`,
+    `bash -c 'X="a b" g'"h"' pr merge 7'`,
+    `bash -c 'echo hi; g'"h"' pr merge 7'`,
+  ])("refuses a program spliced from quoted pieces: %s", (c) =>
+    expect(refused(c)).toMatch(/spliced from quoted pieces/),
+  );
+
+  it.each([
+    String.raw`bash -c "\"gh\" pr merge 7"`,
+    String.raw`pwsh -Command "& \"C:\Program Files\GitHub CLI\gh.exe\" pr merge 7"`,
+    `eval "gh" pr merge 7`,
+    String.raw`bash -c "C:\\tools\\gh.exe pr merge 7"`,
+    String.raw`echo -e 'x\ngh pr merge 7' | bash`,
+    String.raw`printf 'x\ngh pr merge 7\n' | bash`,
+    String.raw`printf '%b' 'x\ngh pr merge 7' | bash`,
+  ])("refuses a merge its shell runs under a quoted, escaped or printed name: %s", (c) => refused(c));
+
+  it("judges a program escaped in its string by the name its shell runs, an ask kept an ask", () =>
+    expect(asks(String.raw`bash -c "\"git\" push origin v1.2.3"`)).toMatch(/Pushing a tag cuts a release/));
+
+  // The second read on 9b4dfb0de: each passed master and the branch, and the
+  // shell it is handed runs the merge.
+  it.each([
+    `bash -c 'X="$(echo "a b")" gh pr merge 7'`,
+    `bash -c 'X="\${Y:-"a b"}" gh pr merge 7'`,
+    "bash -c 'X=a$(a $(b $(c)))b gh pr merge 7'",
+    'bash -c \'X="`echo "a b"`" gh pr merge 7\'',
+    'X=$(a $(b $(c)))"" gh pr merge 7',
+    String.raw`printf '%s\ngh pr merge 7\n' x | bash`,
+    String.raw`printf '%%\ngh pr merge 7\n' | bash`,
+    String.raw`printf '%b' 'x\ngh pr merge 7' | bash`,
+    String.raw`bash -c $'ls #\'\ngh pr merge 7'`,
+    String.raw`printf "ls #'\ngh pr merge 7\n" | bash`,
+    String.raw`bash -c $'cat <<E\nx it\'s\nE\ngh pr merge 7'`,
+    String.raw`echo -e \$'x\' 'y\ngh pr merge 7' | bash`,
+  ])("refuses the merge the shell runs: %s", (c) => refused(c));
+
+  it.each([
+    `bash -c 'X="$(echo "a b")" git push origin v1.2.3'`,
+    'X=$(a $(b $(c)))"" git push origin v1.2.3',
+    String.raw`printf '%s\ngit push origin v1.2.3\n' x | bash`,
+  ])("asks for the tag push the shell runs: %s", (c) => expect(asks(c)).toMatch(/Pushing a tag cuts a release/));
+
+  it.each([
+    String.raw`printf '%d\ngh pr merge 7\n' "$N" | bash`,
+    String.raw`printf '%*s\n' 5 x | bash`,
+    String.raw`printf '%s\n' "$CMD" | bash`,
+  ])("refuses printf output piped to a shell that cannot be known: %s", (c) =>
+    expect(refused(c)).toMatch(/cannot be known/),
+  );
+
+  it.each([
+    'bash -c \'X="`echo "a b"`" ls\'',
+    String.raw`bash -c $'cat <<E\n\'x\nE\necho hi'`,
+    String.raw`printf '%s\n' 'echo hi' | bash`,
+    String.raw`printf '%d\n' 5 | bash`,
+    "bash -c 'ls # a comment'",
+  ])("passes what the shell runs harmlessly, with no unclosed quote read: %s", (c) => passes(c));
+
+  it("refuses a heredoc with no delimiter in a string a shell runs", () =>
+    expect(refused(String.raw`bash -c $'cat <<\ngh pr merge 7'`)).toMatch(/heredoc with no delimiter/));
+
+  // Round 3 (#1646): a command its shell reads only once it decodes or joins
+  // the words is found, and no rule passes it on mis-sliced raw arguments.
+  it.each([
+    String.raw`bash -c $'gh\x20pr merge 7'`,
+    `eval "gh pr" merge 7`,
+    `eval gh "pr merge" 7`,
+    String.raw`printf '%s %s\n' gh 'pr merge 7' | bash`,
+  ])("refuses a merge its shell joins or decodes, before reading the PR: %s", (c) =>
+    expect(refused(c)).toMatch(/is not its own command/),
+  );
+
+  it.each([String.raw`bash -c $'git\x20push origin v1.2.3'`, `eval "git push" origin v1.2.3`])(
+    "asks for the tag push its shell decodes or joins, judged as that shell reads it: %s",
+    (c) => expect(asks(c)).toMatch(/Pushing a tag cuts a release/),
+  );
+
+  it.each([`eval "git push" origin integration`, String.raw`bash -c $'git\x20push origin integration'`])(
+    "refuses an integration push its shell joins or decodes: %s",
+    (c) => expect(deny(c)).toMatch(/integration` branch is local/),
+  );
+
+  it.each([
+    String.raw`bash -c $'echo\x20hi'`,
+    `eval "echo hi"`,
+    String.raw`printf '%s %s\n' echo hi | bash`,
+    String.raw`bash -c $'echo gh\x20pr merge 7'`,
+    `eval "git push" origin main`,
+    String.raw`bash -c "pnpm \"restart:stream-deck\""`,
+  ])("passes a harmless command, a mention and a read a rule makes as the shell does: %s", (c) => passes(c));
+
+  // A rule that reads its arguments raw passes nothing it matched only in decoded text.
+  it.each([`eval "gh issue" create --title x`, String.raw`bash -c $'gh\x20issue create --title x'`])(
+    "refuses what a raw-argument rule would pass on mis-sliced arguments: %s",
+    (c) => expect(deny(c)).toMatch(/reads its words differently/),
+  );
+
+  // Round 4 (#1646, the CodeRabbit CLI findings at 760adedc2).
+  it("refuses printf output past its budget fast, before reading any PR", () => {
+    const started = performance.now();
+    expect(refused(String.raw`printf '%999999999s\ngh pr merge 7' x | bash`)).toMatch(/cannot be known/);
+    expect(refused(String.raw`printf '%60000s' a b c d e f g h | bash`)).toMatch(/cannot be known/);
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
+  it("reads a decoded push's refspecs past git's own options, not at the first `push` in them", () => {
+    passes(String.raw`bash -c $'git -c \'test.push=x integration y\' push origin main'`);
+    expect(deny(String.raw`bash -c $'git -c \'test.push=x integration y\' push origin integration'`)).toMatch(
+      /integration` branch is local/,
+    );
+  });
+
+  it("refuses a merge after an astral character in printf output", () =>
+    expect(refused(`printf '%s\\n' 'echo 😀; gh pr merge 7' | bash`)).toMatch(/its own command/));
+
+  it.each(["bash -c 'constructor -x y'", "constructor -x y", "bash -c '__proto__ -u v x'", "toString --unset x y"])(
+    "passes a command word named like an Object.prototype member: %s",
+    (c) => passes(c),
+  );
+
+  it("reads a decoded runner's arguments on the stdin path: a start passes, a relink asks", () => {
+    passes(String.raw`printf '%s %s\n' pnpm 'start:stream-deck' | bash`);
+    expect(asks(String.raw`printf '%s %s\n' pnpm 'relink:stream-deck' | bash`)).toMatch(/relink/);
+  });
+
+  it("keeps each word `watch -x` runs one word, so the restart it repeats asks", () =>
+    expect(asks("watch -x bash -c 'pnpm restart:stream-deck'")).toBeTruthy());
+
+  // Round 5 (#1646, the CodeRabbit CLI findings at 87efe3f78).
+  const tick = "\x60";
+  it.each([
+    String.raw`printf '%d\n' >"$(gh pr merge 7)" 5 | bash`,
+    String.raw`printf '%d\n' >$(gh pr merge 7) 5 | bash`,
+    String.raw`printf '%d\n' >"${tick}gh pr merge 7${tick}" 5 | bash`,
+    String.raw`printf '%d\n' 2>"$(gh pr merge 7)" 5 >/dev/null | bash`,
+    String.raw`echo -e 'x\nls' >"$(gh pr merge 7)" y | bash`,
+  ])("keeps a reprinted printer's redirections in the text it judges: %s", (c) => expect(refused(c)).toBeTruthy());
+
+  it("asks for a tag push in a reprinted printer's redirection, and passes a plain one", () => {
+    expect(asks(String.raw`printf '%d\n' >"$(git push origin v1.2.3)" 5 | bash`)).toMatch(/tag cuts a release/);
+    passes(String.raw`printf '%d\n' >/dev/null 5 | bash`);
+    passes(String.raw`printf '%d\n' 5 | bash`);
+  });
+
+  it("reads a shell's string in printf output whose words are out of view order", () => {
+    expect(refused(String.raw`printf '%s -c "gh pr merge 7"\n' bash | bash`)).toBeTruthy();
+    expect(refused(String.raw`printf 'bash -c "gh pr %s 7"\n' view merge | bash`)).toBeTruthy();
+    expect(asks(String.raw`printf '%s -c "git push origin v1.2.3"\n' bash | bash`)).toMatch(/tag cuts a release/);
+    passes(String.raw`printf '%s -c "echo ready"\n' bash | bash`);
+  });
+
+  it("names a decoded Stream Deck CLI or host stop as its shell reads it", () => {
+    const cli = asks(String.raw`printf '%s %s\n' streamdeck 'link' | bash`);
+    expect(cli).toMatch(/`streamdeck link` links, unlinks or relinks/);
+    expect(cli).not.toMatch(/undefined/);
+    expect(asks(String.raw`printf '%s %s\n' taskkill '/IM StreamDeck.exe' | bash; pnpm relink:stream-deck`)).toMatch(
+      /`taskkill … StreamDeck\.exe` stops or starts a deck host app/,
+    );
+  });
+
+  it("never lets an ask stand over a decoded command its rule did not judge", () => {
+    const noSpec = ctx({ specFiles: () => [] });
+    expect(deny(`eval "git worktree" add ../ir-42 -b ir-42 && git worktree add ../ir-43 -b ir-43`, noSpec)).toMatch(
+      /reads its words differently/,
+    );
+    // Each tag push is judged, so one read as its shell reads it still asks behind another.
+    expect(asks(`git push origin v1.2.3 && eval "git push" origin v2.0.0`)).toMatch(/tag cuts a release/);
+  });
+
+  it.each([
+    String.raw`echo "-e" 'first\ngh pr merge 7' | bash`,
+    String.raw`echo -e'' 'first\ngh pr merge 7' | bash`,
+    String.raw`echo "-ne" 'first\ngh pr merge 7' | bash`,
+    String.raw`echo -ne 'first\ngh pr merge 7' | bash`,
+    String.raw`echo -e 'first\ngh pr merge 7' | bash`,
+  ])("reads echo's options as echo gets them, its quotes removed: %s", (c) => expect(refused(c)).toBeTruthy());
+
+  it.each([String.raw`echo '-E' 'first\ngh pr merge 7' | bash`, String.raw`echo "-e" 'first\nls' | bash`])(
+    "passes an echo whose output runs no merge: %s",
+    (c) => passes(c),
+  );
+
+  // Round 6 (#1646, the CodeRabbit CLI finding at 3212c3d97): a runner a string
+  // runs is judged in the tree the `cd`s ahead of it in that string move to.
+  describe("a runner after a cd inside the string a shell runs", () => {
+    const INTEGRATION = tree("ir-integration");
+    const ROOTS = [MASTER, tree("ir-5"), INTEGRATION];
+    // A Stream Deck link into ../ir-integration, the session in master: dev:voices asks only there.
+    const linked = ctx({
+      linkTargets: () => [{ host: "Stream Deck", target: path.join(INTEGRATION, "packages", "p", "x.sdPlugin") }],
+      toplevel: (d) => ROOTS.find((r) => isInside(d, r)),
+    });
+    const there = /Stream Deck plugin link points into .*ir-integration.*relinks the running plugin/;
+
+    it.each([
+      String.raw`printf 'cd %s; pnpm %s\n' ../ir-integration dev:voices | bash`,
+      String.raw`bash -c $'cd\x20../ir-integration; pnpm dev:voices'`,
+      "echo 'cd ../ir-integration; pnpm dev:voices' | bash",
+      "su -c 'cd ../ir-integration && pnpm dev:voices'",
+      "trap 'cd ../ir-integration && pnpm dev:voices' EXIT",
+      "bash <<< 'pushd ../ir-integration && pnpm dev:voices'",
+      "cd ../ir-5 && echo 'cd ../ir-integration; pnpm dev:voices' | bash",
+      String.raw`printf 'cd %s; pnpm %s; cd %s; pnpm %s\n' ../ir-5 test ../ir-integration dev:voices | bash`,
+    ])("asks for dev:voices a string runs after a cd into the linked tree: %s", (c) =>
+      expect(asks(c, linked)).toMatch(there),
+    );
+
+    it.each([
+      String.raw`printf 'cd %s; pnpm %s\n' ../ir-5 dev:voices | bash`,
+      String.raw`printf 'pnpm %s\n' dev:voices | bash`,
+      "echo 'cd ../ir-5; pnpm dev:voices' | bash",
+    ])("passes dev:voices a string runs in a tree no link points into: %s", (c) => passes(c, linked));
+
+    it("still asks for a relink after a decoded cd", () =>
+      expect(asks(String.raw`bash -c $'cd\x20../ir-integration; pnpm relink:stream-deck'`, linked)).toMatch(
+        /relink:stream-deck/,
+      ));
+
+    it.each([
+      String.raw`printf 'cd "$X"; pnpm %s\n' dev:voices | bash`,
+      String.raw`printf 'cd -; pnpm %s\n' dev:voices | bash`,
+      String.raw`printf 'pushd; pnpm %s\n' dev:voices | bash`,
+    ])("refuses a decoded runner after a cd it cannot follow: %s", (c) =>
+      expect(deny(c, linked)).toMatch(/reads its words differently/),
+    );
+
+    it.each([
+      String.raw`printf 'pnpm %s\n' test | bash`,
+      String.raw`bash -c $'pnpm\x20test'`,
+      String.raw`printf 'cd %s; pnpm %s\n' ../ir-5 test | bash`,
+      String.raw`printf 'set -o pipefail; pnpm %s | tee x\n' test | bash`,
+      String.raw`bash -c $'pnpm\x20test || true'`,
+    ])("passes a decoded pnpm test whose exit code no pipe hides: %s", (c) => passes(c, linked));
+
+    it.each([
+      String.raw`printf 'pnpm %s | tee x\n' test | bash`,
+      String.raw`printf 'pnpm %s\n' test | bash | tail`,
+      String.raw`bash -c $'pnpm\x20test | tail'`,
+      String.raw`bash -c $'pnpm\x20test' | tail`,
+    ])("denies a decoded pnpm test a pipe hides: %s", (c) => expect(deny(c)).toMatch(/hides its exit code/));
+
+    it("denies an integration push a string runs after a cd into the integration tree", () => {
+      const branchByTree = ctx({
+        branch: (d) => (isInside(d, INTEGRATION) ? "integration" : "master"),
+        toplevel: (d) => ROOTS.find((r) => isInside(d, r)),
+      });
+      expect(deny(String.raw`printf 'cd %s; git push\n' ../ir-integration | bash`, branchByTree)).toMatch(
+        /integration` branch is local/,
+      );
+      passes(String.raw`printf 'cd %s; git push\n' ../ir-5 | bash`, branchByTree);
+    });
+
+    // Round 7 (#1646, the CodeRabbit CLI findings at 28552cfbe): a cd in a
+    // pipeline stage runs in a subshell, and moves nothing after it.
+    it("judges what follows a cd in a pipeline where the pipeline started", () => {
+      const linkedHere = ctx({
+        linkTargets: () => [{ host: "Stream Deck", target: path.join(MASTER, "packages", "p", "x.sdPlugin") }],
+        toplevel: (d) => ROOTS.find((r) => isInside(d, r)),
+      });
+      expect(asks(String.raw`printf 'cd %s | cat; pnpm %s\n' ../ir-5 dev:voices | bash`, linkedHere)).toMatch(/master/);
+      expect(asks("cd ../ir-5 | cat; pnpm dev:voices", linkedHere)).toMatch(/master/);
+      passes(String.raw`printf 'cd %s; pnpm %s\n' ../ir-5 dev:voices | bash`, linkedHere);
+      passes("cd ../ir-5; pnpm dev:voices", linkedHere);
+      // A cd in a compound command the string does not close is not followed: refused.
+      expect(deny(String.raw`printf '{ cd %s; pnpm %s; }\n' ../ir-5 dev:voices | bash`, linkedHere)).toMatch(
+        /reads its words differently/,
+      );
+    });
+
+    it("pushes from where the pipeline started after a cd in one", () => {
+      const branchByTree = ctx({
+        branch: (d) => (isInside(d, INTEGRATION) ? "integration" : "master"),
+        toplevel: (d) => ROOTS.find((r) => isInside(d, r)),
+      });
+      passes("bash -c 'cd ../ir-integration | cat; git push'", branchByTree);
+      passes("cd ../ir-integration | cat; git push", branchByTree);
+      expect(deny("bash -c 'cd ../ir-integration; git push'", branchByTree)).toMatch(/integration` branch is local/);
+    });
+
+    // A shell without job control runs a pipeline's final stage in itself
+    // under `shopt -s lastpipe`, which a profile or BASH_ENV the hook cannot
+    // see may set, and a `shopt` in the command may come after the pipeline,
+    // so a final-stage cd always leaves the tree unknown (CodeRabbit on PR
+    // #1788, the CodeRabbit CLI at ef788cc00).
+    it.each([
+      "true | cd ../ir-integration; pnpm dev:voices",
+      "export SHELLOPTS; true | cd ../ir-integration; pnpm dev:voices",
+      "shopt -s lastpipe; true | cd ../ir-integration; pnpm dev:voices",
+      "true | cd ../ir-integration; shopt -s lastpipe; pnpm dev:voices",
+      "bash -c 'shopt -s lastpipe; true | cd ../ir-integration; pnpm dev:voices'",
+      "cd ../ir-integration && ls | cd ../ir-5; pnpm dev:voices",
+    ])("refuses dev:voices after a final-stage cd it cannot follow: %s", (c) =>
+      expect(deny(c, linked)).toMatch(/leaves unknown/),
+    );
+
+    // Read in printf output, a lost runner keeps its decoded hit, and is refused for that.
+    it("refuses a decoded dev:voices after a final-stage cd, lastpipe or not", () =>
+      expect(
+        deny(
+          String.raw`printf 'shopt -s lastpipe; true | cd %s; pnpm %s\n' ../ir-integration dev:voices | bash`,
+          linked,
+        ),
+      ).toMatch(/reads its words differently/));
+
+    it("passes a command whose tree decides nothing after a final-stage cd", () =>
+      passes("ls | cd ../ir-integration; pnpm test", linked));
+
+    it.each([
+      "cd ../ir-integration | cat; pnpm dev:voices",
+      "shopt -s lastpipe; cd ../ir-integration | cat; pnpm dev:voices",
+    ])("keeps a cd in a subshell stage from moving what follows: %s", (c) => passes(c, linked));
+
+    // The PR #1788 review (CodeRabbit at 7e8cd2e37).
+    it.each([
+      "cd ../ir-integration && false && cd ../ir-5; pnpm dev:voices",
+      "cd ../ir-integration && echo 'false && cd ../ir-5; pnpm dev:voices' | bash",
+      "echo 'true || cd ../ir-5; pnpm dev:voices' | bash",
+      "trap 'cd \"$X\"; pnpm dev:voices' EXIT",
+      "echo 'cd \"$X\"; pnpm dev:voices' | bash",
+      "eval 'true; cd ../ir-integration'; pnpm dev:voices",
+    ])("refuses dev:voices where a cd ahead of it may not run or cannot be read: %s", (c) =>
+      expect(deny(c, linked)).toMatch(/leaves unknown/),
+    );
+
+    it.each([
+      "echo 'true && cd ../ir-integration && pnpm dev:voices' | bash",
+      "cd ../ir-integration && bash -c 'true; cd ../ir-5; true'; pnpm dev:voices",
+    ])("asks for dev:voices that runs in the linked tree: %s", (c) => expect(asks(c, linked)).toMatch(there));
+
+    it.each([
+      "bash -c 'true; cd ../ir-integration; true'; pnpm dev:voices",
+      "echo 'cd \"$X\"; pnpm test' | bash",
+      "trap 'cd \"$X\"; pnpm test' EXIT",
+    ])("passes what a child's cd or an unknown tree does not decide: %s", (c) => passes(c, linked));
+
+    it("judges a push after a child shell's cd in the tree it was typed in", () => {
+      const branchByTree = ctx({
+        branch: (d) => (isInside(d, INTEGRATION) ? "integration" : "master"),
+        toplevel: (d) => ROOTS.find((r) => isInside(d, r)),
+      });
+      passes("bash -c 'true; cd ../ir-integration; true'; git push", branchByTree);
+      expect(deny("cd ../ir-integration && git push", branchByTree)).toMatch(/integration` branch is local/);
+    });
+
+    it("refuses a worktree remove whose relative target a cd ahead of it leaves unknown", () => {
+      expect(deny("false && cd ../ir-5; git worktree remove ../ir-integration", linked)).toMatch(
+        /cannot tell which tree/,
+      );
+      expect(deny("git worktree remove ../ir-integration", linked)).toMatch(/plugin link points into/);
+    });
+
+    // The PR #1788 re-review (CodeRabbit at 578854b81).
+    it("passes dev:voices after a cd it cannot follow while no host is linked", () => {
+      passes("false && cd ../ir-integration; pnpm dev:voices");
+      passes("echo 'cd \"$X\"; pnpm dev:voices' | bash");
+      expect(deny("false && cd ../ir-integration; pnpm dev:voices", linked)).toMatch(/leaves unknown/);
+    });
+
+    it("reads a cd's || branch as running where the cd failed to move", () => {
+      passes("cd ../ir-integration || pnpm dev:voices", linked);
+      expect(asks("cd ../ir-integration && pnpm dev:voices", linked)).toMatch(there);
+      expect(asks("cd ../ir-integration || exit 1; pnpm dev:voices", linked)).toMatch(there);
+      expect(deny("cd ../ir-integration && true || pnpm dev:voices", linked)).toMatch(/leaves unknown/);
+      const branchByTree = ctx({
+        branch: (d) => (isInside(d, INTEGRATION) ? "integration" : "master"),
+        toplevel: (d) => ROOTS.find((r) => isInside(d, r)),
+      });
+      passes("cd ../ir-integration || git push", branchByTree);
+      expect(deny("cd ../ir-integration && git push", branchByTree)).toMatch(/integration` branch is local/);
+    });
+
+    it.each([
+      "false && cd ../ir-5; git commit -m x",
+      "ls | cd ../ir-5; git commit -m x",
+      "cd ../ir-5 && true || git commit -m x",
+      "false && cd ../ir-5; git add . && git commit -m x",
+    ])("refuses a commit whose checkout a cd ahead of it leaves unknown: %s", (c) =>
+      expect(deny(c)).toMatch(/cannot tell which checkout it acts on/),
+    );
+
+    it("still judges a commit whose checkout is known", () => {
+      passes("cd ../ir-5 && git commit -m x");
+      passes("git commit -m x");
+    });
+
+    it("keeps a lost dev:voices refused inside a script that runs itself", () => {
+      const looped = ctx({
+        linkTargets: () => [{ host: "Stream Deck", target: path.join(INTEGRATION, "packages", "p", "x.sdPlugin") }],
+        toplevel: (d) => ROOTS.find((r) => isInside(d, r)),
+        scriptsAt: () => ({
+          dir: MASTER,
+          scripts: { loop: "false && cd ../ir-integration; pnpm dev:voices; pnpm loop" },
+        }),
+      });
+      expect(deny("pnpm loop", looped)).toMatch(/leaves unknown/);
+    });
+  });
+
+  it.each([
+    [String.raw`printf 'set -o pipefail; bash -c "pnpm %s | tail"\n' test | bash`, true],
+    [String.raw`printf 'echo "set -o pipefail"; pnpm %s | tail\n' test | bash`, true],
+    [String.raw`printf 'true # set -o pipefail\npnpm %s | tail\n' test | bash`, true],
+    [String.raw`printf 'bash -c "set -o pipefail; pnpm %s | tail"\n' test | bash`, false],
+    [String.raw`printf 'bash -o pipefail -c "pnpm %s | tail"\n' test | bash`, false],
+    [String.raw`printf 'set -o pipefail; pnpm %s | tail\n' test | bash`, false],
+  ])("excuses a decoded pnpm's pipe only by the pipefail of the shell that owns it: %s", (c, hidden) =>
+    hidden ? expect(deny(c)).toMatch(/hides its exit code/) : passes(c),
+  );
+
+  it.each([
+    String.raw`printf 'echo a\\ #b; gh pr %s 7\n' merge | bash`,
+    String.raw`printf 'echo a\\;#b; gh pr %s 7\n' merge | bash`,
+  ])("reads the command after a # inside an escaped word: %s", (c) => expect(refused(c)).toBeTruthy());
+
+  // Round 7 (#1646, the CodeRabbit CLI findings at 28552cfbe).
+  it("asks for a tag push a reused printf format prints after another push", () =>
+    expect(asks(String.raw`printf 'git push origin %s\n' main v1.2.3 | bash`)).toMatch(/tag cuts a release/));
+
+  it("names a merge a reused printf format prints second as a command of the string", () => {
+    expect(refused(String.raw`printf 'gh pr %s 7\n' view merge | bash`)).toMatch(
+      /not its own command: it is a command of a string `bash` runs/,
+    );
+    passes(String.raw`printf 'git push origin %s\n' main dev | bash`);
+  });
+
+  it.each([
+    String.raw`echo 'echo first;' 2>/dev/null 'gh pr merge 7' | bash`,
+    String.raw`echo 'echo first;' >/dev/null 'gh pr merge 7' | bash`,
+    String.raw`echo 'echo first;' 2>"$(gh pr merge 7)" 'ls' | bash`,
+  ])("refuses a merge an echo prints past a redirection, or runs in its target: %s", (c) =>
+    expect(refused(c)).toBeTruthy(),
+  );
+
+  it("passes an echo whose operands past a redirection run nothing guarded", () =>
+    passes(String.raw`echo 'echo first;' 2>/dev/null 'ls' | bash`));
+
+  // The PR #1788 review (CodeRabbit at 7e8cd2e37): a reprint drops a printer's
+  // operands, so the rules that fire on any occurrence read the command itself.
+  it.each([
+    [String.raw`printf '%d%.0s\n' 5 'updateProjectV2Field' | bash`, /Status options|option list/],
+    [String.raw`printf '%%%.0s\n' 'updateProjectV2Field' | bash`, /option list/],
+    [String.raw`printf '%d%.0s\n' 5 '/code-review high --fix' | bash`, /--fix/],
+    [`cat <<EOF > f.txt\nx\nEOF\nprintf '%d%.0s\\n' 5 'C:\\\\temp' | bash`, /doubled backslash/],
+  ])("reads an occurrence rule's marker in a printer operand a reprint drops: %s", (c, why) =>
+    expect(deny(c)).toMatch(why),
+  );
+
+  it("passes a reprinted printer whose dropped operand carries no marker", () =>
+    passes(String.raw`printf '%d%.0s\n' 5 'harmless' | bash`));
+
+  it("marks exactly the rules that fire on any occurrence of a text", () =>
+    expect(rules.filter((r) => r.occurrence).map((r) => r.name)).toEqual([
+      "code-review is a Skill, never --fix",
+      "never rewrite the board's Status options",
+      "heredocs collapse doubled backslashes",
+    ]));
 });

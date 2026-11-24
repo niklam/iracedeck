@@ -385,10 +385,57 @@ const SUDO_VALUE_LONG = new Set([
   "--command-timeout",
 ]);
 
-/** One {@link COMMAND_LEAD} token (built from `leadToken`, which is hoisted), stepped over one at a time ({@link fedStarts}). */
-const LEAD_TOKEN = new RegExp(leadToken("(?:"), "y");
-/** The quote that opens a string a shell is handed, `$'…'` included ({@link fedStarts}). */
-const STRING_OPEN = /\$?['"]/y;
+/** An ANSI-C `$'…'` run, where `\'` does not close it (CodeRabbit on PR #1628). */
+const ANSI_C = String.raw`\$'(?:[^'\\]|\\[\s\S])*'`;
+/** A quoted run inside a command substitution, where a `(` or `)` is text, not structure. */
+const SUBST_QUOTED = String.raw`${ANSI_C}|'[^']*'|"(?:[^"\\]|\\[\s\S])*"`;
+/**
+ * One character of a substitution's body, an escape or a quoted run: each
+ * starts differently, so it has one parse. The escape comes first, so `\$'`
+ * is a literal dollar and not an ANSI-C opener (CodeRabbit on PR #1628).
+ */
+const SUBST_ATOM = String.raw`\\[\s\S]|[^()'"$\\]|\$(?!')|${SUBST_QUOTED}`;
+/**
+ * A command substitution, `$( … )` (two levels of nesting) or a backtick one,
+ * taken whole: its words are one word of the command that holds it. A quoted
+ * `)` inside it is text (CodeRabbit on PR #1628: the raw view of
+ * `$(bash -c 'a ) b')` once ended there). A character class never matches its
+ * `$(` or backtick, so each has one parse.
+ */
+const SUBSTITUTION = String.raw`\$\((?:${SUBST_ATOM}|\((?:${SUBST_ATOM}|\((?:${SUBST_ATOM})*\))*\))*\)|\x60[^\x60]*\x60`;
+/**
+ * A command substitution as a {@link COMMAND_LEAD} token's value holds one,
+ * one level of nesting deep: the lead sits in every {@link cmd} rule, so its
+ * size is paid on every command each rule reads (#1646). The regex is only
+ * the anchors' fast path: a value it cannot read (a deeper substitution, a
+ * quote nested in one inside `"…"`) ends its token, and the program after it
+ * is still found, since every program position comes from {@link leadStep},
+ * which reads values with the one word reader ({@link pieceEnd}), and every
+ * rule tests its shape there ({@link matchesAt}).
+ */
+const LEAD_ATOM = String.raw`[^()'"\\]|\\[\s\S]|'[^']*'|"(?:[^"\\]|\\[\s\S])*"`;
+const LEAD_SUBSTITUTION = String.raw`\$\((?:${LEAD_ATOM}|\((?:${LEAD_ATOM})*\))*\)|\x60[^\x60]*\x60`;
+
+/**
+ * One piece of a word as the {@link COMMAND_LEAD} regex reads it, for a
+ * token's value (#1646; {@link leadStep} reads every value whole, with {@link
+ * pieceEnd}): a double-quoted run with its escapes, a single-quoted run, an
+ * ANSI-C `$'…'` run, a command substitution, a `${…}` expansion, any other
+ * `$`, an escape, or one plain character. A blank never is one, nor an
+ * operator that ends the word (`;`, `&`, `|`, a paren, a backtick), so a
+ * quoted value keeps its blanks and `;` (`X="a b;c" gh …`) and an expansion
+ * its own words (`X=${Y:-a b} gh …`), where `=\S*` once ended the value at the
+ * first blank. Each piece starts on a character no other piece starts on, so
+ * a run of them has one parse, and the plain run is tried first: almost every
+ * character of a value is plain, and every cmd() rule runs this at each
+ * command position. With `angles` a `<` or `>` is plain, as in an
+ * assignment's value (`X=a>b`); a redirection's target and an option's value
+ * stop at one.
+ */
+const piece = (angles) =>
+  String.raw`(?:[^\s"'\\$\x60;&|()${angles ? "" : "<>"}]|"(?:[^"\\]|\\[\s\S])*"|'[^']*'|${ANSI_C}|${LEAD_SUBSTITUTION}|\$\{[^}]*\}|\$(?![('{])|\\[\s\S])`;
+const WORD_PIECE = piece(false);
+const ANGLED_PIECE = piece(true);
 
 /**
  * What a {@link SHELL_WORDS} word or a wrapper does with the words after it
@@ -800,13 +847,24 @@ function sudoRunsShell(text, from) {
 
 /** The shells that read their script from stdin when handed no `-c` and no script file ({@link stdinShellIn}). */
 const STDIN_SHELL = /(?<=^|[\s;&|(\x60/])(?:bash|sh|zsh|dash|ksh)(?=\s|$)/g;
-/** An `echo` or `printf` at the start of a pipeline stage, past a {@link COMMAND_LEAD}: its name is group 1. */
-const ECHO_AT = new RegExp(String.raw`^\s*(?:${leadToken("(?:")})*(echo|printf)(?=\s)`, "d");
+
+/**
+ * Whether the `'` at `i` of `s` opens an ANSI-C `$'…'` string: a `$` before
+ * it that no backslash escapes, as an even run of them before it leaves it
+ * plain (#1646).
+ */
+export function ansiOpen(s, i) {
+  if (s[i] !== "'" || s[i - 1] !== "$") return false;
+  let slashes = 0;
+  for (let k = i - 2; k >= 0 && s[k] === "\\"; k--) slashes++;
+  return slashes % 2 === 0;
+}
 
 /**
  * The raw text of a fed span `[a, b)` read crudely, quotes kept whole
  * ({@link fedStarts}): `quotes`, each quoted string as `[open, close]`
- * (the indices of its quotes), and `pipelines`, each a list of its stages as
+ * (the indices of its quotes; an ANSI-C `$'…'` string's open is its `'`,
+ * and a `\'` in it closes nothing), and `pipelines`, each a list of its stages as
  * `[start, end)`, split at an unquoted `|` or `|&` and ended by `;`, `&&`,
  * `||`, a lone `&` or a newline.
  */
@@ -827,8 +885,11 @@ function pipelinesOf(command, a, b) {
     const c = command[i];
     if (c === "\\") i++;
     else if (c === "'" || c === '"') {
+      // `\` escapes in a double-quoted string and in an ANSI-C `$'…'` one, whose
+      // `$` is no escaped one (`\$'x\'` is a `$` and a plain `'x\'`, #1646).
+      const escapes = c === '"' || ansiOpen(command, i);
       let k = i + 1;
-      while (k < b && command[k] !== c) k += c === '"' && command[k] === "\\" ? 2 : 1;
+      while (k < b && command[k] !== c) k += escapes && command[k] === "\\" ? 2 : 1;
       quotes.push([i, k]);
       i = k;
     } else if ((c === "|" || c === "&") && command[i + 1] === c) {
@@ -840,14 +901,6 @@ function pipelinesOf(command, a, b) {
   }
   cut(b, b, true);
   return { quotes, pipelines };
-}
-
-/** The words of `text[a, b)` as `{ w, at }`, quotes and escapes kept whole ({@link stdinShellIn}, {@link printedArgs}). */
-function wordsIn(text, a, b) {
-  return [...text.slice(a, b).matchAll(/(?:"(?:[^"\\]|\\[\s\S])*"|'[^']*'|\\[\s\S]|[^\s"'\\])+/g)].map((m) => ({
-    w: m[0],
-    at: a + m.index,
-  }));
 }
 
 /** A redirection that gives a command its stdin: `<`, `<<`, `<<<`, `<&`, `<>`, with an optional fd 0. Group 1 is the operator. */
@@ -879,166 +932,807 @@ function stdinShellIn(text, byName, [s, e]) {
   return undefined;
 }
 
-/** A `printf` format's literal text that leaves the next argument at the start of a command: blanks, `\n` and `;`. */
-const COMMAND_GAP = /^(?:[ \t]|\\[nt]|;)*$/;
-
 /**
- * Whether the `k`th argument (from 0) of a `printf` whose format word is
- * `format` starts a command in what it prints (#1607, CodeRabbit on PR
- * #1632): the format must be made of `%s` / `%b` conversions with nothing but
- * blanks, `\n` and `;` around them, and the literal text before the
- * conversion the argument fills — across the format's end when printf
- * reuses it — must hold a `\n` or `;`, or be the start of the output. Any
- * other literal text (`'echo %s\n'`, `'x%s'`) puts every argument inside a
- * command.
+ * A word as the shell reading it passes it on (`"-e"`, `-e''` and `-e` are
+ * all `-e`), or `undefined` when an expansion in it makes it unknown here
+ * ({@link printedArgs}, {@link echoEscapes}).
  */
-function printfArgStartsCommand(format, k) {
-  const body = /^(['"])([\s\S]*)\1$/.exec(format)?.[2] ?? format;
-  const literals = body.split(/%[sb]/);
-  const conversions = literals.length - 1;
-  if (conversions === 0 || !literals.every((l) => COMMAND_GAP.test(l))) return false;
-  const j = k % conversions;
-  if (j > 0) return /\\n|;/.test(literals[j]);
-  return k === 0 || /\\n|;/.test(literals[conversions] + literals[0]);
+function literalWord(w) {
+  const chars = decodeWord(w, true);
+  return chars.some((x) => x.live) ? undefined : chars.map((x) => x.c).join("");
 }
 
 /**
+ * The words of a printer's `text[a, b)` as `{ w, at }` ({@link printedArgs},
+ * {@link echoEscapes}): each whole as {@link wordEnd} reads it, a
+ * substitution with its blanks too (`>$(gh pr merge 7)` is one word, a
+ * redirection and its target); a quote never closed takes the rest.
+ */
+function printerWords(text, a, b) {
+  const out = [];
+  for (let i = blanksFrom(text, a); i < b;) {
+    const j = wordEnd(text, i, true);
+    const end = j < 0 ? b : Math.min(j, b);
+    if (end <= i) break;
+    out.push({ w: text.slice(i, end), at: i });
+    i = blanksFrom(text, end);
+  }
+  return out;
+}
+
+/** An `echo` option word as echo reads it: `-n`, `-e`, `-E` or a cluster of them ({@link printedArgs}). */
+const ECHO_OPTION = /^-[neE]+$/;
+
+/**
  * The words an `echo` or `printf` (named `name`, its word ending at `from` in
- * `text`) prints, up to `e`, as `{ w, at }`: its options and redirections
- * skipped, each argument one word with its quotes. `undefined` for a `printf
- * -v`, which prints nothing.
+ * `text`) prints, up to `e`, as `{ w, at }`: its options skipped as the
+ * command reads them, its quotes removed (`echo "-e" …`, CodeRabbit CLI on
+ * #1646), each argument one word with its quotes. `redirs`, a property of the
+ * list, holds each redirection among them with its target word, as
+ * `{ w, at }` of its raw text, for a printer re-judged as printing its output
+ * plainly to keep (`checkBash`). `undefined` for a `printf -v`, which prints
+ * nothing.
  */
 function printedArgs(text, from, e, name) {
   const args = [];
-  const words = wordsIn(text, from, e);
+  const redirs = [];
+  const words = printerWords(text, from, e);
+  let ended = false;
   for (let k = 0; k < words.length; k++) {
-    const { w } = words[k];
+    const { w, at } = words[k];
     if (/^\d*[<>&]/.test(w)) {
       if (/^\d*(?:[<>]{1,3}-?|[<>]&|&>>?|>\|)$/.test(w)) k++;
-    } else if (name === "printf" && w === "-v") return undefined;
-    else if (args.length === 0 && (w === "--" || (name === "echo" ? /^-[neE]+$/ : /^-/).test(w))) continue;
-    else args.push(words[k]);
+      const last = words[Math.min(k, words.length - 1)];
+      redirs.push({ w: text.slice(at, last.at + last.w.length), at });
+      continue;
+    }
+    // Options are read only ahead of the first argument, each as the command sees it.
+    const plain = args.length === 0 && !ended ? literalWord(w) : undefined;
+    if (name === "printf" && plain === "-v") return undefined;
+    if (plain === "--") ended = name === "printf";
+    if (plain !== undefined && (plain === "--" || (name === "echo" ? ECHO_OPTION : /^-/).test(plain))) continue;
+    args.push(words[k]);
   }
+  args.redirs = redirs;
   return args;
+}
+
+/**
+ * Where the piece of a bash word that starts at `i` in `t` ends ({@link
+ * readLevel}): past a quoted run (`"…"` with its escapes and its `$( … )`,
+ * `${ … }` and backtick substitutions, quotes inside them included, `'…'`,
+ * `$'…'`), an escape, a `$( … )`, `${ … }` or backtick substitution, or one
+ * plain character; `-1` when a quote it opens never closes. The one reader
+ * of where a word's piece ends: {@link wordEnd}, {@link leadStep} and {@link
+ * level} all walk with it (#1646).
+ */
+function pieceEnd(t, i) {
+  const c = t[i];
+  if (c === "\\") return Math.min(i + 2, t.length);
+  if (c === "'") {
+    const e = t.indexOf("'", i + 1);
+    return e < 0 ? -1 : e + 1;
+  }
+  if (c === "$" && t[i + 1] === "'") {
+    for (let k = i + 2; k < t.length; k++)
+      if (t[k] === "\\") k++;
+      else if (t[k] === "'") return k + 1;
+    return -1;
+  }
+  if (c === '"') {
+    for (let k = i + 1; k < t.length; k++)
+      if (t[k] === "\\") k++;
+      else if (t[k] === '"') return k + 1;
+      else if (t[k] === "$" && (t[k + 1] === "(" || t[k + 1] === "{")) k = closeAt(t, k + 2, t[k + 1]) - 1;
+      else if (t[k] === "\x60") k = tickEnd(t, k) - 1;
+    return -1;
+  }
+  if (c === "$" && (t[i + 1] === "(" || t[i + 1] === "{")) return closeAt(t, i + 2, t[i + 1]);
+  if (c === "\x60") return tickEnd(t, i);
+  return i + 1;
+}
+
+/** Whether the character at `i` of `t` ends a command: a newline, `;`, `|`, a paren, or a `&` that is no redirect's (`2>&1`, `&>`). */
+function endsCommand(t, i) {
+  const c = t[i];
+  return "\n;|()".includes(c) || (c === "&" && !/[<>]/.test(t[i - 1] ?? "") && t[i + 1] !== ">");
+}
+
+/**
+ * Where the word at `d` of `t` ends ({@link fedStarts}): at a blank, a
+ * command's end or — unless `angles` is set, as in an assignment's value — a
+ * redirection's `<` or `>`, outside its quotes and substitutions; `-1` when
+ * it opens a quote it never closes, which the shell reading it cannot run and
+ * the hook cannot read past.
+ */
+function wordEnd(t, d, angles = false) {
+  let i = d;
+  while (i < t.length && !/\s/.test(t[i]) && (angles || !/[<>]/.test(t[i])) && !endsCommand(t, i)) {
+    const e = pieceEnd(t, i);
+    if (e < 0) return -1;
+    i = e;
+  }
+  return i;
+}
+
+/** Past the blanks (newlines too, as `\s` reads them) from `i` of `t`. */
+function blanksFrom(t, i) {
+  while (i < t.length && /\s/.test(t[i])) i++;
+  return i;
+}
+
+/**
+ * Where a wrapper option's value that starts at `i` of `t` ends ({@link
+ * leadStep}): its quoted runs and escapes whole, any other character but a
+ * blank, `;`, `&`, `|`, `<` or `>` plain; `-1` for none, or one whose quote
+ * never closes.
+ */
+function optionValueEnd(t, i) {
+  let k = i;
+  while (k < t.length && !/[\s;&|<>]/.test(t[k])) {
+    if (t[k] === "\\") k += 2;
+    else if (t[k] === '"' || t[k] === "'") {
+      const e = pieceEnd(t, k);
+      if (e < 0) return -1;
+      k = e;
+    } else k++;
+  }
+  return k > i ? Math.min(k, t.length) : -1;
+}
+
+/** The lead's keywords, the wrappers whose options the lead steps over, and the options of each that take a value ({@link leadStep}). */
+const LEAD_KEYWORDS = new Set(["if", "then", "do", "else", "elif", "while", "until", "!", "{"]);
+// A Map, as it is keyed by a command word: an object would answer `constructor` (#1646).
+const WRAPPER_VALUES = ["-u", "-C", "-S", "-a", "--unset", "--chdir", "--split-string"];
+const LEAD_VALUE_OPTIONS = new Map([
+  ...["time", "command", "exec", "env", "nohup"].map((w) => [w, WRAPPER_VALUES]),
+  ["timeout", ["-k", "-s", "--kill-after", "--signal"]],
+  ["xargs", ["-I", "-d", "-E", "-e", "-L", "-n", "-P", "-s"]],
+]);
+/** A redirection operator ahead of the program, with its fd ({@link leadStep}). */
+const LEAD_REDIRECT = /^\d*(?:<<<|[<>]&|&>>?|>>|>\||<>|<|>)/;
+
+/**
+ * One token of a command's lead at `i` of `t`, read as {@link COMMAND_LEAD}
+ * describes it but with the one word reader ({@link pieceEnd}), so a value
+ * ends where bash ends it whatever it nests (#1646): a keyword (`if`, `then`,
+ * `!` …); a wrapper (`time`, `command`, `exec`, `env`, `nohup`, `timeout`
+ * with its duration, `xargs`) with its own options, a value option taking
+ * the next word unless it starts with `-`; an assignment (`X="$(echo "a
+ * b")"`, `X=${Y:-"a b"}`, `X=a$(a $(b $(c)))b`); or a redirection with its
+ * target. Each must be followed by a blank. `{ end, wrapper }`: past the
+ * blanks after it, and the wrapper it is, if one (`"keyword"` for a
+ * keyword); `undefined` where no token starts.
+ */
+function leadStep(t, i) {
+  const redirect = LEAD_REDIRECT.exec(t.slice(i, i + 8));
+  if (redirect) {
+    const from = blanksFrom(t, i + redirect[0].length);
+    const e = wordEnd(t, from);
+    return e > from && /\s/.test(t[e] ?? "") ? { end: blanksFrom(t, e) } : undefined;
+  }
+  const assignment = /^[A-Za-z_]\w*(?:\[[^\]\s]*\])?\+?=/.exec(t.slice(i, i + 256));
+  if (assignment) {
+    const e = wordEnd(t, i + assignment[0].length, true);
+    return e >= 0 && /\s/.test(t[e] ?? "") ? { end: blanksFrom(t, e) } : undefined;
+  }
+  const e = wordEnd(t, i);
+  if (e <= i || !/\s/.test(t[e] ?? "")) return undefined;
+  const word = t.slice(i, e);
+  if (LEAD_KEYWORDS.has(word)) return { end: blanksFrom(t, e), wrapper: "keyword" };
+  const values = LEAD_VALUE_OPTIONS.get(word);
+  if (!values) return undefined;
+  let k = blanksFrom(t, e);
+  while (t[k] === "-") {
+    const o = k;
+    while (k < t.length && !/\s/.test(t[k])) k++;
+    if (!/\s/.test(t[k] ?? "")) return undefined;
+    const next = blanksFrom(t, k);
+    if (values.includes(t.slice(o, k)) && t[next] !== "-") {
+      const v = optionValueEnd(t, next);
+      if (v >= 0 && /\s/.test(t[v] ?? "")) {
+        k = blanksFrom(t, v);
+        continue;
+      }
+    }
+    k = next;
+  }
+  if (word === "timeout") {
+    const duration = /^\d[\d.]*[smhd]?(?=\s)/.exec(t.slice(k, k + 32));
+    if (!duration) return undefined;
+    k = blanksFrom(t, k + duration[0].length);
+  }
+  return { end: k, wrapper: word };
+}
+
+/**
+ * Past the lead of the command at `i` of `t`, token by token ({@link
+ * leadStep}): `{ end, env }`, `end` where its program word starts and `env`
+ * whether env is the last wrapper the lead steps over, a keyword ending one
+ * (#1606 second read: so an option's value spelled as a wrapper, `env -u
+ * time …`, is the value it is).
+ */
+function leadEnd(t, i) {
+  let k = blanksFrom(t, i);
+  let wrapper;
+  for (let s; (s = leadStep(t, k)); k = s.end) if (s.wrapper) wrapper = s.wrapper === "keyword" ? undefined : s.wrapper;
+  return { end: k, env: wrapper === "env" };
+}
+
+/** The `echo` or `printf` the pipeline stage starting at `s` of `t` runs, past its lead: `{ name, start, end }`, or `undefined`. */
+function echoAt(t, s) {
+  const { end } = leadEnd(t, s);
+  const m = /^(echo|printf)(?=\s)/.exec(t.slice(end, end + 7));
+  return m && { name: m[1], start: end, end: end + m[1].length };
+}
+
+/**
+ * A text some shell reads, as {@link fedStarts} walks it (#1646): `text`;
+ * `at` and `end`, for each of its characters where in the view's text what it
+ * is read from starts and ends (an escape's backslash, past its last
+ * character), both `null` for the view's text itself, whose shell is the one
+ * the command is typed to; `live`, set on a character that stands for an
+ * expansion an outer shell makes (its result is not known); `ends`, for each
+ * index where the command holding it ends — at a newline, `;`, `|`, a paren or
+ * a `&` that is no redirect's, outside its words' quotes and substitutions, so
+ * `X="a;b"` ends nothing; and `commands`, where each command starts. A `#`
+ * that starts a word comments out the rest of its line, and a heredoc's body
+ * (`<<E` or `<<-E`, its delimiter quoted or not, an arithmetic `((…<<…))`
+ * aside) runs from the line after its operator to its delimiter's line, or to
+ * the end: neither holds a command, so a quote in them closes nothing.
+ * `unread` is set for a heredoc operator with no delimiter, which the shell
+ * refuses. A quote that never closes runs to the end.
+ */
+function level(text, at = null, end = null, live = null) {
+  const ends = new Int32Array(text.length + 1);
+  const commands = [0];
+  let start = 0;
+  let heredocs = [];
+  let unread = false;
+  // Whether `i` starts a word: at the start, or after an unescaped blank or
+  // operator. An escaped one is part of its word, so `a\ #b` holds no
+  // comment (CodeRabbit on PR #1788).
+  let wordStart = true;
+  for (let i = 0; i < text.length;) {
+    const c = text[i];
+    const atWord = wordStart;
+    wordStart = false;
+    if (c === "#" && atWord) {
+      const nl = text.indexOf("\n", i);
+      i = nl < 0 ? text.length : nl;
+    } else if (c === "<" && text[i + 1] === "<" && text[i + 2] !== "<" && text[i - 1] !== "<") {
+      if (text.slice(Math.max(0, start - 2), start) === "((") {
+        i += 2;
+        continue;
+      }
+      let k = i + 2;
+      const strip = text[k] === "-";
+      if (strip) k++;
+      while (text[k] === " " || text[k] === "\t") k++;
+      const e = wordEnd(text, k);
+      if (e <= k) {
+        unread = true;
+        i = e < 0 ? text.length : k;
+        continue;
+      }
+      heredocs.push({
+        delimiter: decodeWord(text.slice(k, e))
+          .map((x) => x.c)
+          .join(""),
+        strip,
+      });
+      i = e;
+    } else if (endsCommand(text, i)) {
+      ends.fill(i, start, i + 1);
+      i++;
+      // The bodies of the heredocs this line opened, in order, each to its delimiter's line.
+      if (c === "\n")
+        for (const { delimiter, strip } of heredocs)
+          while (i < text.length) {
+            const nl = text.indexOf("\n", i);
+            const line = text.slice(i, nl < 0 ? text.length : nl);
+            i = nl < 0 ? text.length : nl + 1;
+            if ((strip ? line.replace(/^\t+/, "") : line) === delimiter) break;
+          }
+      if (c === "\n") heredocs = [];
+      commands.push((start = i));
+      wordStart = true;
+    } else {
+      const e = pieceEnd(text, i);
+      // A plain blank or redirection character, read alone, ends a word.
+      wordStart = e === i + 1 && /[\s<>&]/.test(c);
+      i = e < 0 ? text.length : e;
+    }
+  }
+  ends.fill(text.length, start);
+  return { text, at, end, live, ends, commands, unread };
+}
+
+/** Where in the view's text the character at `i` of the {@link level} `L` is read from: its start, and its end. */
+const viewAt = (L, i) => (L.at ? L.at[i] : i);
+const viewEnd = (L, i) => (L.end ? L.end[i] : i + 1);
+
+/**
+ * A {@link level} built from characters, each `{ c, at, end, live }` with
+ * `at` and `end` view indices ({@link readLevel}, {@link unescaped}).
+ */
+function levelOf(chars, extra = {}) {
+  const at = new Int32Array(chars.length);
+  const end = new Int32Array(chars.length);
+  const live = new Uint8Array(chars.length);
+  chars.forEach((x, k) => {
+    at[k] = x.at;
+    end[k] = x.end;
+    live[k] = x.live ? 1 : 0;
+  });
+  return { ...level(chars.map((x) => x.c).join(""), at, end, live), ...extra };
+}
+
+/**
+ * The text the shell a word of `parent` (a {@link level}) is handed reads
+ * (#1646): the word at `d` decoded as the parent's shell reads it ({@link
+ * decodeWord}, `$'…'` escapes included) — or, where `join` is set, every word
+ * from `d` to the end of its command, each decoded and joined by one blank, as
+ * `eval`, `pwsh -Command`, `cmd /c`, `watch` and `echo` join theirs — each
+ * character placed where in the view's text it is read from. With `join`
+ * `"escaped"` each word is joined as `sudo -s` joins it, a backslash before
+ * every character but a letter, a digit, `_`, `-` and `$`, so it stays one
+ * word; and none before `=`, which sudo escapes too: its leading `X=…` is
+ * then the program, but read here as an assignment the lead steps over, so
+ * an `env X=1 gh …` it runs is read as env reads it and the word after an
+ * assignment counts as a program, at worst a false one. So the raw text's
+ * quoting is undone once per level: `bash -c "X=\"a b\" gh …"` reads `X="a
+ * b" gh …`, a `'\''` splice is one string, and a string inside a string is
+ * read in a level of its own. `from` and `to` are the view indices its words
+ * span; `parts`, where a joined level has more than one, each word joined as
+ * `{ first, last, from, to }`: its span in the level and in the view.
+ */
+function readLevel(parent, d, join) {
+  const stop = join ? parent.ends[d] : parent.text.length;
+  // The view's own text is read from the command itself, each word a fed
+  // reading rewrote laid over it whole (`rewrites`): a word a raw-text anchor
+  // misread and rewrote (`\ngh` inside `$'…'`, read raw as one word) never
+  // takes an escape away from the string's shell (#1646).
+  const source = parent.source ?? parent.text;
+  const chars = [];
+  const parts = [];
+  let i = d;
+  let last = d;
+  while (i < stop) {
+    const from = i;
+    const e = wordEnd(source, i);
+    i = e < 0 ? stop : Math.min(e, stop);
+    if (i === from) break;
+    if (chars.length) chars.push({ c: " ", at: viewAt(parent, last), end: viewAt(parent, last), live: false });
+    const first = chars.length;
+    let laid = -1;
+    for (const x of decodeWord(source.slice(from, i), true)) {
+      const live = x.live || parent.live?.[from + x.at] === 1;
+      const rewrite = parent.rewrites?.get(from + x.at);
+      if (rewrite) {
+        // The first character of a rewritten word brings its view text whole.
+        if (laid < rewrite[0]) {
+          for (let k = rewrite[0]; k < rewrite[1]; k++)
+            chars.push({ c: parent.text[k], at: k, end: k + 1, live: false });
+          laid = rewrite[0];
+        }
+        continue;
+      }
+      for (let k = 0; k < x.c.length; k++) {
+        const c = join === "escaped" && !/[\w$=-]/.test(x.c[k]) ? `\\${x.c[k]}` : x.c[k];
+        for (let q = 0; q < c.length; q++)
+          chars.push({ c: c[q], at: viewAt(parent, from + x.from), end: viewEnd(parent, from + x.end - 1), live });
+      }
+    }
+    parts.push({ first, last: chars.length, from: viewAt(parent, from), to: viewEnd(parent, i - 1) });
+    last = i;
+    if (!join) break;
+    while (i < stop && (parent.text[i] === " " || parent.text[i] === "\t")) i++;
+  }
+  const to = last > d ? viewEnd(parent, last - 1) : viewAt(parent, d);
+  return levelOf(chars, { from: viewAt(parent, d), to, parts: parts.length > 1 ? parts : null });
+}
+
+/**
+ * The one-word {@link level}s `Ls` joined by one blank each, as `echo` joins
+ * its operands (#1646, CodeRabbit CLI): the words {@link printedArgs} chose,
+ * so a redirection between them is no part of the output, as {@link
+ * readLevel}'s own join, which runs to the command's end, would make it.
+ * Each word keeps its view span, and is a `part` as a joined word is.
+ */
+function joinedLevel(Ls) {
+  const chars = [];
+  const parts = [];
+  Ls.forEach((L, i) => {
+    if (i) chars.push({ c: " ", at: Ls[i - 1].to, end: Ls[i - 1].to, live: false });
+    const first = chars.length;
+    for (let k = 0; k < L.text.length; k++)
+      chars.push({ c: L.text[k], at: L.at[k], end: L.end[k], live: L.live[k] === 1 });
+    parts.push({ first, last: chars.length, from: L.from, to: L.to });
+  });
+  return levelOf(chars, { from: Ls[0].from, to: Ls.at(-1).to, parts: parts.length > 1 ? parts : null });
+}
+
+/**
+ * The escapes `echo -e` (`flavor` `"echo"`, and printf's `%b`) or a printf
+ * format (`"printf"`) decodes, as bash's builtins decode them: the letters
+ * `\a \b \e \E \f \n \r \t \v \\`, an octal (`\0NNN` for echo, `\NNN` for
+ * printf), `\xHH`, `\uHHHH`, `\UHHHHHHHH`, and for printf `\"` and `\?` and
+ * `%%`; echo's `\c` ends the output. Any other is printed as written, so every
+ * escape has a reading.
+ */
+function printedEscape(t, j, flavor) {
+  const c = t[j];
+  if (c === undefined) return ["\\", j];
+  if (c === "c" && flavor === "echo") return [null, t.length];
+  if (flavor === "printf" && (c === '"' || c === "?")) return [c, j + 1];
+  if (c !== "'" && c !== '"' && c !== "?" && ANSI_LETTERS[c] !== undefined) return [ANSI_LETTERS[c], j + 1];
+  const octal = (flavor === "echo" ? /^0[0-7]{0,3}/ : /^[0-7]{1,3}/).exec(t.slice(j, j + 4))?.[0];
+  if (octal) return [String.fromCharCode(parseInt(octal, 8) & 0xff), j + octal.length];
+  const hex = { x: /^[0-9A-Fa-f]{1,2}/, u: /^[0-9A-Fa-f]{1,4}/, U: /^[0-9A-Fa-f]{1,8}/ }[c];
+  const h = hex?.exec(t.slice(j + 1, j + 9))?.[0];
+  if (h) return [String.fromCodePoint(Math.min(parseInt(h, 16), 0x10ffff)), j + 1 + h.length];
+  return [`\\${c}`, j + 1];
+}
+
+/**
+ * The {@link level} `N` as `echo -e` or a `%b` argument prints it ({@link
+ * printedEscape}, `flavor`), for the shell it is piped to: `echo -e 'x\ngh
+ * …' | bash` runs `gh` on its own line (#1646). Each printed character keeps
+ * the view span of the escape it comes from; `stopped` says a `\c` ended the
+ * output there.
+ */
+function unescaped(N, flavor) {
+  const chars = [];
+  let stopped = false;
+  for (let k = 0; k < N.text.length;) {
+    const c = N.text[k];
+    if (c !== "\\") {
+      chars.push({ c, at: N.at[k], end: N.end[k], live: N.live[k] === 1 });
+      k++;
+    } else {
+      const [out, next] = printedEscape(N.text, k + 1, flavor);
+      if (out === null) {
+        stopped = true;
+        break;
+      }
+      const end = N.end[Math.min(next, N.text.length) - 1];
+      for (let q = 0; q < out.length; q++) chars.push({ c: out[q], at: N.at[k], end, live: N.live[k] === 1 });
+      k = next;
+    }
+  }
+  return levelOf(chars, { from: N.from, to: N.to, parts: null, stopped });
+}
+
+/**
+ * The characters of the {@link level} `L`, each `{ c, at, end }` ({@link
+ * printed}), one per UTF-16 code unit as the level's `at` and `end` are, so
+ * an astral character (`😀`, two units) shifts no later index (#1646).
+ */
+const charsOf = (L) => Array.from({ length: L.text.length }, (_, k) => ({ c: L.text[k], at: L.at[k], end: L.end[k] }));
+
+/** A printf conversion: flags, width, precision and letter ({@link printed}). */
+const PRINTF_CONVERSION = /^%([-+ #0]*)(\d*|\*)(?:\.(\d*|\*))?([a-zA-Z]?)/;
+
+/**
+ * The most printf output {@link printed} builds, in UTF-16 code units: a
+ * literal width (`%999999999s`) or a format reused over many arguments could
+ * otherwise exhaust the hook's memory or time, and a hook that crashes or
+ * times out lets the command through (#1646, CodeRabbit CLI).
+ */
+const PRINTED_BUDGET = 64 * 1024;
+
+/**
+ * What a `printf` prints from its format and arguments, each the {@link
+ * level} of its word ({@link readLevel}), as a level whose characters keep the
+ * view span they come from, so the shell it is piped to is read in what it
+ * runs (#1646): the format's escapes decoded and its `%%`; each `%s` filled
+ * with an argument as written, each `%b` with its escapes decoded (a `\c`
+ * ending everything), `%c` with its first character, and `%d`, `%i`, `%u`,
+ * `%o`, `%x` and `%X` with a literal integer, cut to a literal precision and
+ * padded to a literal width; a missing argument is empty, or 0. The format is
+ * reused while arguments remain, as printf reuses it. `null` where the output
+ * cannot be known — a `*` width or precision, another conversion, a number
+ * that is no literal integer, a format or an argument that expands — or
+ * would pass {@link PRINTED_BUDGET}, checked before anything is allocated; the
+ * caller refuses the command, since the pipe's shell then runs text the hook
+ * cannot read.
+ */
+function printed([format, ...args]) {
+  if (!format || [format, ...args].some((L) => L.live.some((x) => x === 1))) return null;
+  const out = [];
+  const F = format;
+  // Appends one character, `false` once the output would pass the budget.
+  const put = (x) => out.length < PRINTED_BUDGET && out.push(x) > 0;
+  let next = 0;
+  let done = false;
+  for (let pass = 0; !done; pass++) {
+    const before = next;
+    for (let k = 0; k < F.text.length && !done;) {
+      const c = F.text[k];
+      if (c === "\\") {
+        const [s, n] = printedEscape(F.text, k + 1, "printf");
+        const end = F.end[Math.min(n, F.text.length) - 1];
+        for (let q = 0; q < s.length; q++) if (!put({ c: s[q], at: F.at[k], end })) return null;
+        k = n;
+      } else if (c !== "%") {
+        if (!put({ c, at: F.at[k], end: F.end[k] })) return null;
+        k++;
+      } else if (F.text[k + 1] === "%") {
+        if (!put({ c, at: F.at[k], end: F.end[k + 1] })) return null;
+        k += 2;
+      } else {
+        const m = PRINTF_CONVERSION.exec(F.text.slice(k));
+        const [whole, flags, width, precision, letter] = m;
+        if (width === "*" || precision === "*" || !letter) return null;
+        // A width past what is left of the budget fails before anything is allocated.
+        const wide = Number(width || 0);
+        if (out.length + wide > PRINTED_BUDGET) return null;
+        const at = F.at[k];
+        const end = F.end[k + whole.length - 1];
+        const arg = args[next++];
+        let chars;
+        if (letter === "s" || letter === "c") chars = arg ? charsOf(arg) : [];
+        else if (letter === "b") {
+          const shown = arg && unescaped(arg, "echo");
+          chars = shown ? charsOf(shown) : [];
+          done = Boolean(shown?.stopped);
+        } else if ("diuoxX".includes(letter)) {
+          const t = arg ? arg.text : "0";
+          if (!/^[+-]?\d+$/.test(t) || (/[oxX]/.test(letter) && t.startsWith("-"))) return null;
+          const base = { o: 8, x: 16, X: 16 }[letter] ?? 10;
+          const digits = BigInt(t).toString(base);
+          chars = [...(letter === "X" ? digits.toUpperCase() : digits)].map((d) => ({ c: d, at, end }));
+        } else return null;
+        // `%c` prints the first character, both units of an astral one.
+        if (letter === "c") chars = chars.slice(0, /[\uD800-\uDBFF]/.test(chars[0]?.c ?? "") ? 2 : 1);
+        if (precision !== undefined && "sb".includes(letter)) chars = chars.slice(0, Number(precision || 0));
+        const pad = Math.max(0, wide - chars.length);
+        const fill = { c: flags.includes("0") && !flags.includes("-") && !"sbc".includes(letter) ? "0" : " ", at, end };
+        const left = !flags.includes("-");
+        if (left) for (let q = 0; q < pad; q++) if (!put({ ...fill })) return null;
+        for (const x of chars) if (!put(x)) return null;
+        if (!left) for (let q = 0; q < pad; q++) if (!put({ ...fill })) return null;
+        k += whole.length;
+      }
+    }
+    if (next >= args.length || next === before) break;
+  }
+  return levelOf(
+    out.map((x) => ({ ...x, live: false })),
+    { from: format.from, to: (args.at(-1) ?? format).to, parts: null },
+  );
+}
+
+/** The index in `L` (a {@link level}) of its first character written at view index `p` or later. */
+function levelIndex(L, p) {
+  if (!L.at) return p;
+  let lo = 0;
+  let hi = L.at.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (L.at[mid] < p) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/**
+ * Where in the {@link level} `L` each word whose program name starts at view
+ * index `p`, `n` characters long, ends ({@link fedStarts}), for its options
+ * to be read past. A level whose characters keep their view order is
+ * searched by index (`p + n`). One a printf printed is not in that order —
+ * an argument's characters come after the format's they fill (`printf '%s -c
+ * "gh pr merge 7"\n' bash`, CodeRabbit CLI on #1646) — and a reused format
+ * prints the same characters more than once, so each word there starting at
+ * `p` is read in the level's own text, to where {@link wordEnd} ends it.
+ */
+function wordEndsAt(L, p, n) {
+  L.ordered ??= !L.at || L.at.every((x, k) => k === 0 || x >= L.at[k - 1]);
+  if (L.ordered) return [levelIndex(L, p + n)];
+  const out = [];
+  for (let k = 0; k < L.at.length; k++) {
+    if (L.at[k] !== p || (k > 0 && L.at[k - 1] === p)) continue;
+    const e = wordEnd(L.text, k);
+    out.push(e < 0 ? L.text.length : e);
+  }
+  return out;
+}
+
+/**
+ * The shells that join every word after their string switch or options into
+ * the line they run, and how ({@link readLevel}): `sudo -s` escapes each.
+ */
+const JOINING_SHELLS = new Map([
+  ...["eval", "watch", "parallel", "pwsh", "powershell", "cmd"].map((name) => [name, "plain"]),
+  ["sudo", "escaped"],
+]);
+
+/**
+ * The word at `d` of the {@link level} `L` as {@link normalisePrograms} reads
+ * it in the view (#1646): `end`, where its raw text ends; `chars`, it decoded
+ * as `L`'s shell reads it ({@link decodeWord}), an expansion an outer shell
+ * makes still live; `contiguous`, whether its raw text is its own and nothing
+ * else — no quote of another piece between its characters, as in the splice
+ * `'g'"h"`; and `text`, its text in the level. A word that is a whole word of
+ * a joined level (`eval "gh" pr merge 7`) spans that word's raw text, quotes
+ * and all, so the rewrite reads it whole as at command position.
+ */
+function levelWord(L, d, e) {
+  // The joined word starting at `d`, from an index built once per level, so a
+  // level of n joined words costs n lookups, not n² (#1646).
+  const starting = L.parts && (L.partAt ??= new Map(L.parts.map((x) => [x.first, x]))).get(d);
+  const part = starting?.last === e ? starting : undefined;
+  const text = L.text.slice(d, e);
+  const chars = decodeWord(text).map((x) => ({ ...x, live: x.live || L.live?.[d + x.at] === 1 }));
+  let contiguous = true;
+  for (let k = d + 1; k < e; k++) if (L.at[k] !== L.at[k - 1] && L.at[k] !== L.end[k - 1]) contiguous = false;
+  const start = part ? part.from : L.at[d];
+  const end = part ? part.to : L.end[e - 1];
+  const printed = L.printed === undefined ? undefined : { from: L.printed, to: L.to, text: L.text, kept: L.kept };
+  return { start, end, chars, contiguous, text, printed };
 }
 
 /**
  * Where the words a shell word or a wrapper runs start (#1607, #1634): a map
  * from each such index to how that word is the program (`{ how, via, stdin,
- * piped }`), plus `quotes`, every quoted string of the fed spans as `[open,
- * close]` ({@link pipelinesOf}), and `quoteKinds`, the kind of each string a
- * shell runs by its opening quote. Each position is at command position as a
- * {@link cmd} anchor is after a boundary: {@link view} hands them to {@link
- * normalisePrograms}, so the word is a program word — rewritten to the name it
- * runs (`bash -c 'gh.exe …'`, `nice gh.exe …`), listed in {@link view}'s
- * `programs` with its kind, and read by every rule as a word typed directly
- * is. Four things put a word there, each read forward from a word that is
- * already a program (`byName`), so a shell word or wrapper that is an argument
- * (`rg -t sh "gh …"`, `ls /bin/sh "…"`, CodeRabbit on PR #1632) feeds nothing:
+ * piped }`), plus `words`, each such word read in a string as {@link
+ * levelWord} gives it, `quotes`, every quoted string of the fed spans as
+ * `[open, close]` ({@link pipelinesOf}), `quoteKinds`, the kind of each
+ * string a shell runs by its opening quote, and `unclosed`, set when the lead
+ * of a command a shell other than cmd.exe is handed stops at a word that
+ * opens a quote it never closes (#1646): the hook cannot read past it, so
+ * {@link view} reports it and `checkBash` refuses the command; cmd.exe has no
+ * `'` quoting, so `cmd /c "it's.bat"` is none. Each position is at command
+ * position as a {@link cmd} anchor is after a boundary: {@link view} hands
+ * them to {@link normalisePrograms}, so the word is a program word — rewritten
+ * to the name it runs (`bash -c 'gh.exe …'`, `nice gh.exe …`), listed in
+ * {@link view}'s `programs` with its kind, and read by every rule as a word
+ * typed directly is. Four things put a word there, each read forward from a
+ * word that is already a program (`byName`), so a shell word or wrapper that
+ * is an argument (`rg -t sh "gh …"`, `ls /bin/sh "…"`, CodeRabbit on PR
+ * #1632) feeds nothing:
  *
  * - A {@link SHELL_WORDS} word, past its options with their values ({@link
  *   commandOf}, {@link OPTION_SPECS}): the word after them — whole, quoted or
  *   not, for a `sudo` that runs a program (`sudo gh …`, `sudo -u me gh …`,
- *   `sudo "gh" …`; `how` is `"wrapper"`, {@link sudoRunsShell}); read inside
- *   its quotes for a shell, whose word is the string it runs (`eval "gh …"`,
+ *   `sudo "gh" …`; `how` is `"wrapper"`, {@link sudoRunsShell}); for a shell,
+ *   the first word of each command of the string it runs (`eval "gh …"`,
  *   `trap 'gh …' EXIT`, `bash -c 'gh …'`, `bash -o pipefail -c '…'`, `pwsh
  *   -ExecutionPolicy Bypass -Command "…"`, `cmd //c "…"`, `su - me -c '…'`;
- *   `how` is `"shell"`) — past a {@link COMMAND_LEAD} inside the string, token
- *   by token (`bash -c 'GH_REPO=x gh …'`, `bash -c 'exec gh …'`), never past
- *   the string's close, and never the quoted string whole (`bash -c 'x'` keeps
- *   its quotes in the text, as every raw view has since #1606: a program
- *   quoted whole in a string a shell joins from its words, `eval "gh" pr
- *   merge`, is the one shape not read). `via` is the shell word.
+ *   `how` is `"shell"` for the first, `"command"` for one after a separator).
+ *   `via` is the shell word.
  * - The word a `nice`, `stdbuf` or `winpty` that is a program runs, past its
  *   options with their values, and the word after each `-exec` / `-execdir`
  *   of a `find` that is a program ({@link WRAPPER_NAMES}, {@link FIND_EXEC};
  *   `how` is `"wrapper"`, `via` the wrapper or `"find -exec"`).
- * - The first word, past blanks and a {@link COMMAND_LEAD}, of a word that
- *   starts a command in what an `echo` or `printf` prints — `echo`'s first
- *   argument (it joins the rest with blanks), and `printf`'s format, or an
- *   argument its format puts at the start of a line or after a `;` ({@link
- *   printfArgStartsCommand}: `printf '%s\n' 'gh …'`, not `printf 'echo %s\n'
- *   'gh …'`) — piped on in the same element to a shell that reads its script
- *   from the pipeline ({@link stdinShellIn}: `| bash`, `| sh -s`, `| sudo
- *   bash -x`, not `| bash </dev/null`). `stdin` and `piped` are set; `via` is
- *   the shell word.
- * - The first word of a here-string that is such a shell's last input
+ * - The commands of what an `echo` or `printf` prints — `echo`'s arguments
+ *   (it joins them with blanks, and with `-e` decodes their escapes), and
+ *   what `printf` prints from its format and arguments ({@link printed}:
+ *   `printf '%s\n' 'gh …'`, `printf '%s\ngh …\n' x`; what it cannot know is
+ *   `unprintable`, and refused) — piped on in the same element to a shell that reads its
+ *   script from the pipeline ({@link stdinShellIn}: `| bash`, `| sh -s`, `|
+ *   sudo bash -x`, not `| bash </dev/null`). `stdin` and `piped` are set;
+ *   `via` is the shell word.
+ * - The commands of a here-string that is such a shell's last input
  *   redirection (`bash <<< 'gh …'`; `stdin` set, `piped` not).
  *
- * A later word after a `;` or a newline in the string is at command position
- * in the raw text already ({@link cmd}); the same string piped to anything
- * else, or written to a file, is a mention. Positions are recorded, never
- * searched for, so the pass is linear in the text (one option step per word,
- * one lead step per token), whatever a rule later asks about.
+ * Each string a shell runs is read in the text that shell reads ({@link
+ * readLevel}, #1646): its quoting undone, a string inside it read in a level
+ * of its own, past a {@link COMMAND_LEAD} token by token (`bash -c 'GH_REPO=x
+ * gh …'`, `bash -c 'X="a b" gh …'`, `bash -c "X=\"a b\" gh …"`) to where its
+ * command ends at that level, so a quoted `;` ends nothing (`nice env
+ * X="a;b" gh …`); a wrapper inside a string is read in the string's level. A
+ * position is the view index where the raw text of a word's first character
+ * starts — its escape's backslash for `\"gh\"` inside `"…"` — and, once that
+ * word is rewritten, where the rewritten word starts, so every round records
+ * the same one. The same string piped to anything else, or written to a file,
+ * is a mention. Positions are recorded, never searched for, so the pass is
+ * linear in the text (one option step per word, one lead step per token, one
+ * decoding per string), whatever a rule later asks about.
  */
 function fedStarts(command, text, fed, programs) {
   const byName = programsByName(text, programs);
-  const wordStarts = wordStartsOf(programs, text.length);
   const starts = new Map();
+  const words = new Map();
+  // Each position read in a string's level, as `[view index, level, index there, kind]` ({@link found}).
+  const decoded = [];
   const quotes = [];
   const quoteKinds = new Map();
-  // `p`, and the position after each lead token from it, up to `limit`. Each
-  // is recorded at its raw word's start, which a rewritten word's pad hides
-  // from `p` (`nice nice.exe gh`: the second nice is read at its name, four
-  // characters into its word), so the position is the same in every round
-  // and {@link normalisePrograms} finds the word there (#1634 second read).
-  const leads = (p, kind, limit) => {
-    for (;;) {
-      if (p >= limit) return;
-      const at = wordStarts[p] >= 0 ? wordStarts[p] : p;
-      if (!starts.has(at)) starts.set(at, kind);
-      LEAD_TOKEN.lastIndex = p;
-      const m = LEAD_TOKEN.exec(text);
-      if (!m?.[0] || p + m[0].length > limit) return;
-      p += m[0].length;
-    }
-  };
-  // Where the command holding `p` ends: its next operator character or newline.
-  // Every position's end, built once on first use, so a run of `find -exec`
-  // clauses or wrappers asks a lookup each, not a scan of the rest of the text
-  // (CodeRabbit CLI on #1634).
-  let ends;
-  const commandEnd = (p) => {
-    if (!ends) {
-      ends = new Int32Array(text.length + 1);
-      ends[text.length] = text.length;
-      for (let i = text.length - 1; i >= 0; i--) ends[i] = "\n;&|()\x60".includes(text[i]) ? i : ends[i + 1];
-    }
-    return ends[p];
-  };
-  // The wrappers and the `find`s among the program words: what each runs.
-  for (const p of byName.keys()) {
+  let unclosed = false;
+  let unprintable = false;
+  // Nothing fed and no wrapper: nothing to read, and no text to walk (#1646).
+  const named = (p) => {
     PROGRAM_WORD.lastIndex = p;
     const name = PROGRAM_WORD.exec(text)?.[0];
-    if (WRAPPER_NAMES.has(name)) {
-      const { program } = commandOf(OPTION_SPECS.get(name) ?? NO_OPTIONS, text, p + name.length, text.length);
-      if (program !== undefined) leads(program, { how: "wrapper", via: name }, commandEnd(program));
-    } else if (name === "find") {
-      COMMAND_WORD.lastIndex = p + name.length;
-      for (let exec = false, m; (m = COMMAND_WORD.exec(text)); exec = FIND_EXEC.test(m[1])) {
-        const at = COMMAND_WORD.lastIndex - m[1].length;
-        if (exec) leads(at, { how: "wrapper", via: "find -exec" }, commandEnd(at));
+    return WRAPPER_NAMES.has(name) || name === "find";
+  };
+  if (!fed.length && ![...byName.keys()].some(named))
+    return { starts, words, decoded, quotes, quoteKinds, unclosed, unprintable };
+  const wordStarts = wordStartsOf(programs, text.length);
+  // The view's text as the typed command's shell reads it, and each string a
+  // shell is handed as that shell reads it, with the innermost one holding
+  // each view index (`owner`).
+  // Each view index inside a word a fed reading rewrote, to that word's span:
+  // a string the view hands over is read from the command, with these laid
+  // over it ({@link readLevel}).
+  const rewrites = new Map();
+  for (const [s, e, , , kind] of programs)
+    if (kind && text.slice(s, e) !== command.slice(s, e)) for (let k = s; k < e; k++) rewrites.set(k, [s, e]);
+  const base = { ...level(text), source: command, rewrites };
+  const levels = [];
+  const owner = new Int32Array(text.length).fill(-1);
+  const levelAt = (p) => (owner[p] >= 0 ? levels[owner[p]] : base);
+  // `d` of the level `L`, and the position after each lead token from it, up
+  // to the end of its command there. Each is recorded at its raw word's
+  // start, which a rewritten word's pad hides from the position (`nice
+  // nice.exe gh`: the second nice is read at its name, four characters into
+  // its word), so the position is the same in every round and {@link
+  // normalisePrograms} finds the word there (#1634 second read). A word read
+  // in a string's level is read as that level's shell reads it (`words`,
+  // {@link levelWord}), not as the raw text would: `ls\ngh` inside `$'…'` is
+  // two words (#1646).
+  const leads = (L, d, kind) => {
+    const end = L.ends[d];
+    for (;;) {
+      // A comment is no command, nor a quote in it unclosed.
+      if (d >= end || (L.text[d] === "#" && (d === 0 || /[\s;&|()]/.test(L.text[d - 1])))) return;
+      const e = wordEnd(L.text, d);
+      const word = L.at && e > d ? levelWord(L, d, e) : undefined;
+      const p = word ? word.start : viewAt(L, d);
+      // A word read inside a rewritten program word stands for that word only
+      // when what lies before it there is the rewrite's pad.
+      const ws = wordStarts[p];
+      const at = ws >= 0 && /^ *$/.test(text.slice(ws, p)) ? ws : p;
+      if (!starts.has(at)) starts.set(at, kind);
+      if (word && at === p && !words.has(p)) words.set(p, word);
+      if (L.at && d < L.text.length) decoded.push([L.at[d], L, d, kind]);
+      const step = leadStep(L.text, d);
+      if (!step || step.end > end) {
+        if (L.at && L.via !== "cmd" && e < 0) unclosed = true;
+        return;
       }
+      d = step.end;
     }
-  }
+  };
+  // The leads a string's commands take, run once every string's level is
+  // built: a wrapper's own are recorded first, as they always were.
+  const jobs = [];
+  const closes = new Map();
+  // The string the word at `d` of `L` starts (`join`: with the words after
+  // it), read as the shell it is handed to reads it — printed first, by echo
+  // or printf, as `flavor` says — and each of its commands' leads, the first
+  // with `kind`.
+  const stringAt = (L, d, kind, join, flavor) => {
+    let N = readLevel(L, d, join);
+    if (flavor) N = unescaped(N, flavor);
+    readAs(N, kind, L, d);
+  };
+  // The level `N` a shell reads, handed over from the level `L` with `kind`
+  // by the word at `d` there (`up`, `upAt`: {@link levelLead}).
+  const readAs = (N, kind, L, d) => {
+    if (!N.text) return;
+    N.via = kind.via;
+    N.up = L;
+    N.upAt = d;
+    if (N.unread && N.via !== "cmd") unclosed = true;
+    if (L === base) for (let k = N.from; k < N.to; k++) if (closes.has(k)) quoteKinds.set(k, kind);
+    N.id = levels.length;
+    levels.push(N);
+    owner.fill(levels.length - 1, N.from, N.to);
+    N.commands.forEach((s, k) => {
+      let e = s;
+      while (N.text[e] === " " || N.text[e] === "\t") e++;
+      jobs.push([N, e, k ? COMMAND : kind]);
+    });
+  };
+  // Every string a shell is handed, in the order of the word that hands it
+  // over, so the level holding a string is built before the string is read.
+  const sources = [];
   for (const [a, b] of fed) {
     const own = pipelinesOf(command, a, b);
     quotes.push(...own.quotes);
-    // Each string's close by its opening quote: a lookup, not a scan of the span's quotes.
-    const closes = new Map(own.quotes);
-    const closeOf = (open) => closes.get(open);
-    // The word at `p` when no quote opens it (`eval gh …`, `cmd /c pnpm …`);
-    // else the first word of the string inside, past blanks and a lead, up to
-    // the string's close.
-    const stringAt = (p, kind, limit) => {
-      STRING_OPEN.lastIndex = p;
-      const q = STRING_OPEN.exec(text);
-      if (!q) return leads(p, kind, limit);
-      const open = p + q[0].length - 1;
-      const close = closeOf(open) ?? limit;
-      quoteKinds.set(open, kind);
-      leads(open + 1 + /^\s*/.exec(text.slice(open + 1, close))[0].length, kind, close);
-    };
+    for (const [open, close] of own.quotes) closes.set(open, close);
     // The shell words among the program words of the span ({@link SHELL_NAMES}:
     // a rewritten program word spells its plain name), inside a string too.
     for (const p of byName.keys()) {
@@ -1046,12 +1740,29 @@ function fedStarts(command, text, fed, programs) {
       PROGRAM_WORD.lastIndex = p;
       const via = PROGRAM_WORD.exec(text)?.[0];
       if (!SHELL_NAMES.has(via)) continue;
-      const kind =
-        via === "sudo" && !sudoRunsShell(text, p + via.length) ? { how: "wrapper", via } : { how: "shell", via };
-      const { program, string, attached } = commandOf(OPTION_SPECS.get(via) ?? NO_OPTIONS, text, p + via.length, b);
-      // A wrapper's word is the program whole, quoted or not; a shell's is the string it runs.
-      if (program !== undefined) (kind.how === "wrapper" ? leads : stringAt)(program, kind, b);
-      if (string !== undefined) stringAt(string, attached ? { ...kind, attached: true } : kind, b);
+      sources.push([
+        p,
+        () => {
+          const L = levelAt(p);
+          for (const d of wordEndsAt(L, p, via.length)) {
+            const kind = via === "sudo" && !sudoRunsShell(L.text, d) ? { how: "wrapper", via } : { how: "shell", via };
+            const limit = L === base ? b : L.text.length;
+            const { program, string, attached } = commandOf(OPTION_SPECS.get(via) ?? NO_OPTIONS, L.text, d, limit);
+            // `watch -x` (`--exec`) runs its words as they are, no shell joining
+            // them: each is kept one word, as sudo -s keeps its (#1646).
+            const exec =
+              via === "watch" &&
+              program !== undefined &&
+              /(?:^|\s)(?:--exec|-[A-Za-z]*x[A-Za-z]*)(?=\s)/.test(L.text.slice(d, program));
+            const join = exec ? "escaped" : JOINING_SHELLS.get(via);
+            // A wrapper's word is the program whole, quoted or not; a shell's is the string it runs.
+            if (program !== undefined)
+              if (kind.how === "wrapper") jobs.push([L, program, kind]);
+              else stringAt(L, program, kind, join);
+            if (string !== undefined) stringAt(L, string, attached ? { ...kind, attached: true } : kind, join);
+          }
+        },
+      ]);
     }
     for (const stages of own.pipelines) {
       // Each stage's reader of a stdin script, read once, and the first one past each stage that reads the pipe.
@@ -1059,22 +1770,88 @@ function fedStarts(command, text, fed, programs) {
       const piped = readers.map(() => undefined);
       for (let k = stages.length - 2; k >= 0; k--)
         piped[k] = readers[k + 1]?.input === "pipe" ? readers[k + 1] : piped[k + 1];
-      stages.forEach(([s, e], k) => {
-        const here = readers[k];
-        if (typeof here?.input === "number") stringAt(here.input, { how: "shell", via: here.via, stdin: true }, e);
-        const echo = ECHO_AT.exec(text.slice(s, e));
-        if (!echo || !byName.has(s + echo.indices[1][0])) return;
-        const reader = piped[k];
-        if (!reader) return;
-        const args = printedArgs(text, s + echo.indices[1][1], e, echo[1]);
-        args?.forEach(({ at }, j) => {
-          const starts = echo[1] === "echo" ? j === 0 : j === 0 || printfArgStartsCommand(args[0].w, j - 1);
-          if (starts) stringAt(at, { how: "shell", via: reader.via, stdin: true, piped: true }, e);
-        });
-      });
+      stages.forEach(([s, e], k) =>
+        sources.push([
+          s,
+          () => {
+            const here = readers[k];
+            if (typeof here?.input === "number")
+              stringAt(base, here.input, { how: "shell", via: here.via, stdin: true }, false);
+            const echo = echoAt(text, s);
+            if (!echo || echo.end > e || !byName.has(echo.start)) return;
+            const reader = piped[k];
+            if (!reader) return;
+            // Read off the command itself: a format's escapes are printf's, which
+            // a program word rewritten in the view would change between rounds.
+            const from = echo.end;
+            const args = printedArgs(command, from, e, echo.name);
+            if (!args?.length) return;
+            const kind = { how: "shell", via: reader.via, stdin: true, piped: true };
+            // echo joins its words with blanks, decoding their escapes after a
+            // `-e`; printf prints what its format and arguments make ({@link
+            // printed}), and what it cannot know is refused.
+            // A level the command prints is marked with where its command starts,
+            // so a word in it the raw text cannot spell is judged in that output.
+            // Its redirections inside that span go with it, so a substitution
+            // in one is still judged once the printer is re-judged as printing
+            // its output plainly (CodeRabbit CLI on #1646).
+            const reprint = (N) => ({
+              ...N,
+              printed: echo.start,
+              kept: args.redirs.filter(({ at }) => at < N.to).map(({ w }) => w),
+            });
+            if (echo.name === "echo") {
+              const flavor = echoEscapes(command, from, args[0].at);
+              // Its operands joined by a blank, a redirection between them no
+              // output (`echo 'x;' 2>/dev/null 'gh …'`, CodeRabbit CLI on #1646).
+              let N = joinedLevel(args.map(({ at }) => readLevel(base, at, false)));
+              if (flavor) N = reprint(unescaped(N, flavor));
+              readAs(N, kind, base, echo.start);
+            } else {
+              const out = printed(args.map(({ at }) => readLevel(base, at, false)));
+              if (out) readAs(reprint(out), kind, base, echo.start);
+              else unprintable = true;
+            }
+          },
+        ]),
+      );
     }
   }
-  return { starts, quotes, quoteKinds };
+  for (const [, run] of sources.sort((x, y) => x[0] - y[0])) run();
+  // The wrappers and the `find`s among the program words: what each runs, read
+  // in the level that holds it.
+  for (const p of byName.keys()) {
+    PROGRAM_WORD.lastIndex = p;
+    const name = PROGRAM_WORD.exec(text)?.[0];
+    if (!WRAPPER_NAMES.has(name) && name !== "find") continue;
+    const L = levelAt(p);
+    for (const d of wordEndsAt(L, p, name.length))
+      if (WRAPPER_NAMES.has(name)) {
+        const { program } = commandOf(OPTION_SPECS.get(name) ?? NO_OPTIONS, L.text, d, L.text.length);
+        if (program !== undefined) leads(L, program, { how: "wrapper", via: name });
+      } else {
+        COMMAND_WORD.lastIndex = d;
+        for (let exec = false, m; (m = COMMAND_WORD.exec(L.text)); exec = FIND_EXEC.test(m[1]))
+          if (exec) leads(L, COMMAND_WORD.lastIndex - m[1].length, { how: "wrapper", via: "find -exec" });
+      }
+  }
+  for (const [L, d, kind] of jobs) leads(L, d, kind);
+  return { starts, words, decoded, quotes, quoteKinds, unclosed, unprintable };
+}
+
+/**
+ * Whether the `echo` whose options run from `from` to `to` in `command`
+ * decodes its escapes: `"echo"` when its last `-e` or `-E` (alone or in a
+ * cluster, `-ne`, `-eE`; each read as echo reads it, so `"-e"` and `-e''`
+ * are `-e`) is `-e`, else `undefined` ({@link fedStarts}).
+ */
+function echoEscapes(command, from, to) {
+  let on = false;
+  for (const { w } of printerWords(command, from, to)) {
+    const plain = literalWord(w);
+    if (plain !== undefined && ECHO_OPTION.test(plain)) for (const c of plain.slice(1)) if (c !== "n") on = c === "e";
+  }
+  return on ? "echo" : undefined;
 }
 
 /** A program word's name from where it starts ({@link fedStarts}): the rewritten text has it plain, right-aligned in its word. */
@@ -1418,6 +2195,9 @@ function feedsAcross(command, text, fed, interpreted) {
  * feeds a shell as a bare `bash -c` does. `programs` lists the
  * `[start, end)` spans it rewrote or found plain ({@link programStart}), and
  * `unreadable` the program words it could not read ({@link unreadablePrograms}).
+ * `unsettled` says the rounds below did not settle, and `unclosedLead` that
+ * the lead of a command a shell is handed opens a quote it never closes
+ * ({@link fedStarts}, #1646): `checkBash` refuses either whole.
  */
 export function view(command) {
   if (command !== view.last) {
@@ -1429,8 +2209,8 @@ export function view(command) {
     // that read `nice` has rewritten it (#1634 second read) — and the text with
     // those spans raw, rewritten again; a word the lexer did not see start is
     // read raw only inside a span.
-    const build = (starts) => {
-      const lexed = normalisePrograms(command, masked, flat, wordEnds, () => false, starts);
+    const build = (starts, fedWords) => {
+      const lexed = normalisePrograms(command, masked, flat, wordEnds, () => false, starts, fedWords);
       const fed = sure ? fedSpans(command, lexed.text, top, heredocs) : [[0, command.length]];
       if (!fed.length) return { fed, out: lexed };
       const restore = (s) => {
@@ -1443,7 +2223,7 @@ export function view(command) {
         return r + s.slice(at);
       };
       const raw = (p) => fed.some(([a, b]) => a <= p && p < b);
-      return { fed, out: normalisePrograms(command, restore(masked), restore(flat), wordEnds, raw, starts) };
+      return { fed, out: normalisePrograms(command, restore(masked), restore(flat), wordEnds, raw, starts, fedWords) };
     };
     // The first word of each string a shell runs, and the word a wrapper runs,
     // are program words too (#1634, {@link fedStarts}). Each round can reveal
@@ -1456,13 +2236,17 @@ export function view(command) {
     // and read nothing, so `nice` nested nine times once let a merge through
     // (an independent judge on PR #1637).
     let starts = new Map();
-    let built = build(starts);
+    let built = build(starts, new Map());
     let found = fedStarts(command, built.out.text, built.fed, built.out.programs);
     let settled = false;
     const same = (a, b) => a.size === b.size && [...a.keys()].every((k) => b.has(k));
+    // Each fed word as the round that first read it read it: a later round reads
+    // a rewritten word from inside its pad, so the first reading stands (#1646).
+    let fedWords = new Map();
     for (let round = 0; round < 8 && !(settled = same(found.starts, starts)); round++) {
       starts = found.starts;
-      built = build(starts);
+      fedWords = new Map([...found.words, ...fedWords]);
+      built = build(starts, fedWords);
       found = fedStarts(command, built.out.text, built.fed, built.out.programs);
     }
     const { fed, out } = built;
@@ -1476,10 +2260,20 @@ export function view(command) {
       fed,
       programs: out.programs,
       unreadable: out.unreadable,
+      respelled: out.respelled,
+      spliced: out.spliced,
+      reprinted: out.reprinted,
       unsettled: !settled,
+      unclosedLead: found.unclosed,
+      unprintable: found.unprintable,
       byName,
       wordStarts: wordStartsOf(out.programs, command.length),
       starts,
+      // The recorded positions whose word is no program word, once per view: every
+      // rule reads them per chain segment ({@link knownPrograms}).
+      loneStarts: [...starts].filter(([p]) => !byName.has(p)),
+      // The positions read in a string's level, by view index ({@link found}).
+      decoded: found.decoded.sort((x, y) => x[0] - y[0]),
       quotes: found.quotes,
       quoteKinds: found.quoteKinds,
     };
@@ -1501,42 +2295,26 @@ export function trustedIn(command, a, b) {
 /**
  * Where a program word may start in `text`: after each place the anchor of
  * {@link cmd} allows (the start, a newline, `|`, `;`, `&`, `(`, `)` or a
- * backtick), any blanks and any {@link COMMAND_LEAD}, read greedily so the
- * word it stops at is the one a {@link cmd} rule would test. Each place is
- * read on its own: an assignment lead such as `x=$(` runs past the `(` a
- * substitution's own command follows. Each is `{ start, lead }`, the lead
- * being the text stepped over.
+ * backtick), past any blanks and the command's lead, read token by token
+ * with the one word reader ({@link leadEnd}, #1646), so the word it stops at
+ * is the program even where {@link COMMAND_LEAD}'s regex, which every {@link
+ * cmd} anchor holds, stops short (`X=a$(a $(b $(c)))b gh …`): every rule
+ * tests its shape there too ({@link matchesAt}). Each place is read on its
+ * own: an assignment lead such as `x=$(` runs past the `(` a substitution's
+ * own command follows. Each is `{ start, env }`, `env` whether env is the
+ * last wrapper of the lead, so the word after is one of env's arguments or
+ * its program.
  */
 function* programPositions(text) {
-  const lead = new RegExp(String.raw`\s*${COMMAND_LEAD}`, "y");
   for (let p = 0; p <= text.length; p++) {
     if (p > 0 && !"\n|;&()\x60".includes(text[p - 1])) continue;
     // A redirect's own `&` (`2>&1`, `&>log`) ends no command.
     if (text[p - 1] === "&" && (text[p] === ">" || /[<>]/.test(text[p - 2] ?? ""))) continue;
-    lead.lastIndex = p;
-    const m = lead.exec(text);
-    if (m) yield { start: p + m[0].length, lead: m[0] };
+    const { end, env } = leadEnd(text, p);
+    yield { start: end, env };
   }
 }
 
-/**
- * Whether the word after `lead` (a {@link COMMAND_LEAD} match) is one of env's
- * own arguments or its program: env is the last wrapper the lead steps over.
- * The lead is read token by token as {@link COMMAND_LEAD} reads it, so an
- * option's value spelled as a wrapper (`env -u time …`) is the value it is,
- * never a wrapper (#1606 second read); assignments and redirections keep the
- * wrapper before them, a keyword ends it.
- */
-function afterEnv(lead) {
-  const step = new RegExp(String.raw`\s*${leadToken("(")}`, "y");
-  let wrapper;
-  for (let m; step.lastIndex < lead.length && (m = step.exec(lead));) {
-    if (m[1] ?? m[2] ?? m[3]) wrapper = m[1] ?? m[2] ?? m[3];
-    else if (/^\s*(?:if|then|do|else|elif|while|until|!|\{)\s/.test(m[0])) wrapper = undefined;
-    if (!m[0]) break;
-  }
-  return wrapper === "env";
-}
 /** An option word that can be written back where it stands without changing how the text splits ({@link normalisePrograms}). */
 const OPTION_WORD = /^-[^\s;&|()<>"'`$\\]*$/;
 
@@ -1639,6 +2417,40 @@ function commandSubs(w) {
 const EXPANDS = /[({A-Za-z_0-9@*#?$!-]/;
 /** The ANSI-C escapes of a `$'…'` word that stand for one plain character; any other escape is read as unknown. */
 const ANSI_PLAIN = { "\\": "\\", "'": "'", '"': '"', "?": "?" };
+/** The one-letter ANSI-C escapes of a `$'…'` word, as bash decodes them ({@link ansiEscape}). */
+const ANSI_LETTERS = {
+  ...ANSI_PLAIN,
+  a: "\x07",
+  b: "\b",
+  e: "\x1b",
+  E: "\x1b",
+  f: "\f",
+  n: "\n",
+  r: "\r",
+  t: "\t",
+  v: "\v",
+};
+
+/**
+ * The ANSI-C escape of a `$'…'` word whose letter is at `j` of `w`, as bash
+ * decodes it: `[text, next]`, `next` the index after it. A letter, an octal
+ * `\NNN`, a hex `\xHH`, a `\uHHHH` or `\UHHHHHHHH` and a control `\cX`; any
+ * other is kept as written, backslash and all.
+ */
+function ansiEscape(w, j) {
+  const c = w[j];
+  if (c === undefined) return ["\\", j];
+  if (ANSI_LETTERS[c] !== undefined) return [ANSI_LETTERS[c], j + 1];
+  const digits = (re, from) => re.exec(w.slice(from, from + 8))?.[0];
+  const octal = digits(/^[0-7]{1,3}/, j);
+  if (octal) return [String.fromCharCode(parseInt(octal, 8) & 0xff), j + octal.length];
+  const hex = { x: /^[0-9A-Fa-f]{1,2}/, u: /^[0-9A-Fa-f]{1,4}/, U: /^[0-9A-Fa-f]{1,8}/ }[c];
+  const h = hex && digits(hex, j + 1);
+  if (h) return [String.fromCodePoint(Math.min(parseInt(h, 16), 0x10ffff)), j + 1 + h.length];
+  if (c === "c" && w[j + 1] !== undefined)
+    return [String.fromCharCode(w[j + 1].toUpperCase().charCodeAt(0) ^ 0x40), j + 2];
+  return [`\\${c}`, j + 1];
+}
 
 /**
  * A word decoded as bash reads it, one `{ c, live }` per character it yields:
@@ -1646,22 +2458,27 @@ const ANSI_PLAIN = { "\\": "\\", "'": "'", '"': '"', "?": "?" };
  * stands for an expansion (`$…`, a backtick, one `$` per expansion), a glob
  * (`*`, `?`, a `[` that a later `]` closes) or a brace expansion (a `{` and
  * `}` around an unquoted `,` or `..`). An ANSI-C escape other than a quote or
- * a backslash is read as live too: the word it spells is not plain. `at` is
- * the offset in `w` of the character each one comes from.
+ * a backslash is read as live too: the word it spells is not plain — unless
+ * `ansi` is set, when each is decoded as bash decodes it, one entry whose `c`
+ * may hold more than one character ({@link ansiEscape}; {@link readLevel},
+ * which reads the text a shell is handed, #1646). `at` is the offset in `w`
+ * of the character each one comes from, `from` where what it is decoded from
+ * starts (an escape's backslash) and `end` the offset just past it: the
+ * escape or the expansion whole.
  */
-export function decodeWord(w) {
+export function decodeWord(w, ansi = false) {
   const out = [];
-  const lit = (c, at) => {
-    if (c) out.push({ c, live: false, at });
+  const lit = (c, at, end = at + 1, from = at) => {
+    if (c) out.push({ c, live: false, at, end, from });
   };
-  const live = (c, at) => out.push({ c, live: true, at });
+  const live = (c, at, end = at + 1, from = at) => out.push({ c, live: true, at, end, from });
   // Unquoted `[`, `]`, `{`, `,`, `.` and `}`, as indices into `out`, for globs and braces.
   const bare = [];
   let i = 0;
   while (i < w.length) {
     const ch = w[i];
     if (ch === "\\") {
-      if (w[i + 1] !== "\n") lit(w[i + 1], i + 1);
+      if (w[i + 1] !== "\n") lit(w[i + 1], i + 1, i + 2, i);
       i += 2;
     } else if (ch === "'") {
       const e = w.indexOf("'", i + 1);
@@ -1672,8 +2489,12 @@ export function decodeWord(w) {
       let k = i + 2;
       for (; k < w.length && w[k] !== "'"; k++)
         if (w[k] !== "\\") lit(w[k], k);
-        else if (ANSI_PLAIN[w[++k]] !== undefined) lit(ANSI_PLAIN[w[k]], k);
-        else live("\\", k);
+        else if (ansi) {
+          const [c, next] = ansiEscape(w, k + 1);
+          lit(c, k, next);
+          k = next - 1;
+        } else if (ANSI_PLAIN[w[++k]] !== undefined) lit(ANSI_PLAIN[w[k]], k, k + 1, k - 1);
+        else live("\\", k, k + 1, k - 1);
       i = k + 1;
     } else if (ch === "$" && w[i + 1] === '"') {
       // A locale string, `$"…"`: double-quoted text bash may translate (#1606 review).
@@ -1682,17 +2503,19 @@ export function decodeWord(w) {
       let k = i + 1;
       while (k < w.length && w[k] !== '"') {
         if (w[k] === "\\" && '"\\$`\n'.includes(w[k + 1] ?? "x")) {
-          if (w[k + 1] !== "\n") lit(w[k + 1], k + 1);
+          if (w[k + 1] !== "\n") lit(w[k + 1], k + 1, k + 2, k);
           k += 2;
         } else if ((w[k] === "$" && EXPANDS.test(w[k + 1] ?? "")) || w[k] === "\x60") {
-          live("$", k);
-          k = expansionEnd(w, k);
+          const e = expansionEnd(w, k);
+          live("$", k, e);
+          k = e;
         } else lit(w[k], k++);
       }
       i = k + 1;
     } else if ((ch === "$" && EXPANDS.test(w[i + 1] ?? "")) || ch === "\x60") {
-      live("$", i);
-      i = expansionEnd(w, i);
+      const e = expansionEnd(w, i);
+      live("$", i, e);
+      i = e;
     } else if (ch === "*" || ch === "?") {
       live(ch, i++);
     } else {
@@ -1771,6 +2594,50 @@ function selfContained(word) {
   return quote === null;
 }
 
+/**
+ * Whether the raw text `word` of a word a fed string holds can be rewritten
+ * in place (#1646): it is whole on its own ({@link selfContained}) and reads
+ * as its shell reads it (`chars`, {@link levelWord}), character for
+ * character and expansion for expansion — `"gh"` inside `'…'` can, `\"gh\"`
+ * inside `"…"` (`"gh"` read raw, `gh` by its shell) cannot.
+ */
+function rewritable(word, chars) {
+  if (!selfContained(word)) return false;
+  const own = decodeWord(word);
+  return own.length === chars.length && own.every((x, k) => x.c === chars[k].c && x.live === chars[k].live);
+}
+
+/**
+ * A fed word the rewrite cannot stand in for ({@link rewritable}), read as
+ * its shell reads it and listed in `out` (#1646), none of them rewritten: an
+ * assignment or an option is none. One whose program expands or globs is
+ * `unreadable`, judged as gh and as git as at command position (`bash -c
+ * "$(echo gh) pr merge 7"`, `eval "\$GH pr merge 7"`). One whose raw text is
+ * its own and nothing else is `respelled` with the name its shell runs
+ * (`"\"gh\" pr merge 7"`, pwsh's `& \"C:\…\gh.exe\"`), so `checkBash` judges
+ * the command with that name in its place. One spliced from quoted pieces
+ * (`'g'"h"`) has no raw text of its own a name could stand in, so it is
+ * `spliced`, and `checkBash` refuses it.
+ */
+function respelledIn(fedWord, word, start, end, out) {
+  const decoded = fedWord.chars.map((x) => x.c).join("");
+  if (ASSIGNMENT.test(fedWord.text) || (decoded.startsWith("-") && !fedWord.chars[0].live)) return;
+  const read = programName(fedWord.chars);
+  if (!read) return;
+  // In what echo or printf prints, the raw text is no shell text a name could
+  // stand in: the command that prints it is judged as printing it plainly.
+  if (fedWord.printed) out.reprinted.push(fedWord.printed);
+  else if (!fedWord.contiguous) out.spliced.push({ start, end, word });
+  else if (read.unreadable) out.unreadable.push({ start, end, word });
+  else {
+    // The name the raw text spells too, where it spells one: the two readings
+    // differ only on an escape, and the hook errs to the one a guard reads
+    // (`"C:\\tools\\gh.exe"` is `gh` read raw, `C:toolsgh.exe` to its shell).
+    const own = selfContained(word) ? programName(decodeWord(word)) : null;
+    out.respelled.push({ start, end, word, name: read.name, rawName: own?.name ?? read.name });
+  }
+}
+
 /** A word starting at `at` in raw text, found without the lexer: quotes, escapes and simple substitutions kept whole. */
 const CRUDE_WORD =
   /(?:"(?:[^"\\]|\\[\s\S])*"|'[^']*'|\\[\s\S]|\$\((?:[^()]|\([^()]*\))*\)|\$\{[^}]*\}|\x60[^\x60]*\x60|[^\s;&|()<>"'\\\x60])+/y;
@@ -1807,7 +2674,7 @@ const CRUDE_WORD =
  * rewritten. A program word whose last segment expands or globs is
  * left as it is and listed in `unreadable` as `{ start, end, word }`.
  */
-function normalisePrograms(command, text, flat, words, raw, extra = new Map()) {
+function normalisePrograms(command, text, flat, words, raw, extra = new Map(), fedWords = new Map()) {
   let t = text;
   let f = flat;
   // `[start, end, cut, keep, kind]` each: the word, where its last segment
@@ -1815,12 +2682,26 @@ function normalisePrograms(command, text, flat, words, raw, extra = new Map()) {
   // how it is the program when `extra` put it there (#1634, {@link fedStarts}).
   const programs = [];
   const unreadable = [];
+  // Program words a fed string spells so the rewrite cannot stand in for them
+  // (#1646, {@link respelledIn}).
+  const respelled = [];
+  const spliced = [];
+  const reprinted = [];
   const seen = new Set();
   // Inside a program word read already, and not inside a substitution it kept:
   // the rewritten text is blank or the name there, so the lead may stop in it.
   // Kept as a span array, so a chain of n commands asks n times, not n² (#1634 review).
   const inside = new Uint8Array(command.length);
   const covered = (p) => inside[p] === 1;
+  // Where a fed string's own shell starts a word (#1646): a word the raw text
+  // reads across one of them is a misreading of that string (`))\ngh` inside
+  // `$'…'` read raw as the one word `\ngh`), and the shell's words stand.
+  const fedStart = new Uint8Array(command.length + 1);
+  for (const s of fedWords.keys()) fedStart[s] = 1;
+  const spansFedStart = (a, b) => {
+    for (let k = a + 1; k < b; k++) if (fedStart[k]) return true;
+    return false;
+  };
   for (let changed = true, passes = 0; changed && passes < 32; passes++) {
     // Every rewrite of the pass, `[start, end, text, flat]`, applied in one
     // splice at its end: a string rebuilt per word made a chain of n words n²
@@ -1829,18 +2710,31 @@ function normalisePrograms(command, text, flat, words, raw, extra = new Map()) {
     const edits = [];
     // The first word of each fed string after the anchored positions, so a
     // whole quoted word (`sudo "gh" …`) is read before the word inside its quotes.
-    const positions = [...programPositions(t), ...[...extra].map(([start, kind]) => ({ start, lead: "", kind }))];
-    for (const { start, lead, kind } of positions) {
+    const positions = [...programPositions(t), ...[...extra].map(([start, kind]) => ({ start, env: false, kind }))];
+    for (const { start, env, kind } of positions) {
       if (seen.has(start) || covered(start)) continue;
-      let end = words.get(start);
+      // Where the mask is set aside, a word a fed string holds is read as its
+      // own shell reads it (#1646, {@link fedStarts}, {@link levelWord}): it
+      // ends where that shell ends it, not where the raw text would.
+      const fedWord = raw(start) ? fedWords.get(start) : undefined;
+      let end = fedWord?.end ?? words.get(start);
       if (end === undefined && raw(start) && (kind || start === 0 || /[\s|;&()\x60]/.test(command[start - 1]))) {
         CRUDE_WORD.lastIndex = start;
         const w = CRUDE_WORD.exec(command);
         if (w) end = start + w[0].length;
       }
       if (end === undefined || end <= start) continue;
+      if (!fedWord && raw(start) && spansFedStart(start, end)) continue;
       seen.add(start);
       const word = command.slice(start, end);
+      // A fed word whose raw text the rewrite cannot stand in for — not whole on
+      // its own, or not spelling what its shell reads (`$(echo gh)`, `\"gh\"`
+      // in `"…"`, the splice `'g'"h"`) — is never rewritten, and is judged by
+      // what its shell reads ({@link respelledIn}).
+      if (fedWord && !rewritable(word, fedWord.chars)) {
+        respelledIn(fedWord, word, start, end, { unreadable, respelled, spliced, reprinted });
+        continue;
+      }
       // Where the mask is set aside the rules read the raw text as it stands,
       // separators inside strings included: a word there is rewritten only when
       // it is whole on its own, so no rewrite hides a command (#1606 second read).
@@ -1848,7 +2742,6 @@ function normalisePrograms(command, text, flat, words, raw, extra = new Map()) {
       const chars = decodeWord(word);
       const live = chars.some((x) => x.live);
       const decoded = chars.map((x) => x.c).join("");
-      const env = afterEnv(lead);
       const write = (by, inFlat = by) => edits.push([start, end, by, inFlat]);
       // An option the lead could not step over because it is quoted
       // (`env "-C" dir`): never the program, and written back as the option it
@@ -1929,7 +2822,7 @@ function normalisePrograms(command, text, flat, words, raw, extra = new Map()) {
       f = splice(f, 3);
     }
   }
-  return { text: t, flat: f, programs, unreadable };
+  return { text: t, flat: f, programs, unreadable, respelled, spliced, reprinted };
 }
 
 /**
@@ -1968,11 +2861,38 @@ function wordStartsOf(programs, length) {
 export const unreadablePrograms = (command) => view(command).unreadable;
 
 /**
+ * The program words a fed string spells so no rewrite can stand in for them
+ * in the text (#1646, {@link respelledIn}): `respelled`, each `{ start, end,
+ * word, name }` with the name its shell runs, and `spliced`, each `{ start,
+ * end, word }`, joined from quoted pieces.
+ */
+export const respelledPrograms = (command) => {
+  const { respelled, spliced, reprinted } = view(command);
+  return { respelled, spliced, reprinted };
+};
+
+/**
  * Whether {@link view} stopped reading `command` at its depth cap with nested
  * shells or wrappers still unread (#1634): such a command is refused whole by
  * `checkBash`, since no rule can see the program at the bottom of it.
  */
 export const unsettled = (command) => view(command).unsettled;
+
+/**
+ * Whether a command a shell is handed in `command` has a lead that opens a
+ * quote it never closes, or a heredoc operator with no delimiter (#1646,
+ * {@link fedStarts}, {@link level}): the hook cannot read which word runs
+ * after it, so `checkBash` refuses the command whole, as it refuses an
+ * {@link unsettled} one.
+ */
+export const unclosedLead = (command) => view(command).unclosedLead;
+
+/**
+ * Whether `command` pipes to a shell what a `printf` prints where that output
+ * cannot be known (#1646, {@link printed}): a `*` width, a number that is no
+ * literal, an expanding argument. `checkBash` refuses it whole.
+ */
+export const unprintable = (command) => view(command).unprintable;
 
 /** The command with its inert text masked where the mask stands, and raw where it is set aside ({@link view}). */
 export const trustedMask = (command) => view(command).text;
@@ -2018,7 +2938,13 @@ const COMMAND_END = /[()\x60]|(?<![<>])&(?!>)/;
  * whose program sits inside a string a shell is handed reads no further than
  * the string's close ({@link found}): `bash -c 'git worktree add ../ir-5'`
  * names `../ir-5`, not `../ir-5'`, and `echo 'pnpm test' | bash` holds no
- * piped `pnpm test`.
+ * piped `pnpm test`. A match whose command its shell reads differently from
+ * the text here (an escape, a join, #1646) carries `decoded`, that command as
+ * its shell reads it, and `sep`, the separator that ends it there (`|`
+ * for a pipe): its raw groups are mis-sliced, and `checkBash` lets no such
+ * command pass ({@link takeDecodedHits}). A match read in a string's level
+ * carries `before`, what that string's shells run ahead of it ({@link
+ * levelLead}), and `shell`, the word of the shell that reads that string.
  */
 export function* matchesAt(command, re) {
   const all = [...found(command, re, 0, trustedMask(command).length)].sort((x, y) => x.program - y.program);
@@ -2027,6 +2953,25 @@ export function* matchesAt(command, re) {
 
 /** The flags of `re` with `extra` added, each once. */
 const withFlags = (re, extra) => [...new Set([...re.flags, ...extra])].join("");
+
+/** Each regex {@link compiled} built from a source regex, by its flags. */
+const COMPILED = new WeakMap();
+
+/**
+ * A regex with the source of `source` and the flags of `re` plus `extra`,
+ * built once per pair: a {@link cmd} rule's source holds the whole {@link
+ * COMMAND_LEAD}, and {@link found} asked for a fresh one on every call (#1646).
+ * Shared safely: a sticky one is always read at a `lastIndex` set just before,
+ * and `matchAll` clones the global one.
+ */
+function compiled(source, re, extra) {
+  let byFlags = COMPILED.get(source);
+  if (!byFlags) COMPILED.set(source, (byFlags = new Map()));
+  const flags = withFlags(re, extra);
+  let out = byFlags.get(flags);
+  if (!out) byFlags.set(flags, (out = new RegExp(source.source, flags)));
+  return out;
+}
 
 /**
  * Every command `re` finds in `text[a, b)` of {@link view}'s text, unsorted,
@@ -2039,7 +2984,15 @@ const withFlags = (re, extra) => [...new Set([...re.flags, ...extra])].join("");
  * knownPrograms}) the anchored matches did not take, confined the same way.
  * Tested where a program is, never scanned for: a scan's leftmost match at a
  * mention consumed the real occurrence after it (`sudo env X=gh gh pr comment
- * 5 --body @-`). Lazy, so {@link has} stops at the first.
+ * 5 --body @-`). Last, the shape tested sticky in the decoded text of each
+ * string a shell runs, at each position read there ({@link fedStarts}), where
+ * that text differs from the view's over the match (`bash -c $'gh\x20pr merge
+ * 7'`, `eval "gh pr" merge 7`, `printf '%s %s\n' gh 'pr merge 7' | bash`):
+ * the match mapped back to the view through the level's `at` and `end`, and
+ * recorded as a decoded hit ({@link takeDecodedHits}), since a rule reading
+ * its arguments from the raw text at those indices reads them mis-sliced
+ * (#1646; level-aware argument reading is #1783). Lazy, so {@link has} stops
+ * at the first.
  */
 function* found(command, re, a, b) {
   const text = trustedMask(command);
@@ -2049,16 +3002,38 @@ function* found(command, re, a, b) {
     const close = stringAround(v, a + p)?.[1];
     return close === undefined ? undefined : close - a;
   };
-  const record = (m, kind, program) => ({
-    at: a + m.index,
-    end: a + m.index + m[0].length,
-    indices: m.indices.map((r) => r && [a + r[0], a + r[1]]),
-    kind,
-    program: a + program,
-  });
+  // Every occurrence a match was yielded for ({@link occurrenceOf}), so the decoded pass adds none twice.
+  const yielded = new Set();
+  // Each view index the passes reading the view's text matched at, to the
+  // command they took it for there ({@link levelCommand}'s text).
+  const readAt = new Map();
+  const record = (m, kind, program) => {
+    const f = {
+      at: a + m.index,
+      end: a + m.index + m[0].length,
+      indices: m.indices.map((r) => r && [a + r[0], a + r[1]]),
+      kind,
+      program: a + program,
+    };
+    // A command its shell reads differently from the view: what it reads, and a decoded hit.
+    const read = levelCommand(v, f.program) ?? levelCommand(v, wordStartOf(v, f.program));
+    f.occurrence = read ? occurrenceOf(f.program, read.L, read.d) : String(f.program);
+    yielded.add(f.occurrence);
+    readAt.set(read ? read.L.at[read.d] : f.program, read?.text);
+    if (read?.divergent) {
+      f.decoded = read.text;
+      f.sep = read.sep;
+      decodedHit(command, re, f.occurrence);
+    }
+    if (read) {
+      f.before = levelLead(read.L, read.d);
+      f.shell = read.L.via;
+    }
+    return f;
+  };
   const taken = new Set();
-  const anchored = new RegExp(re.source, withFlags(re, "yd"));
-  for (let m of slice.matchAll(new RegExp(re.source, withFlags(re, "gd")))) {
+  const anchored = compiled(re, re, "yd");
+  for (let m of slice.matchAll(compiled(re, re, "gd"))) {
     const program = innerStart(slice, m, re, (p) => v.byName.has(a + p) || v.starts.has(a + p));
     const close = closeIn(program);
     if (close !== undefined && m.index + m[0].length > close && !(m = matchWithin(anchored, slice, m.index, close)))
@@ -2067,12 +3042,170 @@ function* found(command, re, a, b) {
     yield record(m, COMMAND, program);
   }
   if (!re.inner) return;
-  const inner = new RegExp(re.inner.source, withFlags(re, "yd"));
+  const inner = compiled(re.inner, re, "yd");
   for (const [p, kind] of knownPrograms(v)) {
     if (p < a || p >= b || taken.has(p - a)) continue;
     const m = matchWithin(inner, slice, p - a, closeIn(p - a));
     if (m) yield record(m, kind, p - a);
   }
+  // The positions read in a level, from the first at `a` or later.
+  const { decoded } = v;
+  let lo = 0;
+  let hi = decoded.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (decoded[mid][0] < a) lo = mid + 1;
+    else hi = mid;
+  }
+  for (let k = lo; k < decoded.length && decoded[k][0] < b; k++) {
+    const [p, L, d, kind] = decoded[k];
+    // Each occurrence apart: a reused printf format prints its words at the
+    // same view index once per pass (`printf 'git push origin %s\n' main
+    // v1.2.3 | bash`, CodeRabbit CLI on #1646).
+    const occurrence = occurrenceOf(p, L, d);
+    if (yielded.has(occurrence)) continue;
+    inner.lastIndex = d;
+    const m = inner.exec(L.text);
+    if (!m || m.index !== d || !m[0]) continue;
+    const viewOf = (s, e) => [L.at[s] ?? L.to, e > s ? L.end[e - 1] : (L.at[s] ?? L.to)];
+    const [at, end] = viewOf(d, d + m[0].length);
+    // Where the view reads the same text, the passes above read it as it is;
+    // where they matched at this index already, they read one occurrence, and
+    // another is judged here unless it is the same command.
+    const own = L.text.slice(d, L.ends[d]);
+    if (end > b) continue;
+    if (readAt.has(p) ? readAt.get(p) === own : text.slice(at, end) === asWritten(text, L, d, d + m[0].length))
+      continue;
+    yielded.add(occurrence);
+    decodedHit(command, re, occurrence);
+    const indices = m.indices.map((r) => r && viewOf(r[0], r[1]));
+    yield {
+      at,
+      end,
+      indices,
+      kind,
+      program: p,
+      occurrence,
+      decoded: L.text.slice(d, L.ends[d]),
+      sep: L.text.slice(L.ends[d], L.ends[d] + 2),
+      before: levelLead(L, d),
+      shell: L.via,
+    };
+  }
+}
+
+/**
+ * The command at the view index `p` as the shell of the level it was read in
+ * reads it (#1646, {@link found}): `{ text, divergent, sep, L, d }`, its text
+ * from its program word to its end there, whether the view's text over the
+ * same span differs, the separator that ends it, and the level and index it
+ * starts at; `undefined` where no level position starts at `p`. Read once per
+ * position and view.
+ */
+function levelCommand(v, p) {
+  if (v.levelCommands?.has(p)) return v.levelCommands.get(p);
+  const { decoded } = v;
+  let lo = 0;
+  let hi = decoded.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (decoded[mid][0] < p) lo = mid + 1;
+    else hi = mid;
+  }
+  let out;
+  if (decoded[lo]?.[0] === p) {
+    const [, L, d] = decoded[lo];
+    const e = Math.max(L.ends[d], d + 1);
+    const text = L.text.slice(d, e);
+    out = {
+      text,
+      divergent: v.text.slice(L.at[d], L.end[e - 1]) !== asWritten(v.text, L, d, e),
+      sep: L.text.slice(L.ends[d], L.ends[d] + 2),
+      L,
+      d,
+    };
+  }
+  (v.levelCommands ??= new Map()).set(p, out);
+  return out;
+}
+
+/**
+ * What the shells reading the {@link level} `L` run ahead of its index `d`
+ * (#1646, CodeRabbit CLI): its own text before `d`, after that of each level
+ * holding it before the word that handed it over, outermost first, each as
+ * `{ text, shell }` with the shell that reads it. The typed command's own
+ * text is not among them: `root`, a property of the list, is the view index
+ * of the word there that hands the outermost string over, for {@link
+ * chainCommands} to start from where the typed command's own `cd`s leave it.
+ * {@link dirAfter} reads the `cd`s here, so a command a string runs is judged
+ * where that string moved to.
+ */
+function levelLead(L, d) {
+  const lines = [];
+  let k = d;
+  for (let X = L; X.up; k = X.upAt, X = X.up)
+    lines.unshift({ text: X.text.slice(0, k), shell: /^(?:pwsh|powershell)$/i.test(X.via ?? "") ? POWERSHELL : BASH });
+  lines.root = k;
+  return lines;
+}
+
+/**
+ * The text `[d, e)` of the {@link level} `L`, each expansion an outer shell
+ * makes written as the view has it (`$ARGS`, not the `$` standing for it):
+ * the raw text holds an expansion as a rule always reads it, so only an
+ * escape, a quote or a join that the shell undoes makes the two differ.
+ */
+function asWritten(viewText, L, d, e) {
+  let out = "";
+  for (let k = d; k < e; k++)
+    if (L.live?.[k] === 1) {
+      out += viewText.slice(L.at[k], L.end[k]);
+      while (k + 1 < e && L.live[k + 1] === 1 && L.at[k + 1] === L.at[k]) k++;
+    } else out += L.text[k];
+  return out;
+}
+
+/** The decoded hits of each command read lately, by its text ({@link found}); kept small, as a hook process reads a few. */
+const DECODED_HITS = new Map();
+
+function decodedHit(command, re, occurrence) {
+  if (DECODED_HITS.size > 64) DECODED_HITS.clear();
+  if (!DECODED_HITS.has(command)) DECODED_HITS.set(command, new Set());
+  DECODED_HITS.get(command).add(`${re.source}@${occurrence}`);
+}
+
+/**
+ * Which occurrence of a command a match is ({@link found}): the view index
+ * `p` of its program word, and for one read in a string's {@link level} that
+ * level and the index there, since a printf that reuses its format prints the
+ * same view index once per pass, each a command of its own (#1646). A match's
+ * `occurrence`; the key of its decoded hit.
+ */
+function occurrenceOf(p, L, d) {
+  return L.id === undefined ? String(p) : `${p}@${L.id}:${d}`;
+}
+
+/**
+ * Drops the decoded hit of `re` at the match `occurrence` in `command` ({@link found}):
+ * for a consumer that judged that command as its shell reads it — from the
+ * match's `decoded`, or through a reader of the whole string, as the deck-host
+ * ask's `wrapperRuns` reads a wrapper's string (#1646).
+ */
+export function excuseDecodedHit(command, re, occurrence) {
+  DECODED_HITS.get(command)?.delete(`${re.source}@${occurrence}`);
+}
+
+/**
+ * The matches {@link found} has made, since the last call, which clears
+ * them, of a command its shell reads differently from the text of
+ * `command`, each as `<shape>@<program>` (#1646): a rule reading its
+ * arguments from that raw text reads them mis-sliced, so `checkBash` never
+ * lets a rule pass on one it did not excuse ({@link excuseDecodedHit}).
+ */
+export function takeDecodedHits(command) {
+  const hits = DECODED_HITS.get(command) ?? new Set();
+  DECODED_HITS.delete(command);
+  return hits;
 }
 
 /**
@@ -2080,9 +3213,9 @@ function* found(command, re, a, b) {
  * by where its name starts, with how it is the program, then every position
  * {@link fedStarts} recorded whose word is no program word.
  */
-function* knownPrograms({ byName, starts }) {
+function* knownPrograms({ byName, loneStarts }) {
   yield* byName;
-  for (const entry of starts) if (!byName.has(entry[0])) yield entry;
+  yield* loneStarts;
 }
 
 /**
@@ -2116,7 +3249,7 @@ function matchWithin(re, text, p, close) {
 function innerStart(text, m, re, known = () => false) {
   if (!re.inner) return m.index;
   const end = m.index + m[0].length;
-  const sticky = new RegExp(re.inner.source, withFlags(re, "y"));
+  const sticky = compiled(re.inner, re, "y");
   const fits = (p) => {
     sticky.lastIndex = p;
     const r = sticky.exec(text);
@@ -2128,10 +3261,15 @@ function innerStart(text, m, re, known = () => false) {
 }
 
 /** A {@link matchesAt} result: the groups read from the raw command, with the match's facts. */
-function rawMatch(command, { at, indices, kind, program }) {
+function rawMatch(command, { at, indices, kind, program, occurrence, decoded, sep, before, shell }) {
   const raw = indices.map((r) => r && command.slice(r[0], r[1]));
   raw.index = at;
   raw.program = program;
+  raw.occurrence = occurrence;
+  if (decoded !== undefined) raw.decoded = decoded;
+  if (sep !== undefined) raw.sep = sep;
+  if (before !== undefined) raw.before = before;
+  if (shell !== undefined) raw.shell = shell;
   raw.how = kind.how;
   if (kind.via) raw.via = kind.via;
   if (kind.stdin) raw.stdin = true;
@@ -2165,6 +3303,170 @@ const PS_CD_RE = new RegExp(
 const cdRe = (shell) => (shell === POWERSHELL ? PS_CD_RE : CD_RE);
 /** `cd -` / `cd +` go back or forward in a history the hook cannot see: the directory stays put. */
 const HISTORY_DIR = new Set(["-", "+"]);
+
+/** A command that moves the directory, at the start of a chain segment: its name is group 1 ({@link dirAfter}). */
+const DIR_CHANGE = /^\s*(?:\w+=\S*\s+)*(cd|pushd|popd|chdir|sl|set-location|push-location|pop-location)(?=\s|$)/i;
+/**
+ * Such a command behind a paren, a brace, a `!` or a keyword that opens a
+ * compound command: whether, and for how long, it moves what follows is the
+ * compound's to say ({@link dirAfter}).
+ */
+const NESTED_DIR_CHANGE =
+  /^\s*(?:(?:[({!]|then|else|elif|do|if|while|until|time)\s*)+(?:\w+=\S*\s+)*(?:cd|pushd|popd|chdir|sl|set-location|push-location|pop-location)(?=\s|$)/i;
+
+/**
+ * What each `cd` among the chain segments of `text` does to the directory of
+ * the shell reading `text` (#1646, CodeRabbit on PR #1788): `{ ranges, seps,
+ * steps }`, `seps[k]` the separator after segment `k` (`;`, `&&`, `||`, `|`,
+ * a newline) and `steps[k]` `null` for a segment that moves nothing, or `{
+ * kind, to }`:
+ *
+ * - `"move"`: it runs, and moves the shell to `to`.
+ * - `"cond"`: it runs only as the command before it fared (after `&&` or
+ *   `||`), so it moves only a command reached from it through `&&` alone.
+ * - `"final"`: the final stage of a pipeline, which bash runs in the shell
+ *   itself only under `lastpipe` without job control, neither of which the
+ *   hook can see (a profile or `BASH_ENV` may set them; a `shopt` in the
+ *   command may come after the pipeline), so the directory is unknown after it.
+ * - `"lost"`: one whose directory cannot be known — it expands (`cd "$X"`),
+ *   steps through history (`cd -`), has no directory or has options, is a
+ *   `popd`, sits inside a compound command whose extent the segment does not
+ *   show (`{ cd x; …`, `then cd x`), or inside a string `eval` runs, which
+ *   runs in this shell — `strict` only, else read as the hook always read the
+ *   typed command's own (`cd -` moves nothing, an expansion is a name).
+ *
+ * A `cd` in a pipeline stage before the last runs in a subshell under any
+ * option, one in parentheses closed in its own segment (`(cd x)`) moves
+ * nothing, and one inside a string a child shell runs (`bash -c 'cd x; …'`,
+ * `… | bash`) moves only that child: none is a step.
+ */
+function cdSteps(text, shell, strict) {
+  const v = view(text);
+  const masked = v.text;
+  const rs = ranges(masked, CHAIN);
+  const seps = rs.map(([, b], k) => (k + 1 < rs.length ? masked.slice(b, rs[k + 1][0]) : undefined));
+  const steps = rs.map(([a, b], k) => {
+    const segment = masked.slice(a, b);
+    const name = DIR_CHANGE.exec(segment)?.[1]?.toLowerCase();
+    if (!name) {
+      if (!strict || !NESTED_DIR_CHANGE.test(segment)) return null;
+      // A subshell closed in its own segment moves nothing; any other compound is unknown.
+      const opens = (segment.match(/\(/g) ?? []).length;
+      if (/^\s*\(/.test(segment) && opens > 0 && opens === (segment.match(/\)/g) ?? []).length) return null;
+      return { kind: "lost" };
+    }
+    if (shell !== POWERSHELL && !/^(?:cd|pushd|popd)$/.test(name)) return null;
+    if (!strict && !/^(?:cd|chdir|sl|set-location)$/.test(name)) return null;
+    // Inside a string a shell is handed: a child's own, or this shell's under `eval`.
+    const word = a + segment.search(/\S/);
+    const string = stringAround(v, word);
+    if (string) return v.quoteKinds.get(string[0])?.via === "eval" ? { kind: "lost" } : null;
+    if (seps[k] === "|") return null;
+    const to = /^(?:pushd|push-location)$/.test(name)
+      ? argIn(text, masked, a, b, PUSHD_RE)
+      : /^pop/.test(name)
+        ? undefined
+        : argIn(text, masked, a, b, cdRe(shell));
+    if (strict ? !to || HISTORY_DIR.has(to) || /[$\x60~*?[]/.test(to) : !to) return strict ? { kind: "lost" } : null;
+    if (!strict && HISTORY_DIR.has(to)) return null;
+    const before = k > 0 ? seps[k - 1] : undefined;
+    const kind = before === "|" ? "final" : before === "&&" || before === "||" ? "cond" : "move";
+    return { kind, to };
+  });
+  return { ranges: rs, seps, steps };
+}
+
+/**
+ * The directory a shell starting in `base` is in at segment `upTo` of `text`
+ * ({@link cdSteps}, every segment before it), or `undefined` where it cannot
+ * be known: a `"lost"` or `"final"` step, or a
+ * `"cond"` one not followed by `&&` alone up to `upTo` — so `false && cd x;
+ * pnpm …` is unknown, and `cd x && pnpm …` and `true && cd x && pnpm …` run
+ * in `x`. A `"move"` is read by the outcome that reaches `upTo` within its
+ * and-or list ({@link cdOutcome}): its directory after success, the one before
+ * it after failure (`cd x || pnpm …` runs where it was), unknown where either
+ * can (`cd x && a || pnpm …`); past the list's end it is taken to have run, as
+ * a typed `cd x; …` always was. `loose` follows every step that names a
+ * directory and skips the rest, never `undefined`: the fallback a lost
+ * command keeps.
+ */
+function dirThrough({ seps, steps }, upTo, base, shell, loose = false) {
+  let dir = base;
+  for (let k = 0; k < upTo; k++) {
+    const step = steps[k];
+    if (!step || (loose && step.kind === "lost")) continue;
+    if (loose) {
+      dir = resolveDir(dir, step.to, { shell });
+      continue;
+    }
+    if (step.kind === "lost" || step.kind === "final") return undefined;
+    if (step.kind === "cond" && !seps.slice(k, upTo).every((s) => s === "&&")) return undefined;
+    if (step.kind === "move") {
+      const outcome = cdOutcome(seps, k, upTo);
+      if (outcome === "both") return undefined;
+      if (outcome === "failure") continue;
+    }
+    dir = resolveDir(dir, step.to, { shell });
+  }
+  return dir;
+}
+
+/**
+ * Which outcome of the command at segment `k` lets segment `upTo` run, along
+ * the separators `seps` between them (#1646, CodeRabbit on PR #1788):
+ * `"success"`, `"failure"`, `"both"`, or `"after"` where a separator other
+ * than `&&` or `||` ends its and-or list first, so `upTo` runs whatever it did.
+ * Each outcome is followed through the list as bash runs it: `&&` runs the
+ * next command after a success, `||` after a failure, and a command that runs
+ * may itself succeed or fail.
+ */
+function cdOutcome(seps, k, upTo) {
+  const reach = (ok) => {
+    let can = new Set([ok]);
+    let runs = true;
+    for (let i = k; i < upTo; i++) {
+      const sep = seps[i];
+      const on = sep === "&&";
+      runs = can.has(on);
+      // A command that runs may end either way; one skipped leaves the status as it was.
+      const next = new Set(runs ? [true, false] : []);
+      if (can.has(!on)) next.add(!on);
+      can = next;
+    }
+    return runs;
+  };
+  if (seps.slice(k, upTo).some((s) => s !== "&&" && s !== "||")) return "after";
+  const success = reach(true);
+  const failure = reach(false);
+  return success && failure ? "both" : failure ? "failure" : "success";
+}
+
+/** `pushd <dir>` and PowerShell's `Push-Location`, as {@link CD_RE} reads a `cd`. */
+const PUSHD_RE = new RegExp(
+  String.raw`^\s*(?:\w+=\S*\s+)*(?:pushd|push-location)(?:\s+-(?:path|literalpath))?\s+${QUOTED_ARG}\s*$`,
+  "di",
+);
+
+/**
+ * Where the lines `lines` ({@link levelLead}: `{ text, shell }`, the text a
+ * string's shell runs ahead of a command) leave a shell that starts in `base`
+ * (#1646, CodeRabbit CLI): each line's `cd`, `pushd` or `Set-Location` steps
+ * read strictly ({@link cdSteps}), through the line's end, where the next
+ * line's string or the command itself is handed over ({@link dirThrough}).
+ * `undefined` where the directory cannot be known, so the caller judges the
+ * command lost rather than in the wrong tree.
+ */
+export function dirAfter(lines, base) {
+  let dir = base;
+  for (const { text, shell } of lines) {
+    if (!/(?:cd|pushd|popd|chdir|sl|location)\b/i.test(text)) continue;
+    const steps = cdSteps(text, shell, true);
+    // Through the last segment, which holds the word handing the next string over, or the command.
+    dir = dirThrough(steps, steps.ranges.length - 1, dir, shell);
+    if (dir === undefined) return undefined;
+  }
+  return dir;
+}
 
 /** Git Bash's spelling of a drive, `/c/…` or `/cygdrive/c/…`, for `C:\…`. */
 const GIT_BASH_DRIVE = /^(?:\/cygdrive)?\/([a-zA-Z])(?=\/|$)/;
@@ -2216,7 +3518,11 @@ export const gitCwd = (command, cwd, re, shell = BASH) => gitPlace(command, cwd,
  * Where the git command a rule matched runs, as {@link gitCwd} finds it, and
  * whether its global options or its environment move what it acts on
  * ({@link gitPlaceAt}): `{ dir, movesRepo, movesTree }`. Without `re`, the
- * first git command of the whole command is read.
+ * first git command of the whole command is read. Where a `cd` ahead of it
+ * leaves its directory unknown ({@link cwdAt}), `lost` is set, and so are
+ * `movesRepo` and `movesTree`, as for anything that hides which repository it
+ * acts on; `dir` is then the fallback with every `cd` that names a directory
+ * followed (#1646).
  */
 export function gitPlace(command, cwd, re, shell = BASH) {
   const text = trustedMask(command);
@@ -2225,26 +3531,47 @@ export function gitPlace(command, cwd, re, shell = BASH) {
   // or the first word a shell or a wrapper runs, #1634), and its segment.
   const m = re ? matchAt(command, re) : null;
   const at = m ? segs.findIndex(([a, b]) => a <= m.program && m.program < b) : -1;
-  const base = cwdAt(command, cwd, at >= 0 ? segs[at][0] : command.length, shell);
+  const index = at >= 0 ? segs[at][0] : command.length;
+  const base = cwdAt(command, cwd, index, shell);
   const [a, b] = at >= 0 ? segs[at] : [0, command.length];
-  return gitPlaceAt(command, m ? m.program : a, base, shell, b);
+  if (base !== undefined) return gitPlaceAt(command, m ? m.program : a, base, shell, b);
+  const fallback = typedDirAt(command, cwd, shell, true)(index);
+  return {
+    ...gitPlaceAt(command, m ? m.program : a, fallback, shell, b),
+    movesRepo: true,
+    movesTree: true,
+    lost: true,
+  };
 }
 
 /**
  * The session cwd moved by every `cd <dir>` in the chain segments that end
  * before `index` ({@link gitCwd}'s walk, split and read as it is): where the
- * command starting at `index` runs. The post-hook reads a merge's PR back
- * there, at the merge `firstMerge` found rather than the first mention (#1607).
+ * command starting at `index` runs, or `undefined` where a `cd` ahead of it
+ * leaves that unknown ({@link typedDirAt}). The post-hook reads a merge's PR
+ * back there, at the merge `firstMerge` found rather than the first mention
+ * (#1607).
  */
 export function cwdAt(command, cwd, index, shell = BASH) {
-  const text = trustedMask(command);
-  let base = cwd;
-  for (const [a, b] of ranges(text, CHAIN)) {
-    if (b > index) break;
-    const dir = argIn(command, text, a, b, cdRe(shell));
-    if (dir && !HISTORY_DIR.has(dir)) base = resolveDir(base, dir, { shell });
-  }
-  return base;
+  return typedDirAt(command, cwd, shell)(index);
+}
+
+/**
+ * For the typed command, a function from a view index to the directory its
+ * shell is in there — every `cd` that runs in that shell, in the segments
+ * ending before it, followed ({@link cdSteps}, read as the typed command's
+ * always were; {@link dirThrough}) — or `undefined` where one leaves it
+ * unknown (#1646, CodeRabbit on PR #1788). A `cd` inside a string a child
+ * shell runs moves only that child, so `bash -c 'true; cd ../x; true'; pnpm
+ * …` runs `pnpm` where it started.
+ */
+function typedDirAt(command, cwd, shell, loose = false) {
+  const steps = cdSteps(command, shell, false);
+  return (index) => {
+    let upTo = 0;
+    while (upTo < steps.ranges.length && steps.ranges[upTo][1] <= index) upTo++;
+    return dirThrough(steps, upTo, cwd, shell, loose);
+  };
 }
 
 /** The program word `git` in the rewritten text, wherever a word starts: {@link gitWord}'s fallback. */
@@ -2293,36 +3620,6 @@ const GIT_ENV_MOVES = {
   CONFIG_PARAMETERS: "tree",
 };
 
-/**
- * What the environment set in the live text before `upTo` moves for a git
- * command after it: a set of `repo`, `tree` and `index` (#1606). Read are a
- * bash assignment or export, PowerShell's `$env:` and `${env:}`, `Set-Item`,
- * `New-Item` (and `si`, `ni`) on an `Env:` item and `SetEnvironmentVariable`.
- * Config given through the environment counts when it may set
- * `core.worktree`: any `GIT_CONFIG_PARAMETERS`, and a `GIT_CONFIG_KEY_<n>`
- * whose value names it or cannot be read; through a PowerShell write, whose
- * value is not read, any config key counts. On doubt it moves: a commit then
- * refuses, which costs a re-spelling.
- */
-/** An ANSI-C `$'…'` run, where `\'` does not close it (CodeRabbit on PR #1628). */
-const ANSI_C = String.raw`\$'(?:[^'\\]|\\[\s\S])*'`;
-/** A quoted run inside a command substitution, where a `(` or `)` is text, not structure. */
-const SUBST_QUOTED = String.raw`${ANSI_C}|'[^']*'|"(?:[^"\\]|\\[\s\S])*"`;
-/**
- * One character of a substitution's body, an escape or a quoted run: each
- * starts differently, so it has one parse. The escape comes first, so `\$'`
- * is a literal dollar and not an ANSI-C opener (CodeRabbit on PR #1628).
- */
-const SUBST_ATOM = String.raw`\\[\s\S]|[^()'"$\\]|\$(?!')|${SUBST_QUOTED}`;
-/**
- * A command substitution, `$( … )` (two levels of nesting) or a backtick one,
- * taken whole: its words are one word of the command that holds it. A quoted
- * `)` inside it is text (CodeRabbit on PR #1628: the raw view of
- * `$(bash -c 'a ) b')` once ended there). A character class never matches its
- * `$(` or backtick, so each has one parse.
- */
-const SUBSTITUTION = String.raw`\$\((?:${SUBST_ATOM}|\((?:${SUBST_ATOM}|\((?:${SUBST_ATOM})*\))*\))*\)|\x60[^\x60]*\x60`;
-
 /** One shell word at the start of `s`, quotes, escapes and substitutions kept, for {@link decodeWord}. */
 const LEADING_WORD = new RegExp(
   String.raw`^(?:"(?:[^"\\]|\\[\s\S])*"|${ANSI_C}|'[^']*'|\\[\s\S]|${SUBSTITUTION}|\$(?![('])|[^\s;&|()<>"'\\$\x60])*`,
@@ -2342,6 +3639,17 @@ function mayNameWorktree(raw, stop = false) {
   return /^core\.worktree$/i.test(key.map((x) => x.c).join(""));
 }
 
+/**
+ * What the environment set in the live text before `upTo` moves for a git
+ * command after it: a set of `repo`, `tree` and `index` (#1606). Read are a
+ * bash assignment or export, PowerShell's `$env:` and `${env:}`, `Set-Item`,
+ * `New-Item` (and `si`, `ni`) on an `Env:` item and `SetEnvironmentVariable`.
+ * Config given through the environment counts when it may set
+ * `core.worktree`: any `GIT_CONFIG_PARAMETERS`, and a `GIT_CONFIG_KEY_<n>`
+ * whose value names it or cannot be read; through a PowerShell write, whose
+ * value is not read, any config key counts. On doubt it moves: a commit then
+ * refuses, which costs a re-spelling.
+ */
 function envMoves(command, text, upTo) {
   const moves = new Set();
   const add = (name, value) => {
@@ -2476,9 +3784,23 @@ export function cdsAhead(command, re, cwd, shell = BASH) {
 export function* chainCommands(command, cwd, re, shell = BASH) {
   const text = trustedMask(command);
   const v = view(command);
-  let base = cwd;
+  // The directory the typed command's own `cd`s leave at a view index, and
+  // that one with every conditional or final-stage `cd` followed and an
+  // unknowable one skipped, which a command whose directory is lost keeps as
+  // its `base` for the rules that read no `lost`.
+  const dirAt = typedDirAt(command, cwd, shell);
+  const looseAt = typedDirAt(command, cwd, shell, true);
   for (const [a, b] of ranges(text, CHAIN)) {
     for (const f of [...found(command, re, a, b)].sort((x, y) => x.program - y.program)) {
+      // A command a string runs runs where the `cd`s ahead of it in that
+      // string, and in the strings holding it, moved (#1646, CodeRabbit CLI):
+      // `printf 'cd %s; pnpm %s\n' ../ir-x dev:voices | bash`. They start from
+      // where the typed command's own leave the word handing the string over,
+      // never from a `cd` the chain ranges read inside that string.
+      const root = f.before?.length ? f.before.root : a;
+      const outer = dirAt(root);
+      const lead = outer !== undefined && f.before?.length ? dirAfter(f.before, outer) : outer;
+      const base = looseAt(root);
       const start = programStart(command, f.at);
       const from = f.end;
       const stop = text.slice(from, b).search(COMMAND_END);
@@ -2490,21 +3812,23 @@ export function* chainCommands(command, cwd, re, shell = BASH) {
         cut = undefined;
       }
       yield {
-        base,
+        base: lead ?? base,
         start,
         head: command.slice(start, from),
         args: command.slice(from, to),
         at: from,
         cut,
         how: f.kind.how,
+        program: f.program,
+        occurrence: f.occurrence,
+        ...(lead === undefined ? { lost: true } : {}),
+        ...(f.decoded !== undefined ? { decoded: f.decoded } : {}),
         ...(f.kind.via ? { via: f.kind.via } : {}),
         ...(f.kind.stdin ? { stdin: true } : {}),
         ...(f.kind.piped ? { piped: true } : {}),
         ...(f.kind.attached ? { attached: true } : {}),
       };
     }
-    const dir = argIn(command, text, a, b, cdRe(shell));
-    if (dir && !HISTORY_DIR.has(dir)) base = resolveDir(base, dir, { shell });
   }
 }
 
@@ -2527,13 +3851,16 @@ export function has(command, re) {
 
 /**
  * One token of {@link COMMAND_LEAD}: a keyword, a wrapper with its options, an
- * assignment or a redirection. `open` opens the group around each wrapper's
- * name: `(?:` for the lead itself, `(` where {@link afterEnv} reads which
- * wrapper a token is — group 1 for `time`, `command`, `exec`, `env` or
- * `nohup`, 2 for `timeout`, 3 for `xargs`.
+ * assignment or a redirection, as a regex fragment; `open` opens the group
+ * around each wrapper's name. {@link leadStep} reads the same tokens with the
+ * one word reader, which every program position comes from (#1646).
  */
 function leadToken(open) {
-  return String.raw`(?:(?:if|then|do|else|elif|while|until|!|\{)\s+|${open}time|command|exec|env|nohup)(?:\s+(?:-[uCSa]|--unset|--chdir|--split-string)\s+[^\s-]\S*|\s+-\S+)*\s+|${open}timeout)(?:\s+(?:-[ks]|--kill-after|--signal)\s+[^\s-]\S*|\s+-\S+)*\s+\d[\d.]*[smhd]?\s+|${open}xargs)(?:\s+-[IdEeLnPs]\s+[^\s-]\S*|\s+-\S+)*\s+|[A-Za-z_]\w*(?:\[[^\]\s]*\])?\+?=\S*\s+|\d*(?:<<<|[<>]&|&>>?|>>|>\||<>|<|>)\s*[^\s;&|()<>]+\s+)`;
+  // A wrapper option's value: quoted runs and escapes read whole, any other
+  // character but a blank, a quote, `;`, `&`, `|`, `<` or `>` plain — so the
+  // value pattern, repeated for three wrappers, stays short (#1646).
+  const value = String.raw`(?!-)(?:[^\s"'\\;&|<>]|"(?:[^"\\]|\\[\s\S])*"|'[^']*'|\\[\s\S])+`;
+  return String.raw`(?:(?:if|then|do|else|elif|while|until|!|\{)\s+|${open}time|command|exec|env|nohup)(?:\s+(?:-[uCSa]|--unset|--chdir|--split-string)\s+${value}|\s+-\S+)*\s+|${open}timeout)(?:\s+(?:-[ks]|--kill-after|--signal)\s+${value}|\s+-\S+)*\s+\d[\d.]*[smhd]?\s+|${open}xargs)(?:\s+-[IdEeLnPs]\s+${value}|\s+-\S+)*\s+|[A-Za-z_]\w*(?:\[[^\]\s]*\])?\+?=${ANGLED_PIECE}*\s+|\d*(?:<<<|[<>]&|&>>?|>>|>\||<>|<|>)\s*${WORD_PIECE}+\s+)`;
 }
 
 /**
@@ -2547,7 +3874,10 @@ function leadToken(open) {
  * redirections bash takes ahead of the command name (`2>/dev/null gh …`, #1606
  * review): an optional fd, one operator (`<`, `>`, `>>`, `>|`, `<>`, `&>`,
  * `&>>`, `>&`, `<&`, `<<<`) and its target, attached or not; a target holds no
- * operator character, so each redirection has one parse too.
+ * operator character, so each redirection has one parse too. A target and
+ * an assignment's value are read in {@link WORD_PIECE}s, as bash reads a
+ * word, and an option's value with its quotes and escapes whole, so a quoted
+ * blank or `;` stays inside it (#1646).
  * A value never starts with `-`, so every token has exactly one parse: were a
  * `-u` free to take the next `-u` as its value, a long run of them on a
  * command that does not match backtracks exponentially, and regex time is not
@@ -2556,8 +3886,8 @@ function leadToken(open) {
  * A heuristic, not a shell parser: the hooks catch mistakes, not deliberate
  * obfuscation. A string handed to a shell (`bash -c`, `eval`) is not lexed —
  * the rules read the raw text of the list element that hands it over then
- * ({@link view}, #1607), and its first word, past a lead of these tokens, is a
- * program word ({@link fedStarts}, #1634).
+ * ({@link view}, #1607), and its commands, past a lead of these tokens, are
+ * read in the text that shell reads ({@link fedStarts}, #1634, #1646).
  */
 export const COMMAND_LEAD = String.raw`(?:${leadToken("(?:")})*`;
 
@@ -2690,9 +4020,6 @@ export function commandWords(text, from) {
   return out;
 }
 
-/** The characters bash's `$'…'` decodes after a backslash. */
-const ANSI = { n: "\n", t: "\t", r: "\r", "\\": "\\", "'": "'", '"': '"' };
-
 /**
  * The quoted or escaped piece of a bash word that starts at `i` in `text` — a
  * `\` escape, `'…'`, `$'…'` or `"…"` — as `[decoded, indexAfter]`, read to the
@@ -2710,8 +4037,14 @@ function quotedPiece(text, i) {
   if (ch === "$" && text[i + 1] === "'") {
     let k = i + 2;
     let s = "";
-    for (; k < text.length && text[k] !== "'"; k++)
-      s += text[k] === "\\" ? (ANSI[text[++k]] ?? text[k] ?? "") : text[k];
+    // Every ANSI-C escape decoded as bash decodes it (`\x20`, `\047`, `\cA`),
+    // so a `$'cd\x20../x; …'` a wrapper runs is read as the line it is (#1646).
+    while (k < text.length && text[k] !== "'")
+      if (text[k] === "\\") {
+        const [c, next] = ansiEscape(text, k + 1);
+        s += c;
+        k = next;
+      } else s += text[k++];
     return [s, Math.min(k + 1, text.length)];
   }
   if (ch === '"') {
