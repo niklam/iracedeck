@@ -1703,12 +1703,6 @@ function assignsAt(t, from, s) {
   }
 }
 /**
- * The closing word of a compound command, whose redirections set the stdin of
- * every command inside it ({@link fedStarts}' `stdinAround`, #1659): `}`,
- * `done`, `fi` and `esac` as words, and any `)`.
- */
-const CLOSER = /(?:(?<=^|[\s;&|])(?:\}|done|fi|esac)|\))(?=[\s<0-9]|$)/g;
-/**
  * Text between two `exec`s across which the later one may not run, or not in
  * the same shell (`fedStarts`' `stdinAround`): a pipe, `&&`, `||` or `&` (any
  * `&`, a redirect's too, erring to deny), a group, a subshell or a compound
@@ -1906,17 +1900,23 @@ const OPENS = new Set(["{", "while", "until", "if", "for", "select", "case"]);
  * input redirection gives the commands inside it that stdin, not the pipe
  * into it (`printf x | { bash; } </dev/null`, PR #1798 review): from the
  * innermost compound command out, the first that has its own redirection or
- * is piped decides.
+ * is piped decides. The array also carries `closers`: every compound
+ * command's closing word, in order, as `{ at, from }`, where it starts and
+ * where the words after it start, whose redirections set the stdin of every
+ * command inside it ({@link fedStarts}' `stdinAround`, CLI check of
+ * 8086892f8).
  */
 function pipedCommands(command) {
   const { commands, ends } = level(command);
   const out = [];
   const frames = [];
+  const closers = [];
   // Closes the innermost compound command of `kinds` at its closing word `at`,
   // marking it when the words from `from` to `to` after that word redirect
   // its stdin.
   const pop = (kinds, at, from, to) => {
     if (!frames.length || !kinds.includes(frames.at(-1).kind)) return;
+    closers.push({ at, from });
     Object.assign(frames.pop(), { close: at, redirected: commandOf(NO_OPTIONS, command, from, to).stdin !== "pipe" });
   };
   let pending = false;
@@ -1961,12 +1961,24 @@ function pipedCommands(command) {
     return false;
   };
   // `closes`, where the closing word of each compound command holding it stands.
-  return out.map(({ start, end, own, chain }) => ({
+  const read = out.map(({ start, end, own, chain }) => ({
     start,
     end,
     piped: own || fed(chain),
     closes: chain.map((f) => f.close).filter((x) => x !== undefined),
   }));
+  // The closing words inside each command substitution too, read as its own
+  // command list (`x=$( { bash; } <<< y )`), since a raw scan once found them
+  // there (CLI check of 8086892f8). Their commands are not listed: a shell
+  // inside one then finds no enclosing closer, which ends no search early.
+  for (const [s, e] of commandSubs(command)) {
+    const from = command[s] === "$" ? s + 2 : s + 1;
+    // Up to the closing `)` or backtick, which `e` is just past.
+    for (const x of pipedCommands(command.slice(from, Math.max(from, e - 1))).closers)
+      closers.push({ at: x.at + from, from: x.from + from });
+  }
+  closers.sort((x, y) => x.at - y.at);
+  return Object.assign(read, { closers });
 }
 
 /**
@@ -2173,7 +2185,10 @@ function fedStarts(command, text, fed, programs) {
   // in the command (`exec 0<<<…; bash`): `{ form, shape }` for a stream the
   // hook does not read ({@link STREAM_FORMS}), `undefined` for none or a file.
   // A closer after the shell that does not enclose it (`bash | { cat; } <<<
-  // x`) counts too: the gate errs to deny.
+  // x`) counts too: the gate errs to deny. The closing words are the compound
+  // commands {@link pipedCommands} recorded, never a quoted `)` a scan of the
+  // raw span would read as one (`bash -s -- 'a ) <<< b'`, CLI check of
+  // 8086892f8).
   const stdinAround = (p, b) => {
     const formOf = (kind, shape) => STREAM_FORMS[kind] && { form: STREAM_FORMS[kind], shape };
     // The nearest enclosing closing word that redirects stdin at all decides:
@@ -2181,12 +2196,20 @@ function fedStarts(command, text, fed, programs) {
     // outer redirection (PR #1798 review at 0dced8c2f). A stream on any
     // closer before that is refused, enclosing or not.
     const encloses = new Set(fedCommandAt(p)?.closes);
-    for (const m of text.slice(p, b).matchAll(CLOSER)) {
-      const r = commandOf(NO_OPTIONS, text, p + m.index + m[0].length, b);
+    const { closers } = fedCommands;
+    let lo = 0;
+    for (let hi = closers.length; lo < hi;) {
+      const mid = (lo + hi) >> 1;
+      if (closers[mid].at <= p) lo = mid + 1;
+      else hi = mid;
+    }
+    for (let k = lo; k < closers.length && closers[k].at < b; k++) {
+      const { at, from } = closers[k];
+      const r = commandOf(NO_OPTIONS, text, from, b);
       if (r.stdin === "pipe") continue;
-      const stream = formOf(r.stdin, `${m[0]} <…`);
+      const stream = formOf(r.stdin, `${text.slice(at, from)} <…`);
       if (stream) return stream;
-      if (encloses.has(p + m.index)) return undefined;
+      if (encloses.has(at)) return undefined;
     }
     // The last `exec` that sets stdin wins, but one that resets it to a file
     // only when it surely runs in the same shell after the one it overrides:

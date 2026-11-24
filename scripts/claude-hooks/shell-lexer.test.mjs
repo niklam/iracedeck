@@ -2770,3 +2770,47 @@ describe("the stopping rule: watch -x inside a string (#1659 CLI check)", () => 
     expect(lexer.view(`bash -c 'watch -x gh pr merge 7'`).programs.some((p) => p[0] === at)).toBe(true);
   });
 });
+
+// CLI check of 8086892f8: the closing words around a stdin shell are the
+// compound commands the lexer recorded, never a quoted `)` or `}` that a raw
+// scan of the span read as one.
+describe("the stopping rule: closing words from the recorded compound commands (#1659 CLI check)", () => {
+  it.each([
+    `bash -s -- 'example ) <<< data'`,
+    `bash -s -- "a } <<< b"`,
+    `bash -s -- 'x; done <<< y'`,
+    `bash -s -- 'fi < <(x)'`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+  it.each([
+    [`{ bash; } <<< x`, "here-string"],
+    [`( bash ) <<< x`, "here-string"],
+    [`(bash)<<<x`, "here-string"],
+    [`while true; do bash; done <<< x`, "here-string"],
+    [`until false; do bash; done <<< x`, "here-string"],
+    [`for i in 1; do bash; done <<< x`, "here-string"],
+    [`select i in a; do bash; done <<< x`, "here-string"],
+    [`if true; then bash; fi <<< x`, "here-string"],
+    [`if true; then :; else bash; fi <<< x`, "here-string"],
+    [`case a in a) bash;; esac <<< x`, "here-string"],
+    [`case a in (a) bash;; esac <<< x`, "here-string"],
+    [`( ( bash ) ) <<< x`, "here-string"],
+    [`{ ( bash ); } <<< x`, "here-string"],
+    [`( { bash; } ) <<< x`, "here-string"],
+    // Inside a command substitution, where the raw scan read them too.
+    [`x=$( { bash; } <<< y )`, "here-string"],
+    ["echo `{ bash; } <<< y`", "here-string"],
+    [`x=$(echo $( ( bash ) <<< y ))`, "here-string"],
+    [`{ bash\n} <<< x`, "here-string"],
+    [`while :\ndo bash\ndone <<< x`, "here-string"],
+    [`{ bash; } 0<<< x`, "here-string"],
+    [`{ bash; } < <(echo y)`, "process substitution"],
+    [`{ bash; } <&3`, "descriptor"],
+    [`{ bash -s -- 'a ) b'; } <<< x`, "here-string"],
+    // Inside a command substitution, which a raw scan read too.
+    [`x=$( { bash; } <<< y )`, "here-string"],
+    ["echo `{ bash; } <<< y`", "here-string"],
+    [`x=$(echo $( ( bash ) <<< y ))`, "here-string"],
+  ])("refuses %s (%s)", (c, form) =>
+    expect(lexer.refusedForms(c)[0]?.form).toBe(`a shell reading its script from a ${form}`),
+  );
+});

@@ -5703,3 +5703,11 @@ describe("watch -x inside a string (#1659)", () => {
     expect(stopped(`bash -c 'watch -x bash -c ls'`)).toContain("a string inside a string");
   });
 });
+
+// CLI check of 8086892f8: a quoted `)` is no closing word.
+describe("a quoted closing word after a stdin shell (#1659)", () => {
+  it("passes one in a quoted argument, and refuses a real closer's here-string", () => {
+    passes(`bash -s -- 'example ) <<< data'`);
+    expect(stopped(`( bash -s -- 'example' ) <<< 'gh pr merge 7 --squash'`)).toContain("from a here-string");
+  });
+});
