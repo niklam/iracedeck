@@ -3,9 +3,11 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  COMPONENT,
   importedPackages,
   isTestSource,
   moduleReferences,
+  moduleSource,
   packageOf,
   trackedPackageSources,
   VENDORED_SOURCES,
@@ -87,8 +89,125 @@ describe("isTestSource", () => {
   );
 });
 
+describe("moduleSource (#1662)", () => {
+  /** The imports `text` makes as `file`, read through moduleSource. */
+  const specifiers = (file, text) => moduleReferences(moduleSource(file, text)).map(({ specifier }) => specifier);
+
+  it("passes a code file through unchanged", () => {
+    const text = 'import a from "./a.js";\n<p>not markup in a .ts</p>';
+
+    expect(moduleSource("packages/x/src/a.ts", text)).toBe(text);
+  });
+
+  describe("an .astro component", () => {
+    const text = [
+      "---",
+      'import Card from "./Card.astro";',
+      'import { rows } from "../../../iracing-actions/src/rows.js";',
+      "---",
+      "",
+      '<p>import x from "../../../deck-iracing/src/a.js"</p>',
+      '<!-- <script>import "../../../iracing-sdk/src/b.js";</script> -->',
+      '<script type="application/ld+json">{ "import": "../../../c.js" }</script>',
+      '<script type="importmap">{ "imports": { "d": "../../../d.js" } }</script>',
+      "<script>",
+      '  import { go } from "../client/go.js";',
+      "  go();",
+      "</script>",
+      '<script is:inline>import "../inline.js";</script><script>import "../after.js";</script>',
+      "",
+    ].join("\n");
+    const file = "packages/website/src/components/Planted.astro";
+
+    it("reads its frontmatter and each <script> ESLint reads, at the file's own offsets", () => {
+      const source = moduleSource(file, text);
+
+      expect(source).toHaveLength(text.length);
+      expect(source.split("\n")).toHaveLength(text.split("\n").length);
+      expect(source.indexOf('"../../../iracing-actions/src/rows.js"')).toBe(
+        text.indexOf('"../../../iracing-actions/src/rows.js"'),
+      );
+      expect(specifiers(file, text)).toEqual([
+        "./Card.astro",
+        "../../../iracing-actions/src/rows.js",
+        "../client/go.js",
+        "../inline.js",
+        "../after.js",
+      ]);
+    });
+
+    it("reads nothing from markup, a comment, a JSON script or an import map", () => {
+      const source = moduleSource(file, text);
+
+      for (const mention of ["deck-iracing", "iracing-sdk", "../../../c.js", "../../../d.js", "<p>", "<script"]) {
+        expect(source, mention).not.toContain(mention);
+      }
+    });
+
+    it("reads a component with no frontmatter by its scripts alone, and one with neither as empty", () => {
+      expect(specifiers(file, '<p>x</p>\n<script>import "./a.js";</script>\n')).toEqual(["./a.js"]);
+      expect(moduleSource(file, '<p>import a from "./a.js"</p>\n').trim()).toBe("");
+    });
+  });
+
+  describe("an .mdx page", () => {
+    const text = [
+      "---",
+      "title: Planted",
+      'hero: "../../../../../iracing-actions/src/hero.js"',
+      "---",
+      "",
+      'import Gallery from "../../../components/Gallery.astro";',
+      "import {",
+      "  ROWS,",
+      '} from "../../../../../iracing-actions/src/rows.js";',
+      'export const meta = { from: "../../../data/meta.json" };',
+      "",
+      'Prose that says import x from "../../../../../deck-iracing/src/a.js" mid-line.',
+      "",
+      "```ts",
+      'import { y } from "../../../../../iracing-sdk/src/b.js";',
+      "```",
+      "",
+      "<Gallery rows={ROWS} />",
+      "",
+    ].join("\n");
+    const file = "packages/website/src/content/docs/planted.mdx";
+
+    it("reads its import and export blocks, a multi-line import whole, at the file's own offsets", () => {
+      const source = moduleSource(file, text);
+
+      expect(source).toHaveLength(text.length);
+      expect(specifiers(file, text)).toEqual([
+        "../../../components/Gallery.astro",
+        "../../../../../iracing-actions/src/rows.js",
+      ]);
+      expect(source).toContain('export const meta = { from: "../../../data/meta.json" };');
+    });
+
+    it("reads nothing from the frontmatter, prose, fenced code or JSX", () => {
+      const source = moduleSource(file, text);
+
+      for (const mention of ["hero.js", "deck-iracing", "iracing-sdk", "Prose", "<Gallery"]) {
+        expect(source, mention).not.toContain(mention);
+      }
+    });
+  });
+});
+
 describe("trackedPackageSources", () => {
   const files = trackedPackageSources(ROOT);
+
+  it("lists the .astro components and .mdx pages only when asked, and never a plain .md", () => {
+    const withComponents = trackedPackageSources(ROOT, { components: true });
+    const components = withComponents.filter((file) => COMPONENT.test(file));
+
+    expect(files.some((file) => COMPONENT.test(file))).toBe(false);
+    expect(components).toContain("packages/website/src/components/IconGallery.astro");
+    expect(components).toContain("packages/website/src/content/docs/docs/development/icon-gallery.mdx");
+    expect(withComponents.filter((file) => !COMPONENT.test(file))).toEqual(files);
+    expect(withComponents.some((file) => file.endsWith(".md"))).toBe(false);
+  });
 
   it("lists the packages' sources and leaves out build output, plugin bundles and vendored files", () => {
     expect(files.length).toBeGreaterThan(1000);

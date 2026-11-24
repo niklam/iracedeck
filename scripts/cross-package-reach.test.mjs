@@ -11,8 +11,11 @@
 // removed them. This keeps them from growing back.
 //
 // For every tracked source under `packages/<pkg>/` (`trackedPackageSources`,
-// which leaves out `dist/`, plugin bundle folders and vendored files), every
-// path the file names relative to itself is resolved and must not land inside
+// which leaves out `dist/`, plugin bundle folders and vendored files), the
+// website's `.astro` components and `.mdx` pages included and read by their
+// module code alone — an `.astro` frontmatter and `<script>` bodies, an `.mdx`
+// page's import and export blocks (`moduleSource`, #1662) — every path the
+// file names relative to itself is resolved and must not land inside
 // `packages/<other>/`:
 //   * a relative module specifier — import, export, dynamic import, `require`,
 //     `import("…")` type, triple-slash `path` — read with `ts.preProcessFile`,
@@ -56,18 +59,29 @@
 // path, and they imported @iracedeck/iracing-sdk, whose native addon loads in
 // module scope. So every non-test source of a sim-neutral package whose module
 // imports leave its own package — ALLOWED's entries there, and the scripts that
-// import the root `scripts/lib/`, which no sim block lints — is a root, and the
-// files it loads at runtime are walked (`runtimeClosure`, whose comments state
+// import the root `scripts/lib/`, which no sim block lints — is a root, and so
+// is every `.mdx` page, which ESLint does not read (`closureRoots`); the files
+// each loads at runtime are walked (`runtimeClosure`, whose comments state
 // each rule of the walk). The closure may load a workspace package only if that
 // package is sim-neutral; a failure names the chain of files that leads to the
-// import, so it says where to cut.
+// import, so it says where to cut. The walk stops at a sim-neutral package
+// because the sim-neutral ESLint block refuses its sources every package that
+// is not sim-neutral, the complement derived from the workspace (#1662).
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 import { SIM_NEUTRAL_PACKAGES } from "../eslint.config.js";
-import { CODE, isTestSource, moduleReferences, packageOf, trackedPackageSources } from "./lib/source-imports.mjs";
+import {
+  COMPONENT,
+  isModuleSource,
+  isTestSource,
+  moduleReferences,
+  moduleSource,
+  packageOf,
+  trackedPackageSources,
+} from "./lib/source-imports.mjs";
 import { trackedPackageDirs } from "./lib/workspace-packages.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
@@ -186,7 +200,9 @@ const PATH_MODULES = new Set(["path", "node:path", "path/posix", "node:path/posi
 const URL_MODULES = new Set(["url", "node:url"]);
 
 function scriptKind(file) {
-  if (/\.[cm]?tsx$/.test(file)) return ts.ScriptKind.TSX;
+  // An .astro component's frontmatter is TypeScript; an .mdx page's ESM may hold JSX.
+  if (file.endsWith(".astro")) return ts.ScriptKind.TS;
+  if (/\.[cm]?tsx$|\.mdx$/.test(file)) return ts.ScriptKind.TSX;
   if (/\.[cm]?ts$/.test(file)) return ts.ScriptKind.TS;
   if (/\.[cm]?jsx$/.test(file)) return ts.ScriptKind.JSX;
 
@@ -298,7 +314,8 @@ function constInitializers(sf) {
  * @param {string} input.source
  * @returns {string[]}
  */
-export function pathsNamed({ file, source }) {
+export function pathsNamed({ file, source: text }) {
+  const source = moduleSource(file, text);
   const pkg = file.split("/")[1];
   const fileAbs = `${REPO}/${file}`;
   const dir = P.dirname(fileAbs);
@@ -597,7 +614,8 @@ export function reachProblems(found, allowed, files, namedNotOpened = {}) {
  * @param {string} input.source
  * @returns {{ loads: string[], unread: string[] }}
  */
-export function runtimeImports({ file, source }) {
+export function runtimeImports({ file, source: text }) {
+  const source = moduleSource(file, text);
   const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, scriptKind(file));
   const loads = [];
   const unread = [];
@@ -690,28 +708,57 @@ export function resolveRuntimeFile(fromFile, specifier, read) {
 const UNFOLLOWABLE = /^(\/|\\|[a-z][a-z\d+.-]*:)/i;
 
 /**
+ * One of Astro's virtual modules (`astro:assets`, `astro:content`): the
+ * `astro` package's own, third-party like `astro` itself, so ignored as a bare
+ * third-party specifier is.
+ */
+const ASTRO_VIRTUAL = /^astro:/;
+
+/**
+ * True when a relative specifier names a file that holds no module code by its
+ * extension (`.json`, `.svg`, `.png`), so it is a leaf whether or not it
+ * exists: a generated, gitignored data file such as the website's
+ * `src/data/icon-gallery.json` loads nothing on a fresh clone either. A code
+ * extension, `.astro`, `.mdx`, none at all, or a query (`?worker` runs code)
+ * must resolve to a file.
+ */
+function isDataSpecifier(specifier) {
+  const ext = P.extname(specifier);
+
+  return ext !== "" && !/[?#]/.test(specifier) && !isModuleSource(specifier) && !Object.hasOwn(SOURCE_EXTENSIONS, ext);
+}
+
+/**
  * Walks the files `root` loads when it runs and reports every workspace
  * package that closure loads which is not sim-neutral (#1662). Pure: `read`
  * returns a repo-relative file's text, or undefined when there is no such file,
  * so the controls need no disk.
  *
  * The rules of the walk:
- *   * Only what loads at runtime is an edge, as `runtimeImports` reads it.
+ *   * Only what loads at runtime is an edge, as `runtimeImports` reads it; an
+ *     `.astro` component and an `.mdx` page are read by their module code
+ *     (`moduleSource`), so a walk passes through the website's pages too.
  *   * A relative specifier is followed file by file, resolved as tsx would
  *     (`resolveRuntimeFile`), across package boundaries too. One that resolves
  *     to no file is a failure, not a skip: an instrument that drops what it
- *     cannot read passes vacuously. A file that is not code (`.json`, `.svg`)
- *     is a leaf.
+ *     cannot read passes vacuously. A file that holds no module code (`.json`,
+ *     `.svg`) is a leaf, and need not exist (`isDataSpecifier`): a gitignored
+ *     generated data file loads nothing either way.
  *   * A workspace package's specifier (`@iracedeck/<name>[/sub]`) is checked by
  *     the package's directory, mapped through each package.json's `name`, and is
- *     not descended into. A sim-neutral package's own sources are held by the
- *     ESLint block and its relative reaches out of itself by this same check,
- *     so the induction holds without walking it; a non-sim-neutral one is the
- *     failure. A specifier naming the `@iracedeck` scope but no workspace
- *     package fails too.
- *   * A bare third-party specifier (`zod`) and a Node builtin (`node:fs`, `fs`)
- *     are ignored; an absolute path or other URL scheme cannot be followed and
- *     fails.
+ *     not descended into. A non-sim-neutral one is the failure. A sim-neutral
+ *     one needs no walk, by induction: the sim-neutral ESLint block refuses its
+ *     linted sources (`.ts`, `.mts`, `.mjs`, `.astro`) every workspace package
+ *     that is not sim-neutral, by bare name and subpath, the four sim packages
+ *     and their complement NON_NEUTRAL_PACKAGES alike, derived from the
+ *     workspace in eslint.config.js and proved per package by
+ *     scripts/deck-core-sim-boundary.test.mjs (#1662); its `.mdx` pages, which
+ *     ESLint does not read, are roots of this walk (`closureRoots`); and its
+ *     relative reaches out of itself are roots too. A specifier naming the
+ *     `@iracedeck` scope but no workspace package fails.
+ *   * A bare third-party specifier (`zod`), an Astro virtual module
+ *     (`astro:assets`) and a Node builtin (`node:fs`, `fs`) are ignored; an
+ *     absolute path or other URL scheme cannot be followed and fails.
  * Each failure names the chain of files from `root` to the importing one, the
  * first chain the breadth-first walk met, so it says where to cut.
  *
@@ -739,7 +786,7 @@ export function runtimeClosure({ root, read, packageDirs, neutral }) {
   while (queue.length > 0) {
     const file = queue.shift();
 
-    if (!CODE.test(file)) continue;
+    if (!isModuleSource(file)) continue;
     const { loads, unread } = runtimeImports({ file, source: read(file) });
 
     for (const what of unread) problems.push(`${chain(file)} makes ${what}: write it so it can be followed`);
@@ -748,6 +795,7 @@ export function runtimeClosure({ root, read, packageDirs, neutral }) {
       if (RELATIVE_SPECIFIER.test(specifier)) {
         const target = resolveRuntimeFile(file, specifier, read);
 
+        if (target === undefined && isDataSpecifier(specifier)) continue;
         if (target === undefined) {
           problems.push(`${chain(file)} imports ${specifier}, which resolves to no file in the repository`);
         } else if (!from.has(target)) {
@@ -756,6 +804,8 @@ export function runtimeClosure({ root, read, packageDirs, neutral }) {
         }
         continue;
       }
+
+      if (ASTRO_VIRTUAL.test(specifier)) continue;
 
       if (UNFOLLOWABLE.test(specifier) && !specifier.startsWith("node:")) {
         problems.push(`${chain(file)} imports ${specifier}, an absolute path or URL this check cannot follow`);
@@ -786,7 +836,8 @@ export function runtimeClosure({ root, read, packageDirs, neutral }) {
 }
 
 const PACKAGES = new Set(trackedPackageDirs(ROOT));
-const FILES = trackedPackageSources(ROOT);
+// The .astro components and .mdx pages too, read by their module code (#1662).
+const FILES = trackedPackageSources(ROOT, { components: true });
 
 function scan(files = FILES) {
   const found = new Map();
@@ -820,11 +871,15 @@ function readRepoFile(file) {
 }
 
 /**
- * The roots of the closure check (#1662): every non-test source of a
- * sim-neutral package that names a module outside its own package by a
- * relative path — ALLOWED's entries in those packages, and the scripts that
- * import the root `scripts/lib/`, which no sim block lints. Inside its own
- * package a relative import stays where the ESLint block holds every file.
+ * The roots of the closure check (#1662), among the non-test sources of the
+ * sim-neutral packages, `.astro` components and `.mdx` pages included:
+ *   * every one that names a module outside its own package by a relative
+ *     path — ALLOWED's entries in those packages, and the scripts that import
+ *     the root `scripts/lib/`, which no sim block lints. Inside its own package
+ *     a relative import stays where the ESLint block holds every file, and a
+ *     package import is the block's to refuse (NON_NEUTRAL_PACKAGES);
+ *   * every `.mdx` page, which ESLint does not read, so neither its package
+ *     imports nor its relative ones are held by anything but this walk.
  *
  * Tests (`isTestSource`) are out of scope: Vitest alone loads them, never a
  * package's build or a plugin, and it loads them against the native mocks
@@ -837,7 +892,9 @@ function closureRoots() {
   return FILES.filter((file) => NEUTRAL.has(file.split("/")[1]) && !isTestSource(file)).filter((file) => {
     const own = `packages/${file.split("/")[1]}/`;
 
-    return moduleReferences(readRepoFile(file)).some(
+    if (file.endsWith(".mdx")) return true;
+
+    return moduleReferences(moduleSource(file, readRepoFile(file))).some(
       ({ kind, specifier }) =>
         kind === "import" &&
         RELATIVE_SPECIFIER.test(specifier) &&
@@ -894,6 +951,17 @@ describe("a sim-neutral package's reach out of itself loads no sim package at ru
 
     expect(gallery.length).toBeGreaterThan(10);
     expect(gallery.filter((file) => file.startsWith("packages/iracing-actions/")).length).toBeGreaterThan(5);
+  });
+
+  it("walks every .mdx page of a sim-neutral package, through the .astro components it renders", () => {
+    const pages = FILES.filter((file) => file.endsWith(".mdx") && NEUTRAL.has(file.split("/")[1]));
+
+    expect(FILES.filter((file) => COMPONENT.test(file)).length).toBeGreaterThan(20);
+    expect(pages.length).toBeGreaterThan(5);
+    expect(roots).toEqual(expect.arrayContaining(pages));
+    expect(walks.get("packages/website/src/content/docs/docs/development/icon-gallery.mdx").visited).toEqual(
+      expect.arrayContaining(["packages/website/src/components/IconGallery.astro"]),
+    );
   });
 
   it("loads only sim-neutral workspace packages from each root", () => {
@@ -1020,6 +1088,54 @@ describe("the check itself (positive controls)", () => {
     ].join("\n");
 
     expect(reach("packages/deck-core/src/a.test.ts", source)).toEqual({});
+  });
+
+  // The website's components and pages, read by their module code (#1662).
+  it("refuses a reach from an .astro frontmatter or <script>, and from an .mdx import", () => {
+    const astro = "packages/deck-core/src/components/Planted.astro";
+    const mdx = "packages/deck-core/src/content/planted.mdx";
+    const target = { "iracing-actions": ["packages/iracing-actions/src/rows.js"] };
+
+    for (const [file, source] of [
+      [astro, '---\nimport { rows } from "../../../iracing-actions/src/rows.js";\n---\n\n<p>{rows}</p>\n'],
+      [astro, '---\nconst ROWS = "../../../iracing-actions/src/rows.js";\n---\n\n<p>{ROWS}</p>\n'],
+      [astro, '<p>x</p>\n\n<script>\n  import { rows } from "../../../iracing-actions/src/rows.js";\n</script>\n'],
+      [mdx, '---\ntitle: x\n---\n\nimport { rows } from "../../../iracing-actions/src/rows.js";\n\n# Planted\n'],
+      [mdx, 'import {\n  rows,\n} from "../../../iracing-actions/src/rows.js";\n\nProse.\n'],
+    ]) {
+      expect(reach(file, source), source).toEqual(target);
+    }
+  });
+
+  it("passes a mention in .astro markup or a comment, and in .mdx frontmatter, prose or fenced code", () => {
+    const astro = [
+      "---",
+      'import Card from "./Card.astro";',
+      "---",
+      "",
+      '<p>import { rows } from "../../../iracing-actions/src/rows.js"</p>',
+      '<a href="../../../iracing-actions/src/rows.js">rows</a>',
+      '<!-- <script>import "../../../iracing-actions/src/rows.js";</script> -->',
+      '<script type="application/json">{ "rows": "../../../iracing-actions/src/rows.js" }</script>',
+      "",
+    ].join("\n");
+    const mdx = [
+      "---",
+      'hero: "../../../iracing-actions/src/rows.js"',
+      "---",
+      "",
+      'Prose: import { rows } from "../../../iracing-actions/src/rows.js".',
+      "",
+      "```ts",
+      'import { rows } from "../../../iracing-actions/src/rows.js";',
+      "```",
+      "",
+      '<Card src="../../../iracing-actions/src/rows.js" />',
+      "",
+    ].join("\n");
+
+    expect(reach("packages/deck-core/src/components/Planted.astro", astro)).toEqual({});
+    expect(reach("packages/deck-core/src/content/planted.mdx", mdx)).toEqual({});
   });
 
   it("does not guess a path built on something constants cannot say", () => {
@@ -1244,6 +1360,62 @@ describe("the runtime-closure check itself (positive controls, #1662)", () => {
 
     expect(visited).toEqual([ROOT_FILE, "packages/website/scripts/data.json", "packages/website/scripts/b.ts"]);
     expect(problems).toEqual([]);
+  });
+
+  // An .mdx page is a root, since ESLint reads none (#1662), and the walk
+  // passes through the .astro components it renders.
+  it("fails an .mdx page's package import and an .astro frontmatter's, through the chain, and no markup mention", () => {
+    const page = "packages/website/src/content/docs/planted.mdx";
+    const card = "packages/website/src/components/Card.astro";
+    const { visited, problems } = walk(
+      {
+        [page]: [
+          "---",
+          "title: Planted",
+          "---",
+          "",
+          'import Card from "../../components/Card.astro";',
+          'import { rows } from "@iracedeck/iracing-actions";',
+          "",
+          'Prose naming "@iracedeck/iracing-sdk" and import("@iracedeck/deck-iracing").',
+          "",
+          "<Card />",
+        ].join("\n"),
+        [card]: [
+          "---",
+          'import { Image } from "astro:assets";',
+          'import data from "../data/generated.json";',
+          'import { Flags } from "@iracedeck/iracing-sdk";',
+          "---",
+          "",
+          '<p>import x from "@iracedeck/deck-iracing"</p>',
+          "<script>",
+          '  import "@iracedeck/iracing-sdk/dist/setup.js";',
+          "</script>",
+        ].join("\n"),
+      },
+      page,
+    );
+
+    expect(visited).toEqual([page, card]);
+    expect(problems).toEqual([
+      expect.stringMatching(
+        /^packages\/website\/src\/content\/docs\/planted\.mdx imports @iracedeck\/iracing-actions: /,
+      ),
+      expect.stringMatching(
+        /planted\.mdx → packages\/website\/src\/components\/Card\.astro imports @iracedeck\/iracing-sdk: /,
+      ),
+      expect.stringMatching(/Card\.astro imports @iracedeck\/iracing-sdk\/dist\/setup\.js: /),
+    ]);
+  });
+
+  it("passes a missing data file, which loads nothing, and still fails a missing component or module", () => {
+    expect(only('import data from "./generated.json";\nimport logo from "./logo.svg";').problems).toEqual([]);
+    for (const specifier of ["./Missing.astro", "./missing.mdx", "./missing", "./missing.mjs", "./data.json?worker"]) {
+      expect(only(`import x from "${specifier}";`).problems, specifier).toEqual([
+        expect.stringContaining(`imports ${specifier}, which resolves to no file`),
+      ]);
+    }
   });
 
   it("fails a missing root rather than passing it empty", () => {
