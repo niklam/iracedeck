@@ -5,6 +5,8 @@ import tsparser from '@typescript-eslint/parser';
 import prettier from 'eslint-config-prettier';
 import stylistic from '@stylistic/eslint-plugin';
 import astro from 'eslint-plugin-astro';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 // The iRacing packages a sim-neutral layer may not import: the packages named in
 // SIM_NEUTRAL_PACKAGES below (#1351, #1367, #1375) and the device shells (#1500).
@@ -57,10 +59,51 @@ export const SIM_NEUTRAL_PACKAGES = Object.freeze([
   'audio-assets',
   'track-data',
   'plugin-build',
+  // The icon gallery's relative reach into iracing-actions, which this block
+  // cannot see, is held sim-free by the runtime-closure check in
+  // scripts/cross-package-reach.test.mjs (#1662).
   'website',
 ]);
+
+// Every workspace package, directory under packages/ → its package.json `name`,
+// read from the tree rather than written out, so a package added later is
+// classified the moment it exists (#1662). A directory without a package.json
+// (a removed package's leftover node_modules) is no package. Read with node:fs,
+// not git, because editors load this config too.
+const PACKAGES_DIR = join(import.meta.dirname, 'packages');
+export const WORKSPACE_PACKAGES = Object.freeze(
+  Object.fromEntries(
+    readdirSync(PACKAGES_DIR, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && existsSync(join(PACKAGES_DIR, entry.name, 'package.json')))
+      .map((entry) => [
+        entry.name,
+        JSON.parse(readFileSync(join(PACKAGES_DIR, entry.name, 'package.json'), 'utf-8')).name,
+      ])
+      // By code unit, the order git and scripts/lib/workspace-packages.mjs list them in.
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+  ),
+);
+
+// The complement of SIM_NEUTRAL_PACKAGES among the workspace packages, less the
+// four SIM_PACKAGES, which keep their own message: the plugin shells, the
+// actions, the Race Engineer catalog and wiring, the replay engine, the
+// composition root and the harness. Each of them reaches a sim package, itself
+// or through another, so a sim-neutral package that imported one would load the
+// sim at one remove, past a rule that named only the four (#1662). It is the
+// editor's early warning on static and type imports; what a sim-neutral package
+// loads at runtime, dynamic import() and require included, is held by the
+// runtime-closure walk in scripts/cross-package-reach.test.mjs, which starts
+// from every source of every sim-neutral package.
+export const NON_NEUTRAL_PACKAGES = Object.freeze(
+  Object.entries(WORKSPACE_PACKAGES)
+    .filter(([dir, name]) => !SIM_NEUTRAL_PACKAGES.includes(dir) && !SIM_PACKAGES.includes(name))
+    .map(([, name]) => name),
+);
+
 const SIM_NEUTRAL_MESSAGE =
   'A sim-neutral package (SIM_NEUTRAL_PACKAGES in eslint.config.js) must not depend on a simulator: reach the sim through deck-core\'s SimConnection interface, the event-bus catalog or an injected delegate, and put iRacing code in an iRacing package such as @iracedeck/deck-iracing (#1351, #1367, #1375).';
+const NEUTRAL_DEPENDS_ON_NEUTRAL_MESSAGE =
+  'A sim-neutral package (SIM_NEUTRAL_PACKAGES in eslint.config.js) depends only on sim-neutral packages: this one is not, so importing it, even for its types, can carry a simulator in at one remove. Move what you need into a sim-neutral package, or take it through an injected delegate (#1662).';
 const PI_COMPONENTS_MESSAGE =
   'iracing-actions is bundled into every plugin, and @iracedeck/pi-components (with ./testing, which loads ejs and node:fs, and ./build) is only its tests\' devDependency: import it from a *.test.ts or *.test-support.ts file (or its .mts or .mjs twin) only (#1375).';
 const SHELL_SIM_MESSAGE =
@@ -251,14 +294,31 @@ export default [
     // a deep import, which iracing-sdk and iracing-native allow because they
     // declare no `exports`, as the plugin-shell block below does (#1500).
     // Type-only imports included.
+    //
+    // Nor does it reach any other package that is not sim-neutral
+    // (NON_NEUTRAL_PACKAGES, the workspace's complement of the list, derived
+    // above), bare name or subpath (#1662): those load the sim themselves, so
+    // refusing the four alone let `@iracedeck/iracing-actions` carry them in.
+    // A rule sees static and type imports only; a dynamic import() or require
+    // is held by the runtime-closure walk in scripts/cross-package-reach.test.mjs.
+    //
+    // This is the only block setting no-restricted-imports on these files: a
+    // later block's options for the rule would replace these rather than add
+    // to them, which scripts/sim-boundary-coverage.test.mjs refuses.
     // scripts/deck-core-sim-boundary.test.mjs proves this rule fires in each.
     files: SIM_NEUTRAL_PACKAGES.flatMap((dir) => sources(`packages/${dir}/**/*`)),
     rules: {
       'no-restricted-imports': [
         'error',
         {
-          paths: SIM_PACKAGES.map((name) => ({ name, message: SIM_NEUTRAL_MESSAGE })),
-          patterns: [{ group: SIM_PACKAGES.map((name) => `${name}/*`), message: SIM_NEUTRAL_MESSAGE }],
+          paths: [
+            ...SIM_PACKAGES.map((name) => ({ name, message: SIM_NEUTRAL_MESSAGE })),
+            ...NON_NEUTRAL_PACKAGES.map((name) => ({ name, message: NEUTRAL_DEPENDS_ON_NEUTRAL_MESSAGE })),
+          ],
+          patterns: [
+            { group: SIM_PACKAGES.map((name) => `${name}/*`), message: SIM_NEUTRAL_MESSAGE },
+            { group: NON_NEUTRAL_PACKAGES.map((name) => `${name}/*`), message: NEUTRAL_DEPENDS_ON_NEUTRAL_MESSAGE },
+          ],
         },
       ],
     },

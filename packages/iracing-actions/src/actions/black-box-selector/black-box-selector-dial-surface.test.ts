@@ -4,11 +4,6 @@ import { resolveDialBoxColors } from "../../shared/dial-box.js";
 import { describeLateInput } from "../../shared/dial-late-input.test-support.js";
 import { actionPressShapes, describePressShapes } from "../../shared/press-shape.test-support.js";
 import {
-  buildTriggerDescription,
-  DialSettings,
-  firingGestures,
-  GESTURE_ACTIONS,
-  pendingRotationPreview,
   renderAdjustControlKnob,
   renderAdjustControlPendingStrip,
   renderAdjustControlStrip,
@@ -17,10 +12,16 @@ import {
   renderSelectControlKnob,
   renderSelectControlPendingStrip,
   renderSelectControlStrip,
+} from "./black-box-selector-dial-render.js";
+import { ROTATIONS, SWITCHED_ROTATION } from "./black-box-selector-dial-settings.js";
+import {
+  buildTriggerDescription,
+  DialSettings,
+  firingGestures,
+  GESTURE_ACTIONS,
+  pendingRotationPreview,
   resolveGestures,
   ROTATION_GESTURE_DEFAULTS,
-  ROTATIONS,
-  SWITCHED_ROTATION,
 } from "./black-box-selector-dial-surface.js";
 import { BlackBoxSelector, BlackBoxSelectorSettings } from "./black-box-selector.js";
 

@@ -28,14 +28,6 @@ vi.mock("@iracedeck/deck-core", async () => {
   };
 });
 
-// The real conversion. A plain factory, because the real barrel's
-// SimIRacingAction extends a deck-core class this suite does not load.
-vi.mock("@iracedeck/deck-iracing", async () => {
-  const units = await import("@iracedeck/deck-iracing/testing");
-
-  return { celsiusToFahrenheit: units.celsiusToFahrenheit };
-});
-
 const METRIC = 1;
 const ENGLISH = 0;
 

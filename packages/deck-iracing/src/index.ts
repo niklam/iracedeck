@@ -13,18 +13,12 @@ export {
 export { IRACING_EXIT_SDK_CONFIRM_MS } from "./exit-confirm.js";
 export { isAutofuelActive, isAutofuelEnabled, isFuelFillOn, isPitstopActive } from "./fuel-telemetry.js";
 export {
-  celsiusToFahrenheit,
   formatFuelAmount,
-  FUEL_UNIT_IMPERIAL,
-  FUEL_UNIT_METRIC,
   fuelFromDisplayUnits,
   fuelToDisplayUnits,
-  GALLONS_TO_LITERS,
-  gallonsToLiters,
   getFuelUnitSuffix,
   isMetricUnits,
-  LITERS_TO_GALLONS,
-  litersToGallons,
+  unitSystemOf,
 } from "./unit-conversion.js";
 export { createElevationCheckSubscriber, type ElevationCheckOptions, hasElevationMismatch } from "./elevation-check.js";
 export { ELEVATION_WARNING_ID, ELEVATION_WARNING_MESSAGE, evaluateElevationWarning } from "./elevation-warning.js";
