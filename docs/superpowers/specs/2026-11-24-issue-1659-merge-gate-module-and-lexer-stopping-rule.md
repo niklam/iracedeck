@@ -27,7 +27,7 @@ The stopping rule is about which forms are worth reading, so it was measured rat
 | `sudo`, `pwsh -c` | 0 | 2 |
 | a reprinted printer, an unclosed lead, an unprintable printer | 0 | 3 |
 
-The classes #1634 and #1646 taught the lexer to read — a printer feeding a shell, `eval` joining words, a here-string or stdin script, ANSI-C and spliced spellings inside a fed string — were typed only by the hook's own QA and reviewers. The one-level shell string and the expanding program word are real and common, and must keep being read.
+The classes #1634 and #1646 taught the lexer to read — a printer feeding a shell, `eval` joining words, a here-string or stdin script, ANSI-C and spliced spellings inside a fed string — were typed only by the hook's own QA and reviewers, with one exception the corpus replay found during implementation: a level-1 string spliced with an outer expansion, which is read (Decision 4, item 3). The one-level shell string and the expanding program word are real and common, and must keep being read.
 
 ## Decision 1: the merge gate is a pure module and an impure reader beside it
 
@@ -54,7 +54,7 @@ Read (normalised), as today:
 
 1. The program word at the typed level in any literal spelling: a path, an `.exe` / `.cmd` / `.ps1` suffix, case, quotes around the whole word, PowerShell's `&` and dot-source (#1606).
 2. A wrapper that runs a program word: `timeout`, `nice`, `env`, `command`, `exec`, `nohup`, `time`, `stdbuf`, `winpty`, `xargs`, `find -exec`.
-3. One level of shell string, given as a single quoted argument of `bash` / `sh` / `zsh` / `fish` `-c`, `powershell` / `pwsh -Command`, `cmd /c`, or `su -c`, read with that shell's quote removal (`'…'`, and `"…"` with its `\"`, `\\`, `\$`, `` \` `` escapes).
+3. One level of shell string, given as a single quoted argument of `bash` / `sh` / `zsh` / `fish` `-c`, `powershell` / `pwsh -Command`, `cmd /c`, or `su -c`, read with that shell's quote removal (`'…'`, and `"…"` with its `\"`, `\\`, `\$`, `` \` `` escapes), including a string spliced from quoted pieces and outer expansions (`'…'"$VAR"'…'`), re-opened on 7 real commands in the census (wait loops and CI waits under `timeout N bash -c`, 4 of which the refusal would have turned from pass to deny).
 4. A program word that expands (`$PY`, `"$FF"`), judged as `gh`, as `git` and as a wrapper (#1606, #1646), since it is common.
 5. A directory change with a literal target: `cd`, `Set-Location`, `pushd` / `popd` as a stack, `git -C`, a runner's `-C` / `--dir`. A target that expands, `~`, `cd -`, a bare `pushd` or a `popd` with nothing pushed makes the directory unknown, and the rules that read it err to deny or ask, as for a final-stage `cd` since #1646.
 
@@ -64,18 +64,19 @@ Refused outright, whatever the text holds:
 - a shell reading its script from stdin, a here-string or a heredoc;
 - `eval`;
 - a `sudo` that runs a shell (`-s`, `-i`, `--shell`, `--login`, or a shell word);
-- a shell string that is not one plain level: an ANSI-C `$'…'` or locale `$"…"` string, a string spliced from several quoted pieces, a string inside a string (a shell feed found inside a level-1 string), and a substitution inside a level-1 string at command position;
+- a shell string that is not one plain level: an ANSI-C `$'…'` or locale `$"…"` string, a string inside a string (a shell feed found inside a level-1 string), and a substitution inside a level-1 string at command position;
 - a program word inside a level-1 string whose text is not its name after quote removal (an escape, a splice or an expansion in it).
 
 **A refused form can be re-opened, for one form only**, when the census or a session shows a real, non-probe command of it refused and the agent cannot reasonably type it another way. It is then added to the read list here, with its tests and a census count in the PR. A spelling found by a probe or a review alone is answered with a refusal, never a reader.
 
-**Applied to #1646's class in this issue.** The issue asks to apply the rule or record why the class is worth normalising; the census answers that it is not. So the readers that exist only for refused forms are deleted and replaced by the refusal: the printer model (`printed`, `reprinted`, `unprintable`, echo's option and escape reading, `joinedLevel`), `eval` word joining, here-string and stdin-script reading, ANSI-C and spliced level decoding, and level reading below level 1. The detection stays, since the lexer must still find a feed to refuse it: `programKind` already reports `how: "shell"` with `via` and `stdin`. This change is the one behaviour change in the issue. It lands as its own commit after the two moves, and only in the direction of refusal: the corpus replay must show no non-probe command changing verdict, and the PR lists every probe verdict that changed. If the replay finds a real command the refusal would catch, that form goes on the read list and the PO is told before the commit.
+**Applied to #1646's class in this issue.** The issue asks to apply the rule or record why the class is worth normalising; the census answers that it is not. So the readers that exist only for refused forms are deleted and replaced by the refusal: the printer model (`printed`, `reprinted`, `unprintable`, echo's option and escape reading, `joinedLevel`), `eval` word joining, here-string and stdin-script reading, ANSI-C level decoding, and level reading below level 1. The quote removal that joins a spliced level-1 string stays, since that form is read (item 3). The detection stays, since the lexer must still find a feed to refuse it: `programKind` already reports `how: "shell"` with `via` and `stdin`. This change is the one behaviour change in the issue. It lands as its own commit after the two moves, and only in the direction of refusal: the corpus replay must show no non-probe command changing verdict, and the PR lists every probe verdict that changed. If the replay finds a real command the refusal would catch, that form goes on the read list and the PO is told before the commit.
 
 **What this does to the open follow-ups**, for the PO to re-scope them:
 
 | Item | Disposition under the rule |
 | --- | --- |
-| #1783 1–4 (a `$(…)` in a fed string, a pipeline into a shell inside a string, an escaped program name in a string, printf literal text before `%s`) | Refused outright; closed by this issue's refusal commit |
+| #1783 1 (a `$(…)` in a fed string) | Not closed. A `$(…)` at command position in a level-1 string is refused here, but one in argument position is read (106 real commands use one), so reading it correctly is part of #1783's level-1 argument reading |
+| #1783 2–4 (a pipeline into a shell inside a string, an escaped program name in a string, printf literal text before `%s`) | Refused outright; closed by this issue's refusal commit |
 | #1783 comment (arguments read from the raw text in a fed string) | Still due, for level 1 only: the rules read their arguments from the quote-removed level-1 text. Stays #1783, much smaller |
 | #1787 1, 4, 5 (octal `%d`, `echo --`, printf output owner range) | The code they misread is deleted; closed here |
 | #1787 2 (`-C` inside a `-c` value in a level-1 string) | A misread of a read form: fix in #1787 |
@@ -100,7 +101,7 @@ Refused outright, whatever the text holds:
 
 ## Testing
 
-- **Suite.** Every moved test passes unedited apart from its imports, and the per-file counts add up to the same total before and after the moves. The refusal commit adds a test per refused form, each with a positive control that it is refused and failing on the code before it (`printf … | bash`, `echo … | sh`, `bash <<< …`, `bash <<'EOF'`, `eval …`, `sudo -s …`, `bash -c $'…'`, a spliced string, a nested `bash -c "sh -c '…'"`, a `$(…)` at command position in a string, an escaped program word in a string), and keeps a test per read form proving it is still read (`timeout 1500 sh -c 'pnpm install && pnpm build'`, `powershell -NoProfile -Command "…"`, `cmd /c "…"`, `find . -exec …`, `$PY x`).
+- **Suite.** Every moved test passes unedited apart from its imports, and the per-file counts add up to the same total before and after the moves. The refusal commit adds a test per refused form, each with a positive control that it is refused and failing on the code before it (`printf … | bash`, `echo … | sh`, `bash <<< …`, `bash <<'EOF'`, `eval …`, `sudo -s …`, `bash -c $'…'`, a splice inside the program word (`bash -c 'g'"h"' pr merge 7'`), a nested `bash -c "sh -c '…'"`, a `$(…)` at command position in a string, an escaped program word in a string), and keeps a test per read form proving it is still read (`timeout 1500 sh -c 'pnpm install && pnpm build'`, `timeout 600 bash -c 'until gh run view '"$RUN"' …; do …; done'`, `powershell -NoProfile -Command "…"`, `cmd /c "…"`, `find . -exec …`, `$PY x`).
 - **Corpus replay.** `replay-corpus.mjs` over the local transcripts, base against branch: zero changed verdicts after each move commit; after the refusal commit, zero changed verdicts on non-probe commands and the changed probe verdicts listed in the PR.
 - **Live fire** (`hooks.md` rule 6, by `qa`). In a live session on the branch: a plain `gh pr merge` of a test PR number is judged by the moved gate with the same refusal text as on `master`; a spec commit missing a section is denied by the moved grammar; `echo 'gh pr list' | bash` and `bash -c $'echo hi'` are refused with the new message; `timeout 60 sh -c 'pnpm --version'` runs.
 - **Review.** `/code-review xhigh` (a gate), then the second read (a gate), then the CodeRabbit CLI round.
