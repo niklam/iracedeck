@@ -119,7 +119,7 @@ The repository carries its own [Claude Code](https://docs.claude.com/en/docs/cla
 
 **The hooks run in your fork too.** `.claude/settings.json` registers hooks that check commands before they run. A refusal is a house rule, not a broken setup, and its message names the rule and what to do instead:
 
-- `git worktree add` accepts only a sibling of your checkout named `ir-<issue>` (`../ir-123`), created from an up-to-date `origin/master` (`git fetch origin` first). A plain branch in your clone works just as well.
+- `git worktree add` accepts only a sibling of your checkout named `ir-<issue>` (`../ir-123`), created from an up-to-date `origin/master`. In a fork `origin/master` is your fork's, which can lag the main repository, so bring it level with `upstream` first (`git fetch upstream`, `git push origin upstream/master:master`, then `git fetch origin`); the worktree then starts from the same code as a branch from `upstream/master`. A plain branch in your clone works just as well.
 - Creating a worktree for an issue with no spec on `origin/master` asks before it goes ahead when the issue is an enhancement or its labels can't be read, which in a fork is usually every issue. That prompt is the maintainer's spec check; contributors don't write specs, so let it continue.
 - `gh pr create` is refused unless the title has the form above.
 - `/code-review` must name an effort level (`low`, `medium`, `high` or `xhigh`) and an `ir-<issue>` worktree to review, and never carries `--fix`.
