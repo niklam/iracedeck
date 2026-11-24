@@ -18,10 +18,14 @@
  * writing a file throws, so a rule that reaches past `ctx` shows as a THROW
  * verdict on that side rather than running anything.
  *
+ * Both sides judge with one context, whose `cwd` and package manifests are
+ * the head checkout's (`--head-dir`, or this one).
+ *
  * Exit status: 0 when every pair gave the same completed verdict, 1 when one
- * differs, 2 on a
- * usage error, 3 when the run could not be made (the base unreadable, a
- * module that does not load, a corpus or manifest it cannot read), 4 when a
+ * differs, 2 on a usage error, 3 when the run could not be made (the base
+ * unreadable, a module that does not load, a corpus or manifest it cannot
+ * read) or a comparison skipped a tool-use record that did not parse, so
+ * compared part of the corpus, 4 when a
  * comparison judged no command at all (a `--match` naming no folder), which
  * proves nothing, 5 when none differs but both sides threw alike on some
  * command, which compares nothing there (USAGE, {@link exitStatus}).
@@ -43,7 +47,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
-/** The checkout this file lives in: the default head side, the base's repository and the context's `cwd`. */
+/** The checkout this file lives in: the default head side and the base's repository. */
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..");
 /** Where `checkBash` and `view` live, relative to a checkout or a copy of one. */
 const RULES = "scripts/claude-hooks/rules-bash.mjs";
@@ -56,7 +60,8 @@ export const USAGE = `Usage: node scripts/claude-hooks/replay-corpus.mjs --trans
   --transcripts <dir>   read every *.jsonl under <dir>, recursively (required)
   --match <substring>   only the files whose path under <dir> contains it
   --base <git ref>      the revision whose checkBash is the base side (default origin/master)
-  --head-dir <dir>      the checkout whose scripts/ is the head side (default: this one)
+  --head-dir <dir>      the checkout whose scripts/ is the head side, and whose cwd and
+                        package manifests both sides judge with (default: this one)
   --census-only         print the census, judge nothing
   --show-commands       print each differing command's text and its verdicts' full text
                         (otherwise only each verdict's kind)
@@ -66,7 +71,7 @@ Exit status:
   0  every pair gave the same completed verdict
   1  a verdict differs
   2  a usage error
-  3  the run could not be made
+  3  the run could not be made, or a comparison skipped a tool-use record that did not parse
   4  a comparison judged no command (no commands judged)
   5  none differs, but both sides threw alike on some command`;
 
@@ -410,9 +415,15 @@ export function comparePair(base, head) {
   return base.startsWith("THROW: ") ? "threw" : "identical";
 }
 
-/** The tool's exit status for a comparison ({@link main}): 1 for a difference, else 5 when both sides threw on a command, else 0. */
-export function exitStatus({ differences, threw }) {
+/**
+ * The tool's exit status for a comparison ({@link main}): 1 for a
+ * difference, else 3 when a tool-use record did not parse, so part of the
+ * corpus went unjudged (CLI check of be3d79a4b), else 5 when both sides threw
+ * on a command, else 0.
+ */
+export function exitStatus({ differences, threw, unparsed = 0 }) {
   if (differences) return 1;
+  if (unparsed) return 3;
   return threw ? 5 : 0;
 }
 
@@ -810,15 +821,12 @@ const isDirectory = (p) => {
 
 /**
  * The tool: returns its exit status, printing through `print`. `root` is the
- * checkout whose manifests and directory the context answers with, and
+ * checkout whose manifests and directory the context answers with, the head
+ * checkout by default, and
  * `onBaseCopy` hears the folder the base's copy is written to: a test may
  * point the one elsewhere and track the other (@internal).
  */
-export async function main(
-  argv,
-  print = (line) => process.stdout.write(`${line}\n`),
-  { root = REPO_ROOT, onBaseCopy } = {},
-) {
+export async function main(argv, print = (line) => process.stdout.write(`${line}\n`), { root, onBaseCopy } = {}) {
   const opts = parseCli(argv);
   if (opts.help) {
     print(USAGE);
@@ -837,6 +845,8 @@ export async function main(
     print(`replay-corpus: --head-dir ${opts.headDir} holds no scripts/claude-hooks\n\n${USAGE}`);
     return 2;
   }
+  // The context is the head checkout's, for both sides, unless the caller names one (CLI check of be3d79a4b).
+  const contextRoot = root ?? headRoot;
   const started = Date.now();
 
   let files;
@@ -869,7 +879,7 @@ export async function main(
     }
     let workspace;
     try {
-      workspace = readWorkspace(root);
+      workspace = readWorkspace(contextRoot);
     } catch (e) {
       print(`replay-corpus: could not read the workspace: ${messageOf(e)}`);
       return 3;
@@ -881,8 +891,8 @@ export async function main(
     let identical = 0;
     let threw = 0;
     const contexts = {
-      Bash: fixedContext({ cwd: root, shell: head.lexer.BASH, workspace }),
-      PowerShell: fixedContext({ cwd: root, shell: head.lexer.POWERSHELL, workspace }),
+      Bash: fixedContext({ cwd: contextRoot, shell: head.lexer.BASH, workspace }),
+      PowerShell: fixedContext({ cwd: contextRoot, shell: head.lexer.POWERSHELL, workspace }),
     };
     // The guard is restored only once installed.
     let restore;
@@ -916,7 +926,7 @@ export async function main(
     print(`tool-use lines not JSON: ${unparsed}`);
     print(`distinct commands: ${list.length} (real ${census.totals.real}, probe ${census.totals.probe})`);
     print(`head: ${headRoot}`);
-    print(`context: cwd ${root}, ${workspace.manifests.length} package manifests`);
+    print(`context: cwd ${contextRoot}, ${workspace.manifests.length} package manifests`);
     if (!opts.censusOnly) {
       print(`base: ${opts.base} (${base.sha})`);
       // A comparison over nothing proves nothing (CodeRabbit CLI round 2 on #1659).
@@ -931,13 +941,17 @@ export async function main(
       // The forms either side names, so a renamed form still prints as one.
       const forms = new Set([...(base.lexer.REFUSED_FORMS ?? []), ...(head.lexer.REFUSED_FORMS ?? [])]);
       for (const d of differences) for (const line of formatDifference(d, { ...opts, forms })) print(line);
+      if (unparsed)
+        print(
+          `replay-corpus: ${unparsed} tool-use line${unparsed === 1 ? "" : "s"} did not parse, so the comparison is partial`,
+        );
     }
     print("");
     print("census (program positions by kind; flags count commands):");
     for (const line of census.format()) print(line);
     print("");
     print(`elapsed: ${((Date.now() - started) / 1000).toFixed(1)} s`);
-    return exitStatus({ differences: differences.length, threw });
+    return opts.censusOnly ? 0 : exitStatus({ differences: differences.length, threw, unparsed });
   } finally {
     if (base?.dir) rmSync(base.dir, { recursive: true, force: true });
   }

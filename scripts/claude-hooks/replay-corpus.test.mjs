@@ -1046,6 +1046,69 @@ describe("the command line", () => {
     }
   }, 60_000);
 
+  // CLI check of be3d79a4b: the head checkout's rules ran with the tool
+  // checkout's cwd and manifests; both sides now get the head's, unless
+  // the caller names a root.
+  it("judges with the head checkout's context by default, and the caller's root when given", async () => {
+    const owned = fs.mkdtempSync(path.join(os.tmpdir(), "replay-corpus-main-"));
+    try {
+      const head = path.join(owned, "head");
+      const hooks = path.join(head, "scripts", "claude-hooks");
+      fs.mkdirSync(hooks, { recursive: true });
+      fs.writeFileSync(path.join(hooks, "rules-bash.mjs"), "export const checkBash = () => null;\n");
+      fs.writeFileSync(
+        path.join(hooks, "shell-lexer.mjs"),
+        [
+          'export const BASH = "bash";',
+          'export const POWERSHELL = "powershell";',
+          "export const view = () => ({ programs: [], sure: true });",
+          "export const powershellAsBash = (c) => c;",
+          "",
+        ].join("\n"),
+      );
+      fs.writeFileSync(path.join(head, "package.json"), '{ "name": "head-only" }\n');
+      fs.mkdirSync(path.join(owned, "t"));
+      fs.writeFileSync(path.join(owned, "t", "a.jsonl"), `${line(toolUse("Bash", { command: "ls" }))}\n`);
+      const args = ["--transcripts", path.join(owned, "t"), "--census-only", "--head-dir", head];
+      const out = [];
+      expect(await main(args, (l) => out.push(l))).toBe(0);
+      expect(out).toContain(`context: cwd ${head}, 1 package manifests`);
+      const other = path.join(owned, "other");
+      fs.mkdirSync(other);
+      const given = [];
+      expect(await main(args, (l) => given.push(l), { root: other })).toBe(0);
+      expect(given).toContain(`context: cwd ${other}, 0 package manifests`);
+    } finally {
+      fs.rmSync(owned, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  // CLI check of be3d79a4b: a comparison that skipped a record it could not
+  // parse compared part of the corpus, so it does not exit 0; a census still
+  // prints its partial counts and exits 0.
+  it("exits 3 when a comparison skipped an unparsed tool-use record", async () => {
+    const owned = fs.mkdtempSync(path.join(os.tmpdir(), "replay-corpus-main-"));
+    try {
+      fs.mkdirSync(path.join(owned, "t"));
+      fs.writeFileSync(
+        path.join(owned, "t", "a.jsonl"),
+        `${line(toolUse("Bash", { command: "ls" }))}\n{broken tool_use\n`,
+      );
+      const args = ["--transcripts", path.join(owned, "t")];
+      const out = [];
+      const status = await main([...args, "--base", "HEAD"], (l) => out.push(l), { root: owned });
+      expect(status, out.join("\n")).toBe(3);
+      expect(out).toContain("tool-use lines not JSON: 1");
+      expect(out.join("\n")).toMatch(/1 tool-use line did not parse/);
+      expect(await main([...args, "--census-only"], () => {}, { root: owned })).toBe(0);
+      expect(exitStatus({ differences: 1, threw: 0, unparsed: 1 })).toBe(1);
+      expect(exitStatus({ differences: 0, threw: 1, unparsed: 1 })).toBe(3);
+      expect(USAGE).toMatch(/\b3\b.*did not parse/);
+    } finally {
+      fs.rmSync(owned, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   // CodeRabbit CLI round 2 on #1659: a comparison that judged nothing (a
   // mistyped --match) proves nothing, so it says so and exits 4.
   it("exits 4 when a comparison judges no command, and 0 for an empty census", async () => {
