@@ -368,7 +368,8 @@ export class ReplayMarkersDialSurface extends ReleaseDialSurfaceBase<
         this.host.logger.debug(`ticks=${ticks}, anchor=${anchor}, target=${target.frame}`);
         followMarkerJump(this.host.logger, `Dial ${direction} marker`, target.frame, jump);
 
-        // A dial that left the screen while the turn waited is not drawn.
+        // A dial that left the screen while the turn waited is not drawn; its
+        // jump still goes out, as a waiting key press's does.
         if (this.contextsState.get(ctx.action.id) === ctx) this.scheduleRender(ctx);
       },
       ctx.action.id,
