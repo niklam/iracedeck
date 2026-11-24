@@ -72,7 +72,7 @@ CI runs `typecheck`, `lint`, `format` and `test` as four separate jobs, so a cle
 
 ## Changelog
 
-A change that users can see or do something different with (an action, a mode, a setting, a Race Engineer callout, an icon, behaviour, the website) adds a **changelog fragment** in the same pull request: one small file in [`changelog.d/`](changelog.d/README.md), named `<issue>-<slug>.md`. Internal work with no visible effect, such as a refactor, tooling or a dependency bump, needs none.
+A change that users can see or do something different with (an action, a mode, a setting, a Race Engineer callout, an icon, behaviour, the website) adds a **changelog fragment** in the same pull request: one small file in [`changelog.d/`](changelog.d/README.md), named `<issue>-<slug>.md`. Internal work with no visible effect, such as a refactor, tooling or a dependency bump, needs none, though a notable one may add a `Maintenance` fragment.
 
 ```markdown
 ---
@@ -117,7 +117,7 @@ The repository carries its own [Claude Code](https://docs.claude.com/en/docs/cla
 **The hooks run in your fork too.** `.claude/settings.json` registers hooks that check commands before they run. A refusal is a house rule, not a broken setup, and its message names the rule and what to do instead:
 
 - `git worktree add` accepts only a sibling of your checkout named `ir-<issue>` (`../ir-123`), created from an up-to-date `origin/master` (`git fetch origin` first). A plain branch in your clone works just as well.
-- Creating a worktree for an enhancement issue with no spec on `origin/master` asks before it goes ahead. That prompt is the maintainer's spec check; contributors don't write specs, so let it continue.
+- Creating a worktree for an issue with no spec on `origin/master` asks before it goes ahead when the issue is an enhancement or its labels can't be read, which in a fork is usually every issue. That prompt is the maintainer's spec check; contributors don't write specs, so let it continue.
 - `gh pr create` is refused unless the title has the form above.
 - `/code-review` must name an effort level (`low`, `medium`, `high` or `xhigh`) and an `ir-<issue>` worktree to review, and never carries `--fix`.
 - A subagent spawn must name its model, and may not ask for its own worktree.
