@@ -3861,6 +3861,8 @@ export function powershellStatementEvals(text) {
   // of its closing quote, or a `$(…)` in either, with its paren depth.
   const stack = [];
   let lead = "\n";
+  // Whether the words since the statement's start are an assignment's target.
+  let target = false;
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
     const top = stack.at(-1);
@@ -3927,8 +3929,14 @@ export function powershellStatementEvals(text) {
       lead = c;
     } else if (/\s/.test(c)) {
       if (c === "\n") lead = "\n";
-    } else if (/[;|&={}]/.test(c)) {
+    } else if (c === "=") {
+      // Only an assignment's `=` starts a statement, its value: one inside an
+      // argument (`Write-Output key=iex`) is text (CodeRabbit on 164de4f80).
+      lead = target ? "=" : "x";
+      target = false;
+    } else if (/[;|&{}]/.test(c)) {
       lead = c;
+      target = false;
     } else {
       PS_WORD.lastIndex = i;
       const word = PS_WORD.exec(text)?.[0] ?? c;
@@ -3936,6 +3944,12 @@ export function powershellStatementEvals(text) {
       const start = /[\n;|&={(]/.test(lead);
       if (PS_EVAL.has(name) && start) out.push(name);
       i += word.length - 1;
+      // The word starting a statement may be what an `=` after it assigns
+      // to: a variable (`$x`, `[string]$x`, `$h.k`), past a compound
+      // operator's own character (`$x += …`), or a hashtable's key
+      // (`@{ a = iex x }`), erring to deny; any later word is an argument.
+      if (start) target = true;
+      else if (!(target && /^[-+*/%?]+$/.test(word))) target = false;
       // Dot-sourcing calls the word after it, as `&` does.
       lead = word === "." && start ? "&" : "x";
     }

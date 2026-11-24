@@ -2978,3 +2978,23 @@ describe("the stopping rule: the shell an exec runs in (#1659 judge)", () => {
     `x=$(exec <<< ':'); echo $(bash)`,
   ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
 });
+
+// CodeRabbit on 164de4f80: an `=` inside an argument is no assignment, so the
+// word after it starts no statement; a real assignment's value still does.
+describe("the stopping rule: PowerShell's eval after an assignment (#1659 PR review)", () => {
+  const ps = (c) => lexer.refusedForms(lexer.powershellAsBash(c), lexer.POWERSHELL);
+  it.each([`Write-Output key=iex`, `Write-Output a = iex`, `git config x.y=iex`, `Write-Output -Name:x=iex`])(
+    "reads and refuses nothing in %s",
+    (c) => expect(ps(c)).toEqual([]),
+  );
+  it.each([
+    `$x = iex y`,
+    `$x=iex y`,
+    `[string]$x = iex y`,
+    `$x += iex y`,
+    `$h.k = iex y`,
+    `ls; $x = Invoke-Expression y`,
+    `$t = @{ a = iex y }`,
+    `@{a=iex y}`,
+  ])("refuses %s", (c) => expect(ps(c)[0]?.form).toBe("eval"));
+});
