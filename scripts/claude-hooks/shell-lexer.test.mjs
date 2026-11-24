@@ -2458,3 +2458,20 @@ describe("the stopping rule: fish's init command and its stdin (#1659 CodeRabbit
     [`fish -C 'source "$F"' -c true < in.txt`, "a shell reading its script from stdin"],
   ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
 });
+
+// CodeRabbit CLI round 2 on #1659: an `xargs` that is an option's operand
+// runs nothing; one that runs the shell is found through the wrappers after it.
+describe("the stopping rule: the xargs that runs a shell (#1659 CodeRabbit)", () => {
+  const FILLED = "a shell string xargs, parallel or find fills in from its input";
+  it.each([`env -u xargs pwsh -Command 'Get-Date'`, `env -u xargs sh -c 'echo {}'`, `timeout -s xargs 5 cmd /c dir`])(
+    "reads and refuses nothing in %s",
+    (c) => expect(lexer.refusedForms(c)).toEqual([]),
+  );
+  it.each([
+    `ls | xargs -I{} nice sh -c 'cat {}'`,
+    `ls | timeout 5 xargs -I{} stdbuf -oL sh -c 'cat {}'`,
+    `ls | xargs -I{} nice -n 5 stdbuf -oL bash -c 'cat {}'`,
+    `ls | env A=1 xargs -I{} sh -c 'cat {}'`,
+    `ls | /usr/bin/xargs -I{} zsh -c 'cat {}'`,
+  ])("refuses %s", (c) => expect(lexer.refusedForms(c)[0]?.form).toBe(FILLED));
+});

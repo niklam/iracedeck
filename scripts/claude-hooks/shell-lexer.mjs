@@ -1520,8 +1520,6 @@ export const REFUSED_FORMS = Object.freeze(new Set(Object.values(REFUSED)));
 const FILLED_ADVICE =
   "Pass the name as an argument the string reads instead: `xargs -I{} sh -c 'cat \"$1\"' _ {}`, or `find … -exec sh -c '…' _ {} \\;`.";
 
-/** An `xargs` word, by its last path segment, in any case ({@link xargsBefore}). */
-const XARGS_WORD = /(?<![^\s/\\'"])xargs(?:\.exe)?['"]?(?=\s)/gi;
 /** xargs' and parallel's short options that take a value, attached or in the next word ({@link replaceString}). */
 const FILLER_VALUES = "adEjLnNPRsS";
 /** Their long options that take a value in the next word when none is attached with `=`. */
@@ -2040,23 +2038,40 @@ function fedStarts(command, text, fed, programs) {
     const at = fedCommands[lo];
     return Boolean(at && at.start <= p && p <= at.end && at.piped);
   };
-  // The xargs ahead of the program word at `p` of the typed text, in its own
-  // command, as `{ replace, by }` ({@link replaceString}; `undefined` for none),
-  // or `undefined` where none is (#1659). Any `xargs` word between the
-  // command's start and `p` counts, so a wrapper between them (`xargs nice
-  // sh -c …`) hides nothing: the gate errs to deny.
+  // The xargs that runs the program word at `p` of the typed text, as `{
+  // replace, by }` ({@link replaceString}; `undefined` for none), or
+  // `undefined` where none does (#1659). Read as the lead is parsed, from the
+  // start of `p`'s command: each lead token ({@link leadStep}), an xargs among
+  // them with its own options, and past it a `nice`, `stdbuf`, `winpty` or a
+  // sudo that runs a program to the word each runs, until `p`. So an `xargs`
+  // that is an option's operand (`env -u xargs …`) runs nothing, and a wrapper
+  // after a real one hides nothing (CodeRabbit CLI round 2).
   const xargsBefore = (p) => {
-    let start = 0;
-    for (const c of base.commands)
-      if (c <= p) start = c;
-      else break;
-    let at;
-    for (const m of text.slice(start, p).matchAll(XARGS_WORD)) at = start + m.index + m[0].length;
-    if (at === undefined) return undefined;
-    const options = [];
-    for (let w = commandWordEnd(text, at); w && w.end <= p; w = commandWordEnd(text, w.end))
-      options.push(text.slice(w.start, w.end));
-    return { replace: replaceString(options), by: "xargs" };
+    let k = base.commands.findLast((c) => c <= p) ?? 0;
+    let found;
+    for (let steps = 0; steps < SCANNED_WORDS; steps++) {
+      k = blanksFrom(text, k);
+      if (k >= p) break;
+      const step = leadStep(text, k);
+      if (step) {
+        if (step.wrapper === "xargs") {
+          const options = [];
+          for (let w = commandWordEnd(text, wordEnd(text, k)); w && w.end <= step.end; w = commandWordEnd(text, w.end))
+            options.push(text.slice(w.start, w.end));
+          found = { replace: replaceString(options), by: "xargs" };
+        }
+        k = step.end;
+        continue;
+      }
+      const e = wordEnd(text, k);
+      if (e <= k) break;
+      const name = programName(decodeWord(text.slice(k, e)))?.name;
+      if (!WRAPPER_NAMES.has(name) && (name !== "sudo" || sudoRunsShell(text, e))) break;
+      const { program } = commandOf(OPTION_SPECS.get(name) ?? NO_OPTIONS, text, e, text.length);
+      if (program === undefined) break;
+      k = program;
+    }
+    return k === p ? found : undefined;
   };
   // Where a stdin shell at `p` of the typed text, in the fed span ending at
   // `b`, takes its stdin from around it (#1659 second read): the input
