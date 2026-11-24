@@ -301,28 +301,7 @@ A tag release deploys the catalog the tag carries, so **a `release/*` branch tha
 
 ## Contributing
 
-Contributions are welcome! Here's how to get started:
-
-1. Fork the repo and create a branch (`feature/123-your-feature`)
-2. Follow [conventional commits](https://www.conventionalcommits.org/) with package scope (e.g. `feat(iracing-plugin-stream-deck): add new action`)
-3. Add tests for new code (Vitest)
-4. Make sure `pnpm build` and `pnpm test` pass
-5. Open a pull request
-
-### Adding a new action
-
-Actions live in `packages/iracing-actions/src/actions/<action-name>/`, one folder per action. Each action needs:
-
-1. `<action-name>.ts` — action class extending `ConnectionStateAwareAction` from `@iracedeck/deck-core` (or `SimIRacingAction` from `@iracedeck/deck-iracing` when it reads iRacing telemetry directly)
-2. `<action-name>.test.ts` — unit tests
-3. `<action-name>.ejs` — Property Inspector template (compiled to `ui/<action-name>.html`)
-4. `icon.svg` + `key.svg` — static category and key icons (copied into each plugin's `imgs/actions/<name>/` at build time)
-5. Mustache SVGs in `packages/icons/<action-name>/` for any dynamic variants
-6. Registration in `packages/plugin-runtime/src/actions.ts` (`SHARED_ACTIONS`), once for all three plugins
-7. Manifest entry in each plugin's `manifest.json`
-8. Entries in `packages/iracing-actions/src/actions/data/{key-bindings,docs-urls,icon-defaults}.json` where applicable
-
-See the existing actions for reference, or check `packages/iracing-plugin-stream-deck/CLAUDE.md` for step-by-step instructions.
+Contributions are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) is the guide: picking an issue, the development setup, the checks to run, changelog fragments, pull requests, adding a new action, and working on the repository with Claude Code. Questions go to the [iRaceDeck Discord](https://discord.gg/c6nRYywpah).
 
 ## Troubleshooting
 
