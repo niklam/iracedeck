@@ -845,6 +845,51 @@ describe("the command line", () => {
     }
   }, 60_000);
 
+  // PR #1798 review: a whole comparison run, a fake head side beside the real
+  // base, one command matching and one differing.
+  it("compares a corpus end to end, counting what matches and what differs", async () => {
+    const owned = fs.mkdtempSync(path.join(os.tmpdir(), "replay-corpus-main-"));
+    try {
+      const hooks = path.join(owned, "head", "scripts", "claude-hooks");
+      fs.mkdirSync(hooks, { recursive: true });
+      fs.writeFileSync(
+        path.join(hooks, "rules-bash.mjs"),
+        'export const checkBash = (c) => (c === "ls -la" ? "fake deny" : null);\n',
+      );
+      fs.writeFileSync(
+        path.join(hooks, "shell-lexer.mjs"),
+        [
+          'export const BASH = "bash";',
+          'export const POWERSHELL = "powershell";',
+          "export const view = () => ({ programs: [], sure: true });",
+          "export const powershellAsBash = (c) => c;",
+          "export const refusedForms = () => [];",
+          "",
+        ].join("\n"),
+      );
+      fs.mkdirSync(path.join(owned, "t"));
+      fs.writeFileSync(
+        path.join(owned, "t", "a.jsonl"),
+        `${line(toolUse("Bash", { command: "ls" }), toolUse("Bash", { command: "ls -la" }))}\n`,
+      );
+      const out = [];
+      const status = await main(
+        ["--transcripts", path.join(owned, "t"), "--base", "HEAD", "--head-dir", path.join(owned, "head")],
+        (l) => out.push(l),
+        { root: owned },
+      );
+      const text = out.join("\n");
+      expect(status, text).toBe(1);
+      expect(text).toContain("commands judged: 2");
+      expect(text).toContain("identical verdicts: 1");
+      expect(text).toContain("both sides threw alike: 0");
+      expect(text).toContain("differing verdicts: 1 (real 1, probe 0)");
+      expect(text).toMatch(/#2 Bash\n {2}probe: real\n {2}base: PASS\n {2}head: DENY\n/);
+    } finally {
+      fs.rmSync(owned, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   // CodeRabbit CLI round 2 on #1659: a comparison that judged nothing (a
   // mistyped --match) proves nothing, so it says so and exits 4.
   it("exits 4 when a comparison judges no command, and 0 for an empty census", async () => {
