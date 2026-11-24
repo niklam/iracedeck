@@ -59,6 +59,33 @@ export const VENDORED_SOURCES = {
 const NOT_SOURCE_SEGMENT = /^(dist|node_modules)$|\.sdPlugin$|\.ulanziPlugin$/;
 
 /**
+ * The paths in `git ls-files -z` output, each as git stores it. `-z` ends
+ * each path with a NUL and writes it unquoted: without it git quotes a path
+ * holding a non-ASCII byte or a control character, octal-escaped
+ * (`"packages/website/src/pages/caf\303\251.astro"`), which no extension
+ * filter then matches (#1662).
+ *
+ * @param {string} output
+ * @returns {string[]}
+ */
+export function nulSeparatedPaths(output) {
+  return output.split("\0").filter(Boolean);
+}
+
+/**
+ * The git-tracked files under `pathspec`, repo-relative with `/` separators,
+ * read with `git ls-files -z` (`nulSeparatedPaths`), so a non-ASCII name is
+ * listed as itself.
+ *
+ * @param {string} root The repository root.
+ * @param {string} pathspec
+ * @returns {string[]}
+ */
+export function trackedFiles(root, pathspec) {
+  return nulSeparatedPaths(execFileSync("git", ["ls-files", "-z", "--", pathspec], { cwd: root, encoding: "utf-8" }));
+}
+
+/**
  * Every git-tracked JavaScript or TypeScript source under `packages/`,
  * repo-relative with `/` separators, sorted: no `dist/`, `node_modules/` or
  * plugin bundle folder (`*.sdPlugin/`, `*.ulanziPlugin/`), and none of
@@ -71,8 +98,7 @@ const NOT_SOURCE_SEGMENT = /^(dist|node_modules)$|\.sdPlugin$|\.ulanziPlugin$/;
  * @returns {string[]}
  */
 export function trackedPackageSources(root, { components = false } = {}) {
-  return execFileSync("git", ["ls-files", "packages"], { cwd: root, encoding: "utf-8" })
-    .split("\n")
+  return trackedFiles(root, "packages")
     .filter((file) => CODE.test(file) || (components && COMPONENT.test(file)))
     .filter((file) => !file.split("/").some((segment) => NOT_SOURCE_SEGMENT.test(segment)))
     .filter((file) => !Object.hasOwn(VENDORED_SOURCES, file))

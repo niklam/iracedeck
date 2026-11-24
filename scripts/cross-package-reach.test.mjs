@@ -85,7 +85,6 @@
 // import, a path or a mention written as it would be by someone not trying to
 // hide it. Deliberate computed loads — `eval`, `new Function`, strings
 // assembled at run time — are outside its model.
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
@@ -99,6 +98,7 @@ import {
   isTestSource,
   moduleReferences,
   packageOf,
+  trackedFiles,
   trackedPackageSources,
 } from "./lib/source-imports.mjs";
 import { trackedPackageDirs } from "./lib/workspace-packages.mjs";
@@ -876,6 +876,105 @@ function heldOrCalled(call) {
   );
 }
 
+/** A browser's worker constructors, and Node's `worker_threads` `Worker`: each runs the file its first argument names. */
+const WORKER_CONSTRUCTORS = new Set(["Worker", "SharedWorker"]);
+
+/** The modules Node's `Worker` comes from, whose `eval: true` option runs its first argument as code, not a file. */
+const WORKER_THREADS_MODULES = new Set(["worker_threads", "node:worker_threads"]);
+
+/**
+ * The worker constructors of `sf` (#1662): `Worker` and `SharedWorker`, every
+ * name the file binds one of them to (an import's or a destructuring's alias,
+ * from any module) and any `.Worker` or `.SharedWorker` property. Names are
+ * file-wide, as the require functions' are, so a shadowing name reads as one
+ * too, which can only fail a file, never pass one.
+ *
+ * `isNodeEval` is true for a `new` of a name imported as `Worker` from
+ * `node:worker_threads` whose options are an object literal with `eval: true`:
+ * Node runs that first argument as source code rather than loading a file, a
+ * load assembled at run time like `eval`, which the threat model leaves out
+ * (the header). A browser's `Worker` has no such option and loads its first
+ * argument as a URL whatever the options say, so it gets no such reading, nor
+ * does any spelling of the option but the literal `true`.
+ */
+function workerConstructors(sf) {
+  const names = new Set(WORKER_CONSTRUCTORS);
+  const nodeWorkers = new Set();
+  const find = (node) => {
+    if (ts.isImportSpecifier(node) && WORKER_CONSTRUCTORS.has((node.propertyName ?? node.name).text)) {
+      const declaration = node.parent.parent.parent;
+
+      names.add(node.name.text);
+      if (
+        (node.propertyName ?? node.name).text === "Worker" &&
+        ts.isStringLiteral(declaration.moduleSpecifier) &&
+        WORKER_THREADS_MODULES.has(declaration.moduleSpecifier.text)
+      ) {
+        nodeWorkers.add(node.name.text);
+      }
+    }
+    if (
+      ts.isBindingElement(node) &&
+      ts.isIdentifier(node.name) &&
+      WORKER_CONSTRUCTORS.has((node.propertyName ?? node.name).getText(sf))
+    ) {
+      names.add(node.name.text);
+    }
+    ts.forEachChild(node, find);
+  };
+
+  find(sf);
+  const isWorker = (node) => {
+    const callee = unwrap(node);
+
+    return (
+      (ts.isIdentifier(callee) && names.has(callee.text)) ||
+      (ts.isPropertyAccessExpression(callee) && WORKER_CONSTRUCTORS.has(callee.name.text))
+    );
+  };
+  const isNodeEval = (construction) => {
+    const callee = unwrap(construction.expression);
+    const options = construction.arguments?.[1] && unwrap(construction.arguments[1]);
+
+    return (
+      ts.isIdentifier(callee) &&
+      nodeWorkers.has(callee.text) &&
+      options !== undefined &&
+      ts.isObjectLiteralExpression(options) &&
+      options.properties.some(
+        (property) =>
+          ts.isPropertyAssignment(property) &&
+          property.name.getText(sf) === "eval" &&
+          unwrap(property.initializer).kind === ts.SyntaxKind.TrueKeyword,
+      )
+    );
+  };
+
+  return { isWorker, isNodeEval };
+}
+
+/**
+ * The specifier a worker's `new URL(<string literal>, import.meta.url)` names,
+ * as the walk reads a specifier: relative from the file as written, a bare
+ * name (`"w.mjs"`, which a URL resolves beside the file) made `./`-relative,
+ * and an absolute path or URL kept for the walk to refuse. Undefined for any
+ * other form: a computed path, another base, no `URL` at all.
+ */
+function workerSpecifier(argument) {
+  if (argument === undefined) return undefined;
+  const url = unwrap(argument);
+
+  if (!ts.isNewExpression(url) || !ts.isIdentifier(unwrap(url.expression)) || unwrap(url.expression).text !== "URL") {
+    return undefined;
+  }
+  if (url.arguments?.length !== 2) return undefined;
+  const [where, base] = url.arguments.map(unwrap);
+
+  if (!ts.isStringLiteralLike(where) || base.getText().replace(/\s+/g, "") !== "import.meta.url") return undefined;
+
+  return UNFOLLOWABLE.test(where.text) || RELATIVE_SPECIFIER.test(where.text) ? where.text : `./${where.text}`;
+}
+
 /**
  * True when a reference to a require name hands the function on rather than
  * calling it — passed, returned, assigned, shorthand into an object, exported —
@@ -963,9 +1062,18 @@ const LITERAL_EXTENSION = /^[\w-]+$/;
  * from another base than the file's own location (`isOwnBase`) is reported
  * rather than followed, since it resolves somewhere else; a package name loaded
  * through one is read as loading that package, since the base can change only
- * which copy of it resolves, not which package it is. What does not:
+ * which copy of it resolves, not which package it is. A worker
+ * (`workerConstructors`) loads the file its first argument names when that is
+ * `new URL(<string literal>, import.meta.url)` (`workerSpecifier`), resolved
+ * from the file; started from anything else it is reported, except Node's
+ * `eval: true` worker, which runs source code, not a file. What does not:
  * `import type`, `export type`, `import type x = require()` and the type
  * `import("x").T`, which TypeScript and esbuild drop whatever the config.
+ *
+ * `scripts` holds the specifiers of the loads that run their file as
+ * JavaScript whatever its suffix — a require function's, `import x =
+ * require()`'s and a worker's — as Node runs `require("./build.config")`;
+ * an `import` or `import()` reads a file by its extension instead.
  *
  * Any other import counts as loading, even when every name it binds is marked
  * `type` (`import { type A } from "x"`) or none is used as a value. Whether
@@ -1000,10 +1108,10 @@ const LITERAL_EXTENSION = /^[\w-]+$/;
  * @param {object} input
  * @param {string} input.file repo-relative, `/`-separated
  * @param {string} input.source
- * @returns {{ loads: string[], candidates: string[], unread: string[] }}
+ * @returns {{ loads: string[], scripts: string[], candidates: string[], unread: string[] }}
  */
 export function runtimeImports({ file, source }) {
-  if (COMPONENT.test(file)) return { loads: [], ...componentLoads(source, { isDataGlob }) };
+  if (COMPONENT.test(file)) return { loads: [], scripts: [], ...componentLoads(source, { isDataGlob }) };
 
   return { ...moduleImports(file, source), candidates: [] };
 }
@@ -1012,14 +1120,18 @@ export function runtimeImports({ file, source }) {
 function moduleImports(file, source) {
   const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, scriptKind(file));
   const loads = [];
+  const scripts = [];
   const unread = [];
   const classified = new Set();
-  const load = (literal) => {
+  /** Records a load of `literal`; `script` when it runs the file as JavaScript whatever its suffix. */
+  const load = (literal, script = false) => {
     classified.add(literal.getStart(sf));
     loads.push(literal.text);
+    if (script) scripts.push(literal.text);
   };
   const typeOnly = (literal) => classified.add(literal.getStart(sf));
   const { requireNames, isCreateRequire, madeHere, isFactory } = requireFunctions(sf);
+  const { isWorker, isNodeEval } = workerConstructors(sf);
   const spelled = (node) => node.getText(sf).replace(/\s+/g, " ");
   /**
    * What `node` is as a function that loads its argument: undefined when it is
@@ -1081,6 +1193,20 @@ function moduleImports(file, source) {
           "string literal so it can be followed",
       );
     }
+    // A worker runs the file its URL names: a load, read as JavaScript whatever the file's suffix (#1662).
+    if (ts.isNewExpression(node) && isWorker(node.expression) && !isNodeEval(node)) {
+      const specifier = workerSpecifier(node.arguments?.[0]);
+
+      if (specifier === undefined) {
+        unread.push(
+          `${spelled(node)}, a worker started from something other than new URL(<string literal>, ` +
+            "import.meta.url): start it from one so the file it runs can be followed",
+        );
+      } else {
+        loads.push(specifier);
+        scripts.push(specifier);
+      }
+    }
 
     if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
       (node.importClause?.isTypeOnly ? typeOnly : load)(node.moduleSpecifier);
@@ -1091,7 +1217,9 @@ function moduleImports(file, source) {
       ts.isExternalModuleReference(node.moduleReference) &&
       ts.isStringLiteralLike(node.moduleReference.expression)
     ) {
-      (node.isTypeOnly ? typeOnly : load)(node.moduleReference.expression);
+      // `import x = require("x")` is a require: it runs what it names as JavaScript.
+      if (node.isTypeOnly) typeOnly(node.moduleReference.expression);
+      else load(node.moduleReference.expression, true);
     } else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)) {
       typeOnly(node.argument.literal);
     } else if (
@@ -1110,7 +1238,7 @@ function moduleImports(file, source) {
             "make it with createRequire(import.meta.url), or load by package name, so it can be followed",
         );
       } else {
-        load(specifier);
+        load(specifier, node.expression.kind !== ts.SyntaxKind.ImportKeyword);
       }
     }
     ts.forEachChild(node, visit);
@@ -1126,7 +1254,7 @@ function moduleImports(file, source) {
     }
   }
 
-  return { loads, unread };
+  return { loads, scripts, unread };
 }
 
 /**
@@ -1151,7 +1279,10 @@ const EXTENSIONLESS = [".ts", ".tsx", ".js", ".jsx"];
  * `read` returns text for. Empty when none exists, or the path climbs out of
  * the repository. A specifier spelling another extension (`.ts`, `.mts`,
  * `.json`) is tried as written first, then as extensionless, then as a folder
- * holding an `index`.
+ * holding an `index`. Every specifier, one ending in `.js` included, is tried
+ * as a folder too (`folderEntry`), since CommonJS loads
+ * `require("./helpers.js")` from a folder `helpers.js/` when no such file is
+ * there.
  *
  * Every existing candidate is returned, not only the first, because which one
  * runs depends on the loader: plain Node loads `./helper.cjs` as written, while
@@ -1177,16 +1308,27 @@ export function resolveRuntimeFiles(fromFile, specifier, read, depth = 0) {
 
   if (target === ".." || target.startsWith("../") || P.isAbsolute(target)) return { files: [], unread: [] };
   const ext = P.extname(target);
+  // A `.js` name may be a folder too (`require("./helpers.js")` of `helpers.js/index.js`), as any name may.
+  const folder = folderEntry(target, read, depth);
+  const files = Object.hasOwn(SOURCE_EXTENSIONS, ext)
+    ? existing(SOURCE_EXTENSIONS[ext].map((to) => target.slice(0, -ext.length) + to))
+    : existing([target, ...EXTENSIONLESS.map((to) => target + to)]);
 
-  if (Object.hasOwn(SOURCE_EXTENSIONS, ext)) {
-    return { files: existing(SOURCE_EXTENSIONS[ext].map((to) => target.slice(0, -ext.length) + to)), unread: [] };
-  }
-  const files = existing([target, ...EXTENSIONLESS.map((to) => target + to)]);
+  return { files: [...files, ...folder.files], unread: folder.unread };
+}
+
+/**
+ * The files the folder `target` loads as a module (`resolveRuntimeFiles`):
+ * its `package.json`'s `main`, resolved from the folder, or without a `main`
+ * (or a `package.json`) its `index`; none when there is no such folder.
+ * `unread` says why a `package.json` is not followed.
+ */
+function folderEntry(target, read, depth) {
+  const existing = (candidates) => candidates.filter((candidate) => read(candidate) !== undefined);
+  const index = () => ({ files: existing(EXTENSIONLESS.map((to) => `${target}/index${to}`)), unread: [] });
   const manifest = read(`${target}/package.json`);
 
-  if (manifest === undefined) {
-    return { files: [...files, ...existing(EXTENSIONLESS.map((to) => `${target}/index${to}`))], unread: [] };
-  }
+  if (manifest === undefined) return index();
   const folder = `a folder, ${target}, whose package.json`;
   let pkg;
 
@@ -1196,24 +1338,22 @@ export function resolveRuntimeFiles(fromFile, specifier, read, depth = 0) {
     pkg = null;
   }
   if (pkg === null || typeof pkg !== "object" || Array.isArray(pkg)) {
-    return { files, unread: [`${folder} is not a JSON object this check can read`] };
+    return { files: [], unread: [`${folder} is not a JSON object this check can read`] };
   }
   if (Object.hasOwn(pkg, "exports")) {
-    return { files, unread: [`${folder} has "exports", which this check does not follow`] };
+    return { files: [], unread: [`${folder} has "exports", which this check does not follow`] };
   }
-  if (!Object.hasOwn(pkg, "main")) {
-    return { files: [...files, ...existing(EXTENSIONLESS.map((to) => `${target}/index${to}`))], unread: [] };
-  }
+  if (!Object.hasOwn(pkg, "main")) return index();
   if (typeof pkg.main !== "string" || P.normalize(P.join(target, pkg.main)) === target || depth > 8) {
-    return { files, unread: [`${folder} has a "main" this check cannot follow`] };
+    return { files: [], unread: [`${folder} has a "main" this check cannot follow`] };
   }
   const entry = resolveRuntimeFiles(`${target}/package.json`, `./${pkg.main}`, read, depth + 1);
 
   if (entry.files.length === 0 && entry.unread.length === 0) {
-    return { files, unread: [`${folder} has a "main", ${pkg.main}, that resolves to no file`] };
+    return { files: [], unread: [`${folder} has a "main", ${pkg.main}, that resolves to no file`] };
   }
 
-  return { files: [...files, ...entry.files], unread: entry.unread };
+  return entry;
 }
 
 /** A specifier with a URL scheme or an absolute path, which this cannot follow; `node:` is a builtin. */
@@ -1248,6 +1388,13 @@ function isDataSpecifier(specifier) {
 
   return ext !== "" && !isModuleSource(specifier) && !Object.hasOwn(SOURCE_EXTENSIONS, ext);
 }
+
+/**
+ * The extensions a `require` reads as something other than JavaScript: JSON
+ * and a native addon. Node runs a file of any other suffix it requires —
+ * `build.config`, `x.svg` — as CommonJS (#1662).
+ */
+const RUN_AS_DATA = new Set([".json", ".node"]);
 
 /** `runtimeImports` by file and text, so walks over the same tree parse each file once. */
 const IMPORTS_MEMO = new Map();
@@ -1299,7 +1446,11 @@ ${source}`;
  *     nothing either way. Any other query fails. A file with no extension at
  *     all is read as JavaScript, as Node loads one, and a folder with a
  *     package.json is followed to its `main`, or fails where that cannot be
- *     read (`resolveRuntimeFiles`).
+ *     read (`resolveRuntimeFiles`). A file a require function, `import x =
+ *     require()` or a worker runs (`runtimeImports`' `scripts`) is read as
+ *     JavaScript whatever its suffix, as Node runs `require("./build.config")`,
+ *     unless it is `.json` or `.node` (`RUN_AS_DATA`); so only those two are a
+ *     leaf to it, and one with any other suffix must resolve.
  *   * A workspace package's specifier (`@iracedeck/<name>[/sub]`) is checked by
  *     the package's directory, mapped through each package.json's `name`, and is
  *     not descended into. A non-sim-neutral one is the failure. A sim-neutral
@@ -1337,16 +1488,35 @@ export function runtimeClosure({ roots, read, packageDirs, neutral, companions =
     return files.join(" → ");
   };
 
+  /** The files a require function, `import =` or a worker runs: JavaScript, whatever their suffix. */
+  const runs = new Set();
+  const parsed = new Set();
+
   while (queue.length > 0) {
     const file = queue.shift();
 
-    // A file with no extension at all is JavaScript to Node, which loads it as CommonJS.
-    if (!isModuleSource(file) && P.extname(file) !== "") continue;
-    const { loads, candidates, unread } = memoizedImports(file, read(file));
-    /** Queues each file `targets` names that the walk has not met, as loaded by `file`. */
-    const follow = (targets) => {
+    if (parsed.has(file)) continue;
+    // A file with no extension at all is JavaScript to Node, which loads it as CommonJS; so is any a require runs.
+    if (!isModuleSource(file) && P.extname(file) !== "" && !runs.has(file)) continue;
+    parsed.add(file);
+    const { loads, scripts, candidates, unread } = memoizedImports(file, read(file));
+    /**
+     * Queues each file `targets` names that the walk has not met, as loaded by
+     * `file`; with `script`, as run as JavaScript (`runs`), which queues again
+     * one met before only as data, now with `file` as the one that loads it.
+     */
+    const follow = (targets, script = false) => {
       for (const target of targets) {
-        if (from.has(target)) continue;
+        const ran = script && !RUN_AS_DATA.has(P.extname(target)) && !runs.has(target);
+
+        if (ran) runs.add(target);
+        if (from.has(target)) {
+          if (ran && !parsed.has(target) && from.get(target) !== null) {
+            from.set(target, file);
+            queue.push(target);
+          }
+          continue;
+        }
         from.set(target, file);
         queue.push(target);
       }
@@ -1454,6 +1624,8 @@ export function runtimeClosure({ roots, read, packageDirs, neutral, companions =
     }
 
     for (const specifier of loads) {
+      const script = scripts.includes(specifier);
+
       if (RELATIVE_SPECIFIER.test(specifier)) {
         if (QUERY.test(specifier) && !isDataSpecifier(specifier)) {
           problems.push(
@@ -1471,11 +1643,15 @@ export function runtimeClosure({ roots, read, packageDirs, neutral, companions =
             `${chain(file)} imports ${specifier}, ${folder}: import the file it loads by its own path so it can be followed`,
           );
         }
-        if (targets.length === 0 && folders.length === 0 && isDataSpecifier(specifier)) continue;
+        // A require runs a missing build.config as readily as a .js: only .json and .node are data to it.
+        const data =
+          script && !QUERY.test(specifier) ? RUN_AS_DATA.has(P.extname(specifier)) : isDataSpecifier(specifier);
+
+        if (targets.length === 0 && folders.length === 0 && data) continue;
         if (targets.length === 0 && folders.length === 0) {
           problems.push(`${chain(file)} imports ${specifier}, which resolves to no file in the repository`);
         }
-        follow(targets);
+        follow(targets, script);
         continue;
       }
 
@@ -1546,9 +1722,7 @@ export function changelogFragments(files) {
 const COMPANIONS = new Map([
   [
     CHANGELOG,
-    changelogFragments(
-      execFileSync("git", ["ls-files", "changelog.d"], { cwd: ROOT, encoding: "utf-8" }).split("\n").filter(Boolean),
-    ),
+    changelogFragments(trackedFiles(ROOT, "changelog.d")),
   ],
 ]);
 
@@ -2085,8 +2259,9 @@ describe("the runtime-closure check itself (positive controls, #1662)", () => {
       for (const source of [
         `const load = createRequire(${base});\nload("./x.js");`,
         `createRequire(${base})("./x.js");`,
-        // A name bound twice is own-based only if every binding is.
-        `let load = createRequire(import.meta.url);\nvar load = createRequire(${base});\nload("./x.js");`,
+        // A name bound twice, in two scopes, is own-based only if every binding is, whichever comes first.
+        `function a() {\n  const load = createRequire(import.meta.url);\n}\nfunction b() {\n  const load = createRequire(${base});\n  load("./x.js");\n}`,
+        `function b() {\n  const load = createRequire(${base});\n  load("./x.js");\n}\nfunction a() {\n  const load = createRequire(import.meta.url);\n}`,
       ]) {
         expect(walk(tree(source)).problems, source).toEqual([
           expect.stringContaining(
@@ -2801,6 +2976,164 @@ describe("the runtime-closure check itself (positive controls, #1662)", () => {
 
     expect(visited).toEqual([ROOT_FILE, helper]);
     expect(problems).toEqual([expect.stringContaining(`${ROOT_FILE} → ${helper} imports @iracedeck/iracing-sdk: `)]);
+  });
+
+  // Node runs any file a require names as CommonJS, whatever its suffix, but .json and .node (#1662).
+  it("reads a file a require function, import = or a worker runs as JavaScript whatever its suffix", () => {
+    const config = "packages/website/scripts/build.config";
+    const sim = { [config]: 'module.exports = require("@iracedeck/iracing-sdk");' };
+    const red = [expect.stringContaining(`${ROOT_FILE} → ${config} imports @iracedeck/iracing-sdk: `)];
+
+    for (const source of [
+      'const config = require("./build.config");',
+      'import { createRequire } from "node:module";\nconst load = createRequire(import.meta.url);\nload("./build.config");',
+      'import { createRequire } from "node:module";\ncreateRequire(import.meta.url)("./build.config");',
+      'import config = require("./build.config");',
+      'new Worker(new URL("./build.config", import.meta.url));',
+    ]) {
+      expect(walk({ ...sim, [ROOT_FILE]: source }), source).toEqual({ visited: [ROOT_FILE, config], problems: red });
+    }
+    // An import reads a file by its extension: one that is no code is data, there or not.
+    for (const source of ['import config from "./build.config";', 'const c = await import("./build.config");']) {
+      expect(walk({ ...sim, [ROOT_FILE]: source }), source).toEqual({ visited: [ROOT_FILE, config], problems: [] });
+    }
+    // A file imported as data first and required later is read, once, through the file that requires it.
+    const b = "packages/website/scripts/b.ts";
+
+    expect(
+      walk({ ...sim, [ROOT_FILE]: 'import "./build.config";\nimport "./b.ts";', [b]: 'require("./build.config");' }),
+    ).toEqual({
+      visited: [ROOT_FILE, config, b],
+      problems: [expect.stringContaining(`${ROOT_FILE} → ${b} → ${config} imports @iracedeck/iracing-sdk: `)],
+    });
+  });
+
+  it("takes a required .json or .node as a leaf, there or not, and fails a required file of another suffix that is not", () => {
+    const tree = {
+      "packages/website/scripts/x.json": '{ "a": "@iracedeck/iracing-sdk" }',
+      "packages/website/scripts/addon.node": 'require("@iracedeck/iracing-sdk");',
+    };
+
+    for (const specifier of ["./x.json", "./addon.node", "./missing.json", "./missing.node"]) {
+      expect(walk({ ...tree, [ROOT_FILE]: `require("${specifier}");` }).problems, specifier).toEqual([]);
+    }
+    for (const specifier of ["./missing.config", "./missing.svg"]) {
+      expect(walk({ [ROOT_FILE]: `require("${specifier}");` }).problems, specifier).toEqual([
+        `${ROOT_FILE} imports ${specifier}, which resolves to no file in the repository`,
+      ]);
+      // An import of the same missing file is data, as a gitignored generated file is.
+      expect(walk({ [ROOT_FILE]: `import x from "${specifier}";` }).problems, specifier).toEqual([]);
+    }
+  });
+
+  // A worker runs the file its URL names, resolved beside the file (#1662).
+  it("follows a worker started from new URL(<literal>, import.meta.url), and fails one started otherwise", () => {
+    const worker = "packages/website/scripts/w.mjs";
+    const tree = (source) => ({
+      [ROOT_FILE]: `import { Worker as NodeWorker } from "node:worker_threads";\n${source}`,
+      [worker]: 'import "@iracedeck/iracing-sdk";',
+    });
+
+    for (const source of [
+      'new Worker(new URL("./w.mjs", import.meta.url));',
+      'new Worker(new URL("w.mjs", import.meta.url), { type: "module" });',
+      'new SharedWorker(new URL("./w.mjs", import.meta.url));',
+      'new NodeWorker(new URL("./w.mjs", import.meta.url));',
+      'new globalThis.Worker((new URL("./w.mjs", import.meta.url)) as URL);',
+      'new NodeWorker(new URL("./w.mjs", import.meta.url), { eval: false });',
+    ]) {
+      expect(walk(tree(source)), source).toEqual({
+        visited: [ROOT_FILE, worker],
+        problems: [expect.stringContaining(`${ROOT_FILE} → ${worker} imports @iracedeck/iracing-sdk: `)],
+      });
+    }
+    for (const source of [
+      'new Worker("./w.mjs");',
+      "new SharedWorker(`./w.mjs`);",
+      "new Worker(url);",
+      "new Worker();",
+      "new Worker(new URL(name, import.meta.url));",
+      'new Worker(new URL("./w.mjs", base));',
+      'new Worker(new URL("./w.mjs"));',
+      'new Worker(new URL("./w.mjs", import.meta.url).href);',
+      'new NodeWorker("./w.mjs", { eval: flag });',
+      // A browser's Worker has no eval option: it loads its first argument as a URL whatever the options say.
+      "new Worker(code, { eval: true });",
+    ]) {
+      expect(walk(tree(source)).problems, source).toEqual([
+        `${ROOT_FILE} makes ${source.slice(0, -1)}, a worker started from something other than new ` +
+          "URL(<string literal>, import.meta.url): start it from one so the file it runs can be followed",
+      ]);
+    }
+    expect(walk(tree('new Worker(new URL("./missing.mjs", import.meta.url));')).problems).toEqual([
+      `${ROOT_FILE} imports ./missing.mjs, which resolves to no file in the repository`,
+    ]);
+    for (const where of ["/abs/w.mjs", "https://example.com/w.mjs"]) {
+      expect(walk(tree(`new Worker(new URL("${where}", import.meta.url));`)).problems, where).toEqual([
+        `${ROOT_FILE} imports ${where}, an absolute path or URL this check cannot follow`,
+      ]);
+    }
+  });
+
+  // Node's eval worker runs source code, assembled at run time like eval: outside the threat model (the header).
+  it("passes Node's eval: true worker, which runs code rather than a file, and only Node's", () => {
+    for (const source of [
+      'import { Worker } from "node:worker_threads";\nnew Worker(source, { eval: true, workerData });',
+      'import { Worker as W } from "worker_threads";\nnew W(`require("@iracedeck/iracing-sdk")`, { eval: true });',
+    ]) {
+      expect(only(source), source).toEqual({ visited: [ROOT_FILE], problems: [] });
+    }
+    expect(only('import { Worker } from "some-worker-lib";\nnew Worker(source, { eval: true });').problems).toEqual([
+      expect.stringContaining("a worker started from something other than new URL(<string literal>, import.meta.url)"),
+    ]);
+  });
+
+  // CommonJS loads require("./helpers.js") from a folder helpers.js/ when no such file is there (#1662).
+  it("follows a specifier with a code extension that names a folder to its index or main, beside its files", () => {
+    const dir = "packages/website/scripts";
+    const sim = 'module.exports = require("@iracedeck/iracing-sdk");';
+
+    for (const [specifier, extra, entry] of [
+      ["./helpers.js", {}, `${dir}/helpers.js/index.js`],
+      ["./helpers.js", {}, `${dir}/helpers.js/index.ts`],
+      ["./helpers.cjs", {}, `${dir}/helpers.cjs/index.js`],
+      [
+        "./helpers.js",
+        { [`${dir}/helpers.js/package.json`]: '{ "main": "lib/entry.js" }' },
+        `${dir}/helpers.js/lib/entry.js`,
+      ],
+    ]) {
+      const { visited, problems } = walk({ [ROOT_FILE]: `require("${specifier}");`, ...extra, [entry]: sim });
+
+      expect(visited, entry).toEqual([ROOT_FILE, entry]);
+      expect(problems, entry).toEqual([
+        expect.stringContaining(`${ROOT_FILE} → ${entry} imports @iracedeck/iracing-sdk`),
+      ]);
+    }
+    // The files a .js name may be are still followed beside the folder, so neither can hide a load.
+    for (const [dirty, clean] of [
+      ["helpers.ts", "helpers.js/index.js"],
+      ["helpers.js/index.js", "helpers.ts"],
+    ]) {
+      const { visited, problems } = walk({
+        [ROOT_FILE]: 'require("./helpers.js");',
+        [`${dir}/${dirty}`]: sim,
+        [`${dir}/${clean}`]: "module.exports = 1;",
+      });
+
+      expect(visited, dirty).toEqual(expect.arrayContaining([`${dir}/${dirty}`, `${dir}/${clean}`]));
+      expect(problems, dirty).toEqual([expect.stringContaining(`${ROOT_FILE} → ${dir}/${dirty} imports @iracedeck/`)]);
+    }
+    expect(
+      walk({
+        [ROOT_FILE]: 'require("./helpers.js");',
+        [`${dir}/helpers.js/package.json`]: '{ "exports": "./x.js" }',
+        [`${dir}/helpers.js/index.js`]: sim,
+      }).problems,
+    ).toEqual([
+      `${ROOT_FILE} imports ./helpers.js, a folder, ${dir}/helpers.js, whose package.json has "exports", which this ` +
+        "check does not follow: import the file it loads by its own path so it can be followed",
+    ]);
   });
 
   // A folder's package.json main is loaded before its index.

@@ -1,4 +1,6 @@
 import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -8,7 +10,9 @@ import {
   importedPackages,
   isTestSource,
   moduleReferences,
+  nulSeparatedPaths,
   packageOf,
+  trackedFiles,
   trackedPackageSources,
   VENDORED_SOURCES,
 } from "./source-imports.mjs";
@@ -287,9 +291,52 @@ describe("trackedPackageSources", () => {
 
   it("names only vendored files git still tracks", () => {
     for (const vendored of Object.keys(VENDORED_SOURCES)) {
-      const listed = execFileSync("git", ["ls-files", "--", vendored], { cwd: ROOT, encoding: "utf-8" }).trim();
-
-      expect(listed, vendored).toBe(vendored);
+      expect(trackedFiles(ROOT, vendored), vendored).toEqual([vendored]);
     }
+  });
+});
+
+describe("nulSeparatedPaths (#1662)", () => {
+  it("keeps a non-ASCII name, a space, a quote and a line break in a path as themselves", () => {
+    const paths = [
+      "packages/website/src/pages/café.astro",
+      "packages/a b/x.ts",
+      'packages/q"uote/x.mts',
+      "packages/line\nbreak/x.js",
+    ];
+
+    expect(nulSeparatedPaths(`${paths.join("\0")}\0`)).toEqual(paths);
+    expect(nulSeparatedPaths("")).toEqual([]);
+  });
+
+  // A plain `git ls-files` quotes this name, octal-escaped, and the extension filter dropped it.
+  it("lists a tracked source whose name is not ASCII, in a repository of its own", () => {
+    const repo = mkdtempSync(path.join(tmpdir(), "source-imports-"));
+
+    try {
+      const page = "packages/website/src/pages/café.astro";
+
+      mkdirSync(path.join(repo, path.dirname(page)), { recursive: true });
+      writeFileSync(path.join(repo, page), "---\n---\n");
+      writeFileSync(path.join(repo, "packages/website/src/pages/naïve.ts"), "export {};\n");
+      execFileSync("git", ["init", "-q"], { cwd: repo });
+      // git's default, set here so a machine that turns it off still runs the control.
+      execFileSync("git", ["config", "core.quotepath", "true"], { cwd: repo });
+      execFileSync("git", ["add", "packages"], { cwd: repo });
+
+      expect(trackedPackageSources(repo, { components: true })).toEqual([
+        page,
+        "packages/website/src/pages/naïve.ts",
+      ]);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("lists a tracked file as git stores it, the same set a plain listing gives for ASCII names", () => {
+    const files = trackedFiles(ROOT, "changelog.d");
+
+    expect(files).toContain("changelog.d/README.md");
+    expect(files.every((file) => file.startsWith("changelog.d/") && !file.startsWith('"'))).toBe(true);
   });
 });
