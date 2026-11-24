@@ -432,6 +432,10 @@ describe("post-bash.mjs acts on niklam/iracedeck only (#1527)", { timeout: 30_00
         "cd ../ir-7 && cd .; gh pr merge --squash",
         "false && cd ..; gh pr merge --squash",
         "cd ../ir-7 && cd .; gh pr merge 5 --squash",
+        // A named repository picks the repository, never the branch: a merge
+        // with no PR is still the checkout's (CodeRabbit on PR #1788, round 3).
+        "cd ../ir-7 && cd .; GH_REPO=niklam/iracedeck gh pr merge --squash",
+        "cd ../ir-7 && cd .; gh pr merge -R niklam/iracedeck --squash",
       ]) {
         const { note, calls } = fireWithGh(command, open);
         expect(note, command).toMatch(/directory unknown, so the hook cannot tell which repository's or branch's PR/);

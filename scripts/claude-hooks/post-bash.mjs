@@ -156,10 +156,12 @@ function afterMerge(merge, command, cwd, shell) {
   // leaves its directory unknown (#1646). The checkout then decides which PR
   // it merged — the branch's for no PR, the checkout's repository for a bare
   // number — which the session's directory would answer for wrongly, so that
-  // is left to a check by hand. A PR URL, or a repository the merge names
-  // (`-R`, `GH_REPO`), is read back (CodeRabbit on PR #1788).
+  // is left to a check by hand. A PR URL, or a number with a repository the
+  // merge names (`-R`, `GH_REPO`), is read back. A named repository never
+  // picks the branch, so a merge with no PR is the checkout's even then
+  // (CodeRabbit on PR #1788).
   const known = cwdAt(command, cwd, at, shell);
-  if (known === undefined && !named && !repoOfUrl(merge.ref))
+  if (known === undefined && (!merge.ref || (!named && !repoOfUrl(merge.ref))))
     return [
       "gh pr merge ran where a `cd` ahead of it leaves its directory unknown, so the hook cannot tell which repository's or branch's PR it merged; check by hand whether it merged an iRaceDeck PR, and move its Roadmap card to Testing.",
     ];
