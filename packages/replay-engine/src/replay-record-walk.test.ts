@@ -1,20 +1,36 @@
-import { REPLAY_EXIT_GRACE_MS, type TelemetryData } from "@iracedeck/iracing-sdk";
+import {
+  initialReplayState,
+  nextReplayState,
+  replaySeekHeld,
+  type ReplayState,
+  type TelemetryData,
+} from "@iracedeck/iracing-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { pressReplayCommand } from "./replay-command-gate.js";
+import {
+  getReplayGateRecord,
+  getReplayGateView,
+  pressReplayCommand,
+  type ReplayGateNotice,
+  subscribeReplayGate,
+} from "./replay-command-gate.js";
 import { fakeReplay, type FakeReplay } from "./replay-command-gate.test-support.js";
 import { resetEngine } from "./replay-engine-reset.test-support.js";
 import { beginReplayJump, runReplayJump } from "./replay-jump-playback.js";
+import type { ReplaySpeed } from "./replay-jump-speed.js";
 import { pendingReplayTarget } from "./replay-position-state.js";
 import {
+  awaitReplayWalkStart,
   recordedIndexAt,
   type RecordedSpanRule,
   type ReplayWalkDirection,
   resolveReplayWalkAnchor,
   resolveReplayWalkStart,
+  type SettledReplayWalkStart,
   walkRecordedEntries,
   walkRecordedIndex,
 } from "./replay-record-walk.js";
+import { steppedReplayState, type SteppedReplayState } from "./replay-state.test-support.js";
 
 /** {@link walkRecordedEntries} over bare frames with no rule — the marker walk — reduced to where it lands. */
 function stepFrames(frames: readonly number[], anchor: number, direction: ReplayWalkDirection, steps: number) {
@@ -201,25 +217,13 @@ describe("the anchor and the cursor", () => {
 
   type WalkState = Parameters<typeof resolveReplayWalkStart>[0];
 
-  /** The debounced state as the controller reads it on a replay tick showing `frame`. */
-  const replayTick = (frame: number): WalkState => ({
-    inReplay: true,
-    frame,
-    tickReplayPlaying: true,
-    replaySeenAt: Date.now(),
-  });
-  /** A tick that reads mid-seek: no frame of its own, and seen as a replay `seenAgo` ms ago (null: never). */
-  const midSeekState = (frame: number | null, seenAgo: number | null, inReplay = true): WalkState => ({
-    inReplay,
-    frame,
-    tickReplayPlaying: false,
-    replaySeenAt: seenAgo === null ? null : Date.now() - seenAgo,
-  });
+  /** The debounced state with `cursorFrame` as its cursor read (null: none). */
+  const stateWith = (cursorFrame: number | null, inReplay = true): WalkState => ({ inReplay, cursorFrame });
   const midSeek = { IsReplayPlaying: false, ReplayFrameNum: 0, SessionNum: -1 } as TelemetryData;
 
   it("with nothing under way the anchor is the cursor", () => {
     expect(resolveReplayWalkAnchor(100_000, sim.telemetry())).toBe(100_000);
-    expect(resolveReplayWalkStart(replayTick(100_000), sim.telemetry(), Date.now())).toEqual({
+    expect(resolveReplayWalkStart(stateWith(100_000), sim.telemetry())).toEqual({
       frame: 100_000,
       from: "cursor",
     });
@@ -230,12 +234,9 @@ describe("the anchor and the cursor", () => {
 
     expect(pendingReplayTarget()).toMatchObject({ frame: 900_000 });
     expect(resolveReplayWalkAnchor(100_000, sim.telemetry())).toBe(900_000);
-    expect(resolveReplayWalkStart(midSeekState(0, null), sim.telemetry(), Date.now())).toEqual({
-      frame: 900_000,
-      from: "target",
-    });
+    expect(resolveReplayWalkStart(stateWith(null), sim.telemetry())).toEqual({ frame: 900_000, from: "target" });
     // A seek longer than the grace reads like a replay left in a live session; the plugin's jump is still headed there.
-    expect(resolveReplayWalkStart(midSeekState(0, null, false), sim.telemetry(), Date.now())).toEqual({
+    expect(resolveReplayWalkStart(stateWith(null, false), sim.telemetry())).toEqual({
       frame: 900_000,
       from: "target",
     });
@@ -252,7 +253,7 @@ describe("the anchor and the cursor", () => {
 
     expect(sim.busy()).toBe(true);
     expect(resolveReplayWalkAnchor(100_000, sim.telemetry())).toBe(1_100_000);
-    expect(resolveReplayWalkStart(midSeekState(0, 4_000, false), sim.telemetry(), Date.now())).toEqual({
+    expect(resolveReplayWalkStart(stateWith(null, false), sim.telemetry())).toEqual({
       frame: 1_100_000,
       from: "target",
     });
@@ -264,36 +265,413 @@ describe("the anchor and the cursor", () => {
     expect(resolveReplayWalkAnchor(sim.frame(), sim.telemetry())).toBe(1_100_000);
   });
 
-  it("with no target, a tick that reads mid-seek inside the grace takes the debounced frame", () => {
-    expect(resolveReplayWalkStart(midSeekState(42_000, REPLAY_EXIT_GRACE_MS - 1), midSeek, Date.now())).toEqual({
-      frame: 42_000,
-      from: "cursor",
-    });
+  it("with no target, the state's cursor read is the start, whatever the tick reads", () => {
+    expect(resolveReplayWalkStart(stateWith(42_000), midSeek)).toEqual({ frame: 42_000, from: "cursor" });
   });
 
-  it("with no target and a tick still reading mid-seek once the grace is over, there is no cursor", () => {
-    // A saved replay: the state stays in a replay, its frame the tick's 0.
-    expect(resolveReplayWalkStart(midSeekState(0, REPLAY_EXIT_GRACE_MS), midSeek, Date.now())).toEqual({
-      frame: null,
-      reason: "no cursor",
-    });
-    expect(resolveReplayWalkStart(midSeekState(0, null), midSeek, Date.now())).toEqual({
-      frame: null,
-      reason: "no cursor",
-    });
-  });
-
-  it("no frame at all is no cursor", () => {
-    expect(resolveReplayWalkStart({ ...replayTick(0), frame: null }, null, Date.now())).toEqual({
-      frame: null,
-      reason: "no cursor",
-    });
+  it("with no target and no cursor read there is no cursor", () => {
+    expect(resolveReplayWalkStart(stateWith(null), midSeek)).toEqual({ frame: null, reason: "no cursor" });
   });
 
   it("with no target, outside a replay there is nothing to step from", () => {
-    expect(resolveReplayWalkStart({ ...replayTick(5_000), inReplay: false }, sim.telemetry(), Date.now())).toEqual({
+    expect(resolveReplayWalkStart(stateWith(5_000, false), sim.telemetry())).toEqual({
       frame: null,
       reason: "not in a replay",
     });
+  });
+
+  describe("over the SDK's own debounced state (#1660)", () => {
+    const LIVE_SESSION = { WeekendInfo: { SimMode: "full" } };
+    const SAVED_REPLAY = { WeekendInfo: { SimMode: "replay" } };
+    const replayTick = (frame: number) =>
+      ({ IsReplayPlaying: true, ReplayFrameNum: frame, ReplayFrameNumEnd: 100 }) as TelemetryData;
+    const carTick = { IsReplayPlaying: false, ReplayFrameNum: 0, ReplayFrameNumEnd: 900 } as TelemetryData;
+
+    it("a seek hold past the grace with no search gives the held frame", () => {
+      // Seen at 0, held for 5 s, the ticks reading as the car meanwhile; read 3 s on, past the grace.
+      let state = replaySeekHeld(
+        nextReplayState(initialReplayState(), replayTick(500), LIVE_SESSION, 0),
+        { untilMs: 5_000, maxPastSightingMs: 60_000 },
+        10,
+      );
+
+      for (let t = 50; t <= 3_000; t += 50) state = nextReplayState(state, carTick, LIVE_SESSION, t);
+
+      expect(resolveReplayWalkStart(state, midSeek)).toEqual({ frame: 500, from: "cursor" });
+    });
+
+    it("a saved replay whose tick reads mid-seek at frame 0 past the grace has no cursor", () => {
+      const state = [0, 300, 1_000].reduce(
+        (prev, t) => nextReplayState(prev, t === 0 ? replayTick(500) : midSeek, SAVED_REPLAY, t),
+        initialReplayState(),
+      );
+
+      expect(state).toMatchObject({ inReplay: true, frame: 0 });
+      expect(resolveReplayWalkStart(state, midSeek)).toEqual({ frame: null, reason: "no cursor" });
+    });
+
+    it("the live edge is never a start", () => {
+      const state = nextReplayState(initialReplayState(), carTick, LIVE_SESSION, 0);
+
+      expect(state.frame).toBe(900);
+      expect(resolveReplayWalkStart({ ...state, inReplay: true }, carTick)).toEqual({
+        frame: null,
+        reason: "no cursor",
+      });
+    });
+  });
+});
+
+describe("a start while a search of the gate's is on its way (#1660)", () => {
+  let sim: FakeReplay;
+  let state: SteppedReplayState;
+  /** False once the test leaves the replay: the debounced state and the engine read it as gone. */
+  let onScreen: boolean;
+  const ORIGIN = "key-1";
+
+  /** The debounced state as a press reads it: the stepped tracker's, or nothing on screen once the replay is left. */
+  const readState = (): ReplayState => {
+    const read = state.getReplayState();
+
+    return onScreen ? read : { ...read, inReplay: false, cursorFrame: null };
+  };
+
+  /** Where the fake's searches land: Next Session 100 000 frames on, Next Lap a long way on, Next Incident nowhere. */
+  function setUp(options: { speed?: ReplaySpeed; frame?: number } = {}): void {
+    sim = fakeReplay({
+      frame: options.frame ?? 100_000,
+      speed: options.speed,
+      searches: {
+        nextSession: (from) => from + 100_000,
+        nextLap: (from) => from + 900_000,
+        nextIncident: () => null,
+      },
+    });
+    state = steppedReplayState(() => sim.telemetry());
+    onScreen = true;
+    resetEngine({
+      replay: () => sim.replay,
+      readTelemetry: () => sim.telemetry(),
+      inReplay: () => onScreen && state.getReplayState().inReplay,
+      connected: () => true,
+      seekHold: (hold) => state.noteReplaySeekHold(hold),
+      now: () => Date.now(),
+    });
+  }
+
+  /** A search pressed from another surface than the key under test. */
+  const search = (kind: "nextSession" | "nextLap" | "nextIncident") =>
+    pressReplayCommand({ kind: "search", search: kind }, { by: "test-search", origin: "dial-1" });
+
+  /** Awaits a start whose act only records it. */
+  function awaitStart(origin?: string): { starts: SettledReplayWalkStart[]; done: Promise<SettledReplayWalkStart> } {
+    const starts: SettledReplayWalkStart[] = [];
+    const done = awaitReplayWalkStart(
+      readState,
+      () => sim.telemetry(),
+      (start) => {
+        starts.push(start);
+
+        return start;
+      },
+      { origin },
+    );
+
+    return { starts, done };
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000_000);
+  });
+
+  afterEach(() => {
+    resetEngine();
+    vi.useRealTimers();
+  });
+
+  it("acts at once, inside the call, when nothing is on its way", async () => {
+    setUp();
+
+    const { starts, done } = awaitStart(ORIGIN);
+
+    expect(starts).toEqual([{ frame: 100_000, from: "cursor" }]);
+    await expect(done).resolves.toEqual({ frame: 100_000, from: "cursor" });
+    expect(getReplayGateView(ORIGIN).waiting).toBeNull();
+  });
+
+  it("reads `search on its way` while a search may be on its way, and resolves to its landing", async () => {
+    setUp();
+    search("nextSession");
+
+    expect(resolveReplayWalkStart(readState(), sim.telemetry())).toEqual({
+      frame: null,
+      reason: "search on its way",
+    });
+
+    const { starts, done } = awaitStart(ORIGIN);
+
+    expect(starts).toEqual([]);
+
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    await expect(done).resolves.toEqual({ frame: 200_000, from: "cursor" });
+    expect(starts).toHaveLength(1);
+  });
+
+  it("does not wait for a go to end", () => {
+    setUp();
+    pressReplayCommand({ kind: "go-to", end: "end" }, { by: "test-go-to" });
+
+    expect(resolveReplayWalkStart(readState(), sim.telemetry())).not.toEqual({
+      frame: null,
+      reason: "search on its way",
+    });
+  });
+
+  it("waits for a go to start, whose landing is where the replay is headed", async () => {
+    setUp();
+    pressReplayCommand({ kind: "go-to", end: "start" }, { by: "test-go-to" });
+
+    expect(resolveReplayWalkStart(readState(), sim.telemetry())).toEqual({
+      frame: null,
+      reason: "search on its way",
+    });
+
+    const { done } = awaitStart();
+
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    await expect(done).resolves.toEqual({ frame: 0, from: "cursor" });
+  });
+
+  it("re-reads the cursor when the search did not land within the patience on a paused replay", async () => {
+    setUp();
+    // Nine hundred thousand frames: about seven seconds of seeking, past the three-second patience.
+    search("nextLap");
+
+    const { done } = awaitStart();
+
+    await vi.advanceTimersByTimeAsync(3_500);
+
+    await expect(done).resolves.toEqual({ frame: 100_000, from: "cursor" });
+    // The search it waited out no longer counts: the next press does not wait for it again.
+    expect(resolveReplayWalkStart(readState(), sim.telemetry())).toEqual({ frame: 100_000, from: "cursor" });
+  });
+
+  it("re-reads the cursor when the search found nothing on a playing replay", async () => {
+    setUp({ speed: { speed: 1, slowMotion: false } });
+    search("nextIncident");
+
+    const { done } = awaitStart();
+
+    expect(resolveReplayWalkStart(readState(), sim.telemetry())).toEqual({
+      frame: null,
+      reason: "search on its way",
+    });
+
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    const start = await done;
+
+    expect(start).toMatchObject({ from: "cursor" });
+    expect(start.frame).toBeGreaterThan(100_000);
+  });
+
+  it("anchors on a jump that replaced the search", async () => {
+    setUp();
+    search("nextSession");
+
+    const { done } = awaitStart();
+
+    await vi.advanceTimersByTimeAsync(100);
+    pressReplayCommand({ kind: "jump", frame: 700_000 }, { by: "test-jump" });
+    await vi.advanceTimersByTimeAsync(100);
+
+    await expect(done).resolves.toEqual({ frame: 700_000, from: "target" });
+  });
+
+  it("reads `not in a replay` promptly when the replay is left, and ends its waiting fact as replay-left", async () => {
+    setUp();
+
+    const notices: ReplayGateNotice[] = [];
+
+    subscribeReplayGate((notice) => notices.push(notice));
+    search("nextLap");
+
+    const { done } = awaitStart(ORIGIN);
+
+    await vi.advanceTimersByTimeAsync(200);
+    onScreen = false;
+    sim.leave();
+    await vi.advanceTimersByTimeAsync(100);
+
+    await expect(done).resolves.toEqual({ frame: null, reason: "not in a replay" });
+
+    const ends = notices.filter((n) => n.origin === ORIGIN).flatMap((n) => n.ended);
+
+    expect(ends).toEqual([{ fact: "waiting", class: "gave-up", reason: "replay-left" }]);
+    expect(getReplayGateView(ORIGIN).waiting).toBeNull();
+  });
+
+  it("resolves two waiting presses in press order, the second from the first's recorded target", async () => {
+    setUp();
+    search("nextSession");
+
+    const order: string[] = [];
+    const jumps: Promise<unknown>[] = [];
+    /** A Next press's act: the start, then a jump 50 000 frames on from it, its target recorded at once. */
+    const press = (name: string) =>
+      awaitReplayWalkStart(
+        readState,
+        () => sim.telemetry(),
+        (start) => {
+          order.push(`${name} ${start.frame === null ? start.reason : `${start.from} ${start.frame}`}`);
+
+          if (start.frame === null) return;
+
+          const frame = start.frame + 50_000;
+          const jump = beginReplayJump(`test-${name}`, sim.telemetry(), undefined, Date.now(), { frame });
+
+          jumps.push(runReplayJump(jump, { frame, readTelemetry: () => sim.telemetry() }).finally(() => jump.end()));
+        },
+      );
+
+    const first = press("a");
+    const second = press("b");
+
+    await vi.advanceTimersByTimeAsync(3_000);
+    await Promise.all([first, second]);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await Promise.all(jumps);
+
+    expect(order).toEqual(["a cursor 200000", "b target 250000"]);
+    expect(sim.frame()).toBe(300_000);
+  });
+
+  it("resolves every press waiting on one search to its landing", async () => {
+    setUp();
+    search("nextSession");
+
+    const first = awaitStart();
+    const second = awaitStart();
+
+    expect(first.starts).toEqual([]);
+    expect(second.starts).toEqual([]);
+
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    await expect(first.done).resolves.toEqual({ frame: 200_000, from: "cursor" });
+    await expect(second.done).resolves.toEqual({ frame: 200_000, from: "cursor" });
+  });
+
+  it("rejects a press whose act throws, and goes on with the next", async () => {
+    setUp();
+    search("nextSession");
+
+    const failing = awaitReplayWalkStart(
+      readState,
+      () => sim.telemetry(),
+      () => {
+        throw new Error("boom");
+      },
+    );
+    const next = awaitStart();
+
+    failing.catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    await expect(failing).rejects.toThrow("boom");
+    await expect(next.done).resolves.toEqual({ frame: 200_000, from: "cursor" });
+  });
+
+  it("shows the press as waiting for its origin while it waits, and hands over to its jump as completed", async () => {
+    setUp();
+
+    const notices: ReplayGateNotice[] = [];
+
+    subscribeReplayGate((notice) => notices.push(notice));
+    search("nextSession");
+
+    let jump: ReturnType<typeof beginReplayJump> | null = null;
+    const done = awaitReplayWalkStart(
+      readState,
+      () => sim.telemetry(),
+      (start) => {
+        if (start.frame === null) return;
+
+        jump = beginReplayJump("test-key", sim.telemetry(), undefined, Date.now(), {
+          frame: start.frame + 50_000,
+          origin: ORIGIN,
+        });
+      },
+      { origin: ORIGIN },
+    );
+
+    expect(getReplayGateView(ORIGIN)).toMatchObject({ waiting: { since: Date.now() }, underWay: null });
+    // The wait fills no slot: the gate's own record of what waits is unchanged.
+    expect(getReplayGateRecord().waiting).toBeNull();
+
+    await vi.advanceTimersByTimeAsync(3_000);
+    await done;
+
+    const mine = notices.filter((n) => n.origin === ORIGIN);
+
+    // One change hands the still mark straight to the jump under way, never to rest between.
+    expect(mine.map((n) => ({ waiting: n.view.waiting !== null, underWay: n.view.underWay !== null }))).toEqual([
+      { waiting: true, underWay: false },
+      { waiting: false, underWay: true },
+    ]);
+    expect(mine[1]?.ended).toEqual([{ fact: "waiting", class: "completed", reason: "sent-on-landing" }]);
+
+    (jump as ReturnType<typeof beginReplayJump> | null)?.end();
+  });
+
+  it("still queues a press with nothing to wait for behind an earlier one waiting, in press order", async () => {
+    setUp();
+    search("nextSession");
+
+    const order: string[] = [];
+    const first = awaitReplayWalkStart(
+      readState,
+      () => sim.telemetry(),
+      (start) => order.push(`a ${start.frame}`),
+    );
+
+    await vi.advanceTimersByTimeAsync(100);
+    // A jump from another surface replaces the search; the first press has not read again yet.
+    pressReplayCommand({ kind: "jump", frame: 700_000 }, { by: "test-jump" });
+
+    const second = awaitReplayWalkStart(
+      readState,
+      () => sim.telemetry(),
+      (start) => order.push(`b ${start.frame}`),
+    );
+
+    expect(order).toEqual([]);
+
+    await vi.advanceTimersByTimeAsync(100);
+    await Promise.all([first, second]);
+
+    expect(order).toEqual(["a 700000", "b 700000"]);
+  });
+
+  it("a reset drops the waiting starts and their waiting facts", async () => {
+    setUp();
+    search("nextSession");
+
+    const { starts } = awaitStart(ORIGIN);
+
+    resetEngine();
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    expect(starts).toEqual([]);
+    expect(getReplayGateView(ORIGIN).waiting).toBeNull();
+
+    // Nothing from before the reset is left to queue behind or to act: a press with nothing to wait for acts at once.
+    setUp();
+
+    expect(awaitStart().starts).toEqual([{ frame: 100_000, from: "cursor" }]);
+    expect(starts).toEqual([]);
   });
 });

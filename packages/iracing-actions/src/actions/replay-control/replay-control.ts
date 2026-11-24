@@ -1038,7 +1038,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     const step = RECORD_STEPS[mode];
     const now = Date.now();
     const telemetry = this.sdkController.getCurrentTelemetry();
-    const start = resolveReplayWalkStart(this.sdkController.getReplayState(now), telemetry, now);
+    const start = resolveReplayWalkStart(this.sdkController.getReplayState(now), telemetry);
 
     if (start.frame === null && start.reason === "not in a replay") {
       this.logger.debug(`${step.label}: ${start.reason}; nothing sent`);

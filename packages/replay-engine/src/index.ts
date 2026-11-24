@@ -88,6 +88,7 @@ export {
   observeIncidentSearch,
 } from "./replay-incident-observer.js";
 export {
+  awaitReplayWalkStart,
   recordedIndexAt,
   type RecordedEntry,
   type RecordedSpanRule,
@@ -96,6 +97,7 @@ export {
   resolveReplayWalkAnchor,
   resolveReplayWalkStart,
   type ReplayWalkStart,
+  type SettledReplayWalkStart,
   walkRecordedEntries,
   walkRecordedIndex,
 } from "./replay-record-walk.js";

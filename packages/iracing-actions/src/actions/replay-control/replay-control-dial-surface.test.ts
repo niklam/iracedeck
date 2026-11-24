@@ -252,6 +252,7 @@ const host = {
   replayState: vi.fn((nowMs: number) => ({
     inReplay: env.inReplay,
     frame: env.telemetry?.ReplayFrameNum ?? null,
+    cursorFrame: env.telemetry?.ReplayFrameNum ?? null,
     replayOnlySession: env.replayOnlySession,
     tickReplayPlaying: env.telemetry?.IsReplayPlaying === true,
     tickFrame: env.telemetry?.ReplayFrameNum ?? null,

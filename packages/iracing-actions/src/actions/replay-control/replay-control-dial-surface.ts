@@ -913,7 +913,7 @@ export class ReplayControlDialSurface extends ReleaseDialSurfaceBase<
    */
   private recordStep(step: RecordStepSpec, steps: number): RecordStepResult {
     const now = Date.now();
-    const start = resolveReplayWalkStart(this.host.replayState(now), this.reading().telemetry, now);
+    const start = resolveReplayWalkStart(this.host.replayState(now), this.reading().telemetry);
 
     if (start.frame === null) return { hit: false, reason: start.reason };
 

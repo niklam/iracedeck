@@ -3441,6 +3441,7 @@ describe("ReplayControl", () => {
       action["sdkController"].getReplayState = vi.fn(() => ({
         inReplay: true,
         frame: 0,
+        cursorFrame: null,
         tickReplayPlaying: false,
         replaySeenAt: null,
       })) as any;
