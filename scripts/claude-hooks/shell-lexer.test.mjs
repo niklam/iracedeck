@@ -2548,3 +2548,18 @@ describe("the stopping rule: a shell word inside a quoted argument (#1659 PR rev
     [`echo x > f; sudo -s ls`, "a sudo that runs a shell"],
   ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
 });
+
+// PR #1798 review: the startup-assignment scan found each candidate's command
+// start by a search over every start, quadratic in a long chain of them.
+describe("the stopping rule: startup assignments in time linear in their number (#1659 PR review)", () => {
+  const MERGE = cmd(/gh\s+pr\s+merge\b/);
+  it("reads a long chain of ENV assignments in time linear in its length", { timeout: TIMING_TIMEOUT_MS }, () =>
+    readsLinearly(
+      (n) => `${"ENV=x;".repeat(n)}bash -c true`,
+      20000,
+      MERGE,
+      false,
+      (c) => (lexer.refusedForms(c).length > 0 ? "refused" : false),
+    ),
+  );
+});

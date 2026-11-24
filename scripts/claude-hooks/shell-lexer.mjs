@@ -2027,6 +2027,7 @@ function fedStarts(command, text, fed, programs) {
   const startupFiles = (found, read) => {
     const seen = new Set();
     let starts;
+    let cursor = 0;
     for (const m of found.matchAll(STARTUP_NAME)) {
       let s = m.index;
       while (s > 0 && !/[\s;&|(\x60]/.test(found[s - 1])) s--;
@@ -2035,8 +2036,11 @@ function fedStarts(command, text, fed, programs) {
       // Only where an assignment is made: a command's prefix, or an argument
       // of a declaring builtin or `env` — never a search pattern or a printed
       // word (`grep -F BASH_ENV=/dev/stdin x`; CodeRabbit CLI on #1659).
+      // The candidates come in order, so a forward cursor finds each one's
+      // command start in time linear overall (PR #1798 review).
       starts ??= level(found).commands;
-      if (!assignsAt(read, starts.findLast((c) => c <= s) ?? 0, s)) continue;
+      while (cursor + 1 < starts.length && starts[cursor + 1] <= s) cursor++;
+      if (!assignsAt(read, starts[cursor] ?? 0, s)) continue;
       const e = wordEnd(read, s, true);
       const raw = read.slice(s, e < 0 ? undefined : e);
       const chars = decodeWord(raw);
