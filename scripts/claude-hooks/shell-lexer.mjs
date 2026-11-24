@@ -744,6 +744,9 @@ function escapedAt(t, i) {
   return n % 2 === 1;
 }
 
+/** Whether a word expands or globs where bash reads it, so its text is not known ({@link decodeWord}, #1659). */
+const expands = (w) => decodeWord(w).some((x) => x.live);
+
 /** A word's text as bash reads it, quotes removed and escapes applied, an expansion one `$` ({@link decodeWord}). */
 const wordValue = (w) =>
   decodeWord(w)
@@ -760,7 +763,11 @@ const wordValue = (w) =>
  */
 function streamOf(word) {
   if (PROCESS_SUBSTITUTION.test(word)) return "substitution";
-  const p = wordValue(word);
+  return pathStream(wordValue(word));
+}
+
+/** The stream the path `p`, already decoded, names ({@link streamOf}), or `undefined`. */
+function pathStream(p) {
   if (!p.startsWith("/")) return undefined;
   const parts = [];
   for (const s of p.split("/"))
@@ -904,7 +911,8 @@ export function readCommand(spec, next) {
         out.dirs.push(o.attached === undefined ? { index: k + 1, offset: 0 } : { index: k, offset: o.attached });
       if (o.string && o.attached !== undefined) {
         Object.assign(out, { string: k, offset: o.attached, attached: true, switch: k });
-        break;
+        tail = true;
+        continue;
       }
       if (o.string) {
         stringNext = true;
@@ -916,14 +924,18 @@ export function readCommand(spec, next) {
       if (o.startup && value !== undefined && !out.startup) {
         const stream = streamOf(value);
         if (stream) out.startup = { option: o.startup, stream };
+        else if (expands(value)) out.startupExpands = true;
       }
       continue;
     }
     if (stringNext) {
       Object.assign(out, { string: k, switch: stringSwitch });
-      break;
+      // Past the string, its stdin still matters to a script word in it (#1659 second read).
+      tail = true;
+      continue;
     }
-    if (!positional && out.program === undefined) Object.assign(out, { program: k, script: streamOf(w) });
+    if (!positional && out.program === undefined)
+      Object.assign(out, { program: k, script: streamOf(w), scriptExpands: expands(w) });
     if (!scansOn) tail = true;
     else if (++scanned > SCANNED_WORDS) break;
   }
@@ -960,6 +972,8 @@ function commandOf(spec, text, from, limit) {
     script: r.script,
     scriptAt: at(r.dash ?? r.program),
     startup: r.startup,
+    // A script word or startup file that expands may name a stream (#1659 second read).
+    expands: Boolean((r.program !== undefined && r.scriptExpands) || r.startupExpands),
     encoded: Boolean(r.stop?.encoded),
     dangling: Boolean(r.dangling),
     stop: r.stop !== undefined,
@@ -1574,7 +1588,7 @@ const SCRIPT_READERS = new Set([...STDIN_SHELLS, "source", "."]);
  * its script, at a word's start ({@link fedStarts}, #1659): bash's `BASH_ENV`
  * (any non-interactive bash) and POSIX `ENV` (an interactive `sh`).
  */
-const STARTUP_VARIABLE = /(?<=^|[\s;&|(\x60])(BASH_ENV|ENV)=/g;
+const STARTUP_NAME = /ENV/g;
 /**
  * The closing word of a compound command, whose redirections set the stdin of
  * every command inside it ({@link fedStarts}' `stdinAround`, #1659): `}`,
@@ -1618,12 +1632,17 @@ function scriptStream(name, r, t) {
   if (r.script === "substitution") return { form: REFUSED.processSubstitution, shape: `${name} <(…)` };
   if (r.script === "descriptor") return { form: REFUSED.descriptor, shape: `${name} ${word()}` };
   const named = r.script === "stdin";
-  if (!named && (r.program !== undefined || r.stop || !STDIN_SHELLS.has(name))) return undefined;
+  // A script word or startup file that expands may be stdin: with stdin
+  // given anything, the shell may read its script from it (#1659 second read).
+  const unknown = !named && r.expands;
+  if (!named && !unknown && (r.program !== undefined || r.stop || !STDIN_SHELLS.has(name))) return undefined;
   if (r.stdin === "hereString") return { form: REFUSED.hereString, shape: `${name} <<< …` };
   if (r.stdin === "heredoc") return { form: REFUSED.heredoc, shape: `${name} <<…` };
   if (r.stdin === "substitution") return { form: REFUSED.processSubstitution, shape: `${name} < <(…)` };
   if (r.stdin === "descriptor") return { form: REFUSED.descriptor, shape: `${name} <&…` };
-  if (r.stdin === "pipe") return { piped: true, named, shape: named ? `${name} ${word()}` : name };
+  if (r.stdin === "pipe")
+    return { piped: true, named, expands: unknown, shape: named || unknown ? `${name} ${word()}` : name };
+  if (unknown) return { form: REFUSED.stdin, shape: `${name} ${word()} < …` };
   return undefined;
 }
 
@@ -1823,12 +1842,28 @@ function fedStarts(command, text, fed, programs) {
   // assigned — a command's prefix, through `env` or `export` (#1659): found in
   // `found`, read from `read` at the same index. At the typed level that is
   // the view's text, so a quoted mention is no assignment, and the command;
-  // in a string, its level's text both.
+  // in a string, its level's text both. The word is read in any quoting, the
+  // name's or the whole word's (`export "BASH_ENV=…"`), and a value that
+  // expands, whose text is not known, is refused as a stream (#1659 second
+  // read).
   const startupFiles = (found, read) => {
-    for (const m of found.matchAll(STARTUP_VARIABLE)) {
-      const v = m.index + m[0].length;
-      const e = PROCESS_SUBSTITUTION.test(read.slice(v, v + 2)) ? closeAt(read, v + 2, "(") : wordEnd(read, v, true);
-      if (e > v && streamOf(read.slice(v, e))) refuse(REFUSED.startup, `${m[1]}=…`);
+    const seen = new Set();
+    for (const m of found.matchAll(STARTUP_NAME)) {
+      let s = m.index;
+      while (s > 0 && !/[\s;&|(\x60]/.test(found[s - 1])) s--;
+      if (seen.has(s)) continue;
+      seen.add(s);
+      const e = wordEnd(read, s, true);
+      const raw = read.slice(s, e < 0 ? undefined : e);
+      const chars = decodeWord(raw);
+      const assignment = /^(BASH_ENV|ENV)=/.exec(chars.map((x) => x.c).join(""));
+      if (!assignment || chars.slice(0, assignment[0].length).some((x) => x.live)) continue;
+      const value = chars.slice(assignment[0].length);
+      // An unquoted process substitution ends the word at its paren.
+      const eq = s + chars[assignment[0].length - 1].at;
+      const substitution = PROCESS_SUBSTITUTION.test(read.slice(eq + 1, eq + 3));
+      const stream = pathStream(value.map((x) => x.c).join(""));
+      if (substitution || stream || value.some((x) => x.live)) refuse(REFUSED.startup, `${assignment[1]}=…`);
     }
   };
   startupFiles(text, command);
@@ -1859,6 +1894,14 @@ function fedStarts(command, text, fed, programs) {
   // or `undefined` where none is (#1659). Any `xargs` word between the
   // command's start and `p` counts, so a wrapper between them (`xargs nice
   // sh -c …`) hides nothing: the gate errs to deny.
+  // Whether a pipe feeds the command whose word is at `p` of the typed text.
+  const pipedHere = (p) => {
+    let start = 0;
+    for (const c of base.commands)
+      if (c <= p) start = c;
+      else break;
+    return start > 0 && text[start - 1] === "|" && text[start - 2] !== "|";
+  };
   const xargsBefore = (p) => {
     let start = 0;
     for (const c of base.commands)
@@ -1934,6 +1977,10 @@ function fedStarts(command, text, fed, programs) {
     // by its form; one that reads the string's stdin is a string inside it.
     const stream = SCRIPT_READERS.has(name) ? scriptStream(name, r, L.text) : undefined;
     if (stream && !stream.piped) return refuse(stream.form, `${L.via} … ${stream.shape}`);
+    // A script word that expands may name the stdin the string's own shell was
+    // given (`bash -c 'source "$0"' /dev/stdin <<< …`, #1659 second read).
+    if (stream?.expands && (L.outerStdin !== "pipe" || L.outerPiped))
+      return refuse(STREAM_FORMS[L.outerStdin] ?? REFUSED.stdin, `${L.via} … ${stream.shape}`);
     if (name === "parallel" && parallelRunsInput(L.text, e, r))
       return refuse(REFUSED.parallel, `${L.via} … parallel …`);
     if (feedsText(name, r)) refuse(REFUSED.nested, `${L.via} … ${name} …`);
@@ -2008,6 +2055,7 @@ function fedStarts(command, text, fed, programs) {
     const N = readLevel(base, d, join);
     if (file) N.file = true;
     readAs(N, kind, base, d);
+    return N;
   };
   // Every string a shell is handed, in the order of the word that hands it
   // over, so the level holding a word is built before the word is read.
@@ -2072,7 +2120,11 @@ function fedStarts(command, text, fed, programs) {
           const stream = SCRIPT_READERS.has(via) ? scriptStream(via, r, text) : undefined;
           if (stream) {
             if (!stream.piped) return refuse(stream.form, stream.shape);
-            if (pipedInto(p, via)) return;
+            // A shell with no script reads stdin, and is refused after any pipe
+            // in its element, erring to deny; one whose script word expands
+            // only when a pipe feeds its own command (`… | bash "$F"`), since
+            // agents run a script so after an unrelated pipe (#1659 second read).
+            if (stream.expands && !stream.named ? pipedHere(p) && pipedInto(p, via) : pipedInto(p, via)) return;
             // Its stdin may be set around it: by the closing word of a group,
             // subshell or loop it sits in, or by an earlier `exec`.
             const around = stdinAround(p, b);
@@ -2103,7 +2155,11 @@ function fedStarts(command, text, fed, programs) {
             if (filled) return refuse(REFUSED.filled, `${fill.by} … ${via} …`, FILLED_ADVICE);
           }
           if (r.program !== undefined) stringAt(r.program, kind, join, FILE_RUNNERS.has(via));
-          if (r.string !== undefined) stringAt(r.string, r.attached ? { ...kind, attached: true } : kind, join);
+          if (r.string !== undefined) {
+            const N = stringAt(r.string, r.attached ? { ...kind, attached: true } : kind, join);
+            // What the string's shell was given on stdin, for a script word in it that expands.
+            if (N) Object.assign(N, { outerStdin: r.stdin, outerPiped: own.pipes.some((x) => x < p) });
+          }
         },
       ]);
     }
@@ -2117,8 +2173,10 @@ function fedStarts(command, text, fed, programs) {
     PROGRAM_WORD.lastIndex = p;
     if (PROGRAM_WORD.exec(text)?.[0] !== "." || levelAt(p) !== base) continue;
     const stream = scriptStream(".", commandOf(NO_OPTIONS, command, p + 1, command.length), command);
-    // `.` reads stdin only through its name, so a pipe into it reads the script from stdin.
-    if (stream) refuse(stream.piped ? REFUSED.stdin : stream.form, stream.shape);
+    // `.` reads stdin only through its name, or a script word that expands: a
+    // pipe into it then reads the script from stdin.
+    if (stream && (!stream.piped || stream.named || pipedHere(p)))
+      refuse(stream.piped ? REFUSED.stdin : stream.form, stream.shape);
   }
   // The wrappers and the `find`s among the program words: what each runs, read
   // in the level that holds it.

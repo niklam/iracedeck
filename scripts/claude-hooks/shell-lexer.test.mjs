@@ -2255,3 +2255,40 @@ describe("the stopping rule: a stdin shell fed from around it (#1659 second read
     `( cd x && bash scripts/run.sh ) <<< 'y'`,
   ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
 });
+
+// #1659 second read: a startup file or script a shell is handed through an
+// expansion, or a `BASH_ENV` / `ENV` assignment in quotes, hid the stream.
+describe("the stopping rule: a stream named through an expansion or a quoted assignment (#1659 second read)", () => {
+  const STDIN = "a shell reading its script from stdin";
+  const PRINTER = "a printer piped into a shell";
+  const HERE_STRING = "a shell reading its script from a here-string";
+  const HEREDOC = "a shell reading its script from a heredoc";
+  const STARTUP = "a shell startup file read from stdin, a descriptor or a process substitution";
+  it.each([
+    [`export "BASH_ENV=/dev/stdin"; bash -c : <<< 'gh pr merge 7'`, STARTUP],
+    [`export 'ENV=/dev/fd/3'; sh -i`, STARTUP],
+    [`export "BASH_ENV"=/dev/stdin; bash -c :`, STARTUP],
+    [`F=/dev/stdin; BASH_ENV=$F bash -c :`, STARTUP],
+    [`BASH_ENV="$F" bash -c true`, STARTUP],
+    ["env ENV=`echo /dev/stdin` sh -i", STARTUP],
+    [`F=/dev/stdin; bash "$F" <<< 'gh pr merge 7'`, HERE_STRING],
+    [`bash $F <<'EOF'\ngh pr merge 7\nEOF`, HEREDOC],
+    [`echo 'gh pr merge 7' | bash "$F"`, PRINTER],
+    [`bash "$F" < in.txt`, STDIN],
+    [`source "$F" <<< 'gh pr merge 7'`, HERE_STRING],
+    [`bash --rcfile "$F" -i <<< 'gh pr merge 7'`, HERE_STRING],
+    [`bash -c 'source "$0"' /dev/stdin <<< 'gh pr merge 7'`, HERE_STRING],
+    [`bash -c '. "$1"' _ /dev/stdin <<< 'gh pr merge 7'`, HERE_STRING],
+  ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+  it.each([
+    `bash "$SCRIPT"`,
+    `bash "$SCRIPT" arg`,
+    `source "$HOME/.nvm/nvm.sh"`,
+    `bash x.sh <<< 'input'`,
+    `BASH_ENV=x.sh bash -c true`,
+    `export BASH_ENV=~/.bashrc`,
+    `bash -c 'source "$0"' x.sh`,
+    `bash -c 'echo "$0"' /dev/stdin <<< 'x'`,
+    `git commit -m "BASH_ENV=$F" -- x.md`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+});

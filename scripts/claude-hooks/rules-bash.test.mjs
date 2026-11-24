@@ -5266,6 +5266,21 @@ describe("the stopping rule over a stdin shell fed from around it (#1659)", () =
   );
 });
 
+// #1659 second read: a stream named through an expansion, or a quoted
+// `BASH_ENV` / `ENV` assignment, passed every rule.
+describe("the stopping rule over a stream named through an expansion or a quoted assignment (#1659)", () => {
+  it.each([
+    [`export "BASH_ENV=/dev/stdin"; bash -c : <<< 'gh pr merge 7 --squash'`, "a shell startup file"],
+    [`F=/dev/stdin; BASH_ENV=$F bash -c :`, "a shell startup file"],
+    [`F=/dev/stdin; bash "$F" <<< 'gh pr merge 7 --squash'`, "from a here-string"],
+    [`bash -c 'source "$0"' /dev/stdin <<< 'gh pr merge 7 --squash'`, "from a here-string"],
+  ])("refuses %s (%s)", (c, form) => expect(stopped(c)).toContain(form));
+  it.each([`bash "$SCRIPT" arg`, `source "$HOME/.nvm/nvm.sh" && nvm use`, `. "$HOME/.profile"`, `bash x.sh <<< 'y'`])(
+    "passes %s",
+    (c) => passes(c),
+  );
+});
+
 describe("the lexer's stopping rule: a form it does not read is refused outright (#1659)", () => {
   const REFUSAL = /hands text to a shell in a form the hook does not read/;
   const refusal = (c, o = ctx()) => {
