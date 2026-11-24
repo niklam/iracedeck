@@ -6658,6 +6658,52 @@ describe("a carried merge or tag push behind a quoted lead value (#1646)", () =>
       );
       expect(deny("git worktree remove ../ir-integration", linked)).toMatch(/plugin link points into/);
     });
+
+    // The PR #1788 re-review (CodeRabbit at 578854b81).
+    it("passes dev:voices after a cd it cannot follow while no host is linked", () => {
+      passes("false && cd ../ir-integration; pnpm dev:voices");
+      passes("echo 'cd \"$X\"; pnpm dev:voices' | bash");
+      expect(deny("false && cd ../ir-integration; pnpm dev:voices", linked)).toMatch(/leaves unknown/);
+    });
+
+    it("reads a cd's || branch as running where the cd failed to move", () => {
+      passes("cd ../ir-integration || pnpm dev:voices", linked);
+      expect(asks("cd ../ir-integration && pnpm dev:voices", linked)).toMatch(there);
+      expect(asks("cd ../ir-integration || exit 1; pnpm dev:voices", linked)).toMatch(there);
+      expect(deny("cd ../ir-integration && true || pnpm dev:voices", linked)).toMatch(/leaves unknown/);
+      const branchByTree = ctx({
+        branch: (d) => (isInside(d, INTEGRATION) ? "integration" : "master"),
+        toplevel: (d) => ROOTS.find((r) => isInside(d, r)),
+      });
+      passes("cd ../ir-integration || git push", branchByTree);
+      expect(deny("cd ../ir-integration && git push", branchByTree)).toMatch(/integration` branch is local/);
+    });
+
+    it.each([
+      "false && cd ../ir-5; git commit -m x",
+      "ls | cd ../ir-5; git commit -m x",
+      "cd ../ir-5 && true || git commit -m x",
+      "false && cd ../ir-5; git add . && git commit -m x",
+    ])("refuses a commit whose checkout a cd ahead of it leaves unknown: %s", (c) =>
+      expect(deny(c)).toMatch(/cannot tell which checkout it acts on/),
+    );
+
+    it("still judges a commit whose checkout is known", () => {
+      passes("cd ../ir-5 && git commit -m x");
+      passes("git commit -m x");
+    });
+
+    it("keeps a lost dev:voices refused inside a script that runs itself", () => {
+      const looped = ctx({
+        linkTargets: () => [{ host: "Stream Deck", target: path.join(INTEGRATION, "packages", "p", "x.sdPlugin") }],
+        toplevel: (d) => ROOTS.find((r) => isInside(d, r)),
+        scriptsAt: () => ({
+          dir: MASTER,
+          scripts: { loop: "false && cd ../ir-integration; pnpm dev:voices; pnpm loop" },
+        }),
+      });
+      expect(deny("pnpm loop", looped)).toMatch(/leaves unknown/);
+    });
   });
 
   it.each([

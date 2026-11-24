@@ -3382,8 +3382,13 @@ function cdSteps(text, shell, strict) {
  * be known: a `"lost"` or `"final"` step, or a
  * `"cond"` one not followed by `&&` alone up to `upTo` — so `false && cd x;
  * pnpm …` is unknown, and `cd x && pnpm …` and `true && cd x && pnpm …` run
- * in `x`. `loose` follows every step that names a directory and skips the
- * rest, never `undefined`: the fallback a lost command keeps.
+ * in `x`. A `"move"` is read by the outcome that reaches `upTo` within its
+ * and-or list ({@link cdOutcome}): its directory after success, the one before
+ * it after failure (`cd x || pnpm …` runs where it was), unknown where either
+ * can (`cd x && a || pnpm …`); past the list's end it is taken to have run, as
+ * a typed `cd x; …` always was. `loose` follows every step that names a
+ * directory and skips the rest, never `undefined`: the fallback a lost
+ * command keeps.
  */
 function dirThrough({ seps, steps }, upTo, base, shell, loose = false) {
   let dir = base;
@@ -3396,9 +3401,44 @@ function dirThrough({ seps, steps }, upTo, base, shell, loose = false) {
     }
     if (step.kind === "lost" || step.kind === "final") return undefined;
     if (step.kind === "cond" && !seps.slice(k, upTo).every((s) => s === "&&")) return undefined;
+    if (step.kind === "move") {
+      const outcome = cdOutcome(seps, k, upTo);
+      if (outcome === "both") return undefined;
+      if (outcome === "failure") continue;
+    }
     dir = resolveDir(dir, step.to, { shell });
   }
   return dir;
+}
+
+/**
+ * Which outcome of the command at segment `k` lets segment `upTo` run, along
+ * the separators `seps` between them (#1646, CodeRabbit on PR #1788):
+ * `"success"`, `"failure"`, `"both"`, or `"after"` where a separator other
+ * than `&&` or `||` ends its and-or list first, so `upTo` runs whatever it did.
+ * Each outcome is followed through the list as bash runs it: `&&` runs the
+ * next command after a success, `||` after a failure, and a command that runs
+ * may itself succeed or fail.
+ */
+function cdOutcome(seps, k, upTo) {
+  const reach = (ok) => {
+    let can = new Set([ok]);
+    let runs = true;
+    for (let i = k; i < upTo; i++) {
+      const sep = seps[i];
+      const on = sep === "&&";
+      runs = can.has(on);
+      // A command that runs may end either way; one skipped leaves the status as it was.
+      const next = new Set(runs ? [true, false] : []);
+      if (can.has(!on)) next.add(!on);
+      can = next;
+    }
+    return runs;
+  };
+  if (seps.slice(k, upTo).some((s) => s !== "&&" && s !== "||")) return "after";
+  const success = reach(true);
+  const failure = reach(false);
+  return success && failure ? "both" : failure ? "failure" : "success";
 }
 
 /** `pushd <dir>` and PowerShell's `Push-Location`, as {@link CD_RE} reads a `cd`. */

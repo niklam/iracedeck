@@ -294,6 +294,14 @@ const gitVerb = (verb) => cmd(new RegExp(`git${GIT_GLOBALS}${verb}`));
 const movedRepo = (verb) =>
   `This \`git ${verb}\` names its repository, work tree or index apart from its directory (--git-dir, --work-tree, core.worktree, GIT_DIR, GIT_COMMON_DIR, GIT_WORK_TREE or GIT_INDEX_FILE), or through a \`-C\` that expands, so the hook cannot tell which branch, index and files it acts on. Run it as \`git -C <dir> ${verb} …\` with the directory written out, in the tree itself instead (#1606).`;
 
+/**
+ * The refusal of a git command whose directory a `cd` ahead of it leaves
+ * unknown (#1646, CodeRabbit on PR #1788): its branch, index and files are
+ * those of a checkout the hook cannot name.
+ */
+const lostDir = (verb) =>
+  `A \`cd\` ahead of this \`git ${verb}\` may not run, runs in a pipeline's last stage, expands or runs under \`eval\`, so the hook cannot tell which checkout it acts on. Write the directory out: a plain \`cd <dir> &&\` ahead of it, or \`git -C <dir> ${verb} …\` (#1646).`;
+
 /** The git shapes whose rules read a `-C`; exported so the post-hook scopes the same way. */
 export const GIT_PUSH = gitVerb(String.raw`push\b`);
 export const GIT_COMMIT = gitVerb(String.raw`commit\b`);
@@ -1287,6 +1295,8 @@ export const rules = [
       for (const commit of chainCommands(c, ctx.cwd, GIT_COMMIT, ctx.shell)) {
         // Every `-C`, in order; a repository or work tree named apart from the
         // directory leaves the branch, the index and the files unknown (#1606).
+        // A `cd` ahead of it the hook cannot follow leaves the checkout unknown: refused before any read (#1646).
+        if (commit.lost) return lostDir("commit");
         const { dir, movesRepo, movesTree, movesIndex } = gitPlaceAt(c, commit.start, commit.base, ctx.shell);
         if (movesRepo || movesTree || movesIndex) return movedRepo("commit");
         // A `git add` ahead of it that stages into a moved repository, tree or
@@ -1354,6 +1364,8 @@ export const rules = [
       if (!has(c, GIT_COMMIT)) return null;
       // Each commit in the tree its own `cd`s and `-C` land in, as for the spec rule (#1594 review).
       for (const commit of chainCommands(c, ctx.cwd, GIT_COMMIT, ctx.shell)) {
+        // A `cd` ahead of it the hook cannot follow leaves the checkout unknown: refused before any read (#1646).
+        if (commit.lost) return lostDir("commit");
         const { dir, movesRepo, movesTree, movesIndex } = gitPlaceAt(c, commit.start, commit.base, ctx.shell);
         if (movesRepo || movesTree || movesIndex) return movedRepo("commit");
         // A `git add` ahead of it that stages into a moved repository, tree or
@@ -1740,7 +1752,7 @@ function addsAhead(command, commit, ctx) {
       return {
         args: gitArgs(argTokens(command, add.at), ADD_OPTIONS),
         dir: place.dir,
-        moved: place.movesRepo || place.movesTree || place.movesIndex,
+        moved: place.movesRepo || place.movesTree || place.movesIndex || Boolean(add.lost),
       };
     });
 }

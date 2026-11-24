@@ -1942,6 +1942,18 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
       expect(where("cd ../ir-5 || exit; pnpm x")).toEqual([{ base: tree("ir-5"), lost: undefined }]);
     });
 
+    // The PR #1788 re-review (CodeRabbit at 578854b81): `||` runs what follows after the cd failed.
+    it("reads a cd by the outcome that reaches the command", () => {
+      expect(lexer.dirAfter([bash("cd ../ir-5 || ")], MASTER)).toBe(MASTER);
+      expect(lexer.dirAfter([bash("cd ../ir-5 && ")], MASTER)).toBe(tree("ir-5"));
+      expect(lexer.dirAfter([bash("cd ../ir-5 && true || ")], MASTER)).toBeUndefined();
+      expect(lexer.dirAfter([bash("cd ../ir-5 || true && ")], MASTER)).toBeUndefined();
+      expect(lexer.dirAfter([bash("cd ../ir-5 || exit; ")], MASTER)).toBe(tree("ir-5"));
+      expect(where("cd ../ir-5 || pnpm x")).toEqual([{ base: MASTER, lost: undefined }]);
+      expect(where("cd ../ir-5 && true || pnpm x")[0].lost).toBe(true);
+      expect(lexer.cwdAt("cd ../ir-5 || pnpm x", MASTER, 14)).toBe(MASTER);
+    });
+
     it("moves the typed command by no cd a child shell's string runs", () => {
       expect(where("bash -c 'true; cd ../ir-5; true'; pnpm x")).toEqual([{ base: MASTER, lost: undefined }]);
       expect(where("cd ../ir-6 && bash -c 'true; cd ../ir-5; true'; pnpm x")).toEqual([

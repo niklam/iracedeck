@@ -958,7 +958,8 @@ function deckReach(c, cwd, ctx, shell, trail, lostDir = false) {
         // so what it runs is still read, and a `restart:x` that relinks asks.
         if (kind !== "restart") continue;
       } else if (DECK_IF_LINKED.test(name)) {
-        if (run.lost) {
+        // With no host linked, no tree changes the verdict (CodeRabbit on PR #1788).
+        if (run.lost && links.length) {
           finding(`\`${run.label}\` runs in a directory a \`cd\` ahead of it leaves unknown`, "lost");
           continue;
         }
@@ -1001,7 +1002,8 @@ function deckReach(c, cwd, ctx, shell, trail, lostDir = false) {
         for (const k of inner.cycles) cycles.add(k);
         if (inner.cut) cut ??= `${via} → ${inner.cut}`;
         for (const f of inner.found) {
-          const g = itself ? repeated(f.text, f.kind, RUNS_ITSELF) : f;
+          // A lost finding stays a refusal; a repeat escalates the rest (CodeRabbit on PR #1788).
+          const g = itself && f.kind !== "lost" ? repeated(f.text, f.kind, RUNS_ITSELF) : f;
           // Under a restart's own name, the restarts it runs are that restart,
           // named once already; what else it reaches is reported.
           if (kind === "restart" && g.kind === "restart") continue;
