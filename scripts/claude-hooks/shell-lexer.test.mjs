@@ -2340,3 +2340,18 @@ describe("fish's init command is a string it runs (#1659 second read)", () => {
     expect(lexer.has(`fish -d 3 x.fish`, MERGE)).toBe(false);
   });
 });
+
+// CodeRabbit CLI on #1659: an interactive bash with a `-c` string still runs
+// its `--rcfile` first, and one that expands may be the stdin it is given.
+describe("the stopping rule: an expanding startup file beside a string (#1659 CodeRabbit)", () => {
+  it.each([
+    [`bash --rcfile "$F" -i -c 'true' <<< 'gh pr merge 7 --squash'`, "a shell reading its script from a here-string"],
+    [`bash -i --init-file $F -c : < <(echo gh pr merge 7)`, "a shell reading its script from a process substitution"],
+    [`bash --rcfile "$F" -i -c : < in.txt`, "a shell reading its script from stdin"],
+    [`echo 'gh pr merge 7' | bash --rcfile "$F" -i -c :`, "a printer piped into a shell"],
+  ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+  it.each([`bash -c 'true' <<< data`, `bash --rcfile x.rc -i -c : <<< data`, `bash --rcfile "$F" -i -c :`])(
+    "reads and refuses nothing in %s",
+    (c) => expect(lexer.refusedForms(c)).toEqual([]),
+  );
+});

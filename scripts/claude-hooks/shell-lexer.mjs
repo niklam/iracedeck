@@ -995,6 +995,7 @@ function commandOf(spec, text, from, limit) {
     startup: r.startup,
     // A script word or startup file that expands may name a stream (#1659 second read).
     expands: Boolean((r.program !== undefined && r.scriptExpands) || r.startupExpands),
+    startupExpands: Boolean(r.startupExpands),
     encoded: Boolean(r.stop?.encoded),
     dangling: Boolean(r.dangling),
     stop: r.stop !== undefined,
@@ -1646,7 +1647,9 @@ const STREAM_FORMS = Object.freeze({
 function scriptStream(name, r, t) {
   if (r.encoded) return { form: REFUSED.encoded, shape: `${name} -EncodedCommand …` };
   if (r.startup) return { form: REFUSED.startup, shape: `${name} ${r.startup.option} …` };
-  if (r.string !== undefined) return undefined;
+  // An interactive shell runs its startup file before a `-c` string: one
+  // that expands is judged against the stdin it is given (CodeRabbit CLI on #1659).
+  if (r.string !== undefined && !r.startupExpands) return undefined;
   const word = () => {
     const w = r.scriptAt === undefined ? undefined : commandWordEnd(t, r.scriptAt);
     return w ? clip(t.slice(w.start, w.end)) : "…";
