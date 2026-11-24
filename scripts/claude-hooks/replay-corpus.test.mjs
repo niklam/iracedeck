@@ -399,16 +399,24 @@ describe("verdicts", () => {
     expect(formatVerdict("")).toBe("DENY: ");
   });
 
-  it("count a throw as a verdict, by the first line of its message", () => {
-    expect(
-      verdictOf(
-        () => {
-          throw new Error("boom\n    at somewhere");
-        },
-        "x",
-        {},
-      ),
-    ).toBe("THROW: boom");
+  // PR #1798 review at 0dced8c2f: two throws alike on their first line only
+  // differ, so the verdict keeps the whole message.
+  it("count a throw as a verdict, by its whole message", () => {
+    const throwing = (message) => () => {
+      throw new Error(message);
+    };
+    expect(verdictOf(throwing("boom\n    at somewhere"), "x", {})).toBe("THROW: boom\n    at somewhere");
+    const base = verdictOf(throwing("bad view\nat 3"), "x", {});
+    const head = verdictOf(throwing("bad view\nat 9"), "x", {});
+    expect(comparePair(base, head)).toBe("different");
+    expect(comparePair(base, verdictOf(throwing("bad view\nat 3"), "x", {}))).toBe("threw");
+    // Escaped only when printed.
+    const d = { index: 1, tool: "Bash", command: "ls", base, head };
+    expect(formatDifference(d, { showCommands: true }).slice(-2)).toEqual([
+      "  base: THROW: bad view\\nat 3",
+      "  head: THROW: bad view\\nat 9",
+    ]);
+    expect(formatDifference(d).slice(-3)).toEqual(["  base: THROW", "  head: THROW", "  (same kind, different text)"]);
     expect(
       verdictOf(
         () => {

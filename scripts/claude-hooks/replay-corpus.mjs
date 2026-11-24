@@ -385,13 +385,17 @@ export function formatVerdict(v) {
   return `OTHER: ${JSON.stringify(v)}`;
 }
 
-/** `checkBash(command, ctx)` as {@link formatVerdict} prints it; a throw is a verdict too, by the first line of its message. */
+/**
+ * `checkBash(command, ctx)` as {@link formatVerdict} prints it; a throw is a
+ * verdict too, by its whole message, so two throws alike on their first line
+ * only still differ (PR #1798 review at 0dced8c2f). Its newlines are escaped
+ * only when printed ({@link cut}).
+ */
 export function verdictOf(checkBash, command, ctx) {
   try {
     return formatVerdict(checkBash(command, ctx));
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    return `THROW: ${message.split("\n", 1)[0]}`;
+    return `THROW: ${messageOf(e)}`;
   }
 }
 
