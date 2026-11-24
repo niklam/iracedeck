@@ -80,6 +80,11 @@
 // over-approximates instead, and NAMED_NOT_LOADED names each literal that
 // loads nothing, with the reason. The ESLint block stays as the editor's early
 // word on a static or type import.
+//
+// The threat model: the walk catches an accidental load of the sim stack — an
+// import, a path or a mention written as it would be by someone not trying to
+// hide it. Deliberate computed loads — `eval`, `new Function`, strings
+// assembled at run time — are outside its model.
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -214,10 +219,10 @@ const UNREAD_LOADS = {
       "packages/audio-native/src/index.ts, which is a root of the walk itself",
   },
   "packages/diagnostics/src/main-thread-watchdog.ts": {
-    calls: ["require(id)"],
+    calls: ["require(id)", "process.getBuiltinModule(id)"],
     reason:
       "the watchdog worker's body loads Node builtins by name (node:worker_threads, node:fs), through require " +
-      "or process.getBuiltinModule, since an eval worker cannot import",
+      "or process.getBuiltinModule, since an eval worker cannot import; both calls only ever receive builtin ids",
   },
   "packages/pi-components/src/build/callout-pi-groups.mjs": {
     calls: ["import(entryUrl)"],
@@ -1040,6 +1045,17 @@ function moduleImports(file, source) {
           "const and call that with a string literal so it can be followed",
       );
     }
+    // getBuiltinModule loads a module by a name, and through `module` a require function by any name (#1662).
+    if (ts.isIdentifier(node) && node.text === "getBuiltinModule") {
+      const member = ts.isPropertyAccessExpression(node.parent) && node.parent.name === node ? node.parent : node;
+      const outer = wrapped(member);
+      const used = ts.isCallExpression(outer.parent) && outer.parent.expression === outer ? outer.parent : member;
+
+      unread.push(
+        `${spelled(used)}, a load through getBuiltinModule, which this check cannot follow: load the module with ` +
+          "import and a string literal",
+      );
+    }
     // An alias of the factory makes require functions under a name this does not know: refused, not followed.
     if (isFactory(node) && escapes(node)) {
       unread.push(
@@ -1394,6 +1410,17 @@ export function runtimeClosure({ roots, read, packageDirs, neutral, companions =
       const query = unhashed.indexOf("?");
       const base = query === -1 ? unhashed : unhashed.slice(0, query);
       const own = `packages/${file.split("/")[1]}`;
+      const landsAt = base.startsWith("/") ? P.join(own, `.${base}`) : P.join(P.dirname(file), base);
+
+      // A path out of the repository depends on where it is checked out: what it loads cannot be followed.
+      if (landsAt === ".." || landsAt.startsWith("../")) {
+        problems.push(
+          `${chain(file)} names ${base}, a machine-specific path this check cannot follow; use a relative path ` +
+            `inside the repository${where}`,
+        );
+
+        return;
+      }
       const resolved = base.startsWith("/")
         ? [`${own}/package.json`, `${own}/public/index.html`].map((at) => resolveRuntimeFiles(at, `.${base}`, read))
         : [resolveRuntimeFiles(file, base, read)];
@@ -2104,6 +2131,22 @@ describe("the runtime-closure check itself (positive controls, #1662)", () => {
     }
   });
 
+  // qa's gb plant, in a code source: getBuiltinModule("module") hands over createRequire under any name (#1662).
+  it("fails a code source's getBuiltinModule, called or taken by name", () => {
+    const through = (spelled) =>
+      `${ROOT_FILE} makes ${spelled}, a load through getBuiltinModule, which this check cannot follow: load the ` +
+      "module with import and a string literal";
+
+    expect(only('const { createRequire: make } = process.getBuiltinModule("module");').problems).toEqual([
+      through('process.getBuiltinModule("module")'),
+    ]);
+    expect(only("const { getBuiltinModule } = process;\ngetBuiltinModule(name);").problems).toEqual([
+      through("getBuiltinModule"),
+      through("getBuiltinModule(name)"),
+    ]);
+    expect(only("const load = (process).getBuiltinModule;").problems).toEqual([through("(process).getBuiltinModule")]);
+  });
+
   // The website's components glob their images; a glob of module code is one the walk does not expand.
   it("passes a Vite glob of data files or by a ?raw or ?url query, and fails a glob of module code", () => {
     for (const source of [
@@ -2575,6 +2618,106 @@ describe("the runtime-closure check itself (positive controls, #1662)", () => {
 
       expect(realWalk(file, real)).toEqual([]);
       expect(realWalk(file, real + plant)).toEqual([expect.stringMatching(expected(file))]);
+    });
+
+    // qa's final round at 15c9d91dd, each plant as qa wrote it into the page's frontmatter or after it: a line
+    // continuation inside a specifier, a machine-specific path, and getBuiltinModule (#1662).
+    const intoFrontmatter = (file, line) => (real) => {
+      const at = real.indexOf("\n", real.indexOf("---")) + 1;
+
+      return `${real.slice(0, at)}${line}\n${real.slice(at)}`;
+    };
+    const afterFrontmatter = (file, line) => (real) => {
+      const close = real.indexOf("\n---", real.indexOf("---") + 3);
+      const at = real.indexOf("\n", close + 1) + 1;
+
+      return `${real.slice(0, at)}\n${line}\n${real.slice(at)}`;
+    };
+    const machinePath = (line) => (file) =>
+      new RegExp(
+        `^${file} makes a machine-specific path on line ${line} this check cannot follow; use a relative path ` +
+          "inside the repository$",
+      );
+    const outOfRepo = "../../../../../ir-1662/packages/iracing-actions/src/actions/camera-controls/camera-groups.ts";
+
+    it.each([
+      [
+        "sp, a line continuation in an .astro import",
+        notFound,
+        intoFrontmatter(notFound, 'import QaX from "@\\\niracedeck/iracing-actions";'),
+        namesActions,
+      ],
+      [
+        "spx, a line continuation in an .mdx import",
+        downloads,
+        afterFrontmatter(downloads, 'import QaX from "@\\\niracedeck/iracing-actions";'),
+        namesActions,
+      ],
+      [
+        "st, a line continuation in a template literal",
+        notFound,
+        intoFrontmatter(notFound, "const qaM = await import(`@\\\niracedeck/iracing-actions`);"),
+        namesActions,
+      ],
+      [
+        "sr, a line continuation in a relative path",
+        notFound,
+        intoFrontmatter(
+          notFound,
+          `import QaX from "../../../iracing-act\\\nions/src/actions/camera-controls/camera-groups.ts";`,
+        ),
+        loadsSdk,
+      ],
+      [
+        "ab, a drive-letter path",
+        notFound,
+        intoFrontmatter(
+          notFound,
+          'import QaX from "C:/repo/ir-1662/packages/iracing-actions/src/actions/camera-controls/camera-groups.ts";',
+        ),
+        machinePath(2),
+      ],
+      [
+        "fs, a Vite /@fs/ path",
+        notFound,
+        intoFrontmatter(
+          notFound,
+          'import QaX from "/@fs/C:/repo/ir-1662/packages/iracing-actions/src/actions/camera-controls/camera-groups.ts";',
+        ),
+        machinePath(2),
+      ],
+      [
+        "a file: URL",
+        notFound,
+        intoFrontmatter(notFound, 'import QaX from "file:///C:/repo/ir-1662/packages/iracing-actions/src/a.ts";'),
+        machinePath(2),
+      ],
+      [
+        "out, a relative path that climbs out of the repository",
+        notFound,
+        intoFrontmatter(notFound, `import QaX from "${outOfRepo}";`),
+        (file) =>
+          new RegExp(
+            `^${file} names ${outOfRepo}, a machine-specific path this check cannot follow; use a relative path inside the repository$`,
+          ),
+      ],
+      [
+        "gb, getBuiltinModule",
+        notFound,
+        intoFrontmatter(
+          notFound,
+          'process.getBuiltinModule("module")["create" + "Require"](import.meta.url)(["@iracedeck", "iracing-actions"].join("/"));',
+        ),
+        (file) =>
+          new RegExp(`^${file} makes a getBuiltinModule on line 2, which loads a module this check cannot follow`),
+      ],
+    ])("fails qa's final-round %s", (_name, file, plant, expected) => {
+      const real = readRepoFile(file);
+      const planted = plant(real);
+
+      expect(planted).not.toBe(real);
+      expect(realWalk(file, real)).toEqual([]);
+      expect(realWalk(file, planted)).toEqual([expect.stringMatching(expected(file))]);
     });
   });
 

@@ -10,7 +10,8 @@
  * page's loads are read from its raw text, never parsed (`componentLoads`,
  * #1662): every literal module specifier anywhere in it is a candidate load,
  * and a load a literal cannot say (a computed `import(`, a `require` or
- * `createRequire`, a glob of module code) is reported as unread, for a guard
+ * `createRequire` or `getBuiltinModule`, a machine-specific path, a glob of
+ * module code) is reported as unread, for a guard
  * to refuse. A reader of markup that is not the one Astro and MDX run leaks
  * where the two disagree, so this one tells no code from markup or prose.
  */
@@ -161,6 +162,39 @@ function decodeReferences(text) {
   });
 }
 
+/** A line break, as JavaScript ends a line: LF, CRLF, CR, or the line and paragraph separators. */
+const LINE_BREAK = /(\r\n|[\n\r\u2028\u2029])/;
+
+/**
+ * `text` with each line continuation — a `\` that ends a line, which a
+ * JavaScript string reads as nothing — joined (#1662), so `"@\` and
+ * `iracedeck/x"` on the next line read as the `"@iracedeck/x"` they are. The
+ * line breaks a join removes are put back after the joined line, so every
+ * line after it keeps its number.
+ */
+function joinContinuations(text) {
+  const parts = text.split(LINE_BREAK);
+  let out = "";
+  let joined = "";
+  let held = "";
+
+  for (let at = 0; at < parts.length; at += 2) {
+    const line = parts[at];
+    const lineBreak = parts[at + 1];
+
+    if (lineBreak !== undefined && line.endsWith("\\")) {
+      joined += line.slice(0, -1);
+      held += lineBreak;
+    } else {
+      out += joined + line + (lineBreak ?? "") + held;
+      joined = "";
+      held = "";
+    }
+  }
+
+  return out + joined + held;
+}
+
 /** The characters a JavaScript single-character escape stands for. */
 const SINGLE_ESCAPES = { b: "\b", f: "\f", n: "\n", r: "\r", t: "\t", v: "\v", 0: "\0" };
 
@@ -169,10 +203,10 @@ const SINGLE_ESCAPES = { b: "\b", f: "\f", n: "\n", r: "\r", t: "\t", v: "\v", 0
  * four-digit or braced `\u` and a single-character escape, so
  * `import("\x2e./x.ts")` reads as the `../x.ts` it loads, and a `require`
  * spelled with a `\u` escape in its name as the `require` it is. A line
- * continuation keeps its line break.
+ * continuation is joined first ({@link joinContinuations}).
  */
 function decodeEscapes(text) {
-  return text.replace(
+  return joinContinuations(text).replace(
     /\\(?:x([\da-fA-F]{2})|u\{([\da-fA-F]+)\}|u([\da-fA-F]{4})|(\r\n|[\s\S]))/g,
     (whole, x, braced, u, single) => {
       if (single === undefined) return kept(codePoint(x ?? braced ?? u) ?? whole);
@@ -223,12 +257,20 @@ const LITERAL =
 /**
  * A word that loads a module by what follows it: `import` before a `(` (not a
  * method of that name, nor `import.meta`), `require` anywhere, and
- * `createRequire` anywhere.
+ * `createRequire` and `getBuiltinModule` anywhere.
  */
 const LOAD_WORD = new RegExp(
-  String.raw`(?<![\w$.])import(?=${GAP}\()|(?<![\w$])require(?![\w$])|(?<![\w$])createRequire(?![\w$])`,
+  String.raw`(?<![\w$.])import(?=${GAP}\()|(?<![\w$])(?:require|createRequire|getBuiltinModule)(?![\w$])`,
   "g",
 );
+
+/**
+ * A path that names a place on one machine rather than in the repository: a
+ * drive letter (`C:/`, `C:\`), Vite's `/@fs/` prefix or a `file:` URL (#1662).
+ * An import of one loads whatever is there, which this cannot follow.
+ */
+const MACHINE_PATH =
+  /\/@fs\/(?:[A-Za-z]:[\\/])?|(?<![\w.+-])(?:file:(?=[\\/]|[A-Za-z]:)(?:[\\/]*[A-Za-z]:[\\/])?|[A-Za-z]:[\\/])/gi;
 
 /** From just past `import` or `require`: its `(`, then one string literal, then `)` or the `,` before an option. */
 const LITERAL_CALL = new RegExp(String.raw`${GAP}\(${GAP}${LITERAL}${GAP}[,)]`, "y");
@@ -255,9 +297,10 @@ const IRACEDECK_PACKAGE = /^@iracedeck\/[^/]*/i;
 
 /**
  * The specifiers one piece of text may be read as: as written, with `\` for
- * `/`, and each without the punctuation a sentence puts after it. A package name is taken only without that punctuation and in lower case,
- * as Windows resolves its folder, so a sentence's full stop names no other
- * package.
+ * `/`, and each without the punctuation a sentence puts after it. A package
+ * name is taken only up to whitespace, without that punctuation and in lower
+ * case, as Windows resolves its folder, so a sentence's full stop or the rest
+ * of a template literal's lines names no other package.
  */
 function specifiersOf(piece) {
   const found = new Set();
@@ -265,7 +308,9 @@ function specifiersOf(piece) {
     const bare = text.replace(/[.,:;!?]+$/, "");
 
     if (IRACEDECK_PACKAGE.test(text)) {
-      found.add(bare.replace(IRACEDECK_PACKAGE, (name) => name.toLowerCase()));
+      const name = text.split(/\s/)[0].replace(/[.,:;!?]+$/, "");
+
+      found.add(name.replace(IRACEDECK_PACKAGE, (part) => part.toLowerCase()));
     } else {
       found.add(text);
       found.add(bare);
@@ -326,6 +371,12 @@ function viewCandidates(view) {
     }
     lineStart += line.length + 1;
   }
+  // A template literal may run across lines: every two backticks in a row in the whole text, too.
+  for (let open = view.indexOf("`"), close = view.indexOf("`", open + 1); open !== -1 && close !== -1;) {
+    take(open + 1, view.slice(open + 1, close));
+    open = close;
+    close = view.indexOf("`", open + 1);
+  }
   for (const match of view.matchAll(BARE_PATH)) take(match.index, match[0]);
 
   return [...at.entries()].sort(([a], [b]) => a - b).flatMap(([, each]) => [...each]);
@@ -346,6 +397,13 @@ function viewUnread(view, isDataGlob) {
       );
       continue;
     }
+    if (word === "getBuiltinModule") {
+      unread.push(
+        `a getBuiltinModule on line ${line}, which loads a module this check cannot follow: load it with import ` +
+          "and a string literal",
+      );
+      continue;
+    }
     LITERAL_CALL.lastIndex = match.index + word.length;
     if (LITERAL_CALL.test(view)) continue;
     unread.push(
@@ -354,6 +412,12 @@ function viewUnread(view, isDataGlob) {
             "read: write the specifier as a literal"
         : `a require on line ${line} that is not called with a single string literal, a load this check cannot ` +
             "read: write the specifier as a literal",
+    );
+  }
+  for (const match of view.matchAll(MACHINE_PATH)) {
+    unread.push(
+      `a machine-specific path on line ${lineOf(view, match.index)} this check cannot follow; use a relative path ` +
+        "inside the repository",
     );
   }
   for (const match of view.matchAll(GLOB)) {
@@ -397,17 +461,20 @@ function viewUnread(view, isDataGlob) {
  *
  * - `candidates`: every module specifier the text could spell ({@link
  *   CANDIDATE}), one entry per place it does — the text of each quoted string
- *   (`"…"`, `'…'`, `` `…` ``, between any two of the same quote on a line) and
- *   each bare path ({@link BARE_PATH}), read as written, with its character
- *   references, JavaScript escapes and percent-encoding decoded ({@link
- *   views}), `\` as `/`, and without a sentence's trailing punctuation. A load
- *   written as a literal is among them wherever in the file it is.
+ *   (`"…"`, `'…'`, `` `…` ``, between any two of the same quote on a line, and
+ *   any two backticks across lines) and each bare path ({@link BARE_PATH}),
+ *   read as written, with its character references, JavaScript escapes (a
+ *   line continuation joined) and percent-encoding decoded ({@link views}),
+ *   `\` as `/`, and without a sentence's trailing punctuation. A load written
+ *   as a literal is among them wherever in the file it is.
  * - `unread`: every load a literal cannot say — an `import(` or `require`
  *   whose argument is not a single string literal (a template with `${`, a
  *   concatenation, a name, nothing), `require` used any other way, any
- *   `createRequire`, and an `import.meta.glob` that `isDataGlob` does not pass
- *   (`isDataGlob` gets the call, parsed from where it starts). Each sentence
- *   reads after "makes" and names its line.
+ *   `createRequire` or `getBuiltinModule`, a machine-specific path ({@link
+ *   MACHINE_PATH}: a drive letter, `/@fs/`, a `file:` URL), and an
+ *   `import.meta.glob` that `isDataGlob` does not pass (`isDataGlob` gets the
+ *   call, parsed from where it starts). Each sentence reads after "makes" and
+ *   names its line.
  *
  * This over-approximates: a mention in prose, a fence, a code span, an href or
  * a comment is a candidate as much as an import is. A caller follows the

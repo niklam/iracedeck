@@ -198,6 +198,49 @@ describe("componentLoads (#1662)", () => {
     expect(componentLoads('<p title="a&#10;b&NewLine;c">x\\ny</p>\nimport(name)').unread).toEqual([IMPORT(2)]);
   });
 
+  // qa's sp, spx and st plants: a string reads `\` and a line break as nothing.
+  it("joins a line continuation, and keeps the line of everything after it", () => {
+    const text = 'import a from "@\\\niracedeck/x";\nconst b = `.\\\r\n./b.ts`;\nimport(name);';
+
+    expect(candidates(text)).toEqual(expect.arrayContaining(["@iracedeck/x", "../b.ts"]));
+    expect(componentLoads(text).unread).toEqual([IMPORT(5)]);
+  });
+
+  it("reads a template literal across lines, and a package in one only up to whitespace", () => {
+    expect(candidates("const a = `../a.ts\nb`;")).toContain("../a.ts\nb");
+    expect(candidates("const a = `@iracedeck/x\nmore`;")).toEqual(["@iracedeck/x"]);
+  });
+
+  // qa's ab and fs plants: a path that names one machine's disk loads whatever is there.
+  it("reports a machine-specific path by line, and no URL, time or word with a colon", () => {
+    const text = [
+      'import a from "C:/repo/a.ts";',
+      "<script src=C:\\repo\\b.ts></script>",
+      'import c from "/@fs/C:/repo/c.ts";',
+      'import d from "file:///C:/repo/d.ts";',
+      'import e from "file:/repo/e.ts";',
+      "https://example.com/x at 16:9, the file: name, ABC:/x and a: b",
+    ].join("\n");
+    const machine = (line) =>
+      `a machine-specific path on line ${line} this check cannot follow; use a relative path inside the repository`;
+
+    expect(componentLoads(text).unread).toEqual([machine(1), machine(2), machine(3), machine(4), machine(5)]);
+  });
+
+  // qa's gb plant: getBuiltinModule("module") hands over createRequire under any name.
+  it("reports any getBuiltinModule, called or not", () => {
+    const gb = (line) =>
+      `a getBuiltinModule on line ${line}, which loads a module this check cannot follow: load it with import and a ` +
+      "string literal";
+
+    expect(componentLoads('process.getBuiltinModule("module");\nconst { getBuiltinModule } = process;').unread).toEqual(
+      [
+        gb(1),
+        gb(2),
+      ],
+    );
+  });
+
   it("hands each import.meta.glob call to isDataGlob, parsed from where it starts", () => {
     const seen = [];
     const isDataGlob = (call) => {
