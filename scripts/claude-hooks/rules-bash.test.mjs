@@ -5294,6 +5294,14 @@ describe("a shell word glued to its redirection (#1659)", () => {
   it.each([`bash</dev/null x.sh`, `bash</dev/null -c 'pnpm build'`])("passes %s", (c) => passes(c));
 });
 
+// PR #1798 review: a piped group's own input redirection gives its stdin.
+describe("a piped group with its own stdin (#1659)", () => {
+  it("passes one whose group reads a file, and refuses one the pipe still feeds", () => {
+    passes(`printf ':' | { bash; } </dev/null`);
+    expect(stopped(`cat x | { bash; } 2>/dev/null`)).toContain("from stdin");
+  });
+});
+
 // PR #1798 review: two glued input redirections are two, the last one winning.
 describe("glued input redirections (#1659)", () => {
   it("passes a here-string a file redirect overrides, and refuses the other order", () => {

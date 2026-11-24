@@ -1876,14 +1876,21 @@ const OPENS = new Set(["{", "while", "until", "if", "for", "select", "case"]);
  * holding it (`echo x | { cd y && bash; }`), whose commands read its stdin. A
  * pipe into another command beside it (`{ printf x | wc -c; bash; }`) is
  * none. The keywords that lead a command (`then`, `do`, `{` …) are read past
- * to its program word.
+ * to its program word. A compound command whose closing word carries an
+ * input redirection gives the commands inside it that stdin, not the pipe
+ * into it (`printf x | { bash; } </dev/null`, PR #1798 review): from the
+ * innermost compound command out, the first that has its own redirection or
+ * is piped decides.
  */
 function pipedCommands(command) {
   const { commands, ends } = level(command);
   const out = [];
   const frames = [];
-  const pop = (kinds) => {
-    if (frames.length && kinds.includes(frames.at(-1).kind)) frames.pop();
+  // Closes the innermost compound command of `kinds`, marking it when the
+  // words from `from` to `to` after its closing word redirect its stdin.
+  const pop = (kinds, from, to) => {
+    if (!frames.length || !kinds.includes(frames.at(-1).kind)) return;
+    frames.pop().redirected = commandOf(NO_OPTIONS, command, from, to).stdin !== "pipe";
   };
   let pending = false;
   for (const c of commands) {
@@ -1899,11 +1906,11 @@ function pipedCommands(command) {
         frames.push({ kind: w, piped: cur });
         cur = false;
       } else if (["then", "do", "else", "elif"].includes(w)) cur = false;
-      else if (Object.hasOwn(CLOSES, w)) pop(CLOSES[w]);
+      else if (Object.hasOwn(CLOSES, w)) pop(CLOSES[w], e, end);
       else if (w !== "!" && w !== "time") break;
       i = e;
     }
-    out.push({ start: c, end, piped: cur || frames.some((f) => f.piped) });
+    out.push({ start: c, end, own: cur, chain: frames.slice() });
     const text = command.slice(c, end).trim();
     const blank = !text || text.startsWith("#");
     const b = command[end];
@@ -1911,13 +1918,22 @@ function pipedCommands(command) {
       frames.push({ kind: "(", piped: cur });
       pending = false;
     } else if (b === ")") {
-      pop(["("]);
+      pop(["("], end + 1, command.length);
       pending = false;
     } else if (b === "|") pending = command[end + 1] !== "|" && command[end - 1] !== "|";
     // A `|` goes on over a newline or a comment after it, and `|&` is one.
     else if (!(blank && (b === "\n" || (b === "&" && command[end - 1] === "|")))) pending = false;
   }
-  return out;
+  // Each frame is marked once its closing word is read, so the chain is
+  // resolved last: innermost first, its own redirection before its pipe.
+  const fed = (chain) => {
+    for (let k = chain.length - 1; k >= 0; k--) {
+      if (chain[k].redirected) return false;
+      if (chain[k].piped) return true;
+    }
+    return false;
+  };
+  return out.map(({ start, end, own, chain }) => ({ start, end, piped: own || fed(chain) }));
 }
 
 /**

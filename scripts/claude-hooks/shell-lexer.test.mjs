@@ -2513,3 +2513,22 @@ describe("the stopping rule: glued redirections, the last one winning (#1659 PR 
     expect(lexer.readCommand(lexer.shellSpec("bash"), () => words[i++])).toMatchObject({ string: 2, stdin: "other" });
   });
 });
+
+// PR #1798 review: a group's own input redirection, not the pipe into it,
+// gives the commands inside it their stdin.
+describe("the stopping rule: a piped group with its own stdin (#1659 PR review)", () => {
+  const STDIN = "a shell reading its script from stdin";
+  it.each([
+    `printf ':' | { bash; } </dev/null`,
+    `printf ':' | ( bash ) </dev/null`,
+    `cat x | while :; do bash; break; done < in.txt`,
+    `echo x | { { bash; } </dev/null; }`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+  it.each([
+    [`printf ':' | { bash; }`, "a printer piped into a shell"],
+    [`cat x | { { bash; } ; }`, STDIN],
+    [`cat x | { bash; } 2>/dev/null`, STDIN],
+    [`printf ':' | { bash; } <<< 'gh pr merge 7'`, "a shell reading its script from a here-string"],
+    [`printf x | { cat </dev/null | bash; } </dev/null`, STDIN],
+  ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+});
