@@ -760,8 +760,8 @@ describe("the mask is set aside only where a shell is fed (#1607)", () => {
     expect(text).toMatch(/gh pr merge 5/);
     expect(text).not.toMatch(/merge 6/);
     expect(maskInert(command).heredocs).toEqual([
-      { op: 5, start: 13, end: 27, resume: 31, quoted: true },
-      { op: 35, start: 41, end: 55, resume: 56, quoted: true },
+      { op: 5, start: 13, end: 27, resume: 31 },
+      { op: 35, start: 41, end: 55, resume: 56 },
     ]);
   });
 

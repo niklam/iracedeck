@@ -69,12 +69,10 @@ import path from "node:path";
  * list elements off it without guessing where any of those are. `words`,
  * where each word bash reads ends, keyed by where it starts, at every depth
  * ({@link normalisePrograms}). And `heredocs`, every heredoc as `{ op, start,
- * end, resume, quoted }` — `op` the index of its `<<`, `[start, end)` its body
- * up to the terminator line, or to the end of the text when none comes,
- * `resume` where the line after the terminator starts and `quoted` whether
- * its delimiter is quoted — so the body of one fed to a shell can be read raw
- * ({@link fedSpans}), and a raw reading keeps every body inert ({@link
- * heredocsInert}).
+ * end, resume }` — `op` the index of its `<<`, `[start, end)` its body up to
+ * the terminator line, or to the end of the text when none comes, and
+ * `resume` where the line after the terminator starts — so the body of one
+ * fed to a shell can be read raw ({@link fedSpans}).
  *
  * One recursive lexer rather than a scanner per context: the three hand-copied
  * scanners it replaced had already drifted apart, and each gap blanked the rest
@@ -91,10 +89,9 @@ export function maskInert(command) {
   // body is `_`, and a comment or a line continuation is blank.
   const topText = s.split("");
   const pending = [];
-  // Every heredoc, `{ op, start, end, resume, quoted }`: `op` the index of its
-  // `<<`, `[start, end)` its body, `resume` where the line after its
-  // terminator starts and `quoted` whether its delimiter is quoted, at every
-  // depth (#1607, {@link fedSpans}).
+  // Every heredoc, `{ op, start, end, resume }`: `op` the index of its `<<`,
+  // `[start, end)` its body and `resume` where the line after its terminator
+  // starts, at every depth (#1607, {@link fedSpans}).
   const heredocs = [];
   // Where each word bash reads ends, keyed by where it starts: at every depth,
   // a substitution's own words included (#1606, {@link view}).
@@ -231,7 +228,7 @@ export function maskInert(command) {
         p = eol + 1;
       }
       const end = found < 0 ? limit : found;
-      heredocs.push({ op, start: at, end, resume, quoted });
+      heredocs.push({ op, start: at, end, resume });
       if (quoted) blank(out, at, end);
       else expanding(at, end, false);
       if (top) blank(flat, at, end);
@@ -3142,8 +3139,6 @@ export function view(command) {
       spliced: out.spliced,
       unsettled: !settled,
       unclosedLead: found.unclosed,
-      // A heredoc in a command whose lex is unsure (#1659, {@link unreadHeredoc}).
-      unreadHeredoc: !sure && heredocs.length > 0,
       refused: [...refused.values()],
       byName,
       wordStarts: wordStartsOf(out.programs, command.length),
@@ -3779,18 +3774,6 @@ export const unsettled = (command) => view(command).unsettled;
  * {@link unsettled} one.
  */
 export const unclosedLead = (command) => view(command).unclosedLead;
-
-/**
- * Whether `command` holds a heredoc while its lex is unsure ({@link
- * maskInert}): the raw reading the unsure lex falls back to cannot tell the
- * heredoc's body from the commands after it, and paired a quote in a quoted
- * body with one past it, reading the commands between as one string while
- * bash runs each line before it reaches the stray quote (a judge on
- * 15ce351a1). Nor can the mask be trusted to say where the body ends, so
- * `checkBash` refuses the command whole, as it refuses an {@link unsettled}
- * one.
- */
-export const unreadHeredoc = (command) => view(command).unreadHeredoc;
 
 /**
  * The forms in `command` that hand text to a shell in a way the hook refuses

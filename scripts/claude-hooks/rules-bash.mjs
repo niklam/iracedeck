@@ -55,7 +55,6 @@ import {
   trustedMask,
   unclosedLead,
   unreadablePrograms,
-  unreadHeredoc,
   unsettled,
   view,
   words,
@@ -1349,11 +1348,6 @@ function occurrences(text, ctx, powershell) {
 
 /** {@link checkBash} over the command read as bash (`text`); `depth` counts the re-judges with a respelled name in place. */
 function checkText(text, ctx, powershell, depth) {
-  // A heredoc in a command whose quoting the lexer cannot finish: the raw
-  // reading cannot tell its body from the commands after it, so the command
-  // is refused whole, its reason naming none of the body (#1659).
-  if (unreadHeredoc(text))
-    return "This command has a heredoc, and its quoting cannot be read to its end (a quote, substitution or backtick that never closes), so the hook cannot tell the heredoc's text from the commands around it. Close what is open, or put the heredoc's text in a file.";
   // A form the lexer refuses rather than reads, wherever it sits: before any
   // rule, so no ask or pass of theirs can stand in for it (#1659).
   const [refused] = refusedForms(text, powershell ? POWERSHELL : BASH);
