@@ -1,6 +1,7 @@
 import type { TelemetryCallback, TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import type { CameraSwitchOptions } from "@iracedeck/replay-engine";
+import { resetEngine } from "@iracedeck/replay-engine/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -57,12 +58,17 @@ const { engine, fake, switchNum } = vi.hoisted(() => {
     /** When false, `requestCameraSwitch` holds each request in `held` instead of sending it. */
     sendAtOnce: true,
     held: [] as SwitchRequest[],
+    /** When true, `requestCameraSwitch` is the engine's real waiter (`actual`), recorded all the same. */
+    real: false,
+    actual: null as ((send: () => unknown, options: CameraSwitchOptions) => Promise<void>) | null,
   };
 
   return {
     engine: {
       state,
       requestCameraSwitch: vi.fn((send: () => unknown, options: CameraSwitchOptions): Promise<void> => {
+        if (state.real && state.actual !== null) return state.actual(send, options);
+
         if (state.sendAtOnce) send();
         else state.held.push({ send, options });
 
@@ -80,10 +86,13 @@ vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
   getCommands: () => ({ camera: { switchNum } }),
 }));
 
-vi.mock("@iracedeck/replay-engine", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@iracedeck/replay-engine")>()),
-  requestCameraSwitch: engine.requestCameraSwitch,
-}));
+vi.mock("@iracedeck/replay-engine", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@iracedeck/replay-engine")>();
+
+  engine.state.actual = actual.requestCameraSwitch;
+
+  return { ...actual, requestCameraSwitch: engine.requestCameraSwitch };
+});
 
 /** The track's camera groups, numbered as the sim numbers them. */
 const GROUPS = ["Nose", "Cockpit", "TV1", "TV2", "TV3", "Chase"];
@@ -156,6 +165,7 @@ beforeEach(() => {
   fake.controller.setCamera(1, G.Nose);
   engine.state.sendAtOnce = true;
   engine.state.held = [];
+  engine.state.real = false;
   logger = spyLogger();
   unsubscribers = [];
   _resetAutoGroup();
@@ -353,6 +363,173 @@ describe("auto group triggers", () => {
 
     expect(engine.requestCameraSwitch).toHaveBeenCalledTimes(1);
     expect(engine.requestCameraSwitch.mock.calls[0][1].triggeredMsAgo).toBe(AUTO_GROUP_SETTLE_MS);
+    // A tick sees the change within a frame: dated at the tick, the earliest it can have been too.
+    expect(engine.requestCameraSwitch.mock.calls[0][1].earliestTriggerMsAgo).toBe(AUTO_GROUP_SETTLE_MS);
+  });
+
+  it("dates a change the fresh read noticed from the read before it that still showed the old car", () => {
+    start();
+    // The read at 200 still shows car 1.
+    vi.advanceTimersByTime(AUTO_GROUP_POLL_MS);
+    vi.advanceTimersByTime(20);
+    // iRacing moves the camera under a frozen tick; the read at 400 sees it.
+    fake.controller.setCamera(4, G.Nose);
+    vi.advanceTimersByTime(AUTO_GROUP_POLL_MS - 20 + AUTO_GROUP_SETTLE_MS);
+
+    expect(engine.requestCameraSwitch).toHaveBeenCalledTimes(1);
+
+    const options = engine.requestCameraSwitch.mock.calls[0][1];
+
+    expect(options.triggeredMsAgo).toBe(AUTO_GROUP_SETTLE_MS);
+    expect(options.earliestTriggerMsAgo).toBe(AUTO_GROUP_POLL_MS + AUTO_GROUP_SETTLE_MS);
+  });
+
+  it("keeps the earlier bound on the last read that showed a car: a read with no car moves neither time", () => {
+    start();
+    vi.advanceTimersByTime(AUTO_GROUP_POLL_MS);
+    // iRacing gone for one read: it shows nothing, so the read at 200 stays the last that showed car 1.
+    fake.controller.telemetry = null;
+    vi.advanceTimersByTime(AUTO_GROUP_POLL_MS);
+    fake.controller.setCamera(4, G.Nose);
+    vi.advanceTimersByTime(AUTO_GROUP_POLL_MS + AUTO_GROUP_SETTLE_MS);
+
+    const options = engine.requestCameraSwitch.mock.calls[0][1];
+
+    expect(options.triggeredMsAgo).toBe(AUTO_GROUP_SETTLE_MS);
+    expect(options.earliestTriggerMsAgo).toBe(2 * AUTO_GROUP_POLL_MS + AUTO_GROUP_SETTLE_MS);
+  });
+
+  it("dates the change the send-time read finds from the read before it", () => {
+    engine.state.sendAtOnce = false;
+    start();
+    landOn(4);
+
+    // A tick on car 4, then the camera reaches car 5 unseen; the send-time read finds it 30 ms on.
+    fake.controller.tick();
+    vi.advanceTimersByTime(30);
+    fake.controller.setCamera(5, G.Nose);
+    engine.state.held[0].send();
+    vi.advanceTimersByTime(AUTO_GROUP_SETTLE_MS);
+
+    const options = engine.state.held[1].options;
+
+    expect(options.triggeredMsAgo).toBe(AUTO_GROUP_SETTLE_MS);
+    expect(options.earliestTriggerMsAgo).toBe(AUTO_GROUP_SETTLE_MS + 30);
+  });
+
+  describe("a user's switch around a car change, against the engine's real waiter", () => {
+    beforeEach(() => {
+      engine.state.real = true;
+      resetEngine({ now: () => Date.now(), inReplay: () => true });
+    });
+
+    afterEach(() => {
+      resetEngine();
+    });
+
+    /** A user's switch through the real waiter: of the angle only (Cycle Camera), or of the car (Next Car). */
+    function userSwitch(kind: "angle" | "car", send: () => unknown = () => {}): void {
+      void engine.requestCameraSwitch(send, {
+        by: kind === "angle" ? "camera-controls cycle-camera" : "camera-controls cycle-track-order",
+        interruptsWalks: kind === "angle" ? false : undefined,
+        label: "Camera controls",
+        name: kind === "angle" ? "next camera" : "next car",
+        asked: "key",
+        surface: "the key",
+        stillValid: () => true,
+        logger,
+      });
+    }
+
+    /**
+     * CodeRabbit's timeline on a paused replay, from the read at 200 that
+     * still shows car 1: the camera moves to car 4 at +20 (no tick), the
+     * user's switch goes out at +100, and the read at 400 sees car 4.
+     */
+    function pausedReplayTimeline(kind: "angle" | "car"): void {
+      start();
+      vi.advanceTimersByTime(AUTO_GROUP_POLL_MS);
+
+      if (kind === "angle") {
+        vi.advanceTimersByTime(20);
+        fake.controller.setCamera(4, G.Nose);
+        vi.advanceTimersByTime(80);
+        userSwitch("angle");
+      } else {
+        vi.advanceTimersByTime(100);
+        // The user's Next Car is what moves the camera, still with no tick.
+        userSwitch("car", () => fake.controller.setCamera(4, G.Nose));
+      }
+
+      vi.advanceTimersByTime(AUTO_GROUP_POLL_MS - 100);
+      // The read at 400 saw car 4; the settle time runs from there.
+      vi.advanceTimersByTime(AUTO_GROUP_SETTLE_MS);
+    }
+
+    it("drops the automatic switch when the user picked an angle after the car changed but before the read saw it", () => {
+      pausedReplayTimeline("angle");
+
+      expect(engine.requestCameraSwitch).toHaveBeenCalledTimes(2);
+      expect(switchNum).not.toHaveBeenCalled();
+      expect(logger.debug).toHaveBeenCalledWith(
+        "Camera controls: automatic switch dropped (auto group), the next camera switch, of the angle only, went out when what asked for it may already have happened",
+      );
+    });
+
+    it("still switches the group for a car change the user's own Next Car made in that window", () => {
+      pausedReplayTimeline("car");
+
+      expect(engine.requestCameraSwitch).toHaveBeenCalledTimes(2);
+      expect(switchNum).toHaveBeenCalledExactlyOnceWith(104, G.TV1, 0);
+    });
+
+    it("counts no angle pick from before the last read that showed the old car", () => {
+      start();
+      vi.advanceTimersByTime(AUTO_GROUP_POLL_MS - 50);
+      // The user's pick at 150, then the read at 200 still on car 1.
+      userSwitch("angle");
+      vi.advanceTimersByTime(50 + 20);
+      fake.controller.setCamera(4, G.Nose);
+      vi.advanceTimersByTime(AUTO_GROUP_POLL_MS - 20 + AUTO_GROUP_SETTLE_MS);
+
+      expect(switchNum).toHaveBeenCalledExactlyOnceWith(104, G.TV1, 0);
+    });
+
+    it("dates a tick-delivered change at the tick, so an angle pick a frame before it does not drop the switch", () => {
+      start();
+      vi.advanceTimersByTime(50);
+      userSwitch("angle");
+      vi.advanceTimersByTime(16);
+      // iRacing's own move, delivered by the next tick.
+      fake.controller.camera(4, G.Nose);
+      vi.advanceTimersByTime(AUTO_GROUP_SETTLE_MS);
+
+      expect(switchNum).toHaveBeenCalledExactlyOnceWith(104, G.TV1, 0);
+    });
+
+    it("switches the group for a change the user's Next Car made that the next tick delivered", () => {
+      start();
+      vi.advanceTimersByTime(50);
+      userSwitch("car", () => fake.controller.setCamera(4, G.Nose));
+      vi.advanceTimersByTime(16);
+      fake.controller.tick();
+      vi.advanceTimersByTime(AUTO_GROUP_SETTLE_MS);
+
+      expect(switchNum).toHaveBeenCalledExactlyOnceWith(104, G.TV1, 0);
+    });
+
+    it("drops it for any user's switch after a tick-delivered change, as before", () => {
+      start();
+      fake.controller.camera(4, G.Nose);
+      vi.advanceTimersByTime(100);
+      userSwitch("car");
+      vi.advanceTimersByTime(AUTO_GROUP_SETTLE_MS - 100);
+
+      expect(switchNum).not.toHaveBeenCalled();
+      expect(logger.debug).toHaveBeenCalledWith(
+        "Camera controls: automatic switch dropped (auto group), the next car switch went out after what asked for it",
+      );
+    });
   });
 
   it("measures the age when the timer fires, rather than taking the settle time", () => {

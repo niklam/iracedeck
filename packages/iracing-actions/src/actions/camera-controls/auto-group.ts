@@ -42,8 +42,16 @@
  *   change that armed the timer happened (`triggeredMsAgo`), so the waiter
  *   drops it when a user's own switch went out since then: a Cycle Camera
  *   or Change Camera press inside the settle time is not overwritten. A
- *   user's switch that changes the car is a later trigger of its own. The
- *   run reads none of the engine's state.
+ *   user's switch that changes the car is a later trigger of its own. A
+ *   change the fresh read notices is dated late, by up to
+ *   {@link AUTO_GROUP_POLL_MS}: it happened somewhere after the previous read
+ *   that still showed the old car. So the send also says how long ago that
+ *   read was (`earliestTriggerMsAgo`), and the waiter drops it, too, for a
+ *   user's switch of the angle only that went out since then. A tick sees a
+ *   change within a frame, so a tick-detected change is dated at the tick
+ *   and gives the same age for both: dating it from the tick before would
+ *   put a user's Next Car before its own car change, and drop the automatic
+ *   switch that answers it. The run reads none of the engine's state.
  */
 import { getCommands, getController } from "@iracedeck/deck-iracing";
 import {
@@ -104,6 +112,14 @@ interface Run {
   /** When (`Date.now()`) the car change that armed the timer last was seen; null before the first. */
   changedAt: number | null;
   /**
+   * The earliest that car change can have been (`Date.now()`): the previous
+   * read that still showed the old car for a change a fresh read noticed,
+   * the tick itself for one a tick delivered; null before the first.
+   */
+  changedSince: number | null;
+  /** When (`Date.now()`) a tick or fresh read last showed a car; null until the first. */
+  lastSeenAt: number | null;
+  /**
    * Counts the car changes seen: a switch asked for at one count is the
    * answer to that change only, and is dropped once a later one arrives.
    */
@@ -142,6 +158,8 @@ export function toggleAutoGroup(start: AutoGroupStart): AutoGroupToggleResult {
     lastCar: null,
     lastPicked: null,
     changedAt: null,
+    changedSince: null,
+    lastSeenAt: null,
     trigger: 0,
     timer: null,
   };
@@ -278,7 +296,7 @@ function stopPoll(): void {
 
 /** One telemetry tick: into the car-change step. */
 function onTick(telemetry: TelemetryData | null): void {
-  observe(telemetry);
+  observe(telemetry, "tick");
 }
 
 /**
@@ -296,16 +314,19 @@ function onPoll(): void {
     return;
   }
 
-  observe(telemetry);
+  observe(telemetry, "read");
 }
 
 /**
  * The car-change step every read goes through, tick or fresh: records the
- * camera's car, and arms the timer when it changed. Comparing with the car
- * last seen, whichever read saw it, is what keeps a tick and a fresh read of
- * the same change from arming twice.
+ * camera's car and when it was seen, and arms the timer when it changed.
+ * Comparing with the car last seen, whichever read saw it, is what keeps a
+ * tick and a fresh read of the same change from arming twice. A change a
+ * fresh read noticed (`"read"`) can have happened as early as the previous
+ * read that showed a car; one a tick delivered is dated at the tick. A read
+ * with no car shows nothing, so it moves neither time.
  */
-function observe(telemetry: TelemetryData | null): void {
+function observe(telemetry: TelemetryData | null, source: "tick" | "read"): void {
   const run = active;
 
   if (run === null || telemetry === null) return;
@@ -313,6 +334,11 @@ function observe(telemetry: TelemetryData | null): void {
   const car = telemetry.CamCarIdx;
 
   if (typeof car !== "number" || !Number.isInteger(car) || car < 0) return;
+
+  const at = Date.now();
+  const previousSeenAt = run.lastSeenAt;
+
+  run.lastSeenAt = at;
 
   if (run.lastCar === null) {
     run.lastCar = car;
@@ -323,7 +349,8 @@ function observe(telemetry: TelemetryData | null): void {
   if (car === run.lastCar) return;
 
   run.lastCar = car;
-  run.changedAt = Date.now();
+  run.changedAt = at;
+  run.changedSince = source === "read" && previousSeenAt !== null ? previousSeenAt : at;
   run.trigger++;
   arm(run);
 }
@@ -355,7 +382,8 @@ function settle(run: Run): void {
   void requestCameraSwitch(() => sendAuto(run, trigger, car), {
     by: "camera-controls auto-group",
     yields: true,
-    triggeredMsAgo: run.changedAt === null ? undefined : Math.max(0, Date.now() - run.changedAt),
+    triggeredMsAgo: msAgo(run.changedAt),
+    earliestTriggerMsAgo: msAgo(run.changedSince),
     interruptsWalks: false,
     label: "Camera controls",
     name: "auto group",
@@ -421,7 +449,7 @@ function sendAuto(run: Run, trigger: number, car: number): void {
     run.logger.debug(
       `Auto group: the camera moved from car ${car} to ${carIdx} before the switch went out, nothing sent`,
     );
-    observe(telemetry);
+    observe(telemetry, "read");
 
     return;
   }
@@ -456,6 +484,11 @@ function sendAuto(run: Run, trigger: number, car: number): void {
   run.logger.debug(
     `Result: ${success}, carNumberRaw: ${carNumberRaw}, group: ${target.groupNum} (${target.groupName}), pick: ${run.pick}`,
   );
+}
+
+/** How long ago (`Date.now()`) `at` was, never negative; undefined for no time. */
+function msAgo(at: number | null): number | undefined {
+  return at === null ? undefined : Math.max(0, Date.now() - at);
 }
 
 function describeError(err: unknown): string {
