@@ -82,8 +82,10 @@ export function parseConnectionParams(): VSDConnectionParams {
 /**
  * Read `application.version` from VSD Craft's registration info JSON
  * (`argv[9]`) — a non-empty string, else `null` (#1678). Tolerant by design:
- * the field has not been seen in a capture, and a missing or unparseable info
- * argument must never stop the plugin starting, so nothing here throws.
+ * VSD Craft 3.10 sends it (its internal version, e.g. `3.10.188.226`, not the
+ * StreamDock exe's file version), but an older or other host may not, and a
+ * missing or unparseable info argument must never stop the plugin starting,
+ * so nothing here throws.
  */
 export function parseHostVersion(info: string | undefined): string | null {
   if (info === undefined) return null;
