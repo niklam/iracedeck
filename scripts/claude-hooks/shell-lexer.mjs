@@ -1479,7 +1479,8 @@ function levelOf(chars, extra = {}) {
  * span; `parts`, where a joined level has more than one, each word joined as
  * `{ first, last, from, to }`: its span in the level and in the view.
  */
-function readLevel(parent, d, join) {
+function readLevel(parent, d, join, via) {
+  const ps = POWERSHELLS.has(via);
   const stop = join ? parent.ends[d] : parent.text.length;
   // The view's own text is read from the command itself, each word a fed
   // reading rewrote laid over it whole (`rewrites`): a word a raw-text anchor
@@ -1513,7 +1514,12 @@ function readLevel(parent, d, join) {
       for (let k = 0; k < x.c.length; k++) {
         const c = join === "escaped" && !/[\w$=-]/.test(x.c[k]) ? `\\${x.c[k]}` : x.c[k];
         for (let q = 0; q < c.length; q++)
-          chars.push({ c: c[q], at: viewAt(parent, from + x.from), end: viewEnd(parent, from + x.end - 1), live });
+          chars.push({
+            c: ps ? straightQuotes(c[q]) : c[q],
+            at: viewAt(parent, from + x.from),
+            end: viewEnd(parent, from + x.end - 1),
+            live,
+          });
       }
     }
     parts.push({ first, last: chars.length, from: viewAt(parent, from), to: viewEnd(parent, i - 1) });
@@ -2468,7 +2474,7 @@ function fedStarts(command, text, fed, programs) {
       const form = stringForm(text, d, join ? base.ends[d] : text.length, join);
       if (form) return refuse(form, `${kind.via} … ${clip(text.slice(d, Math.max(d, wordEnd(text, d))))}`);
     }
-    const N = readLevel(base, d, join);
+    const N = readLevel(base, d, join, kind.via);
     if (file) N.file = true;
     readAs(N, kind, base, d);
     return N;
@@ -3718,6 +3724,15 @@ export function refusedForms(command, shell = BASH) {
 }
 
 /**
+ * `text` with PowerShell's curly quotes as the plain ones it reads them as:
+ * U+2018, U+2019, U+201A and U+201B as `'`, U+201C, U+201D and U+201E as
+ * `"` (a judge on 15ce351a1). Each is one UTF-16 unit, so every index holds.
+ */
+export function straightQuotes(text) {
+  return text.replace(/[\u2018\u2019\u201A\u201B]/g, "'").replace(/[\u201C\u201D\u201E]/g, '"');
+}
+
+/**
  * The names of PowerShell's eval (`iex`, `Invoke-Expression`) that start a
  * statement of the PowerShell `text`, lowercased: at its start or after a
  * newline, `;`, `|`, `&`, `=`, `{` or `(`, so a script block's and a
@@ -3728,7 +3743,8 @@ export function refusedForms(command, shell = BASH) {
  * (`@'…'@`) is skipped whole, an expandable one (`@"…"@`) is read for its
  * `$(…)` only (CLI check of 8086892f8).
  */
-export function powershellStatementEvals(text) {
+export function powershellStatementEvals(source) {
+  const text = straightQuotes(source);
   // A word up to the next blank, operator, bracket, quote, backtick or `#`.
   const PS_WORD = /[^\s;|&={}()'"\x60#]+/y;
   // The quote of a here-string's opening `@"` or `@'`, which ends its line.
@@ -5114,12 +5130,14 @@ export function shellWords(command) {
  * Its dot-source operator, a statement-leading `.` with a blank after it
  * (`. gh pr merge 5`), runs the program after it too, and is blanked the same
  * way (#1606 review); in bash a `.` is `source`, and is left alone there.
+ * PowerShell reads the curly quotes as its own ({@link straightQuotes}), so
+ * they are read as the plain ones first.
  * And PowerShell resolves a command in any case, a cmdlet's alias included,
  * so each program word's last path segment is folded to lower case here,
  * where {@link view} keeps the case of a name bash finds by its spelling.
  */
 export function powershellAsBash(command) {
-  const bashed = command
+  const bashed = straightQuotes(command)
     .replace(/`\r?\n|`[\s\S]?|\\/g, (m) => {
       if (m === "\\") return "/";
       if (m.endsWith("\n")) return " ".repeat(m.length);

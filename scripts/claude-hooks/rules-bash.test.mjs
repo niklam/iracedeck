@@ -5833,3 +5833,34 @@ describe("a heredoc in a command whose quoting the lexer cannot finish (#1659)",
     `echo $(( 1 # "\n))\nbash -c 'gh pr merge 7'\n"`,
   ])("judges the merge in %j", (c) => expect(deny(c)).toMatch(/first word of a string `bash` runs/));
 });
+
+// A judge on 15ce351a1: PowerShell reads the curly quotes as its own, so a
+// string closed by one ended where the lexer read on.
+describe("PowerShell's curly quotes (#1659)", () => {
+  const ps = () => ctx({ shell: POWERSHELL });
+  const M = "gh pr merge 7";
+  it.each([
+    `Write-Host 'a\u2019; bash -c '${M}'; echo \u2018x'`,
+    `Write-Host "a\u201d; bash -c '${M}'; echo \u201cx"`,
+    `Write-Host \u201ca'\u201d; bash -c '${M}'; echo \u2018x'`,
+    `Write-Host 'a\u2019\nbash -c '${M}'\necho \u2018x'`,
+    `Write-Host 'a\u2019; bash -c '${M}'`,
+  ])("judges the merge in %j from the PowerShell tool", (c) =>
+    expect(deny(c, ps())).toMatch(/first word of a string `bash` runs/),
+  );
+  it.each([
+    [`Write-Host 'a\u2019; cmd /c "${M}"; echo \u2018x'`, /gh pr merge/],
+    [`Write-Host 'a\u2019; bash <<< '${M}'; echo \u2018x'`, /from a here-string/],
+    [`Write-Host 'a\u2019; iex x; echo \u2018x'`, /\(eval\)/],
+    [`Write-Host \u2018a\u201b; iex x`, /\(eval\)/],
+    [`Write-Host \u201ea\u201c; iex x`, /\(eval\)/],
+  ])("denies %j from the PowerShell tool", (c, reason) => expect(deny(c, ps())).toMatch(reason));
+  it("refuses an iex after a curly-closed string in a PowerShell string", () => {
+    expect(stopped(`pwsh -c "Write-Host 'a\u2019; iex x; echo \u2018x'"`)).toContain("(eval)");
+  });
+  it.each([`Write-Host \u201cexample; iex text\u201d`, `Write-Host 'it\u2019\u2019s'; Get-Date`])(
+    "passes %j from the PowerShell tool",
+    (c) => passes(c, ps()),
+  );
+  it("passes an iex in a curly-quoted PowerShell string", () => passes(`pwsh -c "Write-Host \u2018a; iex x\u2019"`));
+});
