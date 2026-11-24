@@ -10,11 +10,13 @@ Not every component is present in every plugin build (Elgato Stream Deck, Mirabo
 | [miniaudio](https://miniaud.io) | Public domain / MIT-0 (dual) | compiled into `audio_native.node` |
 | [@resvg/resvg-js](https://github.com/yisibl/resvg-js) | MPL-2.0 | `bin/node_modules/@resvg/resvg-js` |
 | [yaml](https://github.com/eemeli/yaml) | ISC | `bin/node_modules/yaml` |
-| [ws](https://github.com/websockets/ws) | MIT | `bin/node_modules/ws` (Mirabox and Ulanzi builds) |
+| [ws](https://github.com/websockets/ws) | MIT | `bin/node_modules/ws` (Mirabox and Ulanzi builds); bundled into `bin/plugin.js` (Elgato build) |
 | [node-addon-api](https://github.com/nodejs/node-addon-api) | MIT | `bin/node_modules/node-addon-api` |
 | [zod](https://github.com/colinhacks/zod) | MIT | bundled into `bin/plugin.js` |
 | [semver](https://github.com/npm/node-semver) | ISC | bundled into `bin/plugin.js` |
+| [fflate](https://github.com/101arrowz/fflate) | MIT | bundled into `bin/plugin.js` |
 | [@elgato/streamdeck](https://github.com/elgatosf/streamdeck) | MIT | bundled into `bin/plugin.js` (Elgato build) |
+| [@elgato/utils](https://github.com/elgatosf/streamdeck/tree/main/packages/utils) | MIT | bundled into `bin/plugin.js` (Elgato build) |
 | [sdpi-components](https://sdpi-components.dev) | MIT | `ui/sdpi-components.js` |
 | [Lit](https://lit.dev) | BSD-3-Clause | bundled into `ui/sdpi-components.js` |
 | [Arimo fonts](https://github.com/googlefonts/Arimo) | SIL Open Font License 1.1 | `assets/fonts/` |
@@ -102,7 +104,7 @@ THIS SOFTWARE.
 
 ## ws
 
-Ships in the Mirabox and Ulanzi builds at `bin/node_modules/ws`.
+Ships in the Mirabox and Ulanzi builds at `bin/node_modules/ws`, and is bundled into `bin/plugin.js` in the Elgato Stream Deck build, where the settings window's server uses it.
 
 ```text
 Copyright (c) 2011 Einar Otto Stangvik <einaros@gmail.com>
@@ -234,6 +236,34 @@ SOFTWARE.
 ```
 
 ## @elgato/streamdeck
+
+Bundled into `bin/plugin.js` in the Elgato Stream Deck build.
+
+```text
+MIT License
+
+Copyright (c) Corsair Memory Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## @elgato/utils
 
 Bundled into `bin/plugin.js` in the Elgato Stream Deck build.
 

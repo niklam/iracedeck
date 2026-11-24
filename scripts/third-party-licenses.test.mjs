@@ -49,6 +49,7 @@ const COMPONENT_LICENSE_MARKERS = {
   semver: "The ISC License",
   fflate: "MIT License",
   "@elgato/streamdeck": "MIT License",
+  "@elgato/utils": "MIT License",
   "sdpi-components": "MIT License",
   Lit: "BSD 3-Clause License",
   Arimo: "SIL Open Font License",
