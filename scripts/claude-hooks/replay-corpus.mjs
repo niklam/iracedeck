@@ -584,7 +584,13 @@ export class Census {
 // ---------------------------------------------------------------------------
 // No side effects while judging
 
-/** The file writers of `fs`, each also on `fs.promises` but those marked sync-only or callback-only. */
+/**
+ * The file writers of `fs`, each also on `fs.promises` but those marked
+ * sync-only or `fs`-only: the content, folder and link writers, the ones
+ * that change a file's mode, owner or times, and the write stream, which
+ * would otherwise return and fail later on its own (PR #1798 review at
+ * 0dced8c2f).
+ */
 const FS_WRITERS = Object.freeze({
   both: [
     "writeFile",
@@ -599,6 +605,12 @@ const FS_WRITERS = Object.freeze({
     "cp",
     "symlink",
     "link",
+    "truncate",
+    "chmod",
+    "chown",
+    "lchown",
+    "utimes",
+    "lutimes",
   ],
   sync: [
     "writeFileSync",
@@ -616,8 +628,17 @@ const FS_WRITERS = Object.freeze({
     "writeSync",
     "writevSync",
     "truncateSync",
+    "ftruncateSync",
+    "chmodSync",
+    "fchmodSync",
+    "chownSync",
+    "fchownSync",
+    "lchownSync",
+    "utimesSync",
+    "futimesSync",
+    "lutimesSync",
   ],
-  callback: ["write", "writev", "truncate"],
+  fsOnly: ["write", "writev", "ftruncate", "fchmod", "fchown", "futimes", "createWriteStream"],
 });
 
 /**
@@ -638,8 +659,8 @@ export function opensForWriting(flags, constants) {
  * Makes every process spawn and every file write throw until the returned
  * function is called, ESM bindings included (`syncBuiltinESMExports`): a rule
  * that reached past `ctx` would otherwise run git or gh, and differ by what
- * the machine answered. The writers are `fs`'s sync, callback and promise
- * ones ({@link FS_WRITERS}), and an `open` whose flags write ({@link
+ * the machine answered. The writers are `fs`'s sync, callback, stream and
+ * promise ones ({@link FS_WRITERS}), and an `open` whose flags write ({@link
  * opensForWriting}); an `open` for reading still works.
  */
 export function forbidSideEffects() {
@@ -657,8 +678,8 @@ export function forbidSideEffects() {
     };
   const targets = [
     [require("node:child_process"), "", ["spawn", "spawnSync", "exec", "execSync", "execFile", "execFileSync", "fork"]],
-    [fs, "", [...FS_WRITERS.both, ...FS_WRITERS.sync, ...FS_WRITERS.callback]],
-    [fs.promises, "fs.promises.", [...FS_WRITERS.both, "truncate"]],
+    [fs, "", [...FS_WRITERS.both, ...FS_WRITERS.sync, ...FS_WRITERS.fsOnly]],
+    [fs.promises, "fs.promises.", FS_WRITERS.both],
   ];
   const saved = [];
   const replace = (mod, name, fn) => {

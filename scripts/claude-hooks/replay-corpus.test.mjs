@@ -721,6 +721,18 @@ describe("side effects while judging", () => {
     ["fs.mkdtempSync", () => fs.mkdtempSync(path.join(owned, "made-"))],
     ["fs.mkdtemp", (_, done) => fs.mkdtemp(path.join(owned, "made-"), done)],
     ["fs.promises.mkdtemp", () => fs.promises.mkdtemp(path.join(owned, "made-"))],
+    // PR #1798 review at 0dced8c2f: a write stream returned and failed later,
+    // and a file's mode, owner and times are writes too.
+    ["fs.createWriteStream", () => fs.createWriteStream(never)],
+    ["fs.createWriteStream on a descriptor", (fd) => fs.createWriteStream(null, { fd, autoClose: false })],
+    ["fs.chmodSync", () => fs.chmodSync(fixture, 0o666)],
+    ["fs.promises.chmod", () => fs.promises.chmod(fixture, 0o666)],
+    ["fs.utimesSync", () => fs.utimesSync(fixture, 1, 1)],
+    ["fs.promises.utimes", () => fs.promises.utimes(fixture, 1, 1)],
+    ["fs.futimes", (fd, done) => fs.futimes(fd, 1, 1, done)],
+    ["fs.ftruncateSync", (fd) => fs.ftruncateSync(fd, 0)],
+    ["fs.ftruncate", (fd, done) => fs.ftruncate(fd, 0, done)],
+    ["fs.promises.truncate", () => fs.promises.truncate(fixture)],
   ])("make %s throw while judging", async (_, write) => {
     const c = kase;
     fs.writeFileSync(fixture, "");
