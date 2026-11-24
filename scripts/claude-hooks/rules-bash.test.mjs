@@ -5327,6 +5327,16 @@ describe("a group holding a word an object inherits (#1659)", () => {
   });
 });
 
+// A judge on PR #1798: only an `exec` at a command's start sets or resets stdin.
+describe("an exec only at a command's start (#1659)", () => {
+  it("refuses a stream a mentioned exec does not reset, and passes a mentioned one", () => {
+    expect(stopped(`exec 0<<<'gh pr merge 1 --admin'; echo exec </dev/null; bash`)).toContain("from a here-string");
+    expect(stopped(`exec 0<<<'git push origin v9.9.9'; : exec <x; bash`)).toContain("from a here-string");
+    passes(`echo exec <<< x; bash`);
+    passes(String.raw`printf '%s\n' exec <<< ':'; bash`);
+  });
+});
+
 // CodeRabbit CLI on #1659: a later `exec` that surely runs resets the stdin.
 describe("an exec chain's last stdin (#1659)", () => {
   it("passes a stdin the chain resets, and refuses one it may not", () => {

@@ -1689,8 +1689,6 @@ function assignsAt(t, from, s) {
  * `done`, `fi` and `esac` as words, and any `)`.
  */
 const CLOSER = /(?:(?<=^|[\s;&|])(?:\}|done|fi|esac)|\))(?=[\s<0-9]|$)/g;
-/** An `exec` word, whose redirections with no program apply to the rest of its shell ({@link fedStarts}). */
-const EXEC_WORD = /(?<=^|[\s;&|(])exec(?=\s)/g;
 /**
  * Text between two `exec`s across which the later one may not run, or not in
  * the same shell (`fedStarts`' `stdinAround`): a pipe, `&&`, `||` or `&` (any
@@ -2151,18 +2149,33 @@ function fedStarts(command, text, fed, programs) {
     // nothing but `;`, newlines and plain commands between them, no `&&`,
     // `|`, `||`, group, subshell or compound command, and the reset itself
     // not piped or sent to the background (CodeRabbit CLI on #1659, PR #1798).
+    // Only an `exec` at a command's start counts: one that is an argument
+    // (`echo exec <<< x`) sets nothing and resets nothing (a judge on PR #1798).
     let found;
     let after = 0;
-    for (const m of text.slice(0, p).matchAll(EXEC_WORD)) {
-      const r = commandOf(NO_OPTIONS, text, m.index + m[0].length, p);
+    for (const at of commandExecs()) {
+      if (at >= p) break;
+      const end = at + "exec".length;
+      const r = commandOf(NO_OPTIONS, text, end, p);
       if (r.program !== undefined || r.stdin === "pipe") continue;
       const stream = formOf(r.stdin, "exec <…;");
       if (stream) found = stream;
-      else if (found && !UNSURE_CHAIN.test(text.slice(after, m.index)) && !/[|&]/.test(text[base.ends[m.index]] ?? ""))
+      else if (found && !UNSURE_CHAIN.test(text.slice(after, at)) && !/[|&]/.test(text[base.ends[at]] ?? ""))
         found = undefined;
-      after = m.index + m[0].length;
+      after = end;
     }
     return found;
+  };
+  // Where each `exec` that leads a command starts, in order, read once past
+  // the keywords and wrappers ahead of it ({@link leadStep}).
+  let execs;
+  const commandExecs = () => {
+    if (execs) return execs;
+    execs = [];
+    for (const c of base.commands)
+      for (let k = blanksFrom(text, c), step; (step = leadStep(text, k)); k = step.end)
+        if (step.wrapper === "exec") execs.push(k);
+    return execs;
   };
   // The program word `[d, e)` of a string's level `L`: refused when it is not
   // its plain name, when it is `eval` (PowerShell's too, in its string) or a

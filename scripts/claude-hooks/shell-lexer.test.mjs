@@ -2563,3 +2563,24 @@ describe("the stopping rule: startup assignments in time linear in their number 
     ),
   );
 });
+
+// A judge's ruling on PR #1798: only an `exec` at a command's start sets the
+// stdin of what follows; one that is an argument (`echo exec …`) sets nothing,
+// neither an earlier stream nor a reset of one.
+describe("the stopping rule: an exec only at a command's start (#1659 PR review)", () => {
+  const HERE_STRING = "a shell reading its script from a here-string";
+  it.each([
+    `exec 0<<<'gh pr merge 1 --admin'; echo exec </dev/null; bash`,
+    `exec 0<<<'git push origin v9.9.9'; : exec <x; bash`,
+    `exec 0<<<'gh pr merge 1'; bash`,
+    `if true; then exec 0<<<'gh pr merge 1'; fi; bash`,
+  ])("refuses %s", (c) => expect(lexer.refusedForms(c)[0]?.form).toBe(HERE_STRING));
+  it.each([
+    String.raw`printf '%s\n' exec <<< ':'; bash`,
+    `echo exec <<< x; bash`,
+    `exec; bash`,
+    `exec >log; bash`,
+    `exec 3</dev/null; bash`,
+    `exec <<< ':'; exec </dev/null; bash`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+});
