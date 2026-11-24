@@ -18,9 +18,11 @@ import {
   isProbe,
   kindName,
   main,
+  NO_WORKSPACE,
   parseCli,
   probeReasons,
   readCommands,
+  readWorkspace,
   transcriptFiles,
   verdictOf,
 } from "./replay-corpus.mjs";
@@ -229,8 +231,69 @@ describe("the fixed context", () => {
     expect(ctx.cwd).toBe("C:/repo/ir-1");
   });
 
+  it("answers the workspace reads from a snapshot, as pre-bash.mjs reads the disk", () => {
+    const root = path.resolve("/ws");
+    const workspace = {
+      root,
+      manifests: [
+        { dir: root, name: "root", scripts: { build: "turbo build" } },
+        { dir: path.join(root, "packages", "a"), name: "@x/a", scripts: { test: "vitest" } },
+        { dir: path.join(root, "packages", "b"), broken: true },
+      ],
+    };
+    const w = fixedContext({ cwd: root, shell: BASH, workspace });
+    expect(w.scriptsAt(path.join(root, "packages", "a", "src", "deep"))).toEqual({
+      dir: path.join(root, "packages", "a"),
+      name: "@x/a",
+      scripts: { test: "vitest" },
+    });
+    expect(w.scriptsAt(path.join(root, "packages", "b", "src"))).toBeUndefined();
+    expect(w.scriptsAt(path.join(root, "docs"))?.name).toBe("root");
+    expect(w.scriptsAt(path.resolve("/elsewhere"))).toBeUndefined();
+    expect(w.scriptsAt(root).scripts).not.toBe(w.scriptsAt(root).scripts);
+    expect(w.packages()).toEqual({
+      root: { dir: root, scripts: ["build"] },
+      "@x/a": { dir: path.join(root, "packages", "a"), scripts: ["test"] },
+    });
+    expect(w.workspaceDirs(`${root}${path.sep}`)).toEqual([
+      path.join(root, "packages", "a"),
+      path.join(root, "packages", "b"),
+    ]);
+    expect(w.workspaceDirs(path.resolve("/other"))).toEqual([]);
+  });
+
+  it("reads the snapshot from a checkout's manifests, once", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "replay-corpus-ws-"));
+    try {
+      fs.mkdirSync(path.join(root, "packages", "a"), { recursive: true });
+      fs.mkdirSync(path.join(root, "packages", "b"));
+      fs.mkdirSync(path.join(root, "packages", "none"));
+      fs.writeFileSync(path.join(root, "package.json"), '{"name":"root","scripts":{"build":"x"}}');
+      fs.writeFileSync(path.join(root, "packages", "a", "package.json"), '{"name":"@x/a"}');
+      fs.writeFileSync(path.join(root, "packages", "b", "package.json"), "{ not json");
+      expect(readWorkspace(root)).toEqual({
+        root,
+        manifests: [
+          { dir: root, name: "root", scripts: { build: "x" } },
+          { dir: path.join(root, "packages", "a"), name: "@x/a", scripts: {} },
+          { dir: path.join(root, "packages", "b"), broken: true },
+        ],
+      });
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+    expect(NO_WORKSPACE.manifests).toEqual([]);
+  });
+
   it("satisfies this checkout's checkBash across the rules that read it", () => {
-    const real = (shell) => fixedContext({ cwd: path.resolve(import.meta.dirname, "..", ".."), shell });
+    const repo = path.resolve(import.meta.dirname, "..", "..");
+    const workspace = readWorkspace(repo);
+    const real = (shell) => fixedContext({ cwd: repo, shell, workspace });
+    // With the snapshot a real package passes the lookup; without one every --filter stops there.
+    expect(verdictOf(checkBash, "pnpm --filter @iracedeck/settings test", real(BASH))).toBe("PASS");
+    expect(
+      verdictOf(checkBash, "pnpm --filter @iracedeck/settings test", fixedContext({ cwd: repo, shell: BASH })),
+    ).toMatch(/^DENY: No workspace package named/);
     const commands = [
       "ls -la",
       "jq .a package.json",

@@ -22,8 +22,17 @@
  * usage error, 3 when the run could not be made (the base unreadable, a
  * module that does not load).
  */
-import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { createReadStream } from "node:fs";
+import {
+  createReadStream,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { createRequire, syncBuiltinESMExports } from "node:module";
 import os from "node:os";
 import path from "node:path";
@@ -207,21 +216,77 @@ function isInside(candidate, parent) {
   return c === p || c.startsWith(p + path.sep);
 }
 
+/** No package manifests: what {@link fixedContext} answers without a {@link readWorkspace} snapshot. */
+export const NO_WORKSPACE = Object.freeze({ root: undefined, manifests: Object.freeze([]) });
+
+/**
+ * The package manifests of the checkout at `root` — its own and each
+ * `packages/*` one — read once, before anything is judged: `{ root,
+ * manifests }`, each `{ dir, name, scripts }`, or `{ dir, broken: true }` for
+ * one that does not parse. {@link fixedContext} answers the workspace reads
+ * from it, so a `pnpm --filter <pkg>` reaches the rules after the one that
+ * looks the package up, rather than stopping both sides at a false "no such
+ * package".
+ */
+export function readWorkspace(root) {
+  const manifests = [];
+  const add = (dir) => {
+    let text;
+    try {
+      text = readFileSync(path.join(dir, "package.json"), "utf8");
+    } catch {
+      return;
+    }
+    try {
+      const pkg = JSON.parse(text);
+      manifests.push({ dir, name: pkg.name, scripts: { ...(pkg.scripts ?? {}) } });
+    } catch {
+      manifests.push({ dir, broken: true });
+    }
+  };
+  add(root);
+  const packages = path.join(root, "packages");
+  if (isDirectory(packages)) for (const d of readdirSync(packages).sort()) add(path.join(packages, d));
+  return { root, manifests };
+}
+
 /**
  * The one context both sides judge every command with: `pre-bash.mjs`'s
  * shape, with every reader returning a fixed, harmless answer — the checkout
  * `cwd` on `master`, nothing staged, modified or untracked, no spec, no linked
- * deck host, no package manifest, the remote unreachable (so `origin/master`
- * is neither fresh nor stale), every gh read failing as `ghJson` fails
- * (`undefined`) and every git read as its reader fails (`{ ok: false }`).
- * Nothing spawns, and the same call always answers alike.
+ * deck host, the remote unreachable (so `origin/master` is neither fresh nor
+ * stale), every gh read failing as `ghJson` fails (`undefined`) and every git
+ * read as its reader fails (`{ ok: false }`). The package manifests are the
+ * `workspace` snapshot ({@link readWorkspace}), none by default. Nothing
+ * spawns or reads a file, and the same call always answers alike.
  *
  * A field it does not define throws when read, and so does an `in` test of
  * one: a rule that starts reading a new field must not see `undefined` on
  * both sides and agree by accident. It cannot be written to.
  */
-export function fixedContext({ cwd, shell }) {
+export function fixedContext({ cwd, shell, workspace = NO_WORKSPACE }) {
   const failed = (what) => ({ ok: false, reason: `${what} is not read in a corpus replay` });
+  const same = (a, b) => isInside(a, b) && isInside(b, a);
+  // pre-bash's nearestManifest: the first package.json at or above `dir`, undefined when it does not parse.
+  const scriptsAt = (dir) => {
+    for (let d = path.resolve(dir); ; d = path.dirname(d)) {
+      const m = workspace.manifests.find((x) => same(x.dir, d));
+      if (m) return m.broken ? undefined : { dir: m.dir, name: m.name, scripts: { ...m.scripts } };
+      if (path.dirname(d) === d) return undefined;
+    }
+  };
+  // lib's workspacePackages: name to { dir, script names }, the root's included.
+  const packages = () =>
+    Object.fromEntries(
+      workspace.manifests
+        .filter((m) => !m.broken && m.name)
+        .map((m) => [m.name, { dir: m.dir, scripts: Object.keys(m.scripts) }]),
+    );
+  // pre-bash's packageDirs: every packages/* directory holding a package.json.
+  const workspaceDirs = (root) =>
+    workspace.root !== undefined && same(root, workspace.root)
+      ? workspace.manifests.filter((m) => !same(m.dir, workspace.root)).map((m) => m.dir)
+      : [];
   const fields = {
     cwd,
     shell,
@@ -237,9 +302,9 @@ export function fixedContext({ cwd, shell }) {
     tracked: () => false,
     issueLabels: () => undefined,
     linkTargets: () => [],
-    scriptsAt: () => undefined,
-    workspaceDirs: () => [],
-    packages: () => ({}),
+    scriptsAt,
+    workspaceDirs,
+    packages,
     isInside,
     prView: () => undefined,
     replayRebase: () => failed("a rebase replay"),
@@ -596,9 +661,10 @@ export async function main(argv, print = (line) => process.stdout.write(`${line}
   const differences = [];
   let judged = 0;
   let identical = 0;
+  const workspace = readWorkspace(REPO_ROOT);
   const contexts = {
-    Bash: fixedContext({ cwd: REPO_ROOT, shell: head.lexer.BASH }),
-    PowerShell: fixedContext({ cwd: REPO_ROOT, shell: head.lexer.POWERSHELL }),
+    Bash: fixedContext({ cwd: REPO_ROOT, shell: head.lexer.BASH, workspace }),
+    PowerShell: fixedContext({ cwd: REPO_ROOT, shell: head.lexer.POWERSHELL, workspace }),
   };
   const restore = forbidSideEffects();
   try {
@@ -629,6 +695,7 @@ export async function main(argv, print = (line) => process.stdout.write(`${line}
   print(`tool-use lines not JSON: ${unparsed}`);
   print(`distinct commands: ${list.length} (real ${census.totals.real}, probe ${census.totals.probe})`);
   print(`head: ${headRoot}`);
+  print(`context: cwd ${REPO_ROOT}, ${workspace.manifests.length} package manifests`);
   if (!opts.censusOnly) {
     print(`base: ${opts.base} (${base.sha})`);
     print(`commands judged: ${judged}`);
