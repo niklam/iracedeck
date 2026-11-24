@@ -624,6 +624,60 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
     expect(sim.frame()).toBe(450_000);
   });
 
+  it("waits through a playing run's jump back, whose target is the run's own, for the run's final landing", async () => {
+    setUp({
+      speed: { speed: 1, slowMotion: false },
+      searches: { nextLap: (from) => from + 3_000, prevLap: (from) => from - 3_000 },
+    });
+    // One lap on the playing path, then two back against the play: the run pauses on the landing and jumps back.
+    queueReplaySearch({ target: "lap", ticks: 1, origin: "dial-1", owner: "replay-control-dial lap" });
+    queueReplaySearch({ target: "lap", ticks: -2, origin: "dial-1", owner: "replay-control-dial lap" });
+
+    for (let i = 0; i < 400 && getReplayGateRecord().target === null; i++) await vi.advanceTimersByTimeAsync(10);
+
+    const back = getReplayGateRecord().target;
+
+    expect(back).not.toBeNull();
+    expect(pendingReplaySearch()).not.toBeNull();
+    expect(resolveReplayWalkStart(readState(), sim.telemetry())).toEqual({
+      frame: null,
+      reason: "search on its way",
+    });
+
+    const order: string[] = [];
+    const jumps: Promise<unknown>[] = [];
+    const a = awaitReplayWalkStart(
+      readState,
+      () => sim.telemetry(),
+      (start) => {
+        order.push(start.frame === null ? start.reason : `${start.from} ${start.frame}`);
+
+        if (start.frame === null) return;
+
+        const frame = start.frame + 50_000;
+        const jump = beginReplayJump("test-marker", sim.telemetry(), undefined, Date.now(), { frame });
+
+        jumps.push(runReplayJump(jump, { frame, readTelemetry: () => sim.telemetry() }).finally(() => jump.end()));
+      },
+    );
+
+    expect(order).toEqual([]);
+
+    await vi.advanceTimersByTimeAsync(15_000);
+    await a;
+    await vi.advanceTimersByTimeAsync(5_000);
+    await Promise.all(jumps);
+
+    const landing = (back?.frame ?? 0) - 6_000;
+
+    expect(order).toEqual([`cursor ${landing}`]);
+    // The run sent both of its steps back, and the press's jump went after them.
+    expect(sim.calls.filter((call) => call === "prevLap")).toHaveLength(2);
+    expect(sim.calls.indexOf(`setPlayPosition 0 ${landing + 50_000}`)).toBeGreaterThan(
+      sim.calls.lastIndexOf("prevLap"),
+    );
+  });
+
   describe("press order across the gate's slot", () => {
     /** An incident search lands 30 000 frames on. */
     const withIncidents = { searches: { nextIncident: (from: number) => from + 30_000 } };

@@ -144,19 +144,26 @@ function searchToWaitFor(): ReplaySearchOnItsWay | null {
 /**
  * Where a press steps from, in order (#1660):
  *
- * 1. **The pending target** while one stands. It wins even where the
+ * 1. **`search on its way`** while the dial's paced run is under way
+ *    (`replay-search-queue.ts`), before any target: its final landing is the
+ *    start. A target standing during a run is the run's own (its jump back
+ *    before a step against the play) or one the run started behind and
+ *    waits for; any other surface's jump takes the cursor and ends the run.
+ *    A press that stepped from such a target at once would take the cursor
+ *    from the run and drop its remaining detents.
+ * 2. **The pending target** while one stands. It wins even where the
  *    debounced state has given the replay up — a seek longer than the exit
  *    grace reads like a replay that was left in a live session — since the
  *    plugin's own jump is still headed there, as the gate holds too.
- * 2. **`search on its way`** while a search of the gate's may still be on its
+ * 3. **`search on its way`** while a search of the gate's may still be on its
  *    way (`replaySearchOnItsWay`: a lap, session or incident search or a go
- *    to start, never a go to end), or while the dial's paced run is under
- *    way, whose final landing counts as one search's: its landing is where
- *    the replay is headed, but iRacing's search has no target the plugin can
- *    read, so the start is not known until it lands. A press waits for it
- *    through {@link awaitReplayWalkStart}; a view reads the cursor meanwhile.
- * 3. **`not in a replay`** outside one.
- * 4. **The cursor**, the state's {@link ReplayState.cursorFrame}: the frame a
+ *    to start, never a go to end): its landing is where the replay is
+ *    headed, but iRacing's search has no target the plugin can read, so the
+ *    start is not known until it lands. A press waits for it, or for the
+ *    run, through {@link awaitReplayWalkStart}; a view reads the cursor
+ *    meanwhile.
+ * 4. **`not in a replay`** outside one.
+ * 5. **The cursor**, the state's {@link ReplayState.cursorFrame}: the frame a
  *    replay tick shows, or the frame the state holds through the exit grace
  *    and the seek hold (#1429). With none (the flag reads false past both: a
  *    mid-seek tick whose frame reads 0 in a saved replay, where a walk would
@@ -171,16 +178,18 @@ export function resolveReplayWalkStart(
   state: Pick<ReplayState, "inReplay" | "cursorFrame">,
   telemetry: TelemetryData | null,
 ): ReplayWalkStart {
+  if (pacedRunUnderWay()) return { frame: null, reason: "search on its way" };
+
   const headed = readReplayPosition(telemetry);
 
   if (headed?.seeking === true) return { frame: headed.frame, from: "target" };
 
-  if (pacedRunUnderWay() || searchToWaitFor() !== null) return { frame: null, reason: "search on its way" };
+  if (searchToWaitFor() !== null) return { frame: null, reason: "search on its way" };
 
   return cursorStart(state);
 }
 
-/** Steps 3 and 4 of {@link resolveReplayWalkStart}: outside a replay, else the cursor or none. */
+/** Steps 4 and 5 of {@link resolveReplayWalkStart}: outside a replay, else the cursor or none. */
 function cursorStart(state: Pick<ReplayState, "inReplay" | "cursorFrame">): SettledReplayWalkStart {
   if (!state.inReplay) return { frame: null, reason: "not in a replay" };
 
