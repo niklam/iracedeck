@@ -785,6 +785,40 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
     await expect(next.done).resolves.toEqual({ frame: 200_000, from: "cursor" });
   });
 
+  it("rejects only the press whose own reads throw, ends its waiting fact as refused, and goes on with the next", async () => {
+    setUp();
+
+    const notices: ReplayGateNotice[] = [];
+
+    subscribeReplayGate((notice) => notices.push(notice));
+    search("nextSession");
+
+    let readsFail = false;
+    const failing = awaitReplayWalkStart(
+      () => {
+        if (readsFail) throw new Error("state read failed");
+
+        return readState();
+      },
+      () => sim.telemetry(),
+      () => "acted",
+      { origin: "key-x" },
+    );
+    const next = awaitStart();
+
+    failing.catch(() => undefined);
+    readsFail = true;
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    await expect(failing).rejects.toThrow("state read failed");
+    await expect(next.done).resolves.toEqual({ frame: 200_000, from: "cursor" });
+    // A give-up the busy indicator shows as not-done for its second.
+    expect(notices.filter((n) => n.origin === "key-x").flatMap((n) => n.ended)).toEqual([
+      { fact: "waiting", class: "gave-up", reason: "refused" },
+    ]);
+    expect(getReplayGateView("key-x").waiting).toBeNull();
+  });
+
   it("shows the press as waiting for its origin while it waits, and hands over to its jump as completed", async () => {
     setUp();
 

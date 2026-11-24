@@ -268,7 +268,8 @@ function log(): ILogger {
  *   not-done. Replay Control's key and dial and Replay Markers' key and dial
  *   each pass their context id; with no origin nothing shows.
  *
- * A throw from `act` rejects this press's promise and the queue goes on.
+ * A throw from `act`, or from this press's own `readState` or
+ * `readTelemetry`, rejects this press's promise alone and the queue goes on.
  */
 export function awaitReplayWalkStart<T>(
   readState: () => Pick<ReplayState, "inReplay" | "cursorFrame">,
@@ -277,14 +278,12 @@ export function awaitReplayWalkStart<T>(
   options: { readonly origin?: string } = {},
 ): Promise<Awaited<T>> {
   if (waitingStarts.length === 0) {
-    const start = resolveReplayWalkStart(readState(), readTelemetry());
+    try {
+      const start = resolveReplayWalkStart(readState(), readTelemetry());
 
-    if (isSettled(start)) {
-      try {
-        return Promise.resolve(act(start));
-      } catch (err) {
-        return Promise.reject(err);
-      }
+      if (isSettled(start)) return Promise.resolve(act(start));
+    } catch (err) {
+      return Promise.reject(err);
     }
   }
 
@@ -326,6 +325,24 @@ async function waitForSearch(search: ReplaySearchOnItsWay): Promise<string> {
 }
 
 /**
+ * The head's own reads threw: that press alone rejects with the error, its
+ * waiting fact ends as `refused` (a give-up, so its surface shows not-done
+ * for a second), and the queue goes on with the next press.
+ */
+function dropHead(head: WaitingStart, err: unknown): void {
+  waitingStarts.shift();
+  log().debug(`Replay step start: a press's reads threw (${String(err)}); it is dropped`);
+
+  try {
+    closeReplayGateWait(head.gateWait, "refused", () => undefined);
+  } catch (closeErr) {
+    log().debug(`Replay step start: ending the dropped press's wait threw (${String(closeErr)})`);
+  }
+
+  head.reject(err);
+}
+
+/**
  * Resolves the waiting starts in press order: the head is read; while a
  * search is on its way the head waits for it; once its start is settled it
  * leaves the queue, its waiting fact ends and its `act` runs in that one
@@ -343,7 +360,15 @@ async function drainWaitingStarts(): Promise<void> {
 
       if (head === undefined) return;
 
-      const start = resolveReplayWalkStart(head.readState(), head.readTelemetry());
+      let start: ReplayWalkStart;
+
+      try {
+        start = resolveReplayWalkStart(head.readState(), head.readTelemetry());
+      } catch (err) {
+        dropHead(head, err);
+        waits = 0;
+        continue;
+      }
 
       if (!isSettled(start) && waits < MAX_SEARCH_WAITS) {
         waits++;
@@ -375,10 +400,18 @@ async function drainWaitingStarts(): Promise<void> {
         log().debug(`Replay step start: still searching after ${MAX_SEARCH_WAITS} waits; reading the cursor`);
       }
 
-      waitingStarts.shift();
       waits = 0;
 
-      const settled = isSettled(start) ? start : cursorStart(head.readState());
+      let settled: SettledReplayWalkStart;
+
+      try {
+        settled = isSettled(start) ? start : cursorStart(head.readState());
+      } catch (err) {
+        dropHead(head, err);
+        continue;
+      }
+
+      waitingStarts.shift();
       const reason = settled.frame === null && settled.reason === "not in a replay" ? "replay-left" : "sent-on-landing";
 
       try {
