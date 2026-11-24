@@ -35,7 +35,7 @@ import url from "node:url";
 import { parseArgs } from "node:util";
 
 import { renderAudioStripSvg } from "../../iracing-actions/src/actions/audio-controls/audio-dial-render.ts";
-import { renderBlackBoxStrip } from "../../iracing-actions/src/actions/black-box-selector/black-box-selector-dial-surface.ts";
+import { renderBlackBoxStrip } from "../../iracing-actions/src/actions/black-box-selector/black-box-selector-dial-render.ts";
 import { renderCarCarousel } from "../../iracing-actions/src/actions/camera-controls/camera-dial-surface.ts";
 import { switchTargetTemplateValues } from "../../iracing-actions/src/actions/camera-controls/switch-target-value.ts";
 import { renderStripCanvasSvg } from "../../iracing-actions/src/actions/fuel-service/fuel-dial-surface.ts";
