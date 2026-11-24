@@ -1249,3 +1249,41 @@ describe("a read with a flag that writes, while judging", () => {
     }
   });
 });
+
+// CodeRabbit on 164de4f80: a census in which every command's reading threw
+// observed nothing, so it does not exit 0; an empty corpus still does.
+describe("a census where every reading threw", () => {
+  it("exits 3, and an empty census 0", async () => {
+    const owned = fs.mkdtempSync(path.join(os.tmpdir(), "replay-corpus-main-"));
+    try {
+      const head = path.join(owned, "head");
+      const hooks = path.join(head, "scripts", "claude-hooks");
+      fs.mkdirSync(hooks, { recursive: true });
+      fs.writeFileSync(path.join(hooks, "rules-bash.mjs"), "export const checkBash = () => null;\n");
+      fs.writeFileSync(
+        path.join(hooks, "shell-lexer.mjs"),
+        [
+          'export const BASH = "bash";',
+          'export const POWERSHELL = "powershell";',
+          'export const view = () => { throw new Error("no view"); };',
+          "export const powershellAsBash = (c) => c;",
+          "",
+        ].join("\n"),
+      );
+      fs.mkdirSync(path.join(owned, "t"));
+      fs.writeFileSync(
+        path.join(owned, "t", "a.jsonl"),
+        `${line(toolUse("Bash", { command: "ls" }), toolUse("Bash", { command: "pwd" }))}\n`,
+      );
+      const args = ["--transcripts", path.join(owned, "t"), "--census-only", "--head-dir", head];
+      const out = [];
+      expect(await main(args, (l) => out.push(l), { root: owned })).toBe(3);
+      expect(out.join("\n")).toMatch(/every command's reading threw/);
+      fs.mkdirSync(path.join(owned, "empty"));
+      const none = ["--transcripts", path.join(owned, "empty"), "--census-only", "--head-dir", head];
+      expect(await main(none, () => {}, { root: owned })).toBe(0);
+    } finally {
+      fs.rmSync(owned, { recursive: true, force: true });
+    }
+  }, 60_000);
+});

@@ -28,8 +28,9 @@
  * Exit status: 0 when every pair gave the same completed verdict, 1 when one
  * differs, 2 on a usage error, 3 when the run could not be made (the base
  * unreadable, a module that does not load, a corpus or manifest it cannot
- * read) or a comparison skipped a transcript record that did not parse, so
- * compared part of the corpus, 4 when a
+ * read), a comparison skipped a transcript record that did not parse, so
+ * compared part of the corpus, or a census read every command only to throw,
+ * 4 when a
  * comparison judged no command at all (a `--match` naming no folder), which
  * proves nothing, 5 when none differs but both sides threw alike on some
  * command, which compares nothing there (USAGE, {@link exitStatus}).
@@ -81,7 +82,8 @@ Exit status:
   0  every pair gave the same completed verdict
   1  a verdict differs
   2  a usage error
-  3  the run could not be made, or a comparison skipped a transcript record that did not parse
+  3  the run could not be made, a comparison skipped a transcript record that did not parse,
+     or a census in which every reading threw
   4  a comparison judged no command (no commands judged)
   5  none differs, but both sides threw alike on some command`;
 
@@ -978,7 +980,15 @@ export async function main(argv, print = (line) => process.stdout.write(`${line}
     for (const line of census.format()) print(line);
     print("");
     print(`elapsed: ${((Date.now() - started) / 1000).toFixed(1)} s`);
-    return opts.censusOnly ? 0 : exitStatus({ differences: differences.length, threw, unparsed });
+    if (opts.censusOnly) {
+      // A census whose every reading threw observed nothing (CodeRabbit on 164de4f80).
+      if (list.length && census.totals.threw === list.length) {
+        print("replay-corpus: every command's reading threw, so the census observed nothing");
+        return 3;
+      }
+      return 0;
+    }
+    return exitStatus({ differences: differences.length, threw, unparsed });
   } finally {
     if (base?.dir) rmSync(base.dir, { recursive: true, force: true });
   }
