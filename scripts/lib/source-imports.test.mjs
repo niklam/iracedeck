@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -296,6 +296,49 @@ describe("trackedPackageSources", () => {
   });
 });
 
+/** Every variable that makes git act on a repository, work tree or index other than the one its cwd holds. */
+const GIT_SELECTORS = new Set([
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_INDEX_FILE",
+  "GIT_COMMON_DIR",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  "GIT_CEILING_DIRECTORIES",
+  "GIT_NAMESPACE",
+  "GIT_PREFIX",
+]);
+
+/** `parent` without the variables a git hook sets, so a fixture repository is the one git finds from its cwd. */
+function isolatedGitEnv(parent) {
+  return Object.fromEntries(Object.entries(parent).filter(([name]) => !GIT_SELECTORS.has(name.toUpperCase())));
+}
+
+/**
+ * Runs `use(repo, env, page)` against a fresh git repository holding `page`
+ * and a sibling, created with `env`, the isolated copy of `parent`.
+ */
+function withFixtureRepo(parent, use) {
+  const repo = mkdtempSync(path.join(tmpdir(), "source-imports-"));
+  const env = isolatedGitEnv(parent);
+
+  try {
+    const page = "packages/website/src/pages/café.astro";
+
+    mkdirSync(path.join(repo, path.dirname(page)), { recursive: true });
+    writeFileSync(path.join(repo, page), "---\n---\n");
+    writeFileSync(path.join(repo, "packages/website/src/pages/naïve.ts"), "export {};\n");
+    execFileSync("git", ["init", "-q"], { cwd: repo, env });
+    // git's default, set here so a machine that turns it off still runs the control.
+    execFileSync("git", ["config", "core.quotepath", "true"], { cwd: repo, env });
+    execFileSync("git", ["add", "packages"], { cwd: repo, env });
+
+    return use(repo, env, page);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+}
+
 describe("nulSeparatedPaths (#1662)", () => {
   it("keeps a non-ASCII name, a space, a quote and a line break in a path as themselves", () => {
     const paths = [
@@ -311,25 +354,35 @@ describe("nulSeparatedPaths (#1662)", () => {
 
   // A plain `git ls-files` quotes this name, octal-escaped, and the extension filter dropped it.
   it("lists a tracked source whose name is not ASCII, in a repository of its own", () => {
-    const repo = mkdtempSync(path.join(tmpdir(), "source-imports-"));
-
-    try {
-      const page = "packages/website/src/pages/café.astro";
-
-      mkdirSync(path.join(repo, path.dirname(page)), { recursive: true });
-      writeFileSync(path.join(repo, page), "---\n---\n");
-      writeFileSync(path.join(repo, "packages/website/src/pages/naïve.ts"), "export {};\n");
-      execFileSync("git", ["init", "-q"], { cwd: repo });
-      // git's default, set here so a machine that turns it off still runs the control.
-      execFileSync("git", ["config", "core.quotepath", "true"], { cwd: repo });
-      execFileSync("git", ["add", "packages"], { cwd: repo });
-
-      expect(trackedPackageSources(repo, { components: true })).toEqual([
+    withFixtureRepo(process.env, (repo, env, page) => {
+      expect(trackedPackageSources(repo, { components: true, env })).toEqual([
         page,
         "packages/website/src/pages/naïve.ts",
       ]);
+    });
+  });
+
+  // Under a git hook GIT_DIR, GIT_INDEX_FILE and the like name the real checkout: the fixture must not act on it.
+  it("builds its fixture repository apart from a GIT_DIR, GIT_WORK_TREE and GIT_INDEX_FILE the process carries", () => {
+    const git = (...args) => execFileSync("git", ["-C", ROOT, ...args], { encoding: "utf-8" });
+    const state = () => [git("config", "--list", "--local"), git("diff", "--cached", "--stat")];
+    const before = state();
+    const bogus = path.join(tmpdir(), `source-imports-bogus-${process.pid}`);
+
+    try {
+      withFixtureRepo(
+        { ...process.env, GIT_DIR: bogus, GIT_WORK_TREE: bogus, GIT_INDEX_FILE: path.join(bogus, "index") },
+        (repo, env, page) => {
+          expect(env.GIT_DIR).toBeUndefined();
+          expect(trackedPackageSources(repo, { components: true, env })).toContain(page);
+        },
+      );
+
+      // git init under the inherited GIT_DIR would have made this folder, and the real index would have changed.
+      expect(existsSync(bogus)).toBe(false);
+      expect(state()).toEqual(before);
     } finally {
-      rmSync(repo, { recursive: true, force: true });
+      rmSync(bogus, { recursive: true, force: true });
     }
   });
 

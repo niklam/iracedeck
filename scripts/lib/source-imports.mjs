@@ -79,10 +79,13 @@ export function nulSeparatedPaths(output) {
  *
  * @param {string} root The repository root.
  * @param {string} pathspec
+ * @param {NodeJS.ProcessEnv} [env] The environment git runs in; the process's own by default.
  * @returns {string[]}
  */
-export function trackedFiles(root, pathspec) {
-  return nulSeparatedPaths(execFileSync("git", ["ls-files", "-z", "--", pathspec], { cwd: root, encoding: "utf-8" }));
+export function trackedFiles(root, pathspec, env = process.env) {
+  return nulSeparatedPaths(
+    execFileSync("git", ["ls-files", "-z", "--", pathspec], { cwd: root, encoding: "utf-8", env }),
+  );
 }
 
 /**
@@ -94,11 +97,11 @@ export function trackedFiles(root, pathspec) {
  * {@link componentLoads} (#1662).
  *
  * @param {string} root The repository root.
- * @param {{ components?: boolean }} [options]
+ * @param {{ components?: boolean, env?: NodeJS.ProcessEnv }} [options] `env` is the environment git runs in.
  * @returns {string[]}
  */
-export function trackedPackageSources(root, { components = false } = {}) {
-  return trackedFiles(root, "packages")
+export function trackedPackageSources(root, { components = false, env = process.env } = {}) {
+  return trackedFiles(root, "packages", env)
     .filter((file) => CODE.test(file) || (components && COMPONENT.test(file)))
     .filter((file) => !file.split("/").some((segment) => NOT_SOURCE_SEGMENT.test(segment)))
     .filter((file) => !Object.hasOwn(VENDORED_SOURCES, file))

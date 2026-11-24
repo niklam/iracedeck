@@ -929,7 +929,11 @@ function workerConstructors(sf) {
 
     return (
       (ts.isIdentifier(callee) && names.has(callee.text)) ||
-      (ts.isPropertyAccessExpression(callee) && WORKER_CONSTRUCTORS.has(callee.name.text))
+      (ts.isPropertyAccessExpression(callee) && WORKER_CONSTRUCTORS.has(callee.name.text)) ||
+      // `threads["Worker"]` and ``threads[`Worker`]`` name the same constructor as `threads.Worker`.
+      (ts.isElementAccessExpression(callee) &&
+        ts.isStringLiteralLike(unwrap(callee.argumentExpression)) &&
+        WORKER_CONSTRUCTORS.has(unwrap(callee.argumentExpression).text))
     );
   };
   const isNodeEval = (construction) => {
@@ -972,7 +976,10 @@ function workerSpecifier(argument) {
 
   if (!ts.isStringLiteralLike(where) || base.getText().replace(/\s+/g, "") !== "import.meta.url") return undefined;
 
-  return UNFOLLOWABLE.test(where.text) || RELATIVE_SPECIFIER.test(where.text) ? where.text : `./${where.text}`;
+  // A URL's query and fragment are not part of the path Node opens: `./w.mjs?raw` runs `w.mjs`.
+  const path = where.text.replace(/[?#].*$/s, "");
+
+  return UNFOLLOWABLE.test(path) || RELATIVE_SPECIFIER.test(path) ? path : `./${path}`;
 }
 
 /**
@@ -1511,7 +1518,7 @@ export function runtimeClosure({ roots, read, packageDirs, neutral, companions =
 
         if (ran) runs.add(target);
         if (from.has(target)) {
-          if (ran && !parsed.has(target) && from.get(target) !== null) {
+          if (ran && !parsed.has(target)) {
             from.set(target, file);
             queue.push(target);
           }
@@ -3041,6 +3048,11 @@ describe("the runtime-closure check itself (positive controls, #1662)", () => {
       'new NodeWorker(new URL("./w.mjs", import.meta.url));',
       'new globalThis.Worker((new URL("./w.mjs", import.meta.url)) as URL);',
       'new NodeWorker(new URL("./w.mjs", import.meta.url), { eval: false });',
+      'new globalThis["Worker"](new URL("./w.mjs", import.meta.url));',
+      "new self[`SharedWorker`](new URL('./w.mjs', import.meta.url));",
+      'new NodeWorker(new URL("./w.mjs?raw", import.meta.url));',
+      'new Worker(new URL("w.mjs#x", import.meta.url));',
+      'new Worker(new URL("./w.mjs?raw#x", import.meta.url));',
     ]) {
       expect(walk(tree(source)), source).toEqual({
         visited: [ROOT_FILE, worker],
@@ -3056,6 +3068,8 @@ describe("the runtime-closure check itself (positive controls, #1662)", () => {
       'new Worker(new URL("./w.mjs", base));',
       'new Worker(new URL("./w.mjs"));',
       'new Worker(new URL("./w.mjs", import.meta.url).href);',
+      'new globalThis["Worker"](new URL(name, import.meta.url));',
+      'new globalThis["Worker"]("./w.mjs");',
       'new NodeWorker("./w.mjs", { eval: flag });',
       // A browser's Worker has no eval option: it loads its first argument as a URL whatever the options say.
       "new Worker(code, { eval: true });",
@@ -3086,6 +3100,14 @@ describe("the runtime-closure check itself (positive controls, #1662)", () => {
     expect(only('import { Worker } from "some-worker-lib";\nnew Worker(source, { eval: true });').problems).toEqual([
       expect.stringContaining("a worker started from something other than new URL(<string literal>, import.meta.url)"),
     ]);
+    // An element-access constructor is exempt exactly as the dot form is: not at all (the exemption is a named import).
+    for (const access of ["threads.Worker", 'threads["Worker"]', "threads[`Worker`]"]) {
+      expect(
+        only(`import * as threads from "node:worker_threads";
+new ${access}(source, { eval: true });`).problems,
+        access,
+      ).toEqual([expect.stringContaining("a worker started from something other than new URL(<string literal>")]);
+    }
   });
 
   // CommonJS loads require("./helpers.js") from a folder helpers.js/ when no such file is there (#1662).
@@ -3352,6 +3374,27 @@ describe("the runtime-closure check itself (positive controls, #1662)", () => {
         new RegExp(`^${ROOT_FILE} → ${shared} imports @iracedeck/iracing-sdk: .*so ${ROOT_FILE} loads it at runtime`),
       ),
     ]);
+  });
+
+  // A root first dequeued as non-module data is read once a require names it, whichever root is listed first.
+  it("reads a root a later root requires as JavaScript, whatever the order of the roots", () => {
+    const config = "packages/website/scripts/build.config";
+    const tree = {
+      [config]: 'module.exports = require("@iracedeck/iracing-sdk");',
+      [ROOT_FILE]: 'require("./build.config");',
+    };
+
+    for (const roots of [
+      [config, ROOT_FILE],
+      [ROOT_FILE, config],
+    ]) {
+      const { visited, problems } = runtimeClosure({ roots, read: (file) => tree[file], packageDirs, neutral });
+
+      expect(visited, roots.join()).toEqual(expect.arrayContaining([ROOT_FILE, config]));
+      expect(problems, roots.join()).toEqual([
+        expect.stringContaining(`${ROOT_FILE} → ${config} imports @iracedeck/iracing-sdk: `),
+      ]);
+    }
   });
 
   it("fails a missing root rather than passing it empty", () => {
