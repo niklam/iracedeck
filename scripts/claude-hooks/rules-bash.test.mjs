@@ -5918,4 +5918,13 @@ describe("the two curly-quote readings (#1659)", () => {
     );
     expect(deny(`pwsh -c "Write-Host 'a\u2019; gh pr merge 7 --squash; echo \u2018x'"`)).toBeTruthy();
   });
+  // CodeRabbit on 8863760d7: from Bash, only the strings pwsh is handed are
+  // read the second way, so a curly quote in another command stays plain.
+  it("straightens only the strings a Bash command hands pwsh", () => {
+    passes(`printf '%s\\n' 'today\u2019s notes; pnpm exec vitest; tomorrow\u2019s notes'; pwsh -c 'Write-Host ok'`);
+    passes(`echo 'it\u2019s; pnpm exec vitest; \u2018x'; powershell -Command "Get-Date"`);
+    expect(deny(`pwsh -c "Write-Host a\u2019; gh pr merge 7; echo \u2018b"`)).toBeTruthy();
+    expect(deny(`echo 'x\u2019y'; pwsh -c "Write-Host 'a\u2019; gh pr merge 7 --squash; echo \u2018x'"`)).toBeTruthy();
+    expect(stopped(`echo ok; pwsh -c "Write-Host 'a\u2019; iex x; echo \u2018x'"`)).toContain("(eval)");
+  });
 });

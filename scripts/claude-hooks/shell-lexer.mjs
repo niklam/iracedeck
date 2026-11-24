@@ -3842,18 +3842,25 @@ export function refusedForms(command, shell = BASH) {
 export const CURLY_QUOTE = /[\u2018\u2019\u201A\u201B\u201C\u201D\u201E]/;
 
 /**
- * Whether `command` is judged a second time with its curly quotes as plain
- * ones ({@link straightQuotes}): it holds one, and is typed to PowerShell
- * (`powershell`) or, read as bash, runs pwsh or powershell as a program, in a
- * string a shell runs too. A Bash command that only mentions pwsh, in a
- * comment or an argument, is read one way (CodeRabbit on 164de4f80).
+ * The second reading of `command` with its curly quotes as plain ones
+ * ({@link straightQuotes}), or `undefined` when it gets none: typed to
+ * PowerShell (`powershell`), the whole text; read as bash, only the strings
+ * it hands pwsh or powershell, the bounds of their levels ({@link view}), so
+ * a curly quote elsewhere in the command, in an argument of its own, stays a
+ * plain character (CodeRabbit on 164de4f80 and 8863760d7). A Bash command
+ * that hands no PowerShell string a curly quote is read one way.
  */
-export function readsCurlyTwice(command, powershell) {
-  if (!CURLY_QUOTE.test(command)) return false;
-  if (powershell) return true;
-  const v = view(command);
-  for (const p of v.byName.keys()) if (/^(?:pwsh|powershell)(?![\w.-])/i.test(v.text.slice(p, p + 11))) return true;
-  return false;
+export function curlyReading(command, powershell) {
+  if (!CURLY_QUOTE.test(command)) return undefined;
+  if (powershell) return straightQuotes(command);
+  let out = command;
+  const seen = new Set();
+  for (const [, L] of view(command).decoded) {
+    if (!POWERSHELLS.has(L.via) || L.file || seen.has(L)) continue;
+    seen.add(L);
+    out = out.slice(0, L.from) + straightQuotes(out.slice(L.from, L.to)) + out.slice(L.to);
+  }
+  return out === command ? undefined : out;
 }
 export function straightQuotes(text) {
   return text.replace(/[\u2018\u2019\u201A\u201B]/g, "'").replace(/[\u201C\u201D\u201E]/g, '"');

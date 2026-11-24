@@ -31,6 +31,7 @@ import {
   chainCommands,
   cmd,
   commandEnd,
+  curlyReading,
   excuseDecodedHit,
   GIT_GLOBALS,
   gitPlace,
@@ -44,12 +45,10 @@ import {
   powershellAsBash,
   programStart,
   ranges,
-  readsCurlyTwice,
   refusedForms,
   resolveDir,
   respelledPrograms,
   segmentTokens,
-  straightQuotes,
   stringBounds,
   stringEnd,
   takeDecodedHits,
@@ -1333,8 +1332,9 @@ export function checkBash(command, ctx) {
   // every ask either reading raises, in one prompt, as `judge` joins its rules'
   // (CodeRabbit on 164de4f80). A Bash command that only mentions pwsh, in a
   // comment or an argument, is read one way.
-  if (!readsCurlyTwice(command, powershell)) return read(command);
-  const verdicts = [read(command), read(straightQuotes(command))];
+  const second = curlyReading(command, powershell);
+  if (second === undefined) return read(command);
+  const verdicts = [read(command), read(second)];
   const deny = verdicts.find((v) => typeof v === "string");
   if (deny) return deny;
   const raised = verdicts.filter((v) => v);
