@@ -18,11 +18,13 @@
  * writing a file throws, so a rule that reaches past `ctx` shows as a THROW
  * verdict on that side rather than running anything.
  *
- * Exit status: 0 when every verdict is identical, 1 when one differs, 2 on a
+ * Exit status: 0 when every pair gave the same completed verdict, 1 when one
+ * differs, 2 on a
  * usage error, 3 when the run could not be made (the base unreadable, a
  * module that does not load, a corpus or manifest it cannot read), 4 when a
  * comparison judged no command at all (a `--match` naming no folder), which
- * proves nothing (USAGE).
+ * proves nothing, 5 when none differs but both sides threw alike on some
+ * command, which compares nothing there (USAGE, {@link exitStatus}).
  */
 import {
   createReadStream,
@@ -46,8 +48,6 @@ const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..");
 /** Where `checkBash` and `view` live, relative to a checkout or a copy of one. */
 const RULES = "scripts/claude-hooks/rules-bash.mjs";
 const LEXER = "scripts/claude-hooks/shell-lexer.mjs";
-/** How much of a verdict a difference prints. */
-const VERDICT_CUT = 300;
 /** How much of a command `--show-commands` prints. */
 const COMMAND_CUT = 2000;
 
@@ -62,8 +62,13 @@ export const USAGE = `Usage: node scripts/claude-hooks/replay-corpus.mjs --trans
                         (otherwise only each verdict's kind)
   --help                print this
 
-Exit status: 0 every verdict identical, 1 one differs, 2 a usage error,
-3 the run could not be made, 4 a comparison judged no command (no commands judged).`;
+Exit status:
+  0  every pair gave the same completed verdict
+  1  a verdict differs
+  2  a usage error
+  3  the run could not be made
+  4  a comparison judged no command (no commands judged)
+  5  none differs, but both sides threw alike on some command`;
 
 // ---------------------------------------------------------------------------
 // Reading the transcripts
@@ -390,6 +395,23 @@ export function verdictOf(checkBash, command, ctx) {
   }
 }
 
+/**
+ * How the two sides' verdicts on one command compare (PR #1798 review):
+ * `"identical"` for the same completed verdict, `"threw"` when both threw
+ * alike, which completes no verdict and so is no agreement, `"different"`
+ * for anything else, both sides throwing differently included.
+ */
+export function comparePair(base, head) {
+  if (base !== head) return "different";
+  return base.startsWith("THROW: ") ? "threw" : "identical";
+}
+
+/** The tool's exit status for a comparison ({@link main}): 1 for a difference, else 5 when both sides threw on a command, else 0. */
+export function exitStatus({ differences, threw }) {
+  if (differences) return 1;
+  return threw ? 5 : 0;
+}
+
 /** `text` on one line (newlines as `\n`), cut to `n` characters with an ellipsis. */
 export function cut(text, n) {
   const one = text.replace(/\r?\n/g, "\\n");
@@ -412,7 +434,8 @@ export function formatDifference(
 ) {
   const reasons = probeReasons(command);
   const kind = (v) => verdictKind(v, forms);
-  const shown = (v) => (showCommands ? cut(v, VERDICT_CUT) : kind(v));
+  // Shown, a verdict is printed whole, on one line (PR #1798 review).
+  const shown = (v) => (showCommands ? cut(v, Infinity) : kind(v));
   const lines = [
     `#${index} ${tool}`,
     `  probe: ${reasons.length ? reasons.join("; ") : "real"}`,
@@ -826,6 +849,7 @@ export async function main(
     const differences = [];
     let judged = 0;
     let identical = 0;
+    let threw = 0;
     const contexts = {
       Bash: fixedContext({ cwd: root, shell: head.lexer.BASH, workspace }),
       PowerShell: fixedContext({ cwd: root, shell: head.lexer.POWERSHELL, workspace }),
@@ -849,7 +873,9 @@ export async function main(
         const ctx = contexts[tool];
         const b = verdictOf(base.checkBash, command, ctx);
         const h = verdictOf(head.checkBash, command, ctx);
-        if (b === h) identical++;
+        const pair = comparePair(b, h);
+        if (pair === "identical") identical++;
+        else if (pair === "threw") threw++;
         else differences.push({ index: i + 1, tool, command, base: b, head: h });
       });
     } finally {
@@ -870,6 +896,7 @@ export async function main(
       }
       print(`commands judged: ${judged}`);
       print(`identical verdicts: ${identical}`);
+      print(`both sides threw alike: ${threw}`);
       print(differenceSummary(differences));
       // The forms either side names, so a renamed form still prints as one.
       const forms = new Set([...(base.lexer.REFUSED_FORMS ?? []), ...(head.lexer.REFUSED_FORMS ?? [])]);
@@ -880,7 +907,7 @@ export async function main(
     for (const line of census.format()) print(line);
     print("");
     print(`elapsed: ${((Date.now() - started) / 1000).toFixed(1)} s`);
-    return differences.length ? 1 : 0;
+    return exitStatus({ differences: differences.length, threw });
   } finally {
     if (base?.dir) rmSync(base.dir, { recursive: true, force: true });
   }

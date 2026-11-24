@@ -11,9 +11,11 @@ import {
   censusOf,
   commandCensus,
   CommandSet,
+  comparePair,
   CONTEXT_FIELDS,
   cut,
   differenceSummary,
+  exitStatus,
   extractCommands,
   fixedContext,
   forbidSideEffects,
@@ -428,7 +430,22 @@ describe("verdicts", () => {
     expect(plain.join("\n")).not.toContain("gh pr merge");
     const shown = formatDifference(d, { showCommands: true });
     expect(shown[1]).toBe("  command: gh pr merge 5");
-    expect(shown.at(-1)).toBe(`  head: DENY: ${"y".repeat(294)}...`);
+    // PR #1798 review: shown, a verdict is printed whole, as the option says.
+    expect(shown.at(-1)).toBe(`  head: DENY: ${"y".repeat(400)}`);
+    expect(formatDifference({ ...d, head: "DENY: a\nb" }, { showCommands: true }).at(-1)).toBe("  head: DENY: a\\nb");
+  });
+
+  // PR #1798 review: a pair where both sides threw is no identical verdict.
+  it("tell a pair that agrees, one where both sides threw alike, and one that differs", () => {
+    expect(comparePair("PASS", "PASS")).toBe("identical");
+    expect(comparePair("DENY: x", "DENY: x")).toBe("identical");
+    expect(comparePair("THROW: boom", "THROW: boom")).toBe("threw");
+    expect(comparePair("THROW: boom", "THROW: bang")).toBe("different");
+    expect(comparePair("THROW: boom", "PASS")).toBe("different");
+    expect(exitStatus({ differences: 0, threw: 0 })).toBe(0);
+    expect(exitStatus({ differences: 0, threw: 2 })).toBe(5);
+    expect(exitStatus({ differences: 1, threw: 2 })).toBe(1);
+    expect(USAGE).toMatch(/\b5\b.*threw/);
   });
 
   // CodeRabbit CLI on #1659: a deny's text can quote a command's raw
