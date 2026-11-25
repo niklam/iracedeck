@@ -239,6 +239,23 @@ describe("post-bash.mjs triggers", { timeout: 30_000 }, () => {
     expect(fire(continued, { withoutGh: true })).toBeNull();
     expect(fire("Write-Output 'gh pr merge 7'", { tool })).toBeNull();
   });
+
+  // CodeRabbit on 164de4f80: the pre-hook reads a curly-quoted PowerShell
+  // command both ways, so a merge only the straightened reading finds is one
+  // it judged, and the post-hook follows it up too.
+  it("follows up a merge only the curly-quote reading finds, from the PowerShell tool", () => {
+    const tool = "PowerShell";
+    const curly = "Write-Host 'a’; gh pr merge 7 --squash; echo ‘x'";
+    expect(fire(curly, { withoutGh: true, tool })).toMatch(/could not read the PR back/);
+    expect(fire("Write-Host 'a; gh pr merge 7 --squash; echo x'", { withoutGh: true, tool })).toBeNull();
+  });
+
+  // PR #1798 review: the program word itself curly-quoted, run by the call operator.
+  it("follows up a merge whose gh is curly-quoted, from the PowerShell tool", () => {
+    const tool = "PowerShell";
+    expect(fire("& “gh” pr merge 7 --squash", { withoutGh: true, tool })).toMatch(/could not read the PR back/);
+    expect(fire("& ‘gh’ pr merge 7 --squash", { withoutGh: true, tool })).toMatch(/could not read the PR back/);
+  });
 });
 
 // #1527: a card is found by issue number alone, so a filing or a merge in
@@ -1030,10 +1047,12 @@ describe("post-bash.mjs reads a mention beside a shell feed as a mention (#1607)
     expect(fire(command, { withoutGh: true })).toMatch(/could not read the PR back/),
   );
 
-  // CodeRabbit on PR #1632: bash runs the string it reads on stdin.
-  it("reads back the PR of a merge a shell reads on stdin", () => {
+  // CodeRabbit on PR #1632: bash runs the string it reads on stdin. Since #1659
+  // the pre-hook refuses a printer piped into a shell, so no such command runs
+  // and the lexer reads none: the post-hook reads no PR back for it.
+  it("reads back no PR of a merge a shell reads on stdin, a form the pre-hook refuses", () => {
     const { calls } = fireWithGh("echo 'gh pr merge 1603 --squash' | bash", {});
-    expect(calls.map((c) => c.args.slice(0, 3))).toEqual([["pr", "view", "1603"]]);
+    expect(calls).toEqual([]);
   });
 
   it("reads back the real merge's PR, not the one a quoted mention ahead of it names", () => {

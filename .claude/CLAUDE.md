@@ -104,7 +104,8 @@ You can import or reference specific rule files from other markdown using `@.cla
 - `changelog-internals.md` — how fragments are composed, the fold into `changelog.mdx` at a stable release, the gitignored `changelog.json` and the machine-read format of the dated sections.
 - `encoders-and-touchscreen.md` — dials and the touch strip: platform facts, release-time press classification, the hold preview, dial-action rules.
 - `global-settings.md` — global settings architecture, the plugin-owned settings store and its migrations, run-scoped keys, warning banners, the version-upgrade changelog.
-- `hook-internals.md` — how the hook guards decide: the merge gate's review conditions, the command-position lexer, `git -C` scoping.
+- `hook-internals.md` — how the hook guards decide: the lexer's stopping rule, command position, `git -C` scoping.
+- `hook-merge-gate.md` — the `gh pr merge` gate: review, summary, rebase, `--admin` and repository conditions.
 - `hook-script-runs.md` — how the deck-host ask reads what a package script, runner or shell wrapper would run.
 - `icons.md` — icon types, SVG structure, colour slots and locks, previews, distinctiveness.
 - `key-icon-types.md` — Default / Black Box / Inverted key icon layouts and labels.

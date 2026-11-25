@@ -10,6 +10,7 @@ Read at the start of every run on a live branch; a blind run that tests the brie
 - A check that passes on a substring of the source: commented-out text, or an earlier occurrence, satisfies it (#1360).
 - A rule that protects the field from one odd value but not the player's own car holding that same value (#1174, a stray pace line).
 - A workflow file run from one ref against a tree checked out from another: every value hard-coded in the file must match the checked-out tree (#1121 and #1178, the pnpm pin on the voice-pack publish path).
+- A guard's misread reported only as a false deny: test the same misread the other way, where it may fail open. A word reader blind to `#` comments refused `bash -s … # <<< x`, and also took `# install` in `… | bash # install` for a script file, passing the pipe the rule refuses (#1659).
 
 ## Non-findings — do not raise these
 

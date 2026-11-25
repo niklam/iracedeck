@@ -182,3 +182,14 @@ describe("pre-bash.mjs, fired for the PowerShell tool", SPAWNS, () => {
     expect(fire(heredoc).permissionDecision).toBe("deny");
   });
 });
+
+// CodeRabbit on 164de4f80: a curly-quoted PowerShell command is judged twice,
+// so every merge-gate read is memoized per hook run, by its arguments, and
+// the second judgement repeats no git or gh work.
+describe("pre-bash.mjs's merge-gate reads", () => {
+  it("memoizes each, the --admin merge's file read and required checks included", () => {
+    const src = readFileSync(HOOK, "utf8");
+    for (const read of ["prView", "replayRebase", "prChangedFiles", "requiredChecks", "baseChangedSince", "prComments"])
+      expect(src, read).toMatch(new RegExp(String.raw`\n\s+${read}: memo\(`));
+  });
+});

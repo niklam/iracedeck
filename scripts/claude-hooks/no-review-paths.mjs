@@ -2,7 +2,7 @@
  * The files a PR may change and still skip CodeRabbit (#1648): Claude-facing
  * prose only. Such a PR is opened with `--label no-coderabbit`, nobody can
  * approve it, and it merges under `--admin`, which the merge gate in
- * `rules-bash.mjs` lets through unasked only when every file the PR changes
+ * `merge-gate.mjs` lets through unasked only when every file the PR changes
  * matches this list, a skill's or agent's frontmatter unchanged, or Dependabot
  * wrote the whole PR. A `CLAUDE.md` counts only where the repo keeps
  * them, never at any depth: one under the website's content folder would be

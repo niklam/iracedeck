@@ -643,13 +643,16 @@ describe("the program-word rewrite's second read (#1606)", () => {
     for (const re of SHAPES) if (re.test(command)) expect(re.test(text), String(re)).toBe(true);
   });
 
-  it.each(UNTRUSTED.slice(-5))("finds the merge inside the string, read as its shell reads it (#1646): %s", (c) => {
+  it.each(UNTRUSTED.slice(-5, -3))("finds the merge inside the string, read as its shell reads it (#1646): %s", (c) => {
     expect(lexer.has(c, SHAPES[1])).toBe(true);
     expect(view(c).unsettled).toBe(false);
   });
 
-  it("finds a push a string's ANSI-C escape separates from the command before it (#1646)", () =>
-    expect(lexer.has(UNTRUSTED.at(-3), SHAPES[0])).toBe(true));
+  // #1659: an ANSI-C string, a printer piped into a shell and a sudo that runs
+  // a shell are refused rather than read.
+  it.each(UNTRUSTED.slice(-3))("refuses the form a string is handed in, never reads it (#1659): %s", (c) =>
+    expect(lexer.refusedForms(c)).not.toEqual([]),
+  );
 
   it("still rewrites a plain program word in an untrusted view", () => {
     expect(trustedMask(`"bash" -c 'x' && gh.exe pr merge 5`)).toBe(`  bash -c 'x' &&     gh pr merge 5`);
@@ -887,11 +890,6 @@ describe("the first word of a shell-fed string is at command position (#1634)", 
   const FED = [
     ["bash -c 'gh pr merge 7 --squash'", "shell", "bash"],
     [`sh -c "gh pr merge 7"`, "shell", "sh"],
-    [`eval "gh pr merge 7"`, "shell", "eval"],
-    ["eval gh pr merge 7", "shell", "eval"],
-    ["echo 'gh pr merge 7' | bash", "shell", "bash"],
-    ["printf '%s\\n' 'gh pr merge 7' | sh", "shell", "sh"],
-    ["bash <<< 'gh pr merge 7'", "shell", "bash"],
     ["sudo gh pr merge 7", "wrapper", "sudo"],
     ["sudo -u me gh pr merge 7", "wrapper", "sudo"],
     [`pwsh -Command "gh pr merge 7"`, "shell", "pwsh"],
@@ -913,8 +911,6 @@ describe("the first word of a shell-fed string is at command position (#1634)", 
 
   it.each([
     "bash -c 'pnpm exec vitest run'",
-    "eval 'npx vitest'",
-    "echo 'pnpm exec vitest run' | bash",
     "sudo pnpm exec vitest",
     `pwsh -c "pnpm exec vitest"`,
   ])("finds the vitest trap in %s", (command) => expect(lexer.has(command, VITEST)).toBe(true));
@@ -942,13 +938,9 @@ describe("the first word of a shell-fed string is at command position (#1634)", 
     expect(lexer.programKind("sudo gh pr merge 7", 5)).toEqual({ how: "wrapper", via: "sudo" });
     expect(lexer.programKind("nice -n 5 gh pr merge 7", 10)).toEqual({ how: "wrapper", via: "nice" });
     expect(lexer.programKind("bash -c 'gh pr merge 7'", 9)).toEqual({ how: "shell", via: "bash" });
-    expect(lexer.programKind("echo 'gh pr merge 7' | bash", 6)).toEqual({
-      how: "shell",
-      via: "bash",
-      stdin: true,
-      piped: true,
-    });
-    expect(lexer.programKind("bash <<< 'gh pr merge 7'", 10)).toEqual({ how: "shell", via: "bash", stdin: true });
+    // A shell reading its script from stdin is refused, never read (#1659).
+    expect(lexer.programKind("echo 'gh pr merge 7' | bash", 6)).toBeUndefined();
+    expect(lexer.programKind("bash <<< 'gh pr merge 7'", 10)).toBeUndefined();
     expect(lexer.programKind("echo gh pr merge 7", 5)).toBeUndefined();
     expect(lexer.programKind("bash -c 'echo gh pr merge 7'", 14)).toBeUndefined();
     expect(lexer.programAt("sudo gh pr merge 7", 5)).toBe(true);
@@ -957,7 +949,7 @@ describe("the first word of a shell-fed string is at command position (#1634)", 
 
   it("rewrites the first word of a fed string to the program it runs, as it does at command position", () => {
     expect(trustedMask("bash -c 'gh.exe pr merge 7'")).toBe("bash -c '    gh pr merge 7'");
-    expect(trustedMask(`echo '"gh" pr merge 7' | bash`)).toBe(`echo '  gh pr merge 7' | bash`);
+    expect(trustedMask(`bash -c '"gh" pr merge 7'`)).toBe(`bash -c '  gh pr merge 7'`);
     expect(trustedMask("sudo GH.EXE pr merge 7")).toBe("sudo     gh pr merge 7");
     expect(trustedMask("bash -c 'echo gh.exe pr merge 7'")).toBe("bash -c 'echo gh.exe pr merge 7'");
     expect(lexer.unreadablePrograms("bash -c '$GH pr merge 7'")).toEqual([{ start: 9, end: 12, word: "$GH" }]);
@@ -973,7 +965,7 @@ describe("the first word of a shell-fed string is at command position (#1634)", 
     expect(args("bash -c 'git push origin x'")).toEqual([" origin x"]);
     expect(args("bash -c 'ls; git push'")).toEqual([""]);
     expect(args("sudo git push origin 'v1'")).toEqual([" origin 'v1'"]);
-    expect(args(`eval "git push" && git push origin y`)).toEqual(["", " origin y"]);
+    expect(args(`bash -c "git push" && git push origin y`)).toEqual(["", " origin y"]);
     const add = cmd(/git\s+worktree\s+add\b(.*)$/);
     expect(lexer.matchAt("bash -c 'git worktree add ../ir-5 -b x'", add)[1]).toBe(" ../ir-5 -b x");
     expect(lexer.matchAt("git worktree add ../ir-5 -b x", add)[1]).toBe(" ../ir-5 -b x");
@@ -1119,10 +1111,10 @@ describe("the #1634 review round: options, cuts and program positions", () => {
     expect(lexer.programKind("sudo nice gh pr merge 7", 10)).toEqual({ how: "wrapper", via: "nice" });
     // A program quoted whole among the words a shell joins is read whole too,
     // its own quotes with it, as `sudo "gh"`'s are; another word's stay (#1646).
-    expect(trustedMask('eval "gh" pr merge 7')).toBe("eval   gh pr merge 7");
-    expect(lexer.has('eval "gh" pr merge 7', MERGE)).toBe(true);
-    const joined = `eval "gh.exe" pr merge 5 "x;y"; git.exe push --tags`;
-    expect(trustedMask(joined)).toBe(`eval ${" ".repeat(6)}gh pr merge 5 "x;y";     git push --tags`);
+    expect(trustedMask('cmd /c "gh" pr merge 7')).toBe("cmd /c   gh pr merge 7");
+    expect(lexer.has('cmd /c "gh" pr merge 7', MERGE)).toBe(true);
+    const joined = `cmd /c "gh.exe" pr merge 5 "x;y"; git.exe push --tags`;
+    expect(trustedMask(joined)).toBe(`cmd /c ${" ".repeat(6)}gh pr merge 5 "x;y";     git push --tags`);
   });
 
   it("has no fedCommandStart export: programKind says how a word is the program", () =>
@@ -1195,7 +1187,7 @@ describe("the #1634 second read: rounds, late shell words and attached switches"
     'nice nice.exe bash -c "gh pr merge 7 --squash"',
     "nice nice.exe nice.exe gh pr merge 7 --squash",
     "nice nice.exe nice.exe gh.exe pr merge 7 --squash",
-    'winpty bash.exe -c "cmd.exe /c gh pr merge 7"',
+    'winpty bash.exe -c "nice.exe gh pr merge 7"',
     "sudo nice.exe stdbuf.exe -oL gh.exe pr merge 7",
   ])("keeps every level of a nested wrapper across the rounds: %s", (c) => {
     expect(lexer.has(c, MERGE)).toBe(true);
@@ -1264,18 +1256,18 @@ describe("a shell reading its script on stdin is read from the shell's own optio
     "echo 'gh pr merge 7' | bash -s -o x",
     "echo 'gh pr merge 7' | sh -eu",
     "echo 'gh pr merge 7' | bash -s a b",
-  ])("reads the script %s", (c) => {
-    expect(lexer.has(c, MERGE)).toBe(true);
-    expect(lexer.programKind(c, 6)).toMatchObject({ how: "shell", stdin: true, piped: true });
-  });
+  ])("finds the shell reading its script there, and refuses it (#1659): %s", (c) =>
+    expect(lexer.refusedForms(c)).toEqual([{ form: "a printer piped into a shell", shape: expect.any(String) }]),
+  );
   it.each([
     "echo 'gh pr merge 7' | bash -O extglob x.sh",
     "echo 'gh pr merge 7' | bash --rcfile x y.sh",
     "echo 'gh pr merge 7' | bash -eo pipefail -c true",
     "echo 'gh pr merge 7' | bash -O extglob </dev/null",
-  ])("reads no script where a file, a string or another input is given: %s", (c) =>
-    expect(lexer.has(c, MERGE)).toBe(false),
-  );
+  ])("finds no script on stdin where a file, a string or another input is given: %s", (c) => {
+    expect(lexer.has(c, MERGE)).toBe(false);
+    expect(lexer.refusedForms(c)).toEqual([]);
+  });
   it("exports the option reader the deck-host reader shares", () => {
     const words = ["-eo", "pipefail", "-c", "'gh pr merge 7'", "a"];
     let i = 0;
@@ -1361,63 +1353,33 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
     expect(lexer.has("bash -c 'env -C \"a b\" git push origin v1.2.3'", PUSH)).toBe(true);
   });
 
-  // sudo -s escapes every character of its words but a letter, a digit, `_`,
-  // `-` and `$` before its shell reads them: `X=a\ b` is then the program. The
-  // reader leaves `=` unescaped, so a leading assignment is stepped over and
-  // the word after it counts as a program: a false one here, the real one in
-  // `sudo -s env X=1 gh …`.
-  it("errs to a program after a leading assignment sudo -s escapes", () => {
-    expect(lexer.has('sudo -s X="a b" gh pr merge 7', MERGE)).toBe(true);
-    expect(lexer.has("sudo -s echo X=1 gh pr merge 7", MERGE)).toBe(false);
-  });
-
-  it("decodes every ANSI-C escape of a string a shell runs, as bash does", () => {
-    const text = (w) =>
-      lexer
-        .decodeWord(w, true)
-        .map((x) => x.c)
-        .join("");
-    expect(text(String.raw`$'a\nb\tc\x41\101\u00e9\cA\q\'\\'`)).toBe("a\nb\tcAA\u00e9\x01\\q'\\");
-    // Without `ansi` an escape it cannot read whole stays live, as a program name reads it (#1606).
-    expect(lexer.decodeWord(String.raw`$'\x41'`).some((x) => x.live)).toBe(true);
-    expect(lexer.decodeWord(String.raw`$'a\nb'`, true).map((x) => [x.at, x.end])).toEqual([
-      [2, 3],
-      [3, 5],
-      [5, 6],
-    ]);
-  });
+  // An ANSI-C string a shell is handed is refused rather than decoded (#1659);
+  // in a program word, an escape it cannot read whole stays live (#1606).
+  it("reads an ANSI-C escape in a word as live, as a program name reads it", () =>
+    expect(lexer.decodeWord(String.raw`$'\x41'`).some((x) => x.live)).toBe(true));
 
   // The raw text of a string a shell runs is not always the text it reads: an
   // outer double-quoted string carries escaped quotes, a `'\''` splice joins
-  // pieces, `$'…'` decodes escapes. Each is read as the shell reads it.
+  // pieces. It is read as the shell reads it (an ANSI-C string, a string
+  // inside a string, a printer, a here-string, eval and sudo -s are refused
+  // instead, #1659).
   it.each([
     `bash -c "X=\\"a b\\" gh pr merge 7"`,
     String.raw`bash -c 'X='\''a b'\'' gh pr merge 7'`,
     "bash -c X=1' gh pr merge 7'",
     `bash -c "ls; X=\\"a b\\" gh pr merge 7"`,
-    String.raw`bash -c $'ls\ngh pr merge 7'`,
-    String.raw`bash -c $'X=\'a b\' gh pr merge 7'`,
-    `bash -c "sh -c 'X=\\"a b\\" gh pr merge 7'"`,
     `bash -c "nice env X=\\"a;b\\" gh pr merge 7"`,
     "bash -c '2>\"a b\" gh pr merge 7'",
     "bash -c 'X=${Y:-a b} gh pr merge 7'",
     "bash -c 'X=$(echo a b)c gh pr merge 7'",
-    "echo 'X=\"a b\" gh pr merge 7' | bash",
-    "bash <<< 'X=\"a b\" gh pr merge 7'",
-    "eval 'X=\"a b\" gh pr merge 7'",
-    `eval "X=\\"a b\\"" gh pr merge 7`,
     "watch 'X=\"a b\" gh pr merge 7'",
     "trap 'X=\"a b\" gh pr merge 7' EXIT",
     String.raw`find . -exec sh -c 'X="a b" gh pr merge 7' \;`,
-    `bash <<< "X=\\"a b\\" gh pr merge 7"`,
-    `bash -c "sh -c 'nice env X=\\"a;b\\" gh pr merge 7'"`,
     "bash -c 'cd x && X=\"a b\" gh pr merge 7'",
     "bash -c 'if true; then X=\"a b\" gh pr merge 7; fi'",
     "bash -c 'X=\"a b\" 2>/dev/null gh pr merge 7'",
     "bash -c 'X=ab 2>/dev/null gh pr merge 7'",
     "bash -c 'exec -a \"my name\" gh pr merge 7'",
-    "printf 'X=\"a b\" gh pr merge 7\\n' | sh",
-    "sudo -s env X=1 gh pr merge 7",
   ])("reads the string as the shell it is handed to reads it: %s", (c) => {
     expect(lexer.has(c, MERGE)).toBe(true);
     expect(view(c).unclosedLead).toBe(false);
@@ -1433,7 +1395,6 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
     "bash -c 'X=\"a b gh pr merge 7'",
     `bash -c "X=\\"a b gh pr merge 7"`,
     "bash -c '\"gh pr merge 7'",
-    "echo 'X=\"a gh pr merge 7' | bash",
   ])("reports a lead whose quote never closes, which the hook cannot read: %s", (c) =>
     expect(view(c).unclosedLead).toBe(true),
   );
@@ -1504,7 +1465,6 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
     ["bash -c '$(echo gh) pr merge 7'", "$(echo gh)"],
     ["bash -c '`echo gh` pr merge 7'", "`echo gh`"],
     [`bash -c 'X="a b" $(echo gh) pr merge 7'`, "$(echo gh)"],
-    [String.raw`eval "\$GH pr merge 7"`, String.raw`\$GH`],
     [String.raw`bash -c "\$GH pr merge 7"`, String.raw`\$GH`],
   ])("lists a program word the string's shell expands as unreadable: %s", (c, word) =>
     expect(lexer.unreadablePrograms(c).map((u) => u.word)).toContain(word),
@@ -1527,12 +1487,11 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
     String.raw`bash -c "nice \gh pr merge 7"`,
   ])("settles a program word that starts with a backslash: %s", (c) => expect(view(c).unsettled).toBe(false));
 
-  it("reads the program after a backslash as its shell does", () => {
-    expect(lexer.has(String.raw`bash -c '\gh pr merge 7'`, MERGE)).toBe(true);
-    expect(lexer.has(String.raw`bash -c $'\\x67h pr merge 7'`, MERGE)).toBe(false);
-    expect(lexer.respelledPrograms(String.raw`bash -c $'g\x68 pr merge 7'`).respelled.map((w) => w.name)).toEqual([
-      "gh",
-    ]);
+  // Read as its shell reads it, and refused for the escape in its name (#1659).
+  it("reads the program after a backslash as its shell does, and refuses the escape", () => {
+    const c = String.raw`bash -c '\gh pr merge 7'`;
+    expect(lexer.has(c, MERGE)).toBe(true);
+    expect(lexer.refusedForms(c).map((r) => r.form)).toEqual(["a program word that is not its plain name"]);
   });
 
   // A program spelled so the raw text cannot show the name its shell runs.
@@ -1551,35 +1510,19 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
     `bash -c 'g'"h"' pr merge 7'`,
     `bash -c 'X="a b" g'"h"' pr merge 7'`,
     `bash -c 'echo hi; g'"h"' pr merge 7'`,
-  ])("lists a program spliced from quoted pieces: %s", (c) =>
-    expect(lexer.respelledPrograms(c).spliced.map((w) => w.word)).toEqual([`g'"h`]),
-  );
+    `bash -c 'echo hi; /usr/'"bin"'/gh pr merge 7'`,
+  ])("lists a program spliced from quoted pieces, its string read whole (#1659): %s", (c) => {
+    expect(lexer.refusedForms(c)).toEqual([]);
+    expect(lexer.respelledPrograms(c).spliced).toHaveLength(1);
+  });
 
   it.each([
     "bash -c 'gh pr merge 7'",
     `bash -c "X='a b' gh pr merge 7"`,
-    `echo '"gh" pr merge 7' | bash`,
     String.raw`bash -c 'X='\''a b'\'' gh pr merge 7'`,
   ])("lists nothing respelled where the raw text spells the program: %s", (c) =>
-    expect(lexer.respelledPrograms(c)).toEqual({ respelled: [], spliced: [], reprinted: [] }),
+    expect(lexer.respelledPrograms(c)).toEqual({ respelled: [], spliced: [] }),
   );
-
-  // What echo -e and printf print is the script the piped shell reads.
-  it.each([
-    String.raw`echo -e 'x\ngh pr merge 7' | bash`,
-    String.raw`echo -ne 'x\ngh pr merge 7' | bash`,
-    String.raw`echo -e 'x\x0agh pr merge 7' | bash`,
-    String.raw`echo -e 'x\012gh pr merge 7' | bash`,
-    String.raw`printf 'x\ngh pr merge 7\n' | bash`,
-    String.raw`printf 'x\012gh pr merge 7' | sh`,
-    String.raw`printf '%b' 'x\ngh pr merge 7' | bash`,
-  ])("reads what echo -e or printf prints, its escapes decoded: %s", (c) => expect(lexer.has(c, MERGE)).toBe(true));
-
-  it.each([
-    String.raw`echo 'x\ngh pr merge 7' | bash`,
-    String.raw`echo -eE 'x\ngh pr merge 7' | bash`,
-    String.raw`printf '%s' 'x\ngh pr merge 7' | bash`,
-  ])("keeps an escape echo or printf prints as written: %s", (c) => expect(lexer.has(c, MERGE)).toBe(false));
 
   it("sets no unclosed lead for cmd.exe, which has no single quotes", () => {
     expect(view(`cmd /c "it's.bat"`).unclosedLead).toBe(false);
@@ -1613,54 +1556,22 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
     (c) => expect(lexer.has(c, MERGE)).toBe(false),
   );
 
-  // printf's output, as it prints it, read by the piped shell.
+  // A `#` comment and a heredoc body hold no command: a quote in them closes
+  // nothing. The strings hold real newlines, since an ANSI-C `$'…'` string is
+  // refused rather than read (#1659).
   it.each([
-    String.raw`printf '%s\ngh pr merge 7\n' x | bash`,
-    String.raw`printf '%%\ngh pr merge 7\n' | bash`,
-    String.raw`printf '%s\n' 'gh pr merge 7' | bash`,
-    String.raw`printf '%s\n%s\n' 'cd x' 'gh pr merge 7' | bash`,
-    String.raw`printf '%s\n' a 'gh pr merge 7' | bash`,
-    String.raw`printf '%5s\ngh pr merge 7\n' x | bash`,
-    String.raw`printf '%d\ngh pr merge 7\n' 5 | bash`,
-  ])("reads what printf prints from its format and arguments: %s", (c) => expect(lexer.has(c, MERGE)).toBe(true));
-
-  it.each([
-    String.raw`printf 'echo %s\n' 'gh pr merge 7' | bash`,
-    String.raw`printf '%s\n' 'echo hi' | bash`,
-    String.raw`printf '%b' 'x\cgh pr merge 7' | bash`,
-  ])("finds no merge printf does not print at a command's start: %s", (c) => expect(lexer.has(c, MERGE)).toBe(false));
-
-  it.each([
-    String.raw`printf '%d\ngh pr merge 7\n' "$N" | bash`,
-    String.raw`printf '%*s\n' 5 x | bash`,
-    String.raw`printf '%s\n' "$CMD" | bash`,
-    String.raw`printf '%f\n' 1 | bash`,
-  ])("reports printf output it cannot know: %s", (c) => expect(view(c).unprintable).toBe(true));
-
-  it.each([
-    String.raw`printf '%s\n' 'echo hi' | bash`,
-    String.raw`printf '%d\n' 5 | bash`,
-    String.raw`printf '%s\n' "$X"`,
-  ])("reports nothing unknown where printf's output is known or goes to no shell: %s", (c) =>
-    expect(view(c).unprintable).toBe(false),
-  );
-
-  // A `#` comment and a heredoc body hold no command: a quote in them closes nothing.
-  it.each([
-    String.raw`bash -c $'ls #\'\ngh pr merge 7'`,
-    String.raw`printf "ls #'\ngh pr merge 7\n" | bash`,
-    String.raw`bash -c $'cat <<E\nx it\'s\nE\ngh pr merge 7'`,
-    String.raw`bash -c $'cat <<\'E\'\nx it\'s\nE\ngh pr merge 7'`,
-    String.raw`bash -c $'cat <<-E\n\tx it\'s\n\tE\ngh pr merge 7'`,
+    `bash -c "ls #'\ngh pr merge 7"`,
+    `bash -c "cat <<E\nx it's\nE\ngh pr merge 7"`,
+    `bash -c "cat <<'E'\nx it's\nE\ngh pr merge 7"`,
+    `bash -c "cat <<-E\n\tx it's\n\tE\ngh pr merge 7"`,
   ])("reads the command after a comment or a heredoc body: %s", (c) => {
     expect(lexer.has(c, MERGE)).toBe(true);
     expect(view(c).unclosedLead).toBe(false);
   });
 
   it.each([
-    String.raw`bash -c $'cat <<E\n\'x\nE\necho hi'`,
-    String.raw`bash -c $'#it\'s\nls'`,
-    String.raw`bash -c $'cat <<E\ngh pr merge 7\nE'`,
+    `bash -c "cat <<E\n'x\nE\necho hi"`,
+    `bash -c "#it's\nls"`,
     String.raw`bash -c 'echo a#b'`,
   ])("reads no command, and no unclosed quote, in a comment or a heredoc body: %s", (c) => {
     expect(lexer.has(c, MERGE)).toBe(false);
@@ -1668,10 +1579,10 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
   });
 
   it("reports a heredoc operator with no delimiter, which the shell refuses", () =>
-    expect(view(String.raw`bash -c $'cat <<\ngh pr merge 7'`).unclosedLead).toBe(true));
+    expect(view(`bash -c "cat <<\ngh pr merge 7"`).unclosedLead).toBe(true));
 
   it("reads a shift in an arithmetic command as no heredoc", () =>
-    expect(lexer.has(String.raw`bash -c $'(( x = 1 << 3 ))\ngh pr merge 7'`, MERGE)).toBe(true));
+    expect(lexer.has(`bash -c "(( x = 1 << 3 ))\ngh pr merge 7"`, MERGE)).toBe(true));
 
   // An escaped `$` opens no ANSI-C string: `\$'x\'` is `$` and a plain `'x\'`.
   it("reads an escaped `$` before a quote as no ANSI-C opener", () => {
@@ -1686,29 +1597,28 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
   });
 
   // Round 3 (#1646): a rule's shape is also tested in the decoded text of each
-  // string a shell runs, so a command its shell joins or decodes is found.
-  it.each([
-    String.raw`bash -c $'gh\x20pr merge 7'`,
-    `eval "gh pr" merge 7`,
-    `eval gh "pr merge" 7`,
-    String.raw`printf '%s %s\n' gh 'pr merge 7' | bash`,
-  ])("finds a merge its shell reads only once it decodes or joins the words: %s", (c) => {
-    expect(lexer.has(c, MERGE)).toBe(true);
-    const m = lexer.matchAt(c, MERGE);
-    expect(m.decoded).toMatch(/^gh pr merge 7/);
-    expect(lexer.takeDecodedHits(c).size).toBeGreaterThan(0);
-  });
+  // string a shell runs, so a command its shell joins is found. Since #1659
+  // only cmd.exe, PowerShell, `watch` and `parallel` join words; `eval`, a
+  // printer and an ANSI-C string are refused rather than read.
+  it.each([`cmd /c "gh pr" merge 7`, `pwsh -Command gh "pr merge" 7`])(
+    "finds a merge its shell reads only once it joins the words: %s",
+    (c) => {
+      expect(lexer.has(c, MERGE)).toBe(true);
+      const m = lexer.matchAt(c, MERGE);
+      expect(m.decoded).toMatch(/^gh pr merge 7/);
+      expect(lexer.takeDecodedHits(c).size).toBeGreaterThan(0);
+    },
+  );
 
   it("finds a push the same way, with the push as its shell reads it", () => {
-    const c = String.raw`bash -c $'git\x20push origin v1.2.3'`;
+    const c = `cmd /c "git push" origin v1.2.3`;
     expect(lexer.matchAt(c, PUSH).decoded).toBe("git push origin v1.2.3");
   });
 
-  it.each([
-    String.raw`bash -c $'echo gh\x20pr merge 7'`,
-    `eval "echo gh pr" merge 7`,
-    String.raw`printf '%s %s\n' echo 'gh pr merge 7' | bash`,
-  ])("finds no merge where the decoded text only mentions it: %s", (c) => expect(lexer.has(c, MERGE)).toBe(false));
+  it.each([`cmd /c "echo gh pr" merge 7`, `pwsh -Command echo "gh pr merge 7"`])(
+    "finds no merge where the decoded text only mentions it: %s",
+    (c) => expect(lexer.has(c, MERGE)).toBe(false),
+  );
 
   it("records no decoded hit where the string reads as it is written", () => {
     const c = "bash -c 'gh pr merge 7'";
@@ -1723,41 +1633,11 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
   });
 
   it("drops a decoded hit a consumer excuses", () => {
-    const c = `eval "gh pr" merge 7`;
+    const c = `cmd /c "gh pr" merge 7`;
     lexer.takeDecodedHits(c);
     const m = lexer.matchAt(c, MERGE);
     lexer.excuseDecodedHit(c, MERGE, m.occurrence);
     expect(lexer.takeDecodedHits(c).size).toBe(0);
-  });
-
-  // Round 4 (#1646, the CodeRabbit CLI findings at 760adedc2).
-  it.each([
-    String.raw`printf '%999999999s\ngh pr merge 7' x | bash`,
-    String.raw`printf '%60000s' a b c d e f g h | bash`,
-    `printf '%s' '${"x".repeat(70_000)}' | bash`,
-  ])("refuses printf output past its budget, fast, without building it: %s", (c) => {
-    const started = performance.now();
-    lexer.view.last = undefined;
-    expect(view(c.slice(0, 200_000)).unprintable).toBe(true);
-    expect(performance.now() - started).toBeLessThan(2000);
-  });
-
-  it("still builds printf output with a small width", () => {
-    expect(lexer.has(String.raw`printf '%5s\ngh pr merge 7\n' x | bash`, MERGE)).toBe(true);
-    expect(view(String.raw`printf '%-3s|\n' x | bash`).unprintable).toBe(false);
-  });
-
-  it("maps a word after an astral character in printf output to its own raw word", () => {
-    const c = `printf '%s\\n' 'echo 😀; gh pr merge 7' | bash`;
-    const m = lexer.matchAt(c, MERGE);
-    expect(m).not.toBeNull();
-    expect(c.slice(lexer.programStart(c, m.program))).toMatch(/^gh pr merge 7/);
-    expect(lexer.has(`printf '%s\\n' 'echo 😀;  echo ready' | bash`, MERGE)).toBe(false);
-    // Only the printed map places these: no raw anchor stands before the `gh`.
-    for (const d of [`printf '%s\\n%s\\n' 😀 'gh pr merge 7' | bash`, `printf '%s\\n' 'x😀x' 'gh pr merge 7' | bash`]) {
-      const found = lexer.matchAt(d, MERGE);
-      expect(d.slice(lexer.programStart(d, found.program)), d).toMatch(/^gh pr merge 7/);
-    }
   });
 
   it.each([
@@ -1773,51 +1653,13 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
     expect(lexer.has(c, MERGE)).toBe(false);
   });
 
-  it("reads the whole words of a long eval join in time linear in their count", { timeout: TIMING_TIMEOUT_MS }, () => {
-    readsLinearly((n) => `eval ${'"echo ready;" '.repeat(n)}`, 1500, MERGE, false);
-  });
-
-  // Round 5 (#1646, the CodeRabbit CLI findings at 87efe3f78).
-  it("keeps a reprinted printer's redirections, a substitution in one included", () => {
-    const [r] = lexer.respelledPrograms(String.raw`printf '%d\n' >"$(gh pr merge 7)" 5 | bash`).reprinted;
-    expect(r.kept).toEqual(['>"$(gh pr merge 7)"']);
-    // An unquoted substitution with blanks in it is one redirection target, not printed words.
-    const [s] = lexer.respelledPrograms(String.raw`printf '%d\n' >$(gh pr merge 7) 5 | bash`).reprinted;
-    expect(s.kept).toEqual([">$(gh pr merge 7)"]);
-    expect(s.text).toBe("5\n");
-    // One past the last argument is outside the span replaced, and kept where it is.
-    const [t] = lexer.respelledPrograms(String.raw`printf '%d\n' 5 >/dev/null | bash`).reprinted;
-    expect(t.kept).toEqual([]);
-  });
-
-  it.each([
-    String.raw`printf '%s -c "gh pr merge 7"\n' bash | bash`,
-    String.raw`printf '%s -o pipefail -c "gh pr merge 7"\n' bash | bash`,
-    String.raw`printf '%s %s -c "gh pr merge 7"\n' nice bash | bash`,
-    String.raw`printf 'bash -c "gh pr %s 7"\n' view merge | bash`,
-  ])("reads a shell's options and string in printf output whose words are out of view order: %s", (c) =>
-    expect(lexer.has(c, MERGE)).toBe(true),
+  it(
+    "reads the whole words of a long cmd.exe join in time linear in their count",
+    { timeout: TIMING_TIMEOUT_MS },
+    () => {
+      readsLinearly((n) => `cmd /c ${'"echo ready" '.repeat(n)}`, 1500, MERGE, false);
+    },
   );
-
-  it("reads no merge in printf output whose shell string only mentions one", () =>
-    expect(lexer.has(String.raw`printf '%s -c "echo gh pr merge 7"\n' bash | bash`, MERGE)).toBe(false));
-
-  it.each([
-    String.raw`echo -e 'first\ngh pr merge 7' | bash`,
-    String.raw`echo "-e" 'first\ngh pr merge 7' | bash`,
-    String.raw`echo -e'' 'first\ngh pr merge 7' | bash`,
-    String.raw`echo '-ne' 'first\ngh pr merge 7' | bash`,
-    String.raw`echo -ne 'first\ngh pr merge 7' | bash`,
-    String.raw`echo "-E" -e 'first\ngh pr merge 7' | bash`,
-  ])("reads echo's options with their quotes removed, as echo gets them: %s", (c) =>
-    expect(lexer.has(c, MERGE)).toBe(true),
-  );
-
-  it.each([
-    String.raw`echo '-E' 'first\ngh pr merge 7' | bash`,
-    String.raw`echo "-e" -E 'first\ngh pr merge 7' | bash`,
-    String.raw`echo first "-e" 'x\ngh pr merge 7' | bash`,
-  ])("decodes no escapes where echo reads none: %s", (c) => expect(lexer.has(c, MERGE)).toBe(false));
 
   // Round 6 (#1646, the CodeRabbit CLI finding at 3212c3d97).
   describe("the directory a string's `cd`s leave", () => {
@@ -1837,53 +1679,24 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
 
     const where = (c) => [...lexer.chainCommands(c, MASTER, cmd(/pnpm\b/))].map(({ base, lost }) => ({ base, lost }));
     it("moves a command a string runs by the cds ahead of it there, once", () => {
-      expect(where(String.raw`printf 'cd %s; pnpm %s\n' ../ir-5 test | bash`)).toEqual([
-        { base: tree("ir-5"), lost: undefined },
-      ]);
-      expect(where(String.raw`bash -c $'cd\x20../ir-5; pnpm test'`)).toEqual([{ base: tree("ir-5"), lost: undefined }]);
+      expect(where(`bash -c 'cd ../ir-5; pnpm test'`)).toEqual([{ base: tree("ir-5"), lost: undefined }]);
       // A cd the chain ranges read inside the string moves it once, not twice.
       expect(where("su -c 'true; cd sub && pnpm x'")).toEqual([{ base: path.join(MASTER, "sub"), lost: undefined }]);
-      expect(where("cd ../ir-5 && echo 'cd sub; pnpm x' | bash")).toEqual([
-        { base: tree("ir-5", "sub"), lost: undefined },
+      expect(where("cd ../ir-5 && bash -c 'cd sub; pnpm x'")).toEqual([{ base: tree("ir-5", "sub"), lost: undefined }]);
+      expect(where(`bash -c 'cd ../ir-5; pnpm test; cd ../ir-6; pnpm x'`).map((x) => x.base)).toEqual([
+        tree("ir-5"),
+        tree("ir-6"),
       ]);
-      expect(
-        where(String.raw`printf 'cd %s; pnpm %s; cd %s; pnpm %s\n' ../ir-5 test ../ir-6 x | bash`).map((x) => x.base),
-      ).toEqual([tree("ir-5"), tree("ir-6")]);
     });
 
     it("marks a command lost where a cd ahead of it in its string cannot be known", () =>
-      expect(where(String.raw`printf 'cd "$X"; pnpm %s\n' test | bash`)).toEqual([{ base: MASTER, lost: true }]));
+      expect(where(`bash -c 'cd "$X"; pnpm test'`)).toEqual([{ base: MASTER, lost: true }]));
   });
 
   it("decodes every ANSI-C escape of a word a wrapper is handed", () => {
     expect(lexer.wordText(String.raw`$'cd\x20../x;\040pnpm\ttest'`)).toBe("cd ../x; pnpm\ttest");
     expect(lexer.wordText(String.raw`$'it\'s'`)).toBe("it's");
   });
-
-  // Round 7 (#1646, the CodeRabbit CLI findings at 28552cfbe).
-  it("finds each command a reused printf format prints, each its own occurrence", () => {
-    const c = String.raw`printf 'git push origin %s\n' main v1.2.3 | bash`;
-    lexer.takeDecodedHits(c);
-    const pushes = [...lexer.matchesAt(c, PUSH)];
-    expect(pushes.map((m) => m.decoded)).toEqual(["git push origin main", "git push origin v1.2.3"]);
-    expect(new Set(pushes.map((m) => m.occurrence)).size).toBe(2);
-    // Excusing one occurrence leaves the other's hit standing.
-    lexer.excuseDecodedHit(c, PUSH, pushes[0].occurrence);
-    expect([...lexer.takeDecodedHits(c)]).toEqual([`${PUSH.source}@${pushes[1].occurrence}`]);
-  });
-
-  it("finds a merge a reused format prints second, and reads it as a command of the string", () => {
-    const m = [...lexer.matchesAt(String.raw`printf 'gh pr %s 7\n' view merge | bash`, MERGE)];
-    expect(m.map((x) => [x.decoded, x.shell])).toEqual([["gh pr merge 7", "bash"]]);
-  });
-
-  it.each([
-    [String.raw`echo 'echo first;' 2>/dev/null 'gh pr merge 7' | bash`, true],
-    [String.raw`echo 'echo first;' >/dev/null 'gh pr merge 7' | bash`, true],
-    [String.raw`echo 'echo first;' 2>/dev/null 'ls' | bash`, false],
-  ])("reads an echo's operands past a redirection between them: %s", (c, merges) =>
-    expect(lexer.has(c, MERGE)).toBe(merges),
-  );
 
   describe("a cd in a pipeline or a compound command", () => {
     const bash = (text) => ({ text, shell: lexer.BASH });
@@ -1964,15 +1777,1259 @@ describe("a lead's quoted value inside a shell-fed string (#1646)", () => {
       expect(where("bash -c 'true; cd ../ir-5; pnpm x'")).toEqual([{ base: tree("ir-5"), lost: undefined }]);
     });
 
-    it("leaves the directory unknown after a cd a string eval runs", () =>
-      expect(where("eval 'true; cd ../ir-5'; pnpm x")[0].lost).toBe(true));
-
     it.each([
-      [String.raw`printf 'echo a\\ #b; gh pr %s 7\n' merge | bash`, true],
-      [String.raw`printf 'echo a\\;#b; gh pr %s 7\n' merge | bash`, true],
-      [String.raw`printf 'echo a #b; gh pr %s 7\n' merge | bash`, false],
+      [String.raw`bash -c 'echo a\ #b; gh pr merge 7'`, true],
+      [String.raw`bash -c 'echo a\;#b; gh pr merge 7'`, true],
+      [String.raw`bash -c 'echo a #b gh pr merge 7'`, false],
     ])("starts a comment only at a word's start, past an escaped blank or separator: %s", (c, merges) =>
       expect(lexer.has(c, MERGE)).toBe(merges),
     );
   });
+});
+
+// #1659, the lexer's stopping rule: every form below was read by a reader of
+// its own (a printer's output, eval's joined words, a here-string, an ANSI-C
+// or spliced string, a string inside a string, sudo -s's escaped join). Those
+// readers are deleted; each form is found and refused, whatever it holds.
+describe("the stopping rule: a form the lexer does not read is found, and refused (#1659)", () => {
+  const PRINTER = "a printer piped into a shell";
+  const STDIN = "a shell reading its script from stdin";
+  const HERE_STRING = "a shell reading its script from a here-string";
+  const HEREDOC = "a shell reading its script from a heredoc";
+  const EVAL = "eval";
+  const SUDO = "a sudo that runs a shell";
+  const ANSI = "an ANSI-C string";
+  const LOCALE = "a locale string";
+  const NESTED = "a string inside a string";
+  const SUBSTITUTION = "a substitution at command position in a string";
+  const PROGRAM = "a program word that is not its plain name";
+
+  it.each([
+    [`echo 'gh pr merge 7' | bash`, PRINTER],
+    [String.raw`printf '%s\n' 'gh pr merge 7' | sh`, PRINTER],
+    [`echo 'pnpm exec vitest run' | bash`, PRINTER],
+    [`echo 'X="a b" gh pr merge 7' | bash`, PRINTER],
+    [`echo 'X="a gh pr merge 7' | bash`, PRINTER],
+    [`echo '"gh" pr merge 7' | bash`, PRINTER],
+    [String.raw`printf 'X="a b" gh pr merge 7\n' | sh`, PRINTER],
+    [String.raw`echo -e 'x\ngh pr merge 7' | bash`, PRINTER],
+    [String.raw`echo -ne 'x\ngh pr merge 7' | bash`, PRINTER],
+    [String.raw`echo "-e" 'first\ngh pr merge 7' | bash`, PRINTER],
+    [String.raw`echo -e'' 'first\ngh pr merge 7' | bash`, PRINTER],
+    [String.raw`echo 'x\ngh pr merge 7' | bash`, PRINTER],
+    [String.raw`echo 'echo first;' 2>/dev/null 'gh pr merge 7' | bash`, PRINTER],
+    [String.raw`printf 'x\012gh pr merge 7' | sh`, PRINTER],
+    [String.raw`printf '%b' 'x\ngh pr merge 7' | bash`, PRINTER],
+    [String.raw`printf '%s\ngh pr merge 7\n' x | bash`, PRINTER],
+    [String.raw`printf '%d\ngh pr merge 7\n' "$N" | bash`, PRINTER],
+    [String.raw`printf '%*s\n' 5 x | bash`, PRINTER],
+    [String.raw`printf '%999999999s\ngh pr merge 7' x | bash`, PRINTER],
+    [`printf '%s\\n' 'echo 😀; gh pr merge 7' | bash`, PRINTER],
+    [String.raw`printf '%d\n' >"$(gh pr merge 7)" 5 | bash`, PRINTER],
+    [String.raw`printf '%s -c "gh pr merge 7"\n' bash | bash`, PRINTER],
+    [String.raw`printf 'git push origin %s\n' main v1.2.3 | bash`, PRINTER],
+    [String.raw`printf 'cd %s; pnpm %s\n' ../ir-5 test | bash`, PRINTER],
+    [String.raw`printf 'echo a\\ #b; gh pr %s 7\n' merge | bash`, PRINTER],
+    [`echo 'gh pr merge 7' | sudo -u me bash`, SUDO],
+    [`cat steps.txt | bash`, STDIN],
+    [`git show HEAD:run.sh | sh -s -- x`, STDIN],
+    [`echo 'gh pr merge 7' | { cd x && bash; }`, STDIN],
+    [`echo x | ( cat; ) | bash -O extglob`, STDIN],
+    [`cat x | pwsh -NoProfile`, STDIN],
+    [`'gh pr merge 7' | powershell -Command -`, STDIN],
+    [`bash <<< 'gh pr merge 7'`, HERE_STRING],
+    [`bash <<< "X=\\"a b\\" gh pr merge 7"`, HERE_STRING],
+    [`sh -s <<< 'ls'`, HERE_STRING],
+    [`bash <<'EOF'\ngh pr merge 7\nEOF`, HEREDOC],
+    [`bash -s <<-EOF\n\tls\n\tEOF`, HEREDOC],
+    [`eval "gh pr merge 7"`, EVAL],
+    [`eval gh pr merge 7`, EVAL],
+    [`eval 'npx vitest'`, EVAL],
+    [`eval "X=\\"a b\\"" gh pr merge 7`, EVAL],
+    [String.raw`eval "\$GH pr merge 7"`, EVAL],
+    [`eval "gh pr" merge 7`, EVAL],
+    [`eval 'true; cd ../ir-5'; pnpm x`, EVAL],
+    [`bash -c 'eval "$CMD"'`, EVAL],
+    [`sudo -s X="a b" gh pr merge 7`, SUDO],
+    [`sudo -s echo X=1 gh pr merge 7`, SUDO],
+    [`sudo -s env X=1 gh pr merge 7`, SUDO],
+    [`sudo --login ls`, SUDO],
+    [`sudo -Ei ls`, SUDO],
+    [`sudo bash -c 'ls'`, SUDO],
+    [`sudo -u me sh x.sh`, SUDO],
+    [`bash -c 'sudo -s ls'`, SUDO],
+    [String.raw`bash -c $'ls\ngh pr merge 7'`, ANSI],
+    [String.raw`bash -c $'X=\'a b\' gh pr merge 7'`, ANSI],
+    [String.raw`bash -c $'gh\x20pr merge 7'`, ANSI],
+    [String.raw`bash -c $'g\x68 pr merge 7'`, ANSI],
+    [String.raw`bash -c $'cat <<E\nx it\'s\nE\ngh pr merge 7'`, ANSI],
+    [String.raw`bash -c $'cd\x20../ir-5; pnpm test'`, ANSI],
+    [String.raw`pwsh -Command $'gh\x20pr merge 7'`, ANSI],
+    [`bash -c $"gh pr merge 7"`, LOCALE],
+    // A program word that ends in a path separator names no program (#1787 item 3's shape).
+    [`pwsh -Command "& /"C:/tools/gh.exe/" pr merge 7"`, PROGRAM],
+    [`bash -c 'ls; ./tools/ pr merge 7'`, PROGRAM],
+    [`bash -c "sh -c 'X=\\"a b\\" gh pr merge 7'"`, NESTED],
+    [`bash -c "sh -c 'nice env X=\\"a;b\\" gh pr merge 7'"`, NESTED],
+    [`winpty bash.exe -c "cmd.exe /c gh pr merge 7"`, NESTED],
+    [`bash -c 'cat x | bash'`, NESTED],
+    [`bash -c 'xargs sh -c "ls"'`, NESTED],
+    [`bash -c 'trap "ls" EXIT; ls'`, NESTED],
+    [`pwsh -Command "powershell -Command ls"`, NESTED],
+    [`bash -c "$(echo gh) pr merge 7"`, SUBSTITUTION],
+    [`bash -c '$(echo gh) pr merge 7'`, SUBSTITUTION],
+    ["bash -c '`echo gh` pr merge 7'", SUBSTITUTION],
+    [`bash -c 'ls; $(echo gh) pr merge 7'`, SUBSTITUTION],
+    [String.raw`bash -c '\gh pr merge 7'`, PROGRAM],
+    [String.raw`bash -c 'g\h pr merge 7'`, PROGRAM],
+    [`bash -c '$GH pr merge 7'`, PROGRAM],
+    [String.raw`bash -c "\$GH pr merge 7"`, PROGRAM],
+    [`bash -c "$GH pr merge 7"`, PROGRAM],
+    [`bash -c 'X="a b" "$GH" pr merge 7'`, PROGRAM],
+    [`bash -c 'nice $GH pr merge 7'`, PROGRAM],
+    [`pwsh -Command "& $gh pr merge 7"`, PROGRAM],
+  ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+
+  it("refuses PowerShell's eval from the PowerShell tool and in a PowerShell string, where it is one", () => {
+    expect(lexer.refusedForms(`iex "ls"`, lexer.POWERSHELL)[0]?.form).toBe(EVAL);
+    expect(lexer.refusedForms(`Invoke-Expression 'ls'`, lexer.POWERSHELL)[0]?.form).toBe(EVAL);
+    expect(lexer.refusedForms(`iex -S mix`)).toEqual([]);
+    expect(lexer.refusedForms(`pwsh -Command "iex 'ls'"`)[0]?.form).toBe(EVAL);
+  });
+
+  it.each([
+    `bash -c 'gh pr merge 7'`,
+    `timeout 1500 sh -c 'pnpm install && pnpm build'`,
+    // A splice of quoted pieces and outer expansions at the level the string is
+    // handed over is read, re-opened under the stopping rule's clause (#1659).
+    `timeout 600 bash -c 'until test -s '"$OUT"'/done.txt; do sleep 30; done'`,
+    `bash -c 'X='\\''a b'\\'' gh pr merge 7'`,
+    `bash -c X=1' gh pr merge 7'`,
+    `cmd /c dir "a"'b'`,
+    `powershell -NoProfile -Command '$p = Get-Process -Name ''node''; $p.Count'`,
+    `bash -o pipefail -c "pnpm test | tail -5"`,
+    `bash -c "X=\\"a b\\" gh pr merge 7"`,
+    `bash -c '"gh" pr merge 7'`,
+    `bash -c "\\"gh\\" pr merge 7"`,
+    `bash -c '/usr/bin/gh pr merge 7'`,
+    `bash -c '"$HOME/bin/tool" x'`,
+    `bash -c 'echo $(gh pr merge 7)'`,
+    `bash -c 'case "$s" in MERGED*) echo m;; "OPEN "*) echo o;; esac'`,
+    `bash -c 'ls *.txt'`,
+    `bash scripts/run.sh`,
+    `bash "$SCRIPT"`,
+    `bash < script.sh`,
+    `bash -c "cat <<EOF\nx\nEOF"`,
+    `cat x | grep y | sh -c 'wc -l'`,
+    `powershell -NoProfile -Command "Get-ChildItem"`,
+    `powershell -NoProfile -Command '$p = Get-Process; $p | ?{$_.Id -gt 1}; [Math]::Min(1, 2)'`,
+    String.raw`powershell -Command "& \"C:\Program Files\GitHub CLI\gh.exe\" pr view 7"`,
+    `pwsh -File x.ps1`,
+    `cmd /c "dir"`,
+    `cmd /c dir /b`,
+    String.raw`cmd /c "C:\tools\x.bat" -y`,
+    `su -c 'ls' me`,
+    `watch -n 5 'ls -la'`,
+    `trap 'rm -f x' EXIT`,
+    String.raw`find . -name x -exec rm {} \;`,
+    String.raw`find . -exec sh -c 'ls "$1"' _ {} \;`,
+    `xargs sh -c 'ls'`,
+    `sudo apt-get update`,
+    `sudo -u me gh pr view 7`,
+    `nice bash -c 'ls'`,
+    `$PY script.py`,
+    `"$FF" -i x`,
+    `source "$HOME/.nvm/nvm.sh"`,
+    `echo 'gh pr merge 7' > notes.txt`,
+    `grep -q x <<< "$(gh pr view 7)"`,
+  ])("reads and refuses nothing in a form agents type: %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+
+  it("tells a heredoc a shell reads from a file or descriptor it reads", () => {
+    const read = (words) => {
+      let i = 0;
+      return lexer.readCommand(lexer.shellSpec("bash"), () => words[i++]).stdin;
+    };
+    expect(read(["<<EOF"])).toBe("heredoc");
+    expect(read(["<<-", "EOF"])).toBe("heredoc");
+    expect(read(["<", "f"])).toBe("other");
+    expect(read(["<<<", "'x'"])).toBe("hereString");
+    expect(read(["<<<"])).toBe("hereString");
+    expect(read([])).toBe("pipe");
+  });
+
+  // Review findings on #1659: a shell reading its script from stdin by a path
+  // or a descriptor, or from a process substitution, passed every rule.
+  describe("a shell reading its script from a stream it names", () => {
+    const PROCESS = "a shell reading its script from a process substitution";
+    const DESCRIPTOR = "a shell reading its script from a descriptor";
+
+    it.each([
+      [`echo 'gh pr merge 7 --squash' | bash /dev/stdin`, PRINTER],
+      [`echo 'gh pr merge 7 --squash' | bash /proc/self/fd/0`, PRINTER],
+      [`echo 'gh pr merge 7 --squash' | bash /dev/fd/0`, PRINTER],
+      [`echo 'gh pr merge 7 --squash' | sh "/dev/stdin"`, PRINTER],
+      [`echo 'gh pr merge 7 --squash' | bash //dev/./stdin`, PRINTER],
+      [`echo 'gh pr merge 7 --squash' | bash < /dev/stdin`, PRINTER],
+      [`echo 'gh pr merge 7 --squash' | bash 0</dev/stdin`, PRINTER],
+      [`echo 'gh pr merge 7 --squash' | bash -O extglob /proc/$$/fd/0`, PRINTER],
+      [`cat steps.txt | bash /dev/stdin`, STDIN],
+      [`bash /dev/stdin`, STDIN],
+      [`bash /dev/stdin <<< 'gh pr merge 7'`, HERE_STRING],
+      [`bash /dev/fd/3`, DESCRIPTOR],
+      [`bash /proc/self/fd/9 3<x`, DESCRIPTOR],
+      [`bash <(echo gh pr merge 7 --squash)`, PROCESS],
+      [`sh <(echo gh pr merge 7 --squash)`, PROCESS],
+      [`bash -O extglob <(echo gh pr merge 7)`, PROCESS],
+      [`bash < <(echo gh pr merge 7 --squash)`, PROCESS],
+      [`bash 0< <(echo gh pr merge 7 --squash)`, PROCESS],
+      [`exec 3<<<'gh pr merge 7'; bash <&3`, DESCRIPTOR],
+      [`bash <&3 3<<<'gh pr merge 7'`, DESCRIPTOR],
+      [`bash 0<&3`, DESCRIPTOR],
+      [`bash <& 3`, DESCRIPTOR],
+      [`bash <&"$FD"`, DESCRIPTOR],
+      [`bash -c 'bash <(echo ls)'`, PROCESS],
+      [`bash -c 'sh /dev/fd/3'`, DESCRIPTOR],
+      // PowerShell reads its command from stdin for a bare `-` (pwsh's `-File -`,
+      // powershell.exe's `-Command -`), whatever comes before it.
+      [`'gh pr merge 7 --squash' | pwsh -`, STDIN],
+      [`'gh pr merge 7 --squash' | pwsh -NoProfile -`, STDIN],
+      [`'gh pr merge 7 --squash' | powershell -`, STDIN],
+      [`echo 'gh pr merge 7 --squash' | pwsh -`, PRINTER],
+      [`pwsh -`, STDIN],
+      [`pwsh -File -`, STDIN],
+      [`powershell -NoProfile -f -`, STDIN],
+      [`powershell -Command -`, STDIN],
+      [`bash -c 'pwsh -'`, NESTED],
+    ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+
+    it.each([
+      `bash x.sh`,
+      `bash scripts/x.sh arg`,
+      `sh -e .husky/pre-commit`,
+      `bash < file.sh`,
+      `bash /dev/null`,
+      `bash ./dev/stdin`,
+      `cat file | sh -c 'wc -l'`,
+      `diff <(ls a) <(ls b)`,
+      `bash -c 'diff <(ls a) <(ls b)'`,
+      `bash x.sh <(ls)`,
+      `bash <&0`,
+      `bash <&-`,
+      `pwsh -File x.ps1`,
+      `pwsh -NoProfile -File scripts/x.ps1 -`,
+    ])("reads and refuses nothing where the script is a file or a string: %s", (c) =>
+      expect(lexer.refusedForms(c)).toEqual([]),
+    );
+
+    it("reads a shell's string past a value an option takes from a substitution", () => {
+      const MERGE = cmd(/gh\s+pr\s+merge\b/);
+      expect(lexer.has(`bash --rcfile $(x) -c 'gh pr merge 7 --squash'`, MERGE)).toBe(true);
+      expect(lexer.has(`bash -o \`x\` -c 'gh pr merge 7 --squash'`, MERGE)).toBe(true);
+      expect(lexer.has(`bash --rcfile x$(y)z -c 'gh pr merge 7 --squash'`, MERGE)).toBe(true);
+    });
+
+    it("tells the stream a shell's stdin is redirected from", () => {
+      const read = (words) => {
+        let i = 0;
+        return lexer.readCommand(lexer.shellSpec("bash"), () => words[i++]).stdin;
+      };
+      expect(read(["<&3"])).toBe("descriptor");
+      expect(read(["0<&", "3"])).toBe("descriptor");
+      expect(read(["<&0"])).toBe("pipe");
+      expect(read(["<&-"])).toBe("other");
+      expect(read(["<", "/dev/stdin"])).toBe("pipe");
+      expect(read(["<<<", "x", "<", "/dev/fd/0"])).toBe("hereString");
+      expect(read(["<", "/dev/fd/4"])).toBe("descriptor");
+      expect(read(["<", "<(echo x)"])).toBe("substitution");
+      expect(read(["<", "x.sh"])).toBe("other");
+    });
+
+    it("tells the stream a shell's script file names", () => {
+      const read = (name, words) => {
+        let i = 0;
+        return lexer.readCommand(lexer.shellSpec(name), () => words[i++]).script;
+      };
+      expect(read("bash", ["<(echo x)"])).toBe("substitution");
+      expect(read("bash", ["/dev/stdin"])).toBe("stdin");
+      expect(read("bash", ["'/proc/self/fd/0'"])).toBe("stdin");
+      expect(read("bash", ["/dev/fd/5"])).toBe("descriptor");
+      expect(read("bash", ["x.sh"])).toBeUndefined();
+      expect(read("pwsh", ["-NoProfile", "-"])).toBe("stdin");
+      expect(read("pwsh", ["-File", "-"])).toBe("stdin");
+      expect(read("pwsh", ["-File", "x.ps1"])).toBeUndefined();
+      expect(read("powershell", ["-Command", "-"])).toBe("stdin");
+    });
+  });
+
+  // Review findings on #1659: a script sourced from a stream, or a startup
+  // file a shell reads from one, passed every rule.
+  describe("a script sourced from a stream, and a startup file read from one", () => {
+    const PROCESS = "a shell reading its script from a process substitution";
+    const DESCRIPTOR = "a shell reading its script from a descriptor";
+    const STARTUP = "a shell startup file read from stdin, a descriptor or a process substitution";
+
+    it.each([
+      [`source <(echo gh pr merge 7 --squash)`, PROCESS],
+      [`. <(echo gh pr merge 7 --squash)`, PROCESS],
+      [`true && . <(echo gh pr merge 7 --squash)`, PROCESS],
+      [`source /dev/stdin <<< 'gh pr merge 7 --squash'`, HERE_STRING],
+      [`. /dev/stdin <<< 'gh pr merge 7 --squash'`, HERE_STRING],
+      [`. "/dev/stdin" <<< 'gh pr merge 7 --squash'`, HERE_STRING],
+      [`echo 'gh pr merge 7 --squash' | source /dev/stdin`, PRINTER],
+      [`echo 'gh pr merge 7 --squash' | . /dev/stdin`, STDIN],
+      [`. /dev/fd/3 3<x`, DESCRIPTOR],
+      [`bash -c 'source <(echo ls)'`, PROCESS],
+      [`bash -c '. <(echo ls)'`, PROCESS],
+      [`bash -c '. /dev/fd/3'`, DESCRIPTOR],
+      [`bash --init-file <(echo gh pr merge 7 --squash)`, STARTUP],
+      [`bash --rcfile <(echo gh pr merge 7 --squash) -i`, STARTUP],
+      [`bash --rcfile=<(echo gh pr merge 7 --squash) -i`, STARTUP],
+      [`bash --rcfile /dev/stdin -i <<< 'gh pr merge 7'`, STARTUP],
+      [`BASH_ENV=<(echo gh pr merge 7 --squash) bash -c true`, STARTUP],
+      [`ENV=<(echo gh pr merge 7 --squash) sh -i`, STARTUP],
+      [`env BASH_ENV=/dev/stdin bash -c true <<< 'gh pr merge 7'`, STARTUP],
+      [`export BASH_ENV=<(echo gh pr merge 7); bash -c true`, STARTUP],
+      [`BASH_ENV=<(echo gh pr merge 7) node x.js`, STARTUP],
+      [`bash -c 'BASH_ENV=<(echo ls) node x.js'`, STARTUP],
+    ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+
+    it.each([
+      `source x.sh`,
+      `. ./env.sh`,
+      `. "$HOME/.profile"`,
+      `source "$HOME/.nvm/nvm.sh" && nvm use`,
+      `bash -c '. ./env.sh && pnpm build'`,
+      `BASH_ENV=x.sh bash -c true`,
+      `bash --rcfile x.rc -i`,
+      `echo ENV=prod`,
+      `grep ENV= .env`,
+      `git commit -m "BASH_ENV=<(x) bash -c true"`,
+      `git add . && git commit -m x`,
+      `diff <(ls a) <(ls b)`,
+    ])("reads and refuses nothing where the script or startup file is a file: %s", (c) =>
+      expect(lexer.refusedForms(c)).toEqual([]),
+    );
+  });
+
+  // Review finding on #1659: PowerShell's base64 command is the decoder form
+  // the stopping rule refuses, and passed from both tools.
+  describe("an encoded command", () => {
+    const ENCODED = "an encoded command";
+    const B64 = Buffer.from("gh pr merge 7 --squash", "utf16le").toString("base64");
+    const fromPowerShell = (c) => lexer.refusedForms(lexer.powershellAsBash(c), lexer.POWERSHELL);
+
+    it.each([
+      `pwsh -EncodedCommand ${B64}`,
+      `powershell -e ${B64}`,
+      `powershell.exe -e ${B64}`,
+      `pwsh -ec ${B64}`,
+      `pwsh -enc ${B64}`,
+      `pwsh -EncodedC ${B64}`,
+      `pwsh -NoProfile -ExecutionPolicy Bypass -e ${B64}`,
+      `pwsh /enc ${B64}`,
+      `pwsh -e:${B64}`,
+      `"C:/Program Files/PowerShell/7/pwsh.exe" -ec ${B64}`,
+    ])("refuses %s, from either tool", (c) => {
+      expect(lexer.refusedForms(c)[0]?.form).toBe(ENCODED);
+      expect(fromPowerShell(c)[0]?.form).toBe(ENCODED);
+    });
+
+    it.each([`bash -c 'pwsh -ec ${B64}'`, `pwsh -Command "powershell -e ${B64}"`])("refuses %s in a string", (c) =>
+      expect(lexer.refusedForms(c)[0]?.form).toBe(ENCODED),
+    );
+
+    it.each([
+      `pwsh -File x.ps1`,
+      `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/x.ps1 -e y`,
+      `pwsh -c "Get-Date"`,
+      `powershell -NoProfile -Command "Get-ChildItem -e x"`,
+    ])("reads and refuses nothing in %s, from either tool", (c) => {
+      expect(lexer.refusedForms(c)).toEqual([]);
+      expect(fromPowerShell(c)).toEqual([]);
+    });
+  });
+
+  // Review finding on #1659: xargs substitutes its input into a shell's
+  // string before that shell parses it, and parallel with no command runs its
+  // input as commands.
+  describe("a shell string xargs or parallel fills in", () => {
+    const FILLED = "a shell string xargs, parallel or find fills in from its input";
+    const PARALLEL = "parallel running its input as commands";
+
+    it.each([
+      [`echo 'gh pr merge 7 --squash' | xargs -I{} bash -c '{}'`, FILLED],
+      [String.raw`echo 'gh pr merge 7 --squash' | xargs -d '\n' -I% sh -c '%'`, FILLED],
+      [String.raw`printf '%s\0' 'gh pr merge 7 --squash' | xargs -0 -I{} bash -c {}`, FILLED],
+      [`ls | xargs -I{} bash -c 'echo {}'`, FILLED],
+      [`ls | xargs -I {} sh -c 'cat "{}"'`, FILLED],
+      [`ls | xargs -i sh -c 'cat {}'`, FILLED],
+      [`ls | xargs -i@ sh -c 'cat @'`, FILLED],
+      [`ls | xargs --replace sh -c 'cat {}'`, FILLED],
+      [`ls | xargs --replace=@ sh -c 'cat @'`, FILLED],
+      [`ls | xargs -0I{} sh -c 'cat {}'`, FILLED],
+      [`ls | xargs -n 1 -P 4 -I{} sh -c 'cat {}'`, FILLED],
+      [`timeout 60 xargs -I{} sh -c '{}' < list.txt`, FILLED],
+      [`ls | /usr/bin/xargs -I{} zsh -c 'cat {}'`, FILLED],
+      [`echo '"gh pr merge 7 --squash"' | xargs bash -c`, FILLED],
+      [`ls | xargs -n1 sh -c`, FILLED],
+      [`echo '; gh pr merge 7' | xargs pwsh -Command Write-Output`, FILLED],
+      [`ls | xargs -I{} cmd /c "type {}"`, FILLED],
+      [`echo 'gh pr merge 7 --squash' | parallel`, PARALLEL],
+      [`parallel -j 4 < commands.txt`, PARALLEL],
+      [`parallel ::: 'gh pr merge 7 --squash'`, PARALLEL],
+      [`parallel -j2 :::: commands.txt`, PARALLEL],
+      [`parallel {} ::: 'gh pr merge 7 --squash'`, PARALLEL],
+      [`parallel -I @ @ ::: 'gh pr merge 7 --squash'`, PARALLEL],
+    ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+
+    it.each([
+      // The safe spellings: the name is an argument the string reads as `$1`.
+      `ls | xargs -I{} sh -c 'cat "$1"' _ {}`,
+      String.raw`find . -name '*.md' -exec sh -c 'cat "$1"' _ {} \;`,
+      `ls | xargs -I{} sed -n {}p f`,
+      `ls | xargs grep -l x`,
+      `ls | xargs -n1 bash -c 'echo "$0"'`,
+      `ls | xargs -I{} sh -c 'echo none'`,
+      `xargs sh -c 'ls'`,
+      `parallel gzip ::: a b`,
+      `parallel echo {} ::: a b`,
+      `echo xargs; bash -c 'echo {}'`,
+    ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+
+    it("advises the safe spellings for a string xargs fills in", () => {
+      const [r] = lexer.refusedForms(`ls | xargs -I{} sh -c 'cat {}'`);
+      expect(r.advice).toContain(`xargs -I{} sh -c 'cat "$1"' _ {}`);
+      expect(r.advice).toContain(String.raw`find … -exec sh -c '…' _ {} \;`);
+    });
+
+    // #1659 second read: find substitutes `{}` anywhere in an `-exec`
+    // argument, a shell's string included, so a file name can be a command.
+    it.each([
+      String.raw`find . -name '*.md' -exec bash -c 'echo {}' \;`,
+      String.raw`find . -exec sh -c 'cat "{}"' \;`,
+      String.raw`find . -execdir sh -c '{}' \;`,
+      `find . -type f -exec bash -c {} +`,
+      String.raw`find . -exec pwsh -Command Get-Item {} \;`,
+      String.raw`find . -name x -exec /bin/sh -c 'echo {}; ls' \;`,
+    ])("refuses %s", (c) => {
+      const [r] = lexer.refusedForms(c);
+      expect(r?.form).toBe(FILLED);
+      expect(r.advice).toContain(String.raw`find … -exec sh -c '…' _ {} \;`);
+    });
+    it.each([
+      String.raw`find . -exec rm {} \;`,
+      `find . -name '*.ts' -exec grep -l x {} +`,
+      String.raw`find . -exec sh -c 'ls "$1"' _ {} \;`,
+      String.raw`find . -exec bash -c 'echo none' \;`,
+    ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+  });
+});
+
+// #1659 second read: a stdin shell whose stdin an enclosing compound command's
+// redirection, or an earlier `exec`, sets.
+describe("the stopping rule: a stdin shell fed from around it (#1659 second read)", () => {
+  const HERE_STRING = "a shell reading its script from a here-string";
+  const HEREDOC = "a shell reading its script from a heredoc";
+  const PROCESS = "a shell reading its script from a process substitution";
+  const DESCRIPTOR = "a shell reading its script from a descriptor";
+  it.each([
+    [`{ bash; } <<< 'gh pr merge 7 --squash'`, HERE_STRING],
+    [`( bash ) <<< 'gh pr merge 7 --squash'`, HERE_STRING],
+    [`(bash) <<< 'gh pr merge 7 --squash'`, HERE_STRING],
+    [`while :; do bash; break; done <<< 'gh pr merge 7 --squash'`, HERE_STRING],
+    [`if true; then sh; fi <<'EOF'\ngh pr merge 7\nEOF`, HEREDOC],
+    [`{ bash; } < <(echo gh pr merge 7)`, PROCESS],
+    [`{ bash; } 0<&3`, DESCRIPTOR],
+    [`exec < <(echo 'gh pr merge 7 --squash'); bash`, PROCESS],
+    [`exec 0<<<'gh pr merge 7'; bash`, HERE_STRING],
+    [`exec <&3; sh`, DESCRIPTOR],
+  ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+  it.each([
+    `{ bash x.sh; } <<< 'input'`,
+    `{ cat; } <<< 'x'`,
+    `{ bash; } < file.sh`,
+    `exec < file.sh; bash`,
+    `exec 3<<<'x'; cat <&3`,
+    `exec > log.txt; bash x.sh`,
+    `while read -r f; do bash -c 'echo "$f"'; done < list.txt`,
+    `( cd x && bash scripts/run.sh ) <<< 'y'`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+});
+
+// #1659 second read: a startup file or script a shell is handed through an
+// expansion, or a `BASH_ENV` / `ENV` assignment in quotes, hid the stream.
+describe("the stopping rule: a stream named through an expansion or a quoted assignment (#1659 second read)", () => {
+  const STDIN = "a shell reading its script from stdin";
+  const PRINTER = "a printer piped into a shell";
+  const HERE_STRING = "a shell reading its script from a here-string";
+  const HEREDOC = "a shell reading its script from a heredoc";
+  const STARTUP = "a shell startup file read from stdin, a descriptor or a process substitution";
+  it.each([
+    [`export "BASH_ENV=/dev/stdin"; bash -c : <<< 'gh pr merge 7'`, STARTUP],
+    [`export 'ENV=/dev/fd/3'; sh -i`, STARTUP],
+    [`export "BASH_ENV"=/dev/stdin; bash -c :`, STARTUP],
+    [`F=/dev/stdin; BASH_ENV=$F bash -c :`, STARTUP],
+    [`BASH_ENV="$F" bash -c true`, STARTUP],
+    ["env ENV=`echo /dev/stdin` sh -i", STARTUP],
+    [`F=/dev/stdin; bash "$F" <<< 'gh pr merge 7'`, HERE_STRING],
+    [`bash $F <<'EOF'\ngh pr merge 7\nEOF`, HEREDOC],
+    [`echo 'gh pr merge 7' | bash "$F"`, PRINTER],
+    [`bash "$F" < in.txt`, STDIN],
+    [`source "$F" <<< 'gh pr merge 7'`, HERE_STRING],
+    [`bash --rcfile "$F" -i <<< 'gh pr merge 7'`, HERE_STRING],
+    [`bash -c 'source "$0"' /dev/stdin <<< 'gh pr merge 7'`, HERE_STRING],
+    [`bash -c '. "$1"' _ /dev/stdin <<< 'gh pr merge 7'`, HERE_STRING],
+  ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+  it.each([
+    `bash "$SCRIPT"`,
+    `bash "$SCRIPT" arg`,
+    `source "$HOME/.nvm/nvm.sh"`,
+    `bash x.sh <<< 'input'`,
+    `BASH_ENV=x.sh bash -c true`,
+    `export BASH_ENV=~/.bashrc`,
+    `bash -c 'source "$0"' x.sh`,
+    `bash -c 'echo "$0"' /dev/stdin <<< 'x'`,
+    `git commit -m "BASH_ENV=$F" -- x.md`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+});
+
+// #1659 second read: a shell word glued to a redirection fed nothing.
+describe("the stopping rule: a shell word glued to its redirection (#1659 second read)", () => {
+  const MERGE = cmd(/gh\s+pr\s+merge\b/);
+  it.each([
+    [`bash<<<'gh pr merge 7 --squash'`, "a shell reading its script from a here-string"],
+    [`bash<<EOF\ngh pr merge 7\nEOF`, "a shell reading its script from a heredoc"],
+    [`sh<<-EOF\n\tgh pr merge 7\n\tEOF`, "a shell reading its script from a heredoc"],
+    [`bash< <(echo gh pr merge 7)`, "a shell reading its script from a process substitution"],
+    [`bash<&3`, "a shell reading its script from a descriptor"],
+    [`echo 'gh pr merge 7' | bash>/dev/null`, "a printer piped into a shell"],
+  ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+  it.each([
+    `bash</dev/null -c 'gh pr merge 7 --squash'`,
+    `bash>out.log -c 'gh pr merge 7 --squash'`,
+    `bash 2>/dev/null -c 'gh pr merge 7 --squash'`,
+  ])("reads the string of %s as one a shell runs", (c) => {
+    expect(lexer.refusedForms(c)).toEqual([]);
+    expect(lexer.has(c, MERGE)).toBe(true);
+    expect(lexer.view(c).programs.some((p) => p[4]?.how === "shell" && p[4]?.via === "bash")).toBe(true);
+  });
+  it.each([`bash</dev/null x.sh`, `bash>log x.sh`])("reads and refuses nothing in %s", (c) =>
+    expect(lexer.refusedForms(c)).toEqual([]),
+  );
+});
+
+// #1659 second read: fish's `-C` / `--init-command` runs a string too.
+describe("fish's init command is a string it runs (#1659 second read)", () => {
+  const MERGE = cmd(/gh\s+pr\s+merge\b/);
+  it.each([
+    `fish -C 'gh pr merge 7 --squash'`,
+    `fish --init-command 'gh pr merge 7 --squash'`,
+    `fish --init-command='gh pr merge 7 --squash' -c true`,
+    `fish -C'gh pr merge 7 --squash'`,
+    `fish -i -C 'gh pr merge 7 --squash'`,
+    `fish -C true -c 'gh pr merge 7 --squash'`,
+    `fish -c true -C 'gh pr merge 7 --squash'`,
+  ])("reads the merge in %s", (c) => {
+    expect(lexer.has(c, MERGE)).toBe(true);
+    expect(lexer.refusedForms(c)).toEqual([]);
+  });
+  it("refuses fish's init command as a string inside a string", () =>
+    expect(lexer.refusedForms(`bash -c "fish -C 'ls'"`)[0]?.form).toBe("a string inside a string"));
+  it("reads an init command next to a script file", () => {
+    expect(lexer.has(`fish -C 'gh pr merge 7' x.fish`, MERGE)).toBe(true);
+    expect(lexer.has(`fish -d 3 x.fish`, MERGE)).toBe(false);
+  });
+});
+
+// CodeRabbit CLI on #1659: an interactive bash with a `-c` string still runs
+// its `--rcfile` first, and one that expands may be the stdin it is given.
+describe("the stopping rule: an expanding startup file beside a string (#1659 CodeRabbit)", () => {
+  it.each([
+    [`bash --rcfile "$F" -i -c 'true' <<< 'gh pr merge 7 --squash'`, "a shell reading its script from a here-string"],
+    [`bash --init-file $F -i -c : < <(echo gh pr merge 7)`, "a shell reading its script from a process substitution"],
+    [`bash --rcfile "$F" -i -c : < in.txt`, "a shell reading its script from stdin"],
+    [`echo 'gh pr merge 7' | bash --rcfile "$F" -i -c :`, "a printer piped into a shell"],
+  ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+  it.each([`bash -c 'true' <<< data`, `bash --rcfile x.rc -i -c : <<< data`, `bash --rcfile "$F" -i -c :`])(
+    "reads and refuses nothing in %s",
+    (c) => expect(lexer.refusedForms(c)).toEqual([]),
+  );
+});
+
+// CodeRabbit CLI on #1659: only an assignment sets a startup file, so a
+// `BASH_ENV=` that is a search pattern or a printed word is no stream.
+describe("the stopping rule: a startup-file assignment only where one is made (#1659 CodeRabbit)", () => {
+  const STARTUP = "a shell startup file read from stdin, a descriptor or a process substitution";
+  it.each([
+    `export BASH_ENV=/dev/stdin; bash -c :`,
+    `env BASH_ENV=/dev/stdin bash -c :`,
+    `env -u X BASH_ENV=$F bash -c :`,
+    `BASH_ENV=$F bash -c :`,
+    `X=1 BASH_ENV=$F bash -c :`,
+    `2>/dev/null BASH_ENV=$F bash -c :`,
+    `declare -x BASH_ENV=$F`,
+    `local ENV=$F`,
+    `readonly BASH_ENV=/dev/fd/3`,
+    `typeset BASH_ENV=$X`,
+    `export A=1 "BASH_ENV=/dev/stdin"; bash -c :`,
+    `if true; then BASH_ENV=$F bash -c :; fi`,
+    `bash -c 'BASH_ENV=<(echo ls) node x.js'`,
+  ])("refuses %s", (c) => expect(lexer.refusedForms(c)[0]?.form).toBe(STARTUP));
+  it.each([
+    `grep -F BASH_ENV=/dev/stdin config.txt`,
+    `echo ENV=$F`,
+    `printf '%s\n' BASH_ENV=$X`,
+    `rg -n "x" BASH_ENV=<(ls)`,
+    `cat .env | grep ENV=$F`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+});
+
+// CodeRabbit CLI on #1659: a pipe that feeds another command in the element
+// is no pipe into the shell; only one into it, or into a compound command
+// that holds it, is.
+describe("the stopping rule: the pipe that feeds a stdin shell (#1659 CodeRabbit)", () => {
+  const STDIN = "a shell reading its script from stdin";
+  const PRINTER = "a printer piped into a shell";
+  it.each([
+    `{ printf x | wc -c; bash; } </dev/null`,
+    `printf x | wc -c; bash`,
+    `git log | head -3 && bash`,
+    `a || bash`,
+    `( printf x | wc -c ); bash`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+  it.each([
+    [`{ printf x | wc -c; bash; } <<< 'gh pr merge 7'`, "a shell reading its script from a here-string"],
+    [`echo 'gh pr merge 7' | { cd x && bash; }`, STDIN],
+    [`echo 'gh pr merge 7' | (cd x && bash)`, STDIN],
+    [`echo 'gh pr merge 7' | while true; do bash; break; done`, STDIN],
+    [`echo 'gh pr merge 7' | if true; then bash; fi`, STDIN],
+    [`echo 'gh pr merge 7' |\nbash`, STDIN],
+    [`echo 'gh pr merge 7' | # run it\nbash`, STDIN],
+    [`echo 'gh pr merge 7' |& bash`, PRINTER],
+    [`cat <<'EOF' |\nls; gh pr merge 5 --squash\nEOF\nbash`, STDIN],
+    [`echo x | { printf y | wc -c; bash; }`, STDIN],
+    [`echo 'gh pr merge 7' | { case x in x) bash;; esac; }`, PRINTER],
+    [`cat x | { case x in x) bash;; esac; }`, STDIN],
+  ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+});
+
+// CodeRabbit CLI on #1659: a later `exec` that surely runs, in the same
+// shell, resets the stdin an earlier one set.
+describe("the stopping rule: an exec chain's last stdin (#1659 CodeRabbit)", () => {
+  const HERE_STRING = "a shell reading its script from a here-string";
+  it.each([
+    `exec <<< ':'; exec </dev/null; bash`,
+    `exec <<< ':'; exec 0< /dev/null; bash`,
+    `exec 0<<<x\nexec 0</dev/null\nbash`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+  it.each([
+    `exec <<< ':' || exec </dev/null; bash`,
+    `exec <<< ':'; ( exec </dev/null ); bash`,
+    `exec <<< ':'; { exec </dev/null; }; bash`,
+    `exec <<< ':'; if true; then exec </dev/null; fi; bash`,
+    `exec </dev/null; exec <<< ':'; bash`,
+    `exec <<< ':'; true | exec </dev/null; bash`,
+  ])("refuses %s", (c) => expect(lexer.refusedForms(c)[0]?.form).toBe(HERE_STRING));
+});
+
+// CodeRabbit CLI round 2 on #1659: a word that names an inherited property
+// (`constructor`, `toString`, `__proto__`) is no closing word of a group.
+describe("the stopping rule: a lookup table answers only its own keys (#1659 CodeRabbit)", () => {
+  it.each([`{ constructor; bash; } < file.sh`, `{ toString; __proto__; hasOwnProperty; bash; } < file.sh`])(
+    "reads and refuses nothing in %s",
+    (c) => expect(lexer.refusedForms(c)).toEqual([]),
+  );
+  it("still refuses such a group fed a here-string", () =>
+    expect(lexer.refusedForms(`{ constructor; bash; } <<< 'gh pr merge 7'`)[0]?.form).toBe(
+      "a shell reading its script from a here-string",
+    ));
+});
+
+// CodeRabbit CLI round 2 on #1659: fish's `-C` string is handed the same
+// stdin as its `-c` one, so a script word that expands in it is judged
+// against that stdin.
+describe("the stopping rule: fish's init command and its stdin (#1659 CodeRabbit)", () => {
+  it.each([`fish -C 'source "$HOME/x.fish"' -c true`, `fish -C '. $F' -c true`])(
+    "reads and refuses nothing in %s",
+    (c) => expect(lexer.refusedForms(c)).toEqual([]),
+  );
+  it.each([
+    [`fish -C 'source "$F"' -c true <<< 'gh pr merge 7'`, "a shell reading its script from a here-string"],
+    [`fish -C 'source "$F"' -c true < in.txt`, "a shell reading its script from stdin"],
+  ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+});
+
+// CodeRabbit CLI round 2 on #1659: an `xargs` that is an option's operand
+// runs nothing; one that runs the shell is found through the wrappers after it.
+describe("the stopping rule: the xargs that runs a shell (#1659 CodeRabbit)", () => {
+  const FILLED = "a shell string xargs, parallel or find fills in from its input";
+  it.each([`env -u xargs pwsh -Command 'Get-Date'`, `env -u xargs sh -c 'echo {}'`, `timeout -s xargs 5 cmd /c dir`])(
+    "reads and refuses nothing in %s",
+    (c) => expect(lexer.refusedForms(c)).toEqual([]),
+  );
+  it.each([
+    `ls | xargs -I{} nice sh -c 'cat {}'`,
+    `ls | timeout 5 xargs -I{} stdbuf -oL sh -c 'cat {}'`,
+    `ls | xargs -I{} nice -n 5 stdbuf -oL bash -c 'cat {}'`,
+    `ls | env A=1 xargs -I{} sh -c 'cat {}'`,
+    `ls | /usr/bin/xargs -I{} zsh -c 'cat {}'`,
+  ])("refuses %s", (c) => expect(lexer.refusedForms(c)[0]?.form).toBe(FILLED));
+});
+
+// PR #1798 review: an exec after `&&` may not run, and one sent to the
+// background runs in another shell: neither resets the stdin an earlier exec set.
+describe("the stopping rule: an exec reset that surely runs in this shell (#1659 PR review)", () => {
+  const HERE_STRING = "a shell reading its script from a here-string";
+  it.each([
+    `exec <<<'gh pr merge 5 --squash'; false && exec </dev/null; bash`,
+    `exec <<<'gh pr merge 5 --squash' && exec </dev/null && bash`,
+    `exec <<<'gh pr merge 5 --squash'; exec </dev/null & bash`,
+    `exec <<<'gh pr merge 5 --squash'; exec </dev/null | cat; bash`,
+  ])("refuses %s", (c) => expect(lexer.refusedForms(c)[0]?.form).toBe(HERE_STRING));
+  it.each([
+    `exec <<< x; exec </dev/null; bash`,
+    `exec <<< x\nexec </dev/null\nbash`,
+    `exec <<< x; ls; exec <'/dev/null'; bash`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+});
+
+// PR #1798 review: two input redirections glued together are two, and the
+// last one wins.
+describe("the stopping rule: glued redirections, the last one winning (#1659 PR review)", () => {
+  const HERE_STRING = "a shell reading its script from a here-string";
+  it.each([`bash <<<':'</dev/null`, `bash <<<"a<b"</dev/null`, `bash 0<<<':'0</dev/null`])(
+    "reads and refuses nothing in %s",
+    (c) => expect(lexer.refusedForms(c)).toEqual([]),
+  );
+  it.each([
+    [`bash </dev/null<<<'gh pr merge 7'`, HERE_STRING],
+    [`bash <<<'a<b'`, HERE_STRING],
+    [`bash </dev/null< <(echo gh pr merge 7)`, "a shell reading its script from a process substitution"],
+    [`bash <in.txt<&3`, "a shell reading its script from a descriptor"],
+  ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+  it("keeps a string after glued redirections in its place", () => {
+    const words = ["<<<':'</dev/null", "-c", "'gh pr merge 7'"];
+    let i = 0;
+    expect(lexer.readCommand(lexer.shellSpec("bash"), () => words[i++])).toMatchObject({ string: 2, stdin: "other" });
+  });
+});
+
+// PR #1798 review: a group's own input redirection, not the pipe into it,
+// gives the commands inside it their stdin.
+describe("the stopping rule: a piped group with its own stdin (#1659 PR review)", () => {
+  const STDIN = "a shell reading its script from stdin";
+  it.each([
+    `printf ':' | { bash; } </dev/null`,
+    `printf ':' | ( bash ) </dev/null`,
+    `cat x | while :; do bash; break; done < in.txt`,
+    `echo x | { { bash; } </dev/null; }`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+  it.each([
+    [`printf ':' | { bash; }`, "a printer piped into a shell"],
+    [`cat x | { { bash; } ; }`, STDIN],
+    [`cat x | { bash; } 2>/dev/null`, STDIN],
+    [`printf ':' | { bash; } <<< 'gh pr merge 7'`, "a shell reading its script from a here-string"],
+    [`printf x | { cat </dev/null | bash; } </dev/null`, STDIN],
+  ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+});
+
+// PR #1798 review: once another element widens the raw view, a shell word
+// inside a quoted argument is a mention, not a program word.
+describe("the stopping rule: a shell word inside a quoted argument (#1659 PR review)", () => {
+  it.each([
+    String.raw`printf '%s\n' 'example; eval echo hello; end' > notes.txt; bash -c true`,
+    String.raw`printf '%s\n' 'a; sudo -s x; b' > notes.txt; bash -c true`,
+    `echo "x; eval y" > f; bash -c true`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+  it.each([
+    [`eval x; bash -c true`, "eval"],
+    [`"eval" x > f; bash -c true`, "eval"],
+    [`"bash" -c "eval x"`, "eval"],
+    [`echo x > f; sudo -s ls`, "a sudo that runs a shell"],
+  ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+});
+
+// PR #1798 review: the startup-assignment scan found each candidate's command
+// start by a search over every start, quadratic in a long chain of them.
+describe("the stopping rule: startup assignments in time linear in their number (#1659 PR review)", () => {
+  const MERGE = cmd(/gh\s+pr\s+merge\b/);
+  it("reads a long chain of ENV assignments in time linear in its length", { timeout: TIMING_TIMEOUT_MS }, () =>
+    readsLinearly(
+      (n) => `${"ENV=x;".repeat(n)}bash -c true`,
+      20000,
+      MERGE,
+      false,
+      (c) => (lexer.refusedForms(c).length > 0 ? "refused" : false),
+    ),
+  );
+});
+
+// A judge's ruling on PR #1798: only an `exec` at a command's start sets the
+// stdin of what follows; one that is an argument (`echo exec …`) sets nothing,
+// neither an earlier stream nor a reset of one.
+describe("the stopping rule: an exec only at a command's start (#1659 PR review)", () => {
+  const HERE_STRING = "a shell reading its script from a here-string";
+  it.each([
+    `exec 0<<<'gh pr merge 1 --admin'; echo exec </dev/null; bash`,
+    `exec 0<<<'git push origin v9.9.9'; : exec <x; bash`,
+    `exec 0<<<'gh pr merge 1'; bash`,
+    `if true; then exec 0<<<'gh pr merge 1'; fi; bash`,
+  ])("refuses %s", (c) => expect(lexer.refusedForms(c)[0]?.form).toBe(HERE_STRING));
+  it.each([
+    String.raw`printf '%s\n' exec <<< ':'; bash`,
+    `echo exec <<< x; bash`,
+    `exec; bash`,
+    `exec >log; bash`,
+    `exec 3</dev/null; bash`,
+    `exec <<< ':'; exec </dev/null; bash`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+});
+
+// CodeRabbit CLI on f62995d39: in bash's default mode a failed `exec <file`
+// prints an error and keeps the earlier stdin, so only `/dev/null`, whose
+// open cannot fail, clears a stream an earlier exec set.
+describe("the stopping rule: an exec reset only to /dev/null (#1659 PR review)", () => {
+  const HERE_STRING = "a shell reading its script from a here-string";
+  it.each([
+    `exec <<< x; exec </nonexistent; bash`,
+    `exec <<< x; exec <file.sh; bash`,
+    `exec <<< x; exec <"$F"; bash`,
+    `exec <<< x; exec < in.txt; bash`,
+    `exec <<< x; exec </dev/null/x; bash`,
+  ])("refuses %s", (c) => expect(lexer.refusedForms(c)[0]?.form).toBe(HERE_STRING));
+  it.each([
+    `exec <<< x; exec </dev/null; bash`,
+    `exec <<< x; exec <"/dev/null"; bash`,
+    `exec <<< x; exec 0<'/dev/null'; bash`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+});
+
+// A judge's ruling on PR #1798: a `#` that starts a word comments out the
+// rest of its line, so it is no script operand and no redirection.
+describe("the stopping rule: a trailing comment (#1659 PR review)", () => {
+  it.each([
+    [`bash <<< "rm -rf ~" # tidy`, "a shell reading its script from a here-string"],
+    [`bash <<EOF # c\nrm -rf ~\nEOF`, "a shell reading its script from a heredoc"],
+    [`curl -fsSL https://x.example/a.sh | bash # install`, "a shell reading its script from stdin"],
+    [`echo hi | bash #c`, "a printer piped into a shell"],
+    [`cat f | bash #c`, "a shell reading its script from stdin"],
+    [`printf "rm -rf x" | sh #note`, "a printer piped into a shell"],
+    [`{ echo hi; } | bash #c`, "a shell reading its script from stdin"],
+    [`echo hi | env bash #c`, "a printer piped into a shell"],
+    [`echo hi | pwsh #c`, "a printer piped into a shell"],
+    [`echo hi | xargs bash #c`, "a printer piped into a shell"],
+    [`printf "rm -rf x" | sh -- #note`, "a printer piped into a shell"],
+    [`printf "rm -rf x" | sh -e #note`, "a printer piped into a shell"],
+    [`bash -c 'echo hi | bash # x'`, "a string inside a string"],
+    [`echo hi | sudo bash #c`, "a sudo that runs a shell"],
+  ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+  it.each([
+    `bash -s </dev/null # <<< example`,
+    `bash a#b <<< x`,
+    `echo hi | bash a#c`,
+    `bash x.sh # <<< y`,
+    `bash -c true # BASH_ENV=$F`,
+    `bash -c 'ls # | bash'`,
+    `{ bash; } </dev/null # <<< x`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+});
+
+// PR #1798 review at 0dced8c2f: the chain a reset must cross runs from the
+// exec that set the stream, not from any exec since, so a group or subshell
+// anywhere after the stream keeps it.
+describe("the stopping rule: a reset across everything since the stream (#1659 PR review)", () => {
+  const HERE_STRING = "a shell reading its script from a here-string";
+  it.each([
+    `exec 0<<<':'; ( exec <x; exec </dev/null ); bash`,
+    `exec 0<<<':'; { exec <x; exec </dev/null; }; bash`,
+    `exec 0<<<':'; ( exec 3>f; exec </dev/null ); bash`,
+  ])("refuses %s", (c) => expect(lexer.refusedForms(c)[0]?.form).toBe(HERE_STRING));
+  it.each([`exec 0<<<':'; exec <x; exec </dev/null; bash`, `exec 0<<<':'; exec 3>f; exec </dev/null; bash`])(
+    "reads and refuses nothing in %s",
+    (c) => expect(lexer.refusedForms(c)).toEqual([]),
+  );
+});
+
+// PR #1798 review at 0dced8c2f: an `exec` glued to its redirection leads its
+// command as one with a blank does.
+describe("the stopping rule: an exec glued to its redirection (#1659 PR review)", () => {
+  const HERE_STRING = "a shell reading its script from a here-string";
+  it.each([`exec<<< ':'; bash`, `exec>log<<<x; bash`, `if true; then exec<<<x; fi; bash`])("refuses %s", (c) =>
+    expect(lexer.refusedForms(c)[0]?.form).toBe(HERE_STRING),
+  );
+  it.each([`exec <<< ':'; exec</dev/null; bash`, `exec<<<x; exec</dev/null; bash`, `echo exec<<< x; bash`])(
+    "reads and refuses nothing in %s",
+    (c) => expect(lexer.refusedForms(c)).toEqual([]),
+  );
+});
+
+// PR #1798 review at 0dced8c2f: the nearest closing word that redirects stdin
+// decides; a file there ends the search, an outer stream reaches no further.
+describe("the stopping rule: the nearest closer that redirects stdin (#1659 PR review)", () => {
+  const HERE_STRING = "a shell reading its script from a here-string";
+  it.each([`{ { bash; } </dev/null; } <<< ':'`, `( { bash; } < in.txt ) <<< ':'`])(
+    "reads and refuses nothing in %s",
+    (c) => expect(lexer.refusedForms(c)).toEqual([]),
+  );
+  it.each([
+    `{ { bash; }; } <<< ':'`,
+    `{ { bash; } 2>/dev/null; } <<< ':'`,
+    `{ { bash; } <<< x; } </dev/null`,
+    // A closer that does not hold the shell decides nothing for it.
+    `exec <<< x; bash | { cat; } </dev/null`,
+    `exec <<< x; bash; { cat; } </dev/null`,
+  ])("refuses %s", (c) => expect(lexer.refusedForms(c)[0]?.form).toBe(HERE_STRING));
+});
+
+// CLI check of be3d79a4b: the PowerShell tool's eval scan read every program
+// position, a bash string's among them, and missed the statements of a
+// PowerShell script block, which bash does not read as positions.
+describe("the stopping rule: PowerShell's eval where PowerShell runs it (#1659 CLI check)", () => {
+  const EVAL = "eval";
+  const ps = (c) => lexer.refusedForms(lexer.powershellAsBash(c), lexer.POWERSHELL);
+  it.each([
+    `bash -c 'iex -S mix'`,
+    `bash -c 'ls; iex -S mix'`,
+    `bash -c '{ iex; }'`,
+    `wsl -- bash -c 'iex -S mix'`,
+    `Write-Host '{ iex x }'`,
+    `git commit -m "a; iex b"`,
+    `Get-Help iex`,
+    `Get-Content x.txt # ; iex x`,
+    'Write-Host "a `$(iex x)"',
+    `Write-Host 'it''s; iex'`,
+  ])("reads and refuses nothing in %s from the PowerShell tool", (c) => expect(ps(c)).toEqual([]));
+  it.each([
+    `iex x`,
+    `ls; Invoke-Expression x`,
+    `& { iex x }`,
+    `ls | % { iex $_ }`,
+    `ls | ForEach-Object { Invoke-Expression $_ }`,
+    `$s = { iex x }; & $s`,
+    `Invoke-Command -ScriptBlock { iex x }`,
+    `if ($a) { "x" } else { iex x }`,
+    `$(iex x)`,
+    `Write-Host "$(iex x)"`,
+    `bash -c "echo $(iex x)"`,
+    `pwsh -c 'iex x'`,
+  ])("refuses %s from the PowerShell tool", (c) => expect(ps(c)[0]?.form).toBe(EVAL));
+  it.each([`pwsh -c 'ls | % { iex $_ }'`, `powershell -Command "& { Invoke-Expression x }"`])(
+    "refuses %s from bash",
+    (c) => expect(lexer.refusedForms(c)[0]?.form).toBe(EVAL),
+  );
+  it.each([`iex -S mix`, `bash -c '{ iex; }'`, `pwsh -c 'Write-Host "{ iex }"'`])(
+    "reads and refuses nothing in %s from bash",
+    (c) => expect(lexer.refusedForms(c)).toEqual([]),
+  );
+});
+
+// CLI check of be3d79a4b: a startup option after the script word is the
+// script's argument, so it names no startup file.
+describe("the stopping rule: startup options only before the script (#1659 CLI check)", () => {
+  const STARTUP = "a shell startup file read from stdin, a descriptor or a process substitution";
+  it.each([
+    `bash scripts/inspect.sh --rcfile /dev/stdin`,
+    `bash x.sh --init-file <(echo y)`,
+    `bash -O extglob x.sh --rcfile /dev/stdin`,
+    `bash -o posix x.sh --rcfile /dev/stdin`,
+    `bash x.sh --rcfile "$F"`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+  it.each([
+    `bash --rcfile /dev/stdin`,
+    `bash --rcfile /dev/stdin x.sh`,
+    `bash --init-file <(echo y) -i`,
+    `bash -O extglob --rcfile /dev/stdin`,
+    `bash -o posix --rcfile /dev/stdin`,
+    `bash +O extglob --rcfile /dev/stdin`,
+  ])("refuses %s", (c) => expect(lexer.refusedForms(c)[0]?.form).toBe(STARTUP));
+});
+
+// CLI check of be3d79a4b: `watch -x` in a string runs its words with no
+// shell, so it hands over no string; what it runs is still read.
+describe("the stopping rule: watch -x inside a string (#1659 CLI check)", () => {
+  const NESTED = "a string inside a string";
+  it.each([
+    `bash -c 'watch -x date'`,
+    `bash -c 'watch --exec date'`,
+    `bash -c 'watch -n 1 -x date'`,
+    `bash -c 'watch -cx date'`,
+    `bash -c 'watch -x sh x.sh'`,
+    `bash -c 'watch -x watch -x date'`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+  it.each([
+    [`bash -c 'watch date'`, NESTED],
+    [`bash -c 'watch -x bash -c ls'`, NESTED],
+    [`bash -c 'watch -x nice bash -c ls'`, NESTED],
+    [`bash -c 'watch -x bash'`, NESTED],
+    [`bash -c 'watch -x watch date'`, NESTED],
+    [`bash -c 'watch -x pwsh -c ls'`, NESTED],
+    [`bash -c 'watch -x eval ls'`, "eval"],
+  ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+  it("reads what it runs as a program word", () => {
+    const at = `bash -c 'watch -x gh pr merge 7'`.indexOf("gh");
+    expect(lexer.view(`bash -c 'watch -x gh pr merge 7'`).programs.some((p) => p[0] === at)).toBe(true);
+  });
+});
+
+// CLI check of 8086892f8: the closing words around a stdin shell are the
+// compound commands the lexer recorded, never a quoted `)` or `}` that a raw
+// scan of the span read as one.
+describe("the stopping rule: closing words from the recorded compound commands (#1659 CLI check)", () => {
+  it.each([
+    `bash -s -- 'example ) <<< data'`,
+    `bash -s -- "a } <<< b"`,
+    `bash -s -- 'x; done <<< y'`,
+    `bash -s -- 'fi < <(x)'`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+  it.each([
+    [`{ bash; } <<< x`, "here-string"],
+    [`( bash ) <<< x`, "here-string"],
+    [`(bash)<<<x`, "here-string"],
+    [`while true; do bash; done <<< x`, "here-string"],
+    [`until false; do bash; done <<< x`, "here-string"],
+    [`for i in 1; do bash; done <<< x`, "here-string"],
+    [`select i in a; do bash; done <<< x`, "here-string"],
+    [`if true; then bash; fi <<< x`, "here-string"],
+    [`if true; then :; else bash; fi <<< x`, "here-string"],
+    [`case a in a) bash;; esac <<< x`, "here-string"],
+    [`case a in (a) bash;; esac <<< x`, "here-string"],
+    [`( ( bash ) ) <<< x`, "here-string"],
+    [`{ ( bash ); } <<< x`, "here-string"],
+    [`( { bash; } ) <<< x`, "here-string"],
+    // Inside a command substitution, where the raw scan read them too.
+    [`x=$( { bash; } <<< y )`, "here-string"],
+    ["echo `{ bash; } <<< y`", "here-string"],
+    [`x=$(echo $( ( bash ) <<< y ))`, "here-string"],
+    [`{ bash\n} <<< x`, "here-string"],
+    [`while :\ndo bash\ndone <<< x`, "here-string"],
+    [`{ bash; } 0<<< x`, "here-string"],
+    [`{ bash; } < <(echo y)`, "process substitution"],
+    [`{ bash; } <&3`, "descriptor"],
+    [`{ bash -s -- 'a ) b'; } <<< x`, "here-string"],
+    // Inside a command substitution, which a raw scan read too.
+    [`x=$( { bash; } <<< y )`, "here-string"],
+    ["echo `{ bash; } <<< y`", "here-string"],
+    [`x=$(echo $( ( bash ) <<< y ))`, "here-string"],
+  ])("refuses %s (%s)", (c, form) =>
+    expect(lexer.refusedForms(c)[0]?.form).toBe(`a shell reading its script from a ${form}`),
+  );
+});
+
+// CLI check of 8086892f8: a PowerShell here-string is one string whatever
+// quotes it holds; an expandable one runs only its `$( … )`.
+describe("the stopping rule: PowerShell here-strings (#1659 CLI check)", () => {
+  const ps = (c) => lexer.refusedForms(lexer.powershellAsBash(c), lexer.POWERSHELL);
+  it.each([
+    `$s = @"\nsay "hi\niex x\n"@`,
+    `$s = @'\nit's\niex x\n'@`,
+    `$s = @"\nsay "hi"\niex x\n"@`,
+    '$s = @"\na `$(iex x)\n"@',
+    `$s = @'\n$(iex x)\n'@`,
+    `$s = @"\n"@ ; Write-Host "it's"`,
+  ])("reads and refuses nothing in %j from the PowerShell tool", (c) => expect(ps(c)).toEqual([]));
+  it.each([
+    `$s = @"\n$(iex x)\n"@`,
+    `$s = @"\nsay "hi\n$(iex x)\n"@`,
+    `$s = @"\n$(Get-Date; Invoke-Expression x)\n"@`,
+    `$s = @'\nx\n'@\niex y`,
+    `$s = @"\nx\n"@\niex y`,
+    `$s = @"\n$("a)" + (iex x))\n"@`,
+  ])("refuses %j from the PowerShell tool", (c) => expect(ps(c)[0]?.form).toBe("eval"));
+});
+
+// CLI check of 8086892f8: with a string's text no position, a quoted name
+// the call operator runs is still read as the program it names.
+describe("the stopping rule: PowerShell's call operator on a quoted name (#1659 CLI check)", () => {
+  const ps = (c) => lexer.refusedForms(lexer.powershellAsBash(c), lexer.POWERSHELL);
+  it.each([`& "iex" x`, `& 'iex' 'ls'`, `. "iex" x`, `&"Invoke-Expression" x`, `ls; & 'IEX' x`])(
+    "refuses %s from the PowerShell tool",
+    (c) => expect(ps(c)[0]?.form).toBe("eval"),
+  );
+  it.each([`$a = "iex"`, `Get-Item "iex"`, `Write-Host '&' "iex"`, `& "Get-Item" iex`])(
+    "reads and refuses nothing in %s from the PowerShell tool",
+    (c) => expect(ps(c)).toEqual([]),
+  );
+});
+
+// The regression the CLI check of 8086892f8 led to: every body that runs
+// commands is read as the typed level is, a double-quoted one too.
+describe("the stopping rule: inside command substitutions and under coproc (#1659)", () => {
+  it.each([
+    [`echo "$(eval ls)"`, "eval"],
+    [`echo "$(bash <<< x)"`, "a shell reading its script from a here-string"],
+    [`x=$(echo y | bash)`, "a shell reading its script from stdin"],
+    [`x="$(echo y | bash)"`, "a shell reading its script from stdin"],
+    ["echo `echo y | bash`", "a printer piped into a shell"],
+    [`coproc bash`, "a shell reading its script from stdin"],
+    [`coproc NAME { bash; }`, "a shell reading its script from stdin"],
+    [`coproc bash <<< x`, "a shell reading its script from a here-string"],
+    [`tee >(bash) < x.txt`, "a shell reading its script from stdin"],
+    [`echo \${ bash <<< x; }`, "a shell reading its script from a here-string"],
+    [`bash -c 'echo "$(eval ls)"'`, "eval"],
+    [`bash -c 'x=$(echo y | bash)'`, "a string inside a string"],
+  ])("refuses %s (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+  it.each([
+    `echo "$(date)"`,
+    `echo '$(eval x)'`,
+    String.raw`echo "a \$(eval x)"`,
+    `echo $((1 + 2))`,
+    `coproc sleep 1`,
+    `tee >(cat) < x.txt`,
+    `echo \${x:-y}`,
+    `bash -c 'x=$(date)'`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+});
+
+// Where a substitution in a string runs: never in a comment or a quoted
+// heredoc's body, and in an unquoted heredoc's body to its own end (#1659).
+describe("the stopping rule: substitutions only where they run (#1659)", () => {
+  it.each([
+    `bash -c 'ls # $(echo y | bash)'`,
+    "bash -c 'ls # `eval x`'",
+    `bash -c 'echo "x" # $(eval y)'`,
+    `bash -c 'cat <<"EOF"\n$(eval y)\nEOF\n'`,
+  ])("reads and refuses nothing in %j", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+  it.each([
+    [`bash -c 'cat <<EOF\n$(eval y)\nEOF\n'`, "eval"],
+    [`bash -c 'ls # x\necho $(eval y)'`, "eval"],
+  ])("refuses %j (%s)", (c, form) => expect(lexer.refusedForms(c)[0]?.form).toBe(form));
+});
+
+// A judge on 15ce351a1: a startup-file assignment is read wherever bash makes
+// one, past any prefix assignment and through every lead, and nowhere else.
+describe("the stopping rule: startup-file assignments through every lead (#1659 judge)", () => {
+  const STARTUP = "a shell startup file read from stdin, a descriptor or a process substitution";
+  const LONG = "A".repeat(300);
+  it.each([
+    `A+=1 BASH_ENV=<(echo x) bash -c true`,
+    `A[1]=1 BASH_ENV=<(echo x) bash -c true`,
+    `${LONG}=1 BASH_ENV=<(echo x) bash -c true`,
+    `nice env BASH_ENV=<(echo x) bash -c true`,
+    `nice -n 5 BASH_ENV=<(echo x) bash -c true`,
+    `timeout 5 env BASH_ENV=<(echo x) bash -c true`,
+    `xargs env BASH_ENV=<(echo x) bash -c true`,
+    `time -p BASH_ENV=<(echo x) bash -c true`,
+    `command export BASH_ENV=/dev/stdin; bash -c true <<< x`,
+    `builtin export BASH_ENV=/dev/stdin; bash -c true <<< x`,
+    `coproc BASH_ENV=<(echo x) bash -c true`,
+    `sudo BASH_ENV=<(echo x) bash -c true`,
+    `env -u X BASH_ENV=<(echo x) bash -c true`,
+    `"$W" BASH_ENV=<(echo x) bash -c true`,
+    String.raw`\env BASH_ENV=<(echo x) bash -c true`,
+    // Twins: each wrapper and lead in front of `env`, and one in a string.
+    `exec env BASH_ENV=<(echo x) bash -c true`,
+    `nohup env BASH_ENV=<(echo x) bash -c true`,
+    `stdbuf -o0 env BASH_ENV=<(echo x) bash -c true`,
+    `winpty env BASH_ENV=<(echo x) bash -c true`,
+    `sudo -u x env BASH_ENV=<(echo x) bash -c true`,
+    `timeout -k 5 10 env BASH_ENV=<(echo x) bash -c true`,
+    `xargs -I{} env BASH_ENV=<(echo x) bash -c true`,
+    `command -p env BASH_ENV=<(echo x) bash -c true`,
+    `bash -c 'nice env BASH_ENV=<(echo x) bash -c true'`,
+  ])("refuses %s", (c) => expect(lexer.refusedForms(c).map((r) => r.form)).toContain(STARTUP));
+  it.each([
+    `env grep -F BASH_ENV=/dev/stdin config.txt`,
+    `grep -F BASH_ENV=/dev/stdin config.txt`,
+    `nice grep BASH_ENV=/dev/stdin x`,
+    `A+=1 grep BASH_ENV=/dev/stdin x`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+  it("reads a long run of assignments in time linear in their number", () => {
+    const c = `${"A=1 ".repeat(20000)}BASH_ENV=<(echo x) bash -c true`;
+    const t = Date.now();
+    expect(lexer.refusedForms(c).map((r) => r.form)).toContain(STARTUP);
+    expect(Date.now() - t).toBeLessThan(3000);
+  });
+});
+
+// A judge on 15ce351a1: an `exec` sets the stdin of the shell it runs in, from
+// where it runs on, a group's own redirection before it included; a subshell's
+// or a substitution's reaches no command outside it.
+describe("the stopping rule: the shell an exec runs in (#1659 judge)", () => {
+  const HERE_STRING = "a shell reading its script from a here-string";
+  it.each([
+    `{ exec <<< 'gh pr merge 7'; bash; } < /dev/null`,
+    `( exec <<< 'gh pr merge 7'; bash ) </dev/null`,
+    `while read x; do exec <<< 'gh pr merge 7'; bash; done < f.txt`,
+    `echo $(exec <<< 'gh pr merge 7'; bash)`,
+    `x=$(exec <<< 'gh pr merge 7'; bash)`,
+    "echo `exec <<< 'gh pr merge 7'; bash`",
+    `echo "$(exec <<< 'gh pr merge 7'; bash)"`,
+    `echo $( (exec <<< 'gh pr merge 7'; bash) )`,
+    `exec <<< 'gh pr merge 7'; echo $(bash)`,
+    `exec <<< 'gh pr merge 7'; ( bash )`,
+    `exec <<< 'gh pr merge 7'; { bash; }`,
+    // Twins: a group's exec inside a redirected subshell, and a nested substitution.
+    `( { exec <<< 'gh pr merge 7'; }; bash ) </dev/null`,
+    `echo $(exec <<< 'gh pr merge 7'; echo $(bash))`,
+    `exec <<< 'gh pr merge 7'; bash &`,
+  ])("refuses %s", (c) => expect(lexer.refusedForms(c)[0]?.form).toBe(HERE_STRING));
+  it.each([
+    `( exec <<< ':' ); bash`,
+    `echo $(exec <<< ':'); bash`,
+    "echo `exec <<< ':'`; bash",
+    `cat <(exec <<< ':'); bash`,
+    `{ exec <<< ':'; } | cat; bash`,
+    `exec <<< ':' | cat; bash`,
+    `( exec <<< ':'; ( true ) ); bash`,
+    `exec <<< ':' & bash`,
+    `{ exec <<< ':'; } & bash`,
+    `exec <<< ':'; { bash; } </dev/null`,
+    `{ bash; exec <<< ':'; } </dev/null`,
+    `x=$(exec <<< ':'); echo $(bash)`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
+});
+
+// CodeRabbit on 164de4f80: an `=` inside an argument is no assignment, so the
+// word after it starts no statement; a real assignment's value still does.
+describe("the stopping rule: PowerShell's eval after an assignment (#1659 PR review)", () => {
+  const ps = (c) => lexer.refusedForms(lexer.powershellAsBash(c), lexer.POWERSHELL);
+  it.each([`Write-Output key=iex`, `Write-Output a = iex`, `git config x.y=iex`, `Write-Output -Name:x=iex`])(
+    "reads and refuses nothing in %s",
+    (c) => expect(ps(c)).toEqual([]),
+  );
+  it.each([
+    `$x = iex y`,
+    `$x=iex y`,
+    `[string]$x = iex y`,
+    `$x += iex y`,
+    `$h.k = iex y`,
+    `ls; $x = Invoke-Expression y`,
+    `$t = @{ a = iex y }`,
+    `@{a=iex y}`,
+  ])("refuses %s", (c) => expect(ps(c)[0]?.form).toBe("eval"));
+});
+
+// CodeRabbit on 164de4f80: each `ENV` in one long word walked back to the
+// word's start, so a word holding many took time quadratic in its length.
+describe("the stopping rule: startup names in one long word (#1659 PR review)", () => {
+  it("reads them in time linear in the word's length", () => {
+    const c = `echo ${"ENV".repeat(40000)} x; BASH_ENV=<(echo y) bash -c true`;
+    const t = Date.now();
+    expect(lexer.refusedForms(c).map((r) => r.form)).toContain(
+      "a shell startup file read from stdin, a descriptor or a process substitution",
+    );
+    expect(Date.now() - t).toBeLessThan(3000);
+  });
+});
+
+// CodeRabbit on 8863760d7: bash 5.3 runs a `${ …; }` or `${| …; }` in the
+// current shell, so an `exec` in one sets the stdin of the commands after it;
+// a `$( … )` or backtick body is a subshell, whose exec reaches none.
+describe("the stopping rule: an exec in a function substitution (#1659 PR review)", () => {
+  const HERE_STRING = "a shell reading its script from a here-string";
+  it.each([
+    `x=\${ exec <<< 'gh pr merge 7 --squash'; }; bash`,
+    `x=\${| exec <<< 'gh pr merge 7 --squash'; }; bash`,
+    `{ x=\${ exec <<< 'gh pr merge 7 --squash'; }; bash; }`,
+    `echo \${ exec <<< 'gh pr merge 7 --squash'; }; bash`,
+    `x=\${ exec <<< 'gh pr merge 7 --squash'; }; echo $(bash)`,
+    `x=$(y=\${ exec <<< 'gh pr merge 7 --squash'; }; bash)`,
+  ])("refuses %s", (c) => expect(lexer.refusedForms(c)[0]?.form).toBe(HERE_STRING));
+  it.each([
+    `x=$(exec <<< ':'); bash`,
+    "x=`exec <<< ':'`; bash",
+    `x=$(y=\${ exec <<< ':'; }); bash`,
+    `x=\${ exec <<< ':'; } | cat; bash`,
+    `x=\${ exec <<< ':'; exec </dev/null; }; bash`,
+  ])("reads and refuses nothing in %s", (c) => expect(lexer.refusedForms(c)).toEqual([]));
 });

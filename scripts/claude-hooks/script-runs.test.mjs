@@ -362,13 +362,10 @@ describe("a shell wrapper's string is judged whole, with its own cds (#1634)", (
     expect(deckFindings(c, MASTER, trees, BASH)).toEqual([{ text: inner, kind: "relink" }]);
   });
 
-  it("finds nothing where the inner cd reaches an unlinked tree, and reads a stdin script at the cwd", () => {
+  // A stdin script is no longer read here: `checkBash` refuses a printer piped
+  // into a shell before this reader runs (#1659).
+  it("finds nothing where the inner cd reaches an unlinked tree, and reads no stdin script", () => {
     expect(deckFindings("pnpm exec sh -c 'cd ../ir-7 && pnpm dev:voices'", MASTER, trees, BASH)).toEqual([]);
-    expect(deckFindings("echo 'pnpm dev:voices' | bash", ROOT, trees, BASH)).toEqual([
-      {
-        text: `Stream Deck plugin link points into ${ROOT}: \`pnpm dev:voices\` there relinks the running plugin`,
-        kind: "relink",
-      },
-    ]);
+    expect(deckFindings("echo 'pnpm dev:voices' | bash", ROOT, trees, BASH)).toEqual([]);
   });
 });

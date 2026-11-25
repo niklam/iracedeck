@@ -1,7 +1,7 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { firstMerge } from "./rules-bash.mjs";
+import { firstMerge } from "./merge-gate.mjs";
 import {
   assignedGhRepo,
   boardIssues,

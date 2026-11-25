@@ -6,7 +6,8 @@
  * handed to (bash and its kin, cmd.exe, PowerShell, `eval`), recursively to
  * {@link MAX_SCRIPT_DEPTH}. {@link deckFindings} is the entry point: every
  * way the commands touch a deck host, each a finding of one kind
- * ({@link FINDING_KINDS}, #1737) — a restart, a relink or a watch — which the
+ * ({@link FINDING_KINDS}, #1737) — a restart, a relink, a watch, or a nested
+ * text in a form the lexer's stopping rule refuses (#1659) — which the
  * rule in `rules-bash.mjs` turns into its ask when any is not a restart.
  *
  * The deck vocabulary lives here rather than with the rule
@@ -60,6 +61,7 @@ import {
   POWERSHELL,
   powershellAsBash,
   readCommand,
+  refusedForms,
   resolveDir,
   shellSpec,
   stringBounds,
@@ -151,6 +153,8 @@ export const FINDING_KINDS = {
   restart: "restarts, stops or starts a deck host",
   relink: "links, unlinks or relinks a deck host",
   watch: "restarts a deck host on every rebuild",
+  // A text this reader cannot read, so it asks (#1659).
+  unread: "hands text to a shell in a form the hook cannot read",
 };
 /** The kind of finding a script name makes wherever it runs, or `undefined` for none. */
 const nameKind = (name) => Object.keys(DECK_ALWAYS).find((kind) => DECK_ALWAYS[kind].test(name));
@@ -836,8 +840,8 @@ function deckReach(c, cwd, ctx, shell, trail, lostDir = false) {
     [...chainCommands(c, cwd, re, shell)].map((m) => ({ ...m, read, whole, re })),
   );
   const again = repeatsAt(c, shell);
-  // A command its shell reads differently from the text here (#1646: a string
-  // printf or `echo -e` prints, words `eval` joins) is judged on what that
+  // A command its shell reads differently from the text here (#1646: a quote
+  // its shell removes, words cmd.exe or PowerShell join) is judged on what that
   // shell reads, and its decoded hit excused only once judged; a shape the
   // decoded text does not hold leaves the hit standing, which `checkBash`
   // refuses (CodeRabbit CLI on #1646).
@@ -870,7 +874,7 @@ function deckReach(c, cwd, ctx, shell, trail, lostDir = false) {
   const judged = [];
   const runs = new Map();
   for (const m of [...matches].sort((x, y) => x.start - y.start)) {
-    const { base, start, args, at, cut, how, via, stdin, read, whole, re, occurrence } = m;
+    const { base, start, args, at, cut, how, via, read, whole, re, occurrence } = m;
     // A match this reader leaves to a wrapper's reader of the whole string is
     // read as its shell reads it, so a decoded hit there is no mis-slice (#1646).
     const leave = () => excuseDecodedHit(c, re, occurrence);
@@ -883,9 +887,10 @@ function deckReach(c, cwd, ctx, shell, trail, lostDir = false) {
     // which string a program word at command position feeds; the string a
     // runner hands a shell (`pnpm exec sh -c '…'`) it does not know, so a match
     // inside any string whose decoded text this reader has already judged as
-    // a line is left to it. A string a shell reads on stdin, and what `sudo`,
-    // `trap`, `watch` or `su` run, no wrapper reads, so those are judged here.
-    if (how === "shell" && !stdin && isWrapper(via)) {
+    // a line is left to it. What `sudo`, `trap`, `watch` or `su` run no
+    // wrapper reads, so those are judged here (a string a shell reads on stdin
+    // is refused before any rule, #1659).
+    if (how === "shell" && isWrapper(via)) {
       leave();
       continue;
     }
@@ -911,7 +916,7 @@ function deckReach(c, cwd, ctx, shell, trail, lostDir = false) {
     // ends at the first (#1607) — and the lexer's own match past it is the
     // one skipped above.
     // A command its shell reads differently from the text here (#1646: a
-    // string printf or `echo -e` prints, an escape the shell decodes) is read
+    // quote or an escape its shell removes, words it joins) is read
     // from what that shell reads, past the runner the rule's shape matched
     // there; its decoded hit is excused only once its words are judged. A
     // shape the decoded text does not hold leaves the hit standing.
@@ -997,6 +1002,16 @@ function deckReach(c, cwd, ctx, shell, trail, lostDir = false) {
         const [text, lineShell] = lineAs(line, as);
         // A lifecycle script is named in the path ({@link bodyLines}).
         const via = step ? `\`${run.label}\` → \`${step}\`` : `\`${run.label}\``;
+        // The stopping rule judges the typed command only: a form it refuses in
+        // a text read here — a shell's string, a script's body, a rollup hook —
+        // runs what the hook cannot read, so it asks, naming the form (#1659).
+        const [unread] = refusedForms(text, lineShell);
+        if (unread)
+          finding(
+            `${via} ${FINDING_KINDS.unread} (${unread.form}: \`${unread.shape}\`), so what it runs is unknown`,
+            "unread",
+            run.repeats,
+          );
         const inner = deckReach(text, dir, ctx, lineShell, [...trail, key], Boolean(run.lost));
         const itself = key && inner.cycles.delete(key);
         for (const k of inner.cycles) cycles.add(k);
@@ -1066,8 +1081,8 @@ const PS_LOOP_WORD = /(?<=(?:^|[\n;&|(){}])[ \t]*(?::\w+[ \t]+)?)(?:while|do|for
  * Where a shell is fed, the lexer sets its mask aside and the raw text shows
  * the strings (#1737 second read): a loop word or a bracket inside one is a
  * character of that string, never the loop's (`sh -c 'echo "done"'`, `cmd /c
- * "echo }"`). A string read by a shell on stdin, or one a non-reader (`watch`,
- * `trap`, `su`) runs, is judged here, so the loops in its text count, read
+ * "echo }"`). A string a non-reader (`watch`, `trap`, `su`) runs is judged
+ * here, so the loops in its text count, read
  * from that text; a wrapper's string is read through its own line ({@link
  * wrapperRuns}).
  */
@@ -1081,7 +1096,7 @@ function loopSpans(c, shell) {
   // The loops inside a string whose commands are judged here, at its offset.
   for (const [open, close] of quotes) {
     const kind = quoteKinds.get(open);
-    if (!kind || (!kind.stdin && isWrapper(kind.via ?? ""))) continue;
+    if (!kind || isWrapper(kind.via ?? "")) continue;
     for (const [a, b] of loopSpans(c.slice(open + 1, close), shell)) spans.push([open + 1 + a, open + 1 + b]);
   }
   if (shell === POWERSHELL) {
