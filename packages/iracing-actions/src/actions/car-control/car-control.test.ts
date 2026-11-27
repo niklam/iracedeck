@@ -1350,30 +1350,52 @@ describe("CarControl", () => {
 
   describe("pit limiter speed graphic (issue #638)", () => {
     it("should contain the speed number in both sizes", () => {
-      expect(pitLimiterSpeedGraphic(80)).toContain("80");
-      expect(pitLimiterSpeedGraphic(60)).toContain("60");
-      expect(pitLimiterSpeedGraphic(100)).toContain("100");
-      expect(pitLimiterSpeedGraphic(80, true)).toContain("80");
+      expect(pitLimiterSpeedGraphic(80, "on")).toContain("80");
+      expect(pitLimiterSpeedGraphic(60, "off")).toContain("60");
+      expect(pitLimiterSpeedGraphic(100, "na")).toContain("100");
+      expect(pitLimiterSpeedGraphic(80, "on", true)).toContain("80");
     });
 
     it("should be the circle artwork, not the generic N/A bar", () => {
-      const graphic = pitLimiterSpeedGraphic(80);
+      const graphic = pitLimiterSpeedGraphic(80, "na");
 
       expect(graphic).toContain("<circle");
       // The status bar (not this graphic) carries the N/A text.
       expect(graphic).not.toContain("N/A");
     });
 
-    it("should be state-neutral — state lives in the status bar, so no on/off blue or red", () => {
-      const graphic = pitLimiterSpeedGraphic(80);
+    describe("ring colour follows the limiter state (issue #1685)", () => {
+      const ringStroke = (graphic: string): string | undefined => /<circle[^>]*\bstroke="([^"]+)"/.exec(graphic)?.[1];
 
-      expect(graphic).not.toContain("#3498db");
-      expect(graphic).not.toContain("#e74c3c");
+      it.each([
+        { state: "on", color: "#3498db" },
+        { state: "off", color: "#e74c3c" },
+        { state: "na", color: "#888888" },
+      ] as const)("draws the ring $color when the limiter is $state, at both sizes", ({ state, color }) => {
+        expect(ringStroke(pitLimiterSpeedGraphic(80, state, false))).toBe(color);
+        expect(ringStroke(pitLimiterSpeedGraphic(80, state, true))).toBe(color);
+      });
+
+      it("draws a different ring for each state (positive control: the state is not ignored)", () => {
+        const rings = (["on", "off", "na"] as const).map((state) => ringStroke(pitLimiterSpeedGraphic(80, state)));
+
+        expect(new Set(rings).size).toBe(3);
+      });
+
+      it("keeps the fill, stroke width and number colour the same in every state", () => {
+        for (const state of ["on", "off", "na"] as const) {
+          const graphic = pitLimiterSpeedGraphic(80, state);
+
+          expect(graphic).toContain('fill="#ffffff"');
+          expect(graphic).toContain('stroke-width="6"');
+          expect(graphic).toContain('fill="#2a3a2a"');
+        }
+      });
     });
 
     it("should grow when the title is hidden and shrink when it is shown", () => {
-      const large = pitLimiterSpeedGraphic(80, false); // title hidden (default)
-      const compact = pitLimiterSpeedGraphic(80, true); // title shown
+      const large = pitLimiterSpeedGraphic(80, "on", false); // title hidden (default)
+      const compact = pitLimiterSpeedGraphic(80, "on", true); // title shown
 
       // Larger radius and font when there is no title competing for space.
       expect(large).toContain('r="33"');
@@ -1503,6 +1525,25 @@ describe("CarControl", () => {
       expect(decoded).toContain("80");
       expect(decoded).toContain("<circle");
     });
+
+    it.each([
+      { available: true, active: true, ring: "#3498db" },
+      { available: true, active: false, ring: "#e74c3c" },
+      { available: false, active: true, ring: "#888888" },
+    ])(
+      "colours the speed circle's ring $ring from the same tri-state as the status bar (available $available, active $active; issue #1685)",
+      ({ available, active, ring }) => {
+        const decoded = decodeURIComponent(
+          generateCarControlSvg(CarControlSettings.parse({ control: "pit-speed-limiter" }), {
+            pitLimiterAvailable: available,
+            pitLimiterActive: active,
+            pitSpeedLimit: 80,
+          }),
+        );
+
+        expect(/<circle cx="72"[^>]*\bstroke="([^"]+)"/.exec(decoded)?.[1]).toBe(ring);
+      },
+    );
 
     it("should show the unavailable state even when reported active (availability wins)", () => {
       const decoded = decodeURIComponent(

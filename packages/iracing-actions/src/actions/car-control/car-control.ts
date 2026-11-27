@@ -254,21 +254,36 @@ export function displayedPitSpeedLimit(
   return Math.round(target === "mph" ? limit.value / KMH_PER_MPH : limit.value * KMH_PER_MPH);
 }
 
+/** The pit limiter's tri-state (issue #638), resolved by {@link pitLimiterToggleState}. */
+type PitLimiterToggleState = "on" | "off" | "na";
+
+/**
+ * The ring colour of the pit-limiter speed circle per limiter state (issue #1685): the
+ * pre-#638 blue for on and red for off, plus grey for a car with no limiter. These are the
+ * icon set's fixed semantic data colours, not a user colour slot.
+ */
+const PIT_LIMITER_RING_COLORS: Record<PitLimiterToggleState, string> = {
+  on: "#3498db",
+  off: "#e74c3c",
+  na: GRAY,
+};
+
 /**
  * @internal Exported for testing
  *
- * Pit limiter speed-number graphic — the pit-speed-limit number inside a circle, drawn the
- * same way in every state (issue #638). The on/off/not-available state is conveyed by the
- * status bar (green ON / red OFF / grey N/A) and the border colour, mirroring the other
- * tri-state buttons (Fast Repair, Windshield Tear-off, Auto-Fuel); the circle keeps the
- * button recognizable and keeps showing the track's pit-speed limit, which stays meaningful
- * even on cars without a limiter.
+ * Pit limiter speed-number graphic — the pit-speed-limit number inside a circle (issue
+ * #638). The circle's ring takes its colour from the limiter's tri-state (issue #1685): blue
+ * when on, red when off, grey when the car has no limiter. The status bar (green ON / red
+ * OFF / grey N/A) and the border colour carry the state too, mirroring the other tri-state
+ * buttons (Fast Repair, Windshield Tear-off, Auto-Fuel); the circle keeps the button
+ * recognizable and keeps showing the track's pit-speed limit, which stays meaningful even on
+ * cars without a limiter.
  *
  * The title ("PIT LIMITER") is hidden by default, so the circle grows to fill the space
  * above the status bar. When the user turns the title on, pass `compact` to shrink the
  * circle and drop it below the top title.
  */
-export function pitLimiterSpeedGraphic(speed: number, compact = false): string {
+export function pitLimiterSpeedGraphic(speed: number, state: PitLimiterToggleState, compact = false): string {
   // Two presets, each editable as a unit: the compact circle leaves room for the title at the
   // top; the large circle (title hidden, the default) fills the space above the status bar.
   // `textY` sits the number a few px below the circle centre so it reads optically centred.
@@ -277,7 +292,7 @@ export function pitLimiterSpeedGraphic(speed: number, compact = false): string {
     : { cy: 53, r: 33, fontSize: 30, textY: 64 };
 
   return `
-    <circle cx="72" cy="${cy}" r="${r}" fill="${WHITE}" stroke="${GRAY}" stroke-width="6"/>
+    <circle cx="72" cy="${cy}" r="${r}" fill="${WHITE}" stroke="${PIT_LIMITER_RING_COLORS[state]}" stroke-width="6"/>
     <text x="72" y="${textY}" text-anchor="middle"
           fill="#2a3a2a" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold">${speed}</text>`;
 }
@@ -496,7 +511,7 @@ export function isPitLimiterAvailable(telemetry: TelemetryData | null): boolean 
  * so the dedupe key always matches the rendered state (no churn when the on/off flag — which
  * has no meaning on a no-limiter car — toggles while the car stays N/A).
  */
-export function pitLimiterToggleState(available: boolean, active: boolean): "on" | "off" | "na" {
+export function pitLimiterToggleState(available: boolean, active: boolean): PitLimiterToggleState {
   if (!available) return "na";
 
   return active ? "on" : "off";
@@ -845,7 +860,9 @@ export function generateCarControlSvg(
     // bar always shows so the on/off/na state stays legible, mirroring DRS / Push-to-Pass.
     // When the title is visible the circle shrinks to leave room for it at the top; with the
     // title hidden (the default) it grows to fill the space above the status bar.
-    const speedGraphic = resolvedTitle.showGraphics ? pitLimiterSpeedGraphic(speed, resolvedTitle.showTitle) : "";
+    const speedGraphic = resolvedTitle.showGraphics
+      ? pitLimiterSpeedGraphic(speed, toggleState, resolvedTitle.showTitle)
+      : "";
     const baseIconContent = `${speedGraphic}${statusBar}`;
     const iconContent = bindingMissing ? applyBindingWarning(baseIconContent) : baseIconContent;
 
@@ -960,7 +977,8 @@ export function generateCarControlSvg(
   // Ignition and Starter are tri-state telemetry keys (issue #561). Both go through the
   // shared toggle renderer rather than repeating the resolve/render pipeline a fourth
   // time; the artwork stays state-neutral and the status bar plus the state-driven
-  // border carry on/off/na, the same language as the pit limiter and DRS.
+  // border carry on/off/na, the same language as DRS and Push To Pass (the pit limiter
+  // shares the bar and border, and its number circle's ring carries the state too, #1685).
   if (control === "ignition" || control === "starter") {
     const isIgnition = control === "ignition";
     const template = isIgnition ? ignitionTemplate : starterTemplate;
