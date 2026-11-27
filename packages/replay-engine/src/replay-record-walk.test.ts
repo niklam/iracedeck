@@ -1068,6 +1068,33 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
       expect(sim.frame()).toBe(206_000);
     });
 
+    it("a held-back command released at once and refused by the SDK ends as refused", async () => {
+      setUp(withIncidents);
+      search("nextSession");
+
+      const notices: ReplayGateNotice[] = [];
+
+      subscribeReplayGate((notice) => notices.push(notice));
+
+      // A marker step that finds no marker: its act sends nothing, so the key's search goes out as it is.
+      const a = awaitReplayWalkStart(
+        readState,
+        () => sim.telemetry(),
+        () => undefined,
+      );
+
+      expect(incidentKey()).toEqual({ kind: "held" });
+      vi.mocked(sim.replay.nextIncident).mockReturnValue(false);
+
+      await vi.advanceTimersByTimeAsync(3_000);
+      await a;
+
+      expect(sim.replay.nextIncident).toHaveBeenCalledTimes(1);
+      expect(notices.filter((n) => n.origin === "key-g").flatMap((n) => n.ended)).toEqual([
+        { fact: "waiting", class: "gave-up", reason: "refused" },
+      ]);
+    });
+
     it("when the start that went first sends nothing, the slot's command goes out before the next start reads", async () => {
       setUp(withIncidents);
       search("nextSession");

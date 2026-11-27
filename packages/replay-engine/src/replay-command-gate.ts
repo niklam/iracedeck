@@ -1599,8 +1599,8 @@ function releaseOnLanding(current: Slot, telemetry: TelemetryData | null, now: n
   slot = null;
 
   if (current.searchLanded !== true || !jumpUnderWay() || current.command.kind === "playback") {
-    noteEnd(current.origin, "waiting", "sent-on-landing");
-    goOut(current, telemetry, now);
+    // Ended by what the send did: a send the SDK refused shows not-done.
+    noteEnd(current.origin, "waiting", goOut(current, telemetry, now) ? "sent-on-landing" : "refused");
 
     return;
   }
@@ -1754,23 +1754,23 @@ function afterJumpLanded(
   }
 
   slot = null;
-  noteEnd(current.origin, "waiting", "sent-on-landing");
-  goOut(current, telemetry ?? landing, now);
+  noteEnd(current.origin, "waiting", goOut(current, telemetry ?? landing, now) ? "sent-on-landing" : "refused");
 }
 
 /**
  * A waiting command goes out, and what it carries after it waits behind it.
  * A speed it sends is the dial's resume speed too, whichever surface pressed
- * it: what the slot sends later always was (#1467, Decision 4).
+ * it: what the slot sends later always was (#1467, Decision 4). Returns
+ * whether the SDK took the send, which its waiting fact ends by.
  */
-function goOut(current: Slot, telemetry: TelemetryData | null, now: number): void {
+function goOut(current: Slot, telemetry: TelemetryData | null, now: number): boolean {
   const ok = dispatch(current.command, telemetry, now, current.origin, true);
 
   log().debug(`Replay command sent on the landing: ${describe(current.command)} (${current.by}); result ${ok}`);
 
   if (ok && current.command.kind === "go-to" && current.command.end === "end") engineReads().leftForLive();
 
-  if (!ok || (current.command.kind !== "search" && current.command.kind !== "go-to")) return;
+  if (!ok || (current.command.kind !== "search" && current.command.kind !== "go-to")) return ok;
 
   const follow: SlotCommand | null =
     current.jumpPlayback !== null
@@ -1779,7 +1779,7 @@ function goOut(current: Slot, telemetry: TelemetryData | null, now: number): voi
         ? { kind: "speed", speed: current.restoreSpeed.speed, slowMotion: current.restoreSpeed.slowMotion }
         : null;
 
-  if (follow === null) return;
+  if (follow === null) return ok;
 
   slot = {
     command: follow,
@@ -1795,6 +1795,8 @@ function goOut(current: Slot, telemetry: TelemetryData | null, now: number): voi
     holds: [],
     follow: true,
   };
+
+  return ok;
 }
 
 // ---------------------------------------------------------------------------
