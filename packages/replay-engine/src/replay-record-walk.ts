@@ -184,13 +184,20 @@ function searchToWaitFor(): ReplaySearchOnItsWay | null {
  *    run, through {@link awaitReplayWalkStart}; a view reads the cursor
  *    meanwhile.
  * 4. **`not in a replay`** outside one.
- * 5. **The cursor**, the state's {@link ReplayState.cursorFrame}: the frame a
- *    replay tick shows, or the frame the state holds through the exit grace
- *    and the seek hold (#1429). With none (the flag reads false past both: a
- *    mid-seek tick whose frame reads 0 in a saved replay, where a walk would
- *    send the list's first entry) it is `no cursor`, and what a press does
- *    then is the caller's: Replay Control's record step sends the key's
- *    search, which the gate holds while a seek shows.
+ * 5. **The cursor**: the frame `telemetry` shows when that tick is the
+ *    replay's, else the state's {@link ReplayState.cursorFrame}, the frame
+ *    it holds through the exit grace and the seek hold (#1429). The tick
+ *    comes first because telemetry is read once per tick for the whole
+ *    process: the gate's polls and the paced run's reads take ticks through
+ *    `getCurrentTelemetry()` that the controller's debounced replay state is
+ *    never stepped with, so its cursor read can still be the frame from
+ *    before a search that has landed. The tick is the newest anyone read; on
+ *    a playing replay it is the frame playing now. With neither (the flag
+ *    reads false past the grace and the hold: a mid-seek tick whose frame
+ *    reads 0 in a saved replay, where a walk would send the list's first
+ *    entry) it is `no cursor`, and what a press does then is the caller's:
+ *    Replay Control's record step sends the key's search, which the gate
+ *    holds while a seek shows.
  *
  * Synchronous and sends nothing; it reads the gate's target and search
  * records as they stand.
@@ -207,16 +214,21 @@ export function resolveReplayWalkStart(
 
   if (searchToWaitFor() !== null) return { frame: null, reason: "search on its way" };
 
-  return cursorStart(state);
+  return cursorStart(state, telemetry);
 }
 
-/** Steps 4 and 5 of {@link resolveReplayWalkStart}: outside a replay, else the cursor or none. */
-function cursorStart(state: Pick<ReplayState, "inReplay" | "cursorFrame">): SettledReplayWalkStart {
+/** Steps 4 and 5 of {@link resolveReplayWalkStart}: outside a replay, else the cursor (fresh tick first) or none. */
+function cursorStart(
+  state: Pick<ReplayState, "inReplay" | "cursorFrame">,
+  telemetry: TelemetryData | null,
+): SettledReplayWalkStart {
   if (!state.inReplay) return { frame: null, reason: "not in a replay" };
 
-  if (state.cursorFrame === null) return { frame: null, reason: "no cursor" };
+  const frame = readReplay(telemetry)?.frame ?? state.cursorFrame;
 
-  return { frame: state.cursorFrame, from: "cursor" };
+  if (frame === null) return { frame: null, reason: "no cursor" };
+
+  return { frame, from: "cursor" };
 }
 
 /** Whether a start has nothing left to wait for. */
@@ -381,13 +393,6 @@ function dropHead(head: WaitingStart, err: unknown): void {
 async function drainWaitingStarts(): Promise<void> {
   const generation = drainGeneration;
   let waits = 0;
-  /**
-   * Whether the last wait ended on a landing, or was a paced run that has ended: a cursor start is then read from a
-   * fresh tick ({@link freshCursor}). It holds for every head that settles after that wait, not the first alone,
-   * since the debounced state may still be stale for the next press too; a new wait, or a start from a pending
-   * target, ends it.
-   */
-  let landedJustNow = false;
 
   draining = true;
 
@@ -409,7 +414,6 @@ async function drainWaitingStarts(): Promise<void> {
 
       if (!isSettled(start) && waits < MAX_SEARCH_WAITS) {
         waits++;
-        landedJustNow = false;
 
         if (pacedRunUnderWay()) {
           const outcome = await waitForPacedRun();
@@ -417,9 +421,6 @@ async function drainWaitingStarts(): Promise<void> {
           if (generation !== drainGeneration) return;
 
           log().debug(`Replay step start: ${outcome}`);
-          // The run's reads took ticks too. Its run state ends without saying whether it ended on a landing, so the
-          // cursor is read fresh after any run end: the fresh tick is never older than the gate's last reading.
-          landedJustNow = true;
           continue;
         }
 
@@ -433,7 +434,6 @@ async function drainWaitingStarts(): Promise<void> {
           log().debug(`Replay step start: the search on its way ended (${outcome})`);
           // Landed or not, it is no longer one to wait for: the start is read again from the top.
           waitedOutSearchId = search.id;
-          landedJustNow = outcome === "landed";
           continue;
         }
       }
@@ -442,7 +442,6 @@ async function drainWaitingStarts(): Promise<void> {
       // first, and the start reads again once it has, so its own jump never drops that command.
       if (isSettled(start) && waits < MAX_SEARCH_WAITS && replaySlotHeldBefore(head.gateWait)) {
         waits++;
-        landedJustNow = false;
 
         const outcome = await waitForSlotAhead(head.gateWait);
 
@@ -461,16 +460,11 @@ async function drainWaitingStarts(): Promise<void> {
       let settled: SettledReplayWalkStart;
 
       try {
-        settled = isSettled(start) ? start : cursorStart(head.readState());
-
-        if (landedJustNow) settled = freshCursor(settled, head.readTelemetry());
+        settled = isSettled(start) ? start : cursorStart(head.readState(), head.readTelemetry());
       } catch (err) {
         dropHead(head, err);
         continue;
       }
-
-      // A start from a pending target: the replay is headed somewhere new, and later heads read that target.
-      if (settled.frame !== null && settled.from === "target") landedJustNow = false;
 
       waitingStarts.shift();
       const reason = settled.frame === null && settled.reason === "not in a replay" ? "replay-left" : "sent-on-landing";
@@ -484,26 +478,6 @@ async function drainWaitingStarts(): Promise<void> {
   } finally {
     if (generation === drainGeneration) draining = false;
   }
-}
-
-/**
- * A cursor start read right after a search's landing, or the end of the
- * dial's paced run, taken from a fresh tick when that tick is the replay's.
- * Telemetry is read once per tick for the whole process: the gate's polls,
- * which judged the landing, and the run's own reads take ticks
- * through `getCurrentTelemetry()` that the controller's debounced replay
- * state is never stepped with, so its cursor read can still be the frame
- * from before the search. `telemetry` is the newest tick anyone read, never
- * older than the reading the gate's landing held on; on a playing replay it
- * is the frame playing now, which needs no direction to compare. A target,
- * no cursor or a tick that is not the replay's keep the start as read.
- */
-function freshCursor(start: SettledReplayWalkStart, telemetry: TelemetryData | null): SettledReplayWalkStart {
-  if (start.frame === null || start.from !== "cursor") return start;
-
-  const reading = readReplay(telemetry);
-
-  return reading === null ? start : { frame: reading.frame, from: "cursor" };
 }
 
 /** Why a waiting start's promise rejects when the engine is reset under it: its `act` never runs. */

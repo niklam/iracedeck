@@ -3513,7 +3513,8 @@ describe("ReplayControl", () => {
       ["next-session", "nextSession"],
       ["prev-session", "prevSession"],
     ])("%s with no cursor to step from sends the key's search through the gate", async (mode, search) => {
-      // A saved replay whose tick still reads mid-seek once the exit grace is over, with no target standing.
+      // A saved replay whose tick still reads mid-seek once the exit grace is over, with no target standing: the
+      // state has no cursor, and the press's own tick is not the replay's either (#1660: a replay tick would be).
       action["sdkController"].getReplayState = vi.fn(() => ({
         inReplay: true,
         frame: 0,
@@ -3521,6 +3522,12 @@ describe("ReplayControl", () => {
         tickReplayPlaying: false,
         replaySeenAt: null,
       })) as any;
+      action["sdkController"].getCurrentTelemetry = vi.fn((): TelemetryData => ({
+        ...telemetry(),
+        IsReplayPlaying: false,
+        ReplayFrameNum: 0,
+        SessionNum: -1,
+      }));
 
       await pressKey("ctx-key", mode);
 

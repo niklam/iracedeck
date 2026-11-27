@@ -268,7 +268,7 @@ describe("the anchor and the cursor", () => {
     expect(resolveReplayWalkAnchor(sim.frame(), sim.telemetry())).toBe(1_100_000);
   });
 
-  it("with no target, the state's cursor read is the start, whatever the tick reads", () => {
+  it("with no target and a tick that is not the replay's, the state's cursor read is the start", () => {
     expect(resolveReplayWalkStart(stateWith(42_000), midSeek)).toEqual({ frame: 42_000, from: "cursor" });
   });
 
@@ -443,6 +443,26 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
 
     await vi.advanceTimersByTimeAsync(3_000);
 
+    await expect(done).resolves.toEqual({ frame: 200_000, from: "cursor" });
+  });
+
+  it("a press with nothing on its way steps from the fresh tick, not the state's stale cursor", async () => {
+    setUp({ frame: 200_000 });
+
+    // Just after a landing the gate confirmed: the debounced state still holds the frame from before the search.
+    const starts: SettledReplayWalkStart[] = [];
+    const done = awaitReplayWalkStart(
+      () => ({ ...state.getReplayState(), inReplay: true, cursorFrame: 100_000 }),
+      () => sim.telemetry(),
+      (start) => {
+        starts.push(start);
+
+        return start;
+      },
+    );
+
+    // Nothing to wait for: it acts inside the call.
+    expect(starts).toEqual([{ frame: 200_000, from: "cursor" }]);
     await expect(done).resolves.toEqual({ frame: 200_000, from: "cursor" });
   });
 
