@@ -51,6 +51,7 @@ import {
   readReplayPosition,
   replaySearchOnItsWay,
   type ReplaySearchOnItsWay,
+  replaySlotHeldBefore,
   waitForReplaySearchLanding,
 } from "./replay-command-gate.js";
 import { engineLogger } from "./replay-engine-env.js";
@@ -130,6 +131,25 @@ async function waitForPacedRun(): Promise<string> {
     });
 
     return ended.kind === "done" ? "the paced run ended" : "the paced run outlasted the wait";
+  } catch (err) {
+    return `failed: ${String(err)}`;
+  }
+}
+
+/**
+ * Waits, on the engine clock, until no command pressed before the waiting
+ * start `gateWait` is held in the gate's slot, which the gate's own poll
+ * sends or drops. Bounded by {@link REPLAY_JUMP_MAX_WAIT_MS}, the longest the
+ * jump such a command waits behind is waited for.
+ */
+async function waitForSlotAhead(gateWait: number): Promise<string> {
+  try {
+    const ended = await pollUntil(() => (replaySlotHeldBefore(gateWait) ? undefined : true), {
+      intervalMs: REPLAY_JUMP_POLL_MS,
+      timeoutMs: REPLAY_JUMP_MAX_WAIT_MS,
+    });
+
+    return ended.kind === "done" ? "the command pressed before it went" : "the command pressed before it still waits";
   } catch (err) {
     return `failed: ${String(err)}`;
   }
@@ -416,6 +436,20 @@ async function drainWaitingStarts(): Promise<void> {
           landedJustNow = outcome === "landed";
           continue;
         }
+      }
+
+      // A command pressed before this start still waits in the slot (behind an earlier start's jump, say): it goes
+      // first, and the start reads again once it has, so its own jump never drops that command.
+      if (isSettled(start) && waits < MAX_SEARCH_WAITS && replaySlotHeldBefore(head.gateWait)) {
+        waits++;
+        landedJustNow = false;
+
+        const outcome = await waitForSlotAhead(head.gateWait);
+
+        if (generation !== drainGeneration) return;
+
+        log().debug(`Replay step start: ${outcome}`);
+        continue;
       }
 
       if (!isSettled(start)) {

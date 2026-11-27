@@ -531,6 +531,18 @@ function startWaitsBefore(order: number): boolean {
   return false;
 }
 
+/**
+ * Whether a command pressed before the waiting start `id` still waits in the
+ * slot (#1660): held behind a jump an earlier start sent, say. The start waits
+ * for it to go out before it reads where it starts, so its own step, a jump
+ * that replaces the target, never drops a command pressed before it.
+ */
+export function replaySlotHeldBefore(id: number): boolean {
+  const wait = startWaits.get(id);
+
+  return wait !== undefined && slot !== null && slot.order < wait.order;
+}
+
 /** Runs `listener` on every change of any token's view. Returns the unsubscribe. */
 export function subscribeReplayGate(listener: (notice: ReplayGateNotice) => void): () => void {
   listeners.add(listener);

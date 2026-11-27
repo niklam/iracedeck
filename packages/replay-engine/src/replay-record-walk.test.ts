@@ -1118,6 +1118,33 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
       ]);
     });
 
+    it("a start queued after a command re-held behind an earlier start's jump waits for that command, then steps from its landing", async () => {
+      setUp(withIncidents);
+      search("nextSession");
+
+      const order: string[] = [];
+      const jumps: Promise<unknown>[] = [];
+      const a = jumpPress("a", order, jumps);
+
+      expect(incidentKey()).toEqual({ kind: "held" });
+
+      const c = jumpPress("c", order, jumps);
+
+      await vi.advanceTimersByTimeAsync(10_000);
+      await Promise.all([a, c]);
+      await vi.advanceTimersByTimeAsync(5_000);
+      await Promise.all(jumps);
+
+      expect(order).toEqual(["a cursor 200000", "c cursor 280000"]);
+      expect(sim.calls.filter((call) => call !== "pause")).toEqual([
+        "nextSession",
+        "setPlayPosition 0 250000",
+        "nextIncident",
+        "setPlayPosition 0 330000",
+      ]);
+      expect(sim.thrown).toBe(0);
+    });
+
     it("when the start that went first sends nothing, the slot's command goes out before the next start reads", async () => {
       setUp(withIncidents);
       search("nextSession");
