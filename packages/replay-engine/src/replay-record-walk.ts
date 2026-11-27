@@ -362,8 +362,10 @@ async function drainWaitingStarts(): Promise<void> {
   const generation = drainGeneration;
   let waits = 0;
   /**
-   * Whether the head's last wait ended on a landing, or was a paced run that has ended: its cursor is then read
-   * from a fresh tick ({@link freshCursor}).
+   * Whether the last wait ended on a landing, or was a paced run that has ended: a cursor start is then read from a
+   * fresh tick ({@link freshCursor}). It holds for every head that settles after that wait, not the first alone,
+   * since the debounced state may still be stale for the next press too; a new wait, or a start from a pending
+   * target, ends it.
    */
   let landedJustNow = false;
 
@@ -382,7 +384,6 @@ async function drainWaitingStarts(): Promise<void> {
       } catch (err) {
         dropHead(head, err);
         waits = 0;
-        landedJustNow = false;
         continue;
       }
 
@@ -423,20 +424,19 @@ async function drainWaitingStarts(): Promise<void> {
 
       waits = 0;
 
-      const afterLanding = landedJustNow;
-
-      landedJustNow = false;
-
       let settled: SettledReplayWalkStart;
 
       try {
         settled = isSettled(start) ? start : cursorStart(head.readState());
 
-        if (afterLanding) settled = freshCursor(settled, head.readTelemetry());
+        if (landedJustNow) settled = freshCursor(settled, head.readTelemetry());
       } catch (err) {
         dropHead(head, err);
         continue;
       }
+
+      // A start from a pending target: the replay is headed somewhere new, and later heads read that target.
+      if (settled.frame !== null && settled.from === "target") landedJustNow = false;
 
       waitingStarts.shift();
       const reason = settled.frame === null && settled.reason === "not in a replay" ? "replay-left" : "sent-on-landing";

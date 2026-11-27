@@ -446,6 +446,29 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
     await expect(done).resolves.toEqual({ frame: 200_000, from: "cursor" });
   });
 
+  it("reads every press queued behind the landing from a fresh tick, not only the first", async () => {
+    setUp();
+    search("nextSession");
+
+    // Never stepped with the ticks the gate's polls took; both presses send nothing (no marker that way).
+    const stale = (): ReplayState => ({ ...state.getReplayState(), inReplay: true, cursorFrame: 100_000 });
+    const first = awaitReplayWalkStart(
+      stale,
+      () => sim.telemetry(),
+      (start) => start,
+    );
+    const second = awaitReplayWalkStart(
+      stale,
+      () => sim.telemetry(),
+      (start) => start,
+    );
+
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    await expect(first).resolves.toEqual({ frame: 200_000, from: "cursor" });
+    await expect(second).resolves.toEqual({ frame: 200_000, from: "cursor" });
+  });
+
   it("keeps the debounced cursor when the fresh tick after a landing is not the replay's", async () => {
     setUp();
     search("nextSession");
