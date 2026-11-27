@@ -300,10 +300,11 @@ interface Slot {
    */
   follow?: boolean;
   /**
-   * Set when the search it waited behind landed while a start pressed before
-   * it still waited (#1660): it was held back for those starts, and goes once
-   * they have acted ({@link releaseOnLanding}), even if a start's jump has
-   * since forgotten the landed record.
+   * Set when the search it waited behind landed, or could no longer be
+   * running, while a start pressed before it still waited (#1660): it was
+   * held back for those starts, and goes once they have acted
+   * ({@link releaseOnLanding}, or the takeover when no jump of theirs stands),
+   * even if a start's jump has since forgotten the record.
    */
   searchLanded?: boolean;
 }
@@ -1427,6 +1428,8 @@ function takeOver(
   options: ReplayPressOptions,
   telemetry: TelemetryData | null,
   now: number,
+  /** A held command's own press time and place in press order, kept when the slot hands it to the takeover. */
+  keep?: { readonly pressedAt: number; readonly order: number },
 ): ReplayPressResult {
   const record = search;
   const reading = readReplay(telemetry) ?? lastReplay;
@@ -1473,8 +1476,8 @@ function takeOver(
       by: options.by,
       origin: options.origin,
       rememberSpeed: options.rememberSpeed === true,
-      pressedAt: now,
-      order: ++pressOrder,
+      pressedAt: keep?.pressedAt ?? now,
+      order: keep?.order ?? ++pressOrder,
       behind: "jump",
       behindTargetId: target.id,
       jumpPlayback: null,
@@ -1503,7 +1506,8 @@ function serviceSlot(telemetry: TelemetryData | null, now: number): void {
 
 function serviceBehindSearch(current: Slot, telemetry: TelemetryData | null, now: number): void {
   const record = search;
-  // A slot held back at its landing still counts it landed once a start's jump has forgotten the record.
+  // A slot held back at its landing, or at its search's end, still counts it ended once a start's jump has forgotten
+  // the record.
   const landed = record === null ? current.searchLanded === true : record.landed;
 
   if (record === null && !landed) {
@@ -1532,10 +1536,27 @@ function serviceBehindSearch(current: Slot, telemetry: TelemetryData | null, now
 
   if (record === null) return;
 
-  // A search on its way again (a start that went first sent one): the slot waits for that one, by the table.
-  current.searchLanded = false;
-
   if (!record.onItsWay) {
+    // The search can no longer be running: a start pressed before the command still goes first (#1660), as at a
+    // landing, so the command is held back rather than taking over into that start's step.
+    if (startWaitsBefore(current.order)) {
+      if (current.searchLanded !== true) {
+        current.searchLanded = true;
+        log().debug(
+          `Replay command held at the search's end: ${describe(current.command)} (${current.by}) waits for a step pressed before it`,
+        );
+      }
+
+      return;
+    }
+
+    // Held back, and that start sent a jump: the command is decided against it, as at a landing.
+    if (current.searchLanded === true && jumpUnderWay()) {
+      releaseOnLanding(current, telemetry, now);
+
+      return;
+    }
+
     slot = null;
     noteEnd(current.origin, "waiting", "took-over");
     takeOver(
@@ -1543,8 +1564,14 @@ function serviceBehindSearch(current: Slot, telemetry: TelemetryData | null, now
       { by: current.by, origin: current.origin, rememberSpeed: current.rememberSpeed },
       telemetry,
       now,
+      { pressedAt: current.pressedAt, order: current.order },
     );
+
+    return;
   }
+
+  // A search on its way again (a start that went first sent one): the slot waits for that one, by the table.
+  current.searchLanded = false;
 }
 
 /**

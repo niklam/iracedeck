@@ -806,6 +806,66 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
       await Promise.allSettled(jumps);
     });
 
+    it("a command behind a search that can no longer be running waits for a start pressed before it, then waits behind its jump", async () => {
+      setUp();
+      // Finds nothing on a paused replay: unseen, it ends only when it could no longer be running.
+      search("nextIncident");
+
+      const couldRunMs = replaySearchOnItsWay()?.couldRunMs ?? 0;
+      const order: string[] = [];
+      const jumps: Promise<unknown>[] = [];
+      const a = jumpPress("a", order, jumps);
+
+      expect(
+        pressReplayCommand({ kind: "search", search: "nextSession" }, { by: "test-session", origin: "key-g" }),
+      ).toEqual({ kind: "held" });
+
+      await vi.advanceTimersByTimeAsync(couldRunMs + 500);
+      await a;
+      await vi.advanceTimersByTimeAsync(5_000);
+      await Promise.all(jumps);
+
+      // No takeover into the step: the step went first from the cursor, then the session search from its jump.
+      expect(order).toEqual(["a cursor 100000"]);
+      expect(sim.calls).toEqual(["nextIncident", "setPlayPosition 0 150000", "nextSession"]);
+      expect(sim.frame()).toBe(250_000);
+      expect(sim.thrown).toBe(0);
+    });
+
+    it("a command held at its search's end waits behind a start's jump that left the search record standing", async () => {
+      setUp();
+      search("nextIncident");
+
+      const couldRunMs = replaySearchOnItsWay()?.couldRunMs ?? 0;
+      let jump: ReturnType<typeof beginReplayJump> | null = null;
+      // A jump sequence that records its frame and sends no position jump of its own leaves the search record as it is.
+      const a = awaitReplayWalkStart(
+        readState,
+        () => sim.telemetry(),
+        (start) => {
+          if (start.frame === null) return;
+
+          jump = beginReplayJump("test-a", sim.telemetry(), undefined, Date.now(), {
+            frame: start.frame + 50_000,
+            sendsPositionJump: false,
+          });
+        },
+      );
+
+      expect(
+        pressReplayCommand({ kind: "search", search: "nextSession" }, { by: "test-session", origin: "key-g" }),
+      ).toEqual({ kind: "held" });
+
+      await vi.advanceTimersByTimeAsync(couldRunMs + 500);
+      await a;
+
+      // Decided against the start's jump by the table: a search waits for its read-back, no takeover is sent.
+      expect(sim.calls).toEqual(["nextIncident"]);
+      expect(getReplayGateRecord().waiting).toMatchObject({ command: "nextSession", behind: "jump" });
+
+      (jump as ReturnType<typeof beginReplayJump> | null)?.end();
+    });
+
     it("when the start that went first sends nothing, the slot's command goes out before the next start reads", async () => {
       setUp(withIncidents);
       search("nextSession");
