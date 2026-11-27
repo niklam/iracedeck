@@ -660,6 +660,26 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
     expect(sim.frame()).toBe(450_000);
   });
 
+  it("steps from the paced run's final landing a fresh tick shows when the debounced state never stepped through the run", async () => {
+    setUp();
+    queueReplaySearch({ target: "session", ticks: 3, origin: "dial-1", owner: "replay-control-dial session" });
+    await vi.advanceTimersByTimeAsync(1_200);
+
+    expect(pendingReplaySearch()).not.toBeNull();
+
+    // The controller's state, never stepped with the ticks the run and the gate took: still at the pre-run frame.
+    const done = awaitReplayWalkStart(
+      () => ({ ...state.getReplayState(), inReplay: true, cursorFrame: 100_000 }),
+      () => sim.telemetry(),
+      (start) => start,
+    );
+
+    await vi.advanceTimersByTimeAsync(15_000);
+
+    await expect(done).resolves.toEqual({ frame: 400_000, from: "cursor" });
+    expect(sim.calls.filter((call) => call === "nextSession")).toHaveLength(3);
+  });
+
   it("waits through a playing run's jump back, whose target is the run's own, for the run's final landing", async () => {
     setUp({
       speed: { speed: 1, slowMotion: false },

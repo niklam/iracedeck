@@ -361,7 +361,10 @@ function dropHead(head: WaitingStart, err: unknown): void {
 async function drainWaitingStarts(): Promise<void> {
   const generation = drainGeneration;
   let waits = 0;
-  /** Whether the head's last wait ended on a landing: its cursor is then read from a fresh tick ({@link freshCursor}). */
+  /**
+   * Whether the head's last wait ended on a landing, or was a paced run that has ended: its cursor is then read
+   * from a fresh tick ({@link freshCursor}).
+   */
   let landedJustNow = false;
 
   draining = true;
@@ -393,6 +396,9 @@ async function drainWaitingStarts(): Promise<void> {
           if (generation !== drainGeneration) return;
 
           log().debug(`Replay step start: ${outcome}`);
+          // The run's reads took ticks too. Its run state ends without saying whether it ended on a landing, so the
+          // cursor is read fresh after any run end: the fresh tick is never older than the gate's last reading.
+          landedJustNow = true;
           continue;
         }
 
@@ -447,9 +453,10 @@ async function drainWaitingStarts(): Promise<void> {
 }
 
 /**
- * A cursor start read right after a search's landing, taken from a fresh
- * tick when that tick is the replay's. Telemetry is read once per tick for
- * the whole process: the gate's polls, which judged the landing, take ticks
+ * A cursor start read right after a search's landing, or the end of the
+ * dial's paced run, taken from a fresh tick when that tick is the replay's.
+ * Telemetry is read once per tick for the whole process: the gate's polls,
+ * which judged the landing, and the run's own reads take ticks
  * through `getCurrentTelemetry()` that the controller's debounced replay
  * state is never stepped with, so its cursor read can still be the frame
  * from before the search. `telemetry` is the newest tick anyone read, never
