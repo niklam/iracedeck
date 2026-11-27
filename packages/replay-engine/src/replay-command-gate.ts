@@ -1616,10 +1616,15 @@ function releaseOnLanding(current: Slot, telemetry: TelemetryData | null, now: n
     return;
   }
 
+  // A send the SDK refused ends as refused, so the surface shows not-done; a pause the gate drops is cleared by it.
   noteEnd(
     current.origin,
     "waiting",
-    result.kind === "sent" ? "sent-on-landing" : current.command.kind === "pause" ? "cleared-by-pause" : "refused",
+    result.kind === "sent" && result.ok
+      ? "sent-on-landing"
+      : result.kind !== "sent" && current.command.kind === "pause"
+        ? "cleared-by-pause"
+        : "refused",
   );
 }
 

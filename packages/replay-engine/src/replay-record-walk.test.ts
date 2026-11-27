@@ -866,6 +866,38 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
       (jump as ReturnType<typeof beginReplayJump> | null)?.end();
     });
 
+    it("a go to end released against a start's jump and refused by the SDK ends as refused, with no word of leaving for live", async () => {
+      setUp();
+      search("nextSession");
+
+      const notices: ReplayGateNotice[] = [];
+
+      subscribeReplayGate((notice) => notices.push(notice));
+
+      const order: string[] = [];
+      const jumps: Promise<unknown>[] = [];
+      const a = jumpPress("a", order, jumps);
+
+      vi.mocked(sim.replay.goToEnd).mockReturnValue(false);
+
+      expect(pressReplayCommand({ kind: "go-to", end: "end" }, { by: "test-live", origin: "key-live" })).toEqual({
+        kind: "held",
+      });
+
+      await vi.advanceTimersByTimeAsync(3_000);
+      await a;
+
+      expect(order).toEqual(["a cursor 200000"]);
+      expect(sim.replay.goToEnd).toHaveBeenCalledTimes(1);
+      expect(notices.filter((n) => n.origin === "key-live").flatMap((n) => n.ended)).toEqual([
+        { fact: "waiting", class: "gave-up", reason: "refused" },
+      ]);
+      expect(leftForLive).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      await Promise.allSettled(jumps);
+    });
+
     it("when the start that went first sends nothing, the slot's command goes out before the next start reads", async () => {
       setUp(withIncidents);
       search("nextSession");
