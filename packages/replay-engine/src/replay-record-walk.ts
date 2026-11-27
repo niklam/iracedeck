@@ -54,6 +54,7 @@ import {
   waitForReplaySearchLanding,
 } from "./replay-command-gate.js";
 import { engineLogger } from "./replay-engine-env.js";
+import { readReplay } from "./replay-reading.js";
 import { pendingReplaySearch, SEARCH_QUEUE_MAX } from "./replay-search-queue.js";
 import { REPLAY_JUMP_MAX_WAIT_MS, REPLAY_JUMP_POLL_MS } from "./replay-timing.js";
 
@@ -360,6 +361,8 @@ function dropHead(head: WaitingStart, err: unknown): void {
 async function drainWaitingStarts(): Promise<void> {
   const generation = drainGeneration;
   let waits = 0;
+  /** Whether the head's last wait ended on a landing: its cursor is then read from a fresh tick ({@link freshCursor}). */
+  let landedJustNow = false;
 
   draining = true;
 
@@ -376,11 +379,13 @@ async function drainWaitingStarts(): Promise<void> {
       } catch (err) {
         dropHead(head, err);
         waits = 0;
+        landedJustNow = false;
         continue;
       }
 
       if (!isSettled(start) && waits < MAX_SEARCH_WAITS) {
         waits++;
+        landedJustNow = false;
 
         if (pacedRunUnderWay()) {
           const outcome = await waitForPacedRun();
@@ -401,6 +406,7 @@ async function drainWaitingStarts(): Promise<void> {
           log().debug(`Replay step start: the search on its way ended (${outcome})`);
           // Landed or not, it is no longer one to wait for: the start is read again from the top.
           waitedOutSearchId = search.id;
+          landedJustNow = outcome === "landed";
           continue;
         }
       }
@@ -411,10 +417,16 @@ async function drainWaitingStarts(): Promise<void> {
 
       waits = 0;
 
+      const afterLanding = landedJustNow;
+
+      landedJustNow = false;
+
       let settled: SettledReplayWalkStart;
 
       try {
         settled = isSettled(start) ? start : cursorStart(head.readState());
+
+        if (afterLanding) settled = freshCursor(settled, head.readTelemetry());
       } catch (err) {
         dropHead(head, err);
         continue;
@@ -432,6 +444,25 @@ async function drainWaitingStarts(): Promise<void> {
   } finally {
     if (generation === drainGeneration) draining = false;
   }
+}
+
+/**
+ * A cursor start read right after a search's landing, taken from a fresh
+ * tick when that tick is the replay's. Telemetry is read once per tick for
+ * the whole process: the gate's polls, which judged the landing, take ticks
+ * through `getCurrentTelemetry()` that the controller's debounced replay
+ * state is never stepped with, so its cursor read can still be the frame
+ * from before the search. `telemetry` is the newest tick anyone read, never
+ * older than the reading the gate's landing held on; on a playing replay it
+ * is the frame playing now, which needs no direction to compare. A target,
+ * no cursor or a tick that is not the replay's keep the start as read.
+ */
+function freshCursor(start: SettledReplayWalkStart, telemetry: TelemetryData | null): SettledReplayWalkStart {
+  if (start.frame === null || start.from !== "cursor") return start;
+
+  const reading = readReplay(telemetry);
+
+  return reading === null ? start : { frame: reading.frame, from: "cursor" };
 }
 
 /** Why a waiting start's promise rejects when the engine is reset under it: its `act` never runs. */

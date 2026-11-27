@@ -429,6 +429,42 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
     expect(starts).toHaveLength(1);
   });
 
+  it("steps from the landing a fresh tick shows when the debounced state still holds the cursor from before the search", async () => {
+    setUp();
+    search("nextSession");
+
+    // The controller's state, never stepped with the ticks the gate's polls took: still at the pre-search frame.
+    const stale = (): ReplayState => ({ ...state.getReplayState(), inReplay: true, cursorFrame: 100_000 });
+    const done = awaitReplayWalkStart(
+      stale,
+      () => sim.telemetry(),
+      (start) => start,
+    );
+
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    await expect(done).resolves.toEqual({ frame: 200_000, from: "cursor" });
+  });
+
+  it("keeps the debounced cursor when the fresh tick after a landing is not the replay's", async () => {
+    setUp();
+    search("nextSession");
+
+    let fresh: TelemetryData | null = null;
+    const done = awaitReplayWalkStart(
+      () => ({ ...state.getReplayState(), inReplay: true, cursorFrame: 100_000 }),
+      () => fresh ?? sim.telemetry(),
+      (start) => start,
+    );
+
+    // Before the landing, the press's own telemetry read turns to a tick from the car; the gate's reads stay the sim's.
+    await vi.advanceTimersByTimeAsync(300);
+    fresh = { IsReplayPlaying: false, ReplayFrameNum: 0, ReplayFrameNumEnd: 900 } as TelemetryData;
+    await vi.advanceTimersByTimeAsync(2_700);
+
+    await expect(done).resolves.toEqual({ frame: 100_000, from: "cursor" });
+  });
+
   it("does not wait for a go to end", () => {
     setUp();
     pressReplayCommand({ kind: "go-to", end: "end" }, { by: "test-go-to" });
