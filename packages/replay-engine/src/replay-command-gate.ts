@@ -509,6 +509,18 @@ const startWaits = new Map<number, StartWait>();
 let startWaitSeq = 0;
 /** The last press order given to a slot command or a waiting start (#1660). */
 let pressOrder = 0;
+/**
+ * The press order of the start whose `act` is running inside
+ * {@link closeReplayGateWait}, or null (#1660). A press that `act` makes is
+ * that start's own step, so it takes the start's place in press order rather
+ * than a new one behind the starts still waiting.
+ */
+let actingStartOrder: number | null = null;
+
+/** The press order a new press or slot command takes: the acting start's while one acts, else the next. */
+function nextPressOrder(): number {
+  return actingStartOrder ?? ++pressOrder;
+}
 
 /** Whether a start pressed before `order` still waits: it goes before the slot's command at a landing (#1660). */
 function startWaitsBefore(order: number): boolean {
@@ -1367,7 +1379,7 @@ function holdBehindJump(
     origin: options.origin,
     rememberSpeed: options.rememberSpeed === true,
     pressedAt: now,
-    order: ++pressOrder,
+    order: nextPressOrder(),
     behind: "jump",
     behindTargetId: pendingReplayTarget()?.id ?? null,
     jumpPlayback,
@@ -1406,7 +1418,7 @@ function waitBehindSearch(
     origin: options.origin,
     rememberSpeed: options.rememberSpeed === true,
     pressedAt: now,
-    order: ++pressOrder,
+    order: nextPressOrder(),
     behind: "search",
     behindTargetId: null,
     jumpPlayback: null,
@@ -1477,7 +1489,7 @@ function takeOver(
       origin: options.origin,
       rememberSpeed: options.rememberSpeed === true,
       pressedAt: keep?.pressedAt ?? now,
-      order: keep?.order ?? ++pressOrder,
+      order: keep?.order ?? nextPressOrder(),
       behind: "jump",
       behindTargetId: target.id,
       jumpPlayback: null,
@@ -1884,8 +1896,9 @@ export function pressReplayCommand(command: ReplayGateCommand, options: ReplayPr
     takeCursor(options.by, options.origin);
 
     // Its place in press order, before anything is decided (#1660): a step's start pressed before it that still
-    // waits goes first, so a command that would go out at once is held back for it instead.
-    const order = ++pressOrder;
+    // waits goes first, so a command that would go out at once is held back for it instead. A press a start's own
+    // act makes takes that start's place, so the start's step is never held back behind the starts after it.
+    const order = nextPressOrder();
 
     result = heldForEarlierStart(command, order)
       ? holdForEarlierStart(command, options, now, order)
@@ -2831,9 +2844,16 @@ export function closeReplayGateWait<T>(id: number, reason: ReplayGateEndReason, 
 
       if (parked !== null) slot = null;
 
+      const outerActing = actingStartOrder;
+
+      // A press `then` makes is this start's own step: it keeps the start's place in press order.
+      actingStartOrder = wait?.order ?? outerActing;
+
       try {
         return then();
       } finally {
+        actingStartOrder = outerActing;
+
         if (parked !== null) {
           // The start's own command waiting in the slot is the older press: the held-back one replaces it.
           if (slot !== null) emptySlot("replaced", "a newer press held back at the landing takes the slot");
@@ -3009,6 +3029,7 @@ export function _resetReplayCommandGate(): void {
   startWaits.clear();
   startWaitSeq = 0;
   pressOrder = 0;
+  actingStartOrder = null;
   takeover = null;
   slot = null;
   held = null;

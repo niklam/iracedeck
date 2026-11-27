@@ -1038,6 +1038,36 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
       expect(order).toEqual(["target 600000"]);
     });
 
+    it("two step presses with no record during a search fall back to two searches, the second from the first's landing", async () => {
+      setUp({ searches: { nextLap: (from: number) => from + 3_000 } });
+      search("nextSession");
+
+      const order: string[] = [];
+      /** A Replay Control Next Lap with no lap record: its act falls back to the key's search through the gate. */
+      const lapPress = (name: string) =>
+        awaitReplayWalkStart(
+          readState,
+          () => sim.telemetry(),
+          (start) => {
+            order.push(`${name} ${start.frame === null ? start.reason : `${start.from} ${start.frame}`}`);
+
+            return pressReplayCommand({ kind: "search", search: "nextLap" }, { by: `test-${name}` });
+          },
+        );
+
+      const first = lapPress("a");
+      const second = lapPress("b");
+
+      await vi.advanceTimersByTimeAsync(3_000);
+
+      await expect(first).resolves.toEqual({ kind: "sent", ok: true });
+      await expect(second).resolves.toEqual({ kind: "sent", ok: true });
+
+      expect(order).toEqual(["a cursor 200000", "b cursor 203000"]);
+      expect(sim.calls).toEqual(["nextSession", "nextLap", "nextLap"]);
+      expect(sim.frame()).toBe(206_000);
+    });
+
     it("when the start that went first sends nothing, the slot's command goes out before the next start reads", async () => {
       setUp(withIncidents);
       search("nextSession");
