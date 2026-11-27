@@ -898,6 +898,90 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
       await Promise.allSettled(jumps);
     });
 
+    /**
+     * When the gate's own polls judge the session search landed, in ms from its send: a dry run of the same
+     * timeline. The landing is judged on the first read 50 ms after the leap, so a press a few ms before it reads
+     * the landing in its own settle, before the waiting start's poll does.
+     */
+    async function landingJudgedAt(): Promise<number> {
+      setUp(withIncidents);
+      search("nextSession");
+      // Settled or dropped by the reset after it; neither matters to the dry run.
+      awaitReplayWalkStart(
+        readState,
+        () => sim.telemetry(),
+        () => undefined,
+      ).catch(() => undefined);
+
+      for (let ms = 1; ms <= 3_000; ms++) {
+        await vi.advanceTimersByTimeAsync(1);
+
+        if (getReplayGateRecord().search?.onItsWay === "no") return ms;
+      }
+
+      throw new Error("the session search never landed");
+    }
+
+    it("a press whose own read is the gate's first read of the landing does not overtake the earlier start", async () => {
+      const landedAt = await landingJudgedAt();
+
+      resetEngine();
+      vi.setSystemTime(1_000_000);
+      setUp(withIncidents);
+      search("nextSession");
+
+      const order: string[] = [];
+      const jumps: Promise<unknown>[] = [];
+      const a = jumpPress("a", order, jumps);
+
+      await vi.advanceTimersByTimeAsync(landedAt - 5);
+
+      expect(getReplayGateRecord().search?.onItsWay).not.toBe("no");
+      expect(incidentKey()).toEqual({ kind: "held" });
+      // The press's own settle read the landing, and the start has not acted: the moment the overtake happened in.
+      expect(getReplayGateRecord().search?.onItsWay).toBe("no");
+      expect(order).toEqual([]);
+
+      await vi.advanceTimersByTimeAsync(100);
+      await a;
+      await vi.advanceTimersByTimeAsync(5_000);
+      await Promise.all(jumps);
+
+      expect(order).toEqual(["a cursor 200000"]);
+      expect(sim.calls.filter((call) => call !== "pause")).toEqual([
+        "nextSession",
+        "setPlayPosition 0 250000",
+        "nextIncident",
+      ]);
+      expect(sim.thrown).toBe(0);
+    });
+
+    it("an absolute jump pressed in that moment still goes out at once, and the waiting start steps from its target", async () => {
+      const landedAt = await landingJudgedAt();
+
+      resetEngine();
+      vi.setSystemTime(1_000_000);
+      setUp(withIncidents);
+      search("nextSession");
+
+      const order: string[] = [];
+      const a = awaitReplayWalkStart(
+        readState,
+        () => sim.telemetry(),
+        (start) => order.push(start.frame === null ? start.reason : `${start.from} ${start.frame}`),
+      );
+
+      await vi.advanceTimersByTimeAsync(landedAt - 5);
+
+      expect(pressReplayCommand({ kind: "jump", frame: 600_000 }, { by: "test-jump" })).toMatchObject({ kind: "sent" });
+      expect(order).toEqual([]);
+
+      await vi.advanceTimersByTimeAsync(100);
+      await a;
+
+      expect(order).toEqual(["target 600000"]);
+    });
+
     it("when the start that went first sends nothing, the slot's command goes out before the next start reads", async () => {
       setUp(withIncidents);
       search("nextSession");

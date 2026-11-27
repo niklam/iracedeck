@@ -1882,11 +1882,68 @@ export function pressReplayCommand(command: ReplayGateCommand, options: ReplayPr
     const capturedBySequence = before !== null ? capturedJumpSpeed() : null;
 
     takeCursor(options.by, options.origin);
-    result = decide(command, options, telemetry, now, before, capturedBySequence);
+
+    // Its place in press order, before anything is decided (#1660): a step's start pressed before it that still
+    // waits goes first, so a command that would go out at once is held back for it instead.
+    const order = ++pressOrder;
+
+    result = heldForEarlierStart(command, order)
+      ? holdForEarlierStart(command, options, now, order)
+      : decide(command, options, telemetry, now, before, capturedBySequence);
   });
   arm();
 
   return result;
+}
+
+/**
+ * Whether a press is held back for a step's start pressed before it (#1660):
+ * one still waits, and the table would send the press at once, because
+ * nothing is under way and no search is on its way (a search that landed or
+ * can no longer be running included; the gate reads its landing a moment
+ * before the waiting start acts on it, and a press in that moment would
+ * otherwise overtake the start). Behind a jump or a search on its way the
+ * table holds or sends it as before, and at that landing the slot waits for
+ * the earlier start anyway. An absolute jump is never held back: it is the
+ * newest word on where the replay goes, which the table sends into anything,
+ * and a start still waiting then steps from its target.
+ */
+function heldForEarlierStart(command: ReplayGateCommand, order: number): boolean {
+  return command.kind !== "jump" && startWaitsBefore(order) && !jumpUnderWay() && !searchOnItsWay();
+}
+
+/**
+ * Holds a press back in the slot for a start pressed before it (#1660), as a
+ * command held back at a landing: it goes once the earlier starts have acted
+ * (`closeReplayGateWait` services the slot), decided against a jump one of
+ * them sent, else sent as it is. One slot, newest wins: a command already
+ * held there is replaced.
+ */
+function holdForEarlierStart(
+  command: ReplayGateCommand,
+  options: ReplayPressOptions,
+  now: number,
+  order: number,
+): ReplayPressResult {
+  if (slot !== null) emptySlot("replaced");
+
+  slot = {
+    command,
+    by: options.by,
+    origin: options.origin,
+    rememberSpeed: options.rememberSpeed === true,
+    pressedAt: now,
+    order,
+    behind: "search",
+    behindTargetId: null,
+    jumpPlayback: null,
+    restoreSpeed: null,
+    holds: [],
+    searchLanded: true,
+  };
+  log().debug(`Replay command held: ${describe(command)} (${options.by}) waits for a step pressed before it`);
+
+  return { kind: "held" };
 }
 
 function decide(
