@@ -100,6 +100,7 @@ import {
   type ToggleState,
 } from "../../icons/status-bar.js";
 import { carCycleBindingKey } from "../../shared/car-cycle-bindings.js";
+import { noteCameraKeyTap } from "../../shared/car-cycle-focus.js";
 import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { setSelectIntent } from "../../shared/car-select-intent.js";
 import { availableProfilesForDevice, deviceProfileEntries, profileEntriesEqual } from "../../shared/profile-entries.js";
@@ -1784,6 +1785,9 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     }
 
     this.requestSwitch(ask, switchWhat, async () => {
+      // A Next / Previous Car tap picks the car past the SDK's camera
+      // commands, so it ends the director focus they keep (#1656).
+      noteCameraKeyTap(settingKey);
       await this.tapBinding(settingKey);
       this.logger.info(`${what} cycled`);
       this.logger.debug(`direction: ${direction}, binding: ${settingKey}`);

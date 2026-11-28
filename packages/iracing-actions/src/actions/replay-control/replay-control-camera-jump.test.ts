@@ -244,7 +244,11 @@ describe("Replay Control's camera keys against a real replay jump (#1428 / #1435
   let sim: FakeReplay;
   let camCarIdx = CAMERA_AT_PRESS;
   let seen: Seen[] = [];
-  const camera = { switchNum: vi.fn<(carNum: number, group: number, cam: number) => boolean>(() => true) };
+  const camera = {
+    switchNum: vi.fn<(carNum: number, group: number, cam: number) => boolean>(() => true),
+    // A Next / Previous Car tap ends iRacing's director focus first (#1656).
+    forgetFocusMode: vi.fn(),
+  };
 
   function note(what: string): void {
     seen.push({ what, busy: sim.busy(), open: isReplayJumpSequenceOpen(), frame: sim.frame() });

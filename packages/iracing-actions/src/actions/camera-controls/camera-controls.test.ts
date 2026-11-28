@@ -16,7 +16,7 @@ import {
   FASTEST_LAP_WALK_OWNER,
   steppedReplayState,
 } from "@iracedeck/replay-engine/testing";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import z from "zod";
 
 import { borderColorForState, statusBarNA, statusBarOff, statusBarOn } from "../../icons/status-bar.js";
@@ -219,6 +219,9 @@ const { mockGetGlobalSettings, mockCamera, autoGroupSdk } = vi.hoisted(() => ({
     focusOnLeader: vi.fn(() => true),
     focusOnIncident: vi.fn(() => true),
     focusOnMostExciting: vi.fn(() => true),
+    // The director focus the SDK keeps (#1656): none, unless a test sets one.
+    focusModeInEffect: vi.fn((): number | null => null),
+    forgetFocusMode: vi.fn(),
   },
 }));
 
@@ -1407,6 +1410,8 @@ describe("cycle-sub-camera taps the iRacing sub-camera binding (#852)", () => {
     // The broadcast camera argument is inert for sub-cameras — never dispatch one.
     expect(mockCamera.switchNum).not.toHaveBeenCalled();
     expect(mockCamera.switchPos).not.toHaveBeenCalled();
+    // A sub-camera keeps the car, so iRacing's director focus stays (#1656).
+    expect(mockCamera.forgetFocusMode).not.toHaveBeenCalled();
   });
 
   it("taps the Previous Sub-Camera binding on a previous detent", async () => {
@@ -2033,6 +2038,28 @@ describe("cycle-track-order taps iRacing's Next / Previous Car binding (#1277)",
     expect(spy(action).tapBinding).toHaveBeenCalledTimes(1);
     expect(spy(action).tapBinding).toHaveBeenCalledWith(CAR_CYCLE_BINDING_KEYS.next);
     expectNoCameraBroadcast();
+  });
+
+  it.each(["next", "previous"] as const)(
+    "a %s tap ends iRacing's director focus first: the car is the user's pick (#1656)",
+    async (direction) => {
+      const action = newAction();
+
+      await press(action, direction);
+
+      expect(mockCamera.forgetFocusMode).toHaveBeenCalledTimes(1);
+      expect(mockCamera.forgetFocusMode.mock.invocationCallOrder[0]).toBeLessThan(
+        spy(action).tapBinding.mock.invocationCallOrder[0],
+      );
+    },
+  );
+
+  it("a dial turn's tap ends the director focus too (#1656)", async () => {
+    const action = newAction();
+
+    await turn(action, 1);
+
+    expect(mockCamera.forgetFocusMode).toHaveBeenCalledTimes(1);
   });
 
   it("taps Previous Car on a CAR BEHIND press and sends no camera broadcast", async () => {
@@ -3304,6 +3331,15 @@ describe("camera switches wait for a replay jump to land (#1428 / #1435)", () =>
   let replayOn: boolean;
   /** Every camera command and binding tap sent, as `name(args)`, and whether the sim was moving the replay then. */
   let sent: { call: string; moving: boolean }[];
+  /** The camera's director-focus record (#1656): reads and bookkeeping, never a send. */
+  const DIRECTOR_FOCUS_RECORD: ReadonlySet<string> = new Set(["focusModeInEffect", "forgetFocusMode"]);
+
+  /** The stand-in camera's commands that send, by name: every method but the director-focus record. */
+  function sendingCommands(): Array<[string, Mock<(...args: unknown[]) => boolean>]> {
+    return Object.entries(mockCamera).filter(([name]) => !DIRECTOR_FOCUS_RECORD.has(name)) as Array<
+      [string, Mock<(...args: unknown[]) => boolean>]
+    >;
+  }
 
   /** The sim's telemetry with the camera the fake does not carry: on `camCarIdx`, group 9, sub-camera 2. */
   const telemetry = (): TelemetryData => ({
@@ -3348,7 +3384,7 @@ describe("camera switches wait for a replay jump to land (#1428 / #1435)", () =>
     sent = [];
     camCarIdx = 1;
 
-    for (const [name, command] of Object.entries(mockCamera)) {
+    for (const [name, command] of sendingCommands()) {
       command.mockImplementation((...args: unknown[]) => {
         sent.push({ call: `${name}(${args.join(", ")})`, moving: sim.busy() });
 
@@ -3365,7 +3401,7 @@ describe("camera switches wait for a replay jump to land (#1428 / #1435)", () =>
   });
 
   afterEach(() => {
-    for (const command of Object.values(mockCamera)) command.mockImplementation(() => true);
+    for (const [, command] of sendingCommands()) command.mockImplementation(() => true);
 
     vi.mocked(getCommands).mockImplementation(() => ({ camera: mockCamera }) as never);
     vi.mocked(getAllCarNumbers).mockReturnValue([]);

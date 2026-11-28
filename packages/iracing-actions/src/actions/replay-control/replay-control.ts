@@ -100,6 +100,7 @@ import { getLiveRacePositions } from "@iracedeck/sim-events-iracing";
 import z from "zod";
 
 import { CAR_CYCLE_BINDING_KEYS } from "../../shared/car-cycle-bindings.js";
+import { noteCameraKeyTap } from "../../shared/car-cycle-focus.js";
 import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
 import {
@@ -610,7 +611,12 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     sessionInfo: () => this.sdkController.getSessionInfo(),
     recordSource: (telemetry) => this.recordStepSource(telemetry),
     // The Track Order mode's binding (#801); `isBindingMissing` is stateless.
-    tapBinding: (settingKey) => this.tapBinding(settingKey),
+    // A Next / Previous Car tap ends the director focus the SDK keeps (#1656).
+    tapBinding: (settingKey) => {
+      noteCameraKeyTap(settingKey);
+
+      return this.tapBinding(settingKey);
+    },
     isBindingMissing: (keys) => this.isBindingMissing(keys),
   });
 
@@ -1440,6 +1446,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         // drives the cycle. Telemetry-driven selection picks the wrong driver during
         // replay-while-towed, where CamCarIdx reflects the live field.
         this.requestKeyCameraSwitch(contextId, mode, "next car", () => {
+          noteCameraKeyTap(CAR_CYCLE_BINDING_KEYS.next);
           const tapped = this.tapBinding(CAR_CYCLE_BINDING_KEYS.next);
 
           this.logger.info("Next car executed (keystroke)");
@@ -1450,6 +1457,7 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       }
       case "prev-car": {
         this.requestKeyCameraSwitch(contextId, mode, "previous car", () => {
+          noteCameraKeyTap(CAR_CYCLE_BINDING_KEYS.previous);
           const tapped = this.tapBinding(CAR_CYCLE_BINDING_KEYS.previous);
 
           this.logger.info("Previous car executed (keystroke)");
