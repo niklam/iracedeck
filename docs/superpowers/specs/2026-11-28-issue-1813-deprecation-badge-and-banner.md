@@ -190,8 +190,8 @@ The `docs(specs)` commit that adds this spec also amends `2026-11-09-issue-1671-
 2. **Which legacy modes count as replaced.** The table in §7 is a draft. The judgement calls: Replay Transport's separate Play and Pause both pointing at the one Play / Pause toggle; Replay Navigation's Jump to End pointing at Jump to Live; the three Replay Navigation modes with no home staying unmarked.
 3. **All user-facing text**, drafted here and approved before the PR:
    - Setting label: "Show deprecation badges". Card title: "Deprecated Keys". Supporting text: "Keys and dials that are being replaced show a small badge in the top-right corner. They still work as before. Their Property Inspector says what replaces them."
-   - Banner, mode rule: "**This Mode is being replaced.** It still works, but may be removed in a future release. Use **Replay Control** with Mode **Next Lap** instead: add a Replay Control key in place of this one, set its Mode to Next Lap, then remove this key."
-   - Banner, whole action: "**Replay Transport is being replaced.** It still works, but may be removed in a future release. Use **Replay Control** with Mode **Play / Pause** instead: …" (same steps).
+   - Banner, mode rule: "**This Mode is being replaced.** It still works, but will be removed in a future release. Use **Replay Control** with Mode **Next Lap** instead: add a Replay Control key in place of this one, set its Mode to Next Lap, then remove this key."
+   - Banner, whole action: "**Replay Transport is being replaced.** It still works, but will be removed in a future release. Use **Replay Control** with Mode **Play / Pause** instead: …" (same steps).
    - Website: a short "Deprecated actions and modes" page under Features listing each entry and its replacement, a line on each replacement's page, the setting on the Settings page, and the changelog fragment.
 4. **The badge's look and size**, on the review page.
 
