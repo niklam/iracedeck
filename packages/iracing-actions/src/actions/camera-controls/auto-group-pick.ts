@@ -77,15 +77,21 @@ export function isAutoGroupUnavailable(names: readonly string[], sessionGroups: 
   return sessionGroups.length > 0 && autoGroupCandidates(names, sessionGroups).groups.length === 0;
 }
 
-/** Where `name` sits among the candidates: an exact match first, then one differing only in case; -1 when gone. */
+/**
+ * Where `name` sits among the candidates: an exact match first, then the one
+ * candidate differing from it only in case; -1 when gone, or when two or more
+ * differ from it only in case, since which of them was picked cannot be told
+ * (as `matchSessionGroup` refuses such a name), and In order starts over.
+ */
 function indexOfName(candidates: CameraGroup[], name: string): number {
   const exact = candidates.findIndex((g) => g.groupName === name);
 
   if (exact !== -1) return exact;
 
   const folded = foldGroupName(name);
+  const matches = candidates.flatMap((g, index) => (foldGroupName(g.groupName) === folded ? [index] : []));
 
-  return candidates.findIndex((g) => foldGroupName(g.groupName) === folded);
+  return matches.length === 1 ? matches[0] : -1;
 }
 
 /**

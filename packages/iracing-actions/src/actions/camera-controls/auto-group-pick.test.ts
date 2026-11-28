@@ -190,6 +190,19 @@ describe("pickAutoGroup", () => {
       expect(pickAutoGroup(candidates, null, "in-order", "dynamictv")?.groupName).toBe("Static");
     });
 
+    it("starts over when the last pick matches two candidates only in case, and takes an exact match over them", () => {
+      // Two groups differing only in case, each ticked by its own spelling, so both are candidates.
+      const custom = session("Pit", "PIT", "Static");
+      const candidates = autoGroupCandidates(["Pit", "PIT", "Static"], custom).groups;
+
+      expect(candidates.map((g) => g.groupName)).toEqual(["Pit", "PIT", "Static"]);
+      // "pit" cannot say which was picked: In order starts at the first candidate.
+      expect(pickAutoGroup(candidates, groupNum(custom, "Static"), "in-order", "pit")?.groupName).toBe("Pit");
+      // An exact spelling still finds its own.
+      expect(pickAutoGroup(candidates, null, "in-order", "Pit")?.groupName).toBe("PIT");
+      expect(pickAutoGroup(candidates, null, "in-order", "PIT")?.groupName).toBe("Static");
+    });
+
     it("starts over at the first candidate when the last pick is no longer one", () => {
       expect(pickAutoGroup(tvs, nose, "in-order", "Blimp")?.groupName).toBe("TV1");
     });
@@ -221,10 +234,15 @@ describe("pickAutoGroup", () => {
       expect(pickAutoGroup(tvs, nose, "random", null, () => 0.7)?.groupName).toBe("TV3");
     });
 
-    it("never picks the camera's group with two or more candidates, whatever the draw", () => {
+    it("always picks one of the other candidates with two or more, whatever the draw", () => {
       for (const current of [tv1, tv2, tv3]) {
+        const others = tvs.filter((g) => g.groupNum !== current).map((g) => g.groupNum);
+
         for (let draw = 0; draw < 1; draw += 0.05) {
-          expect(pickAutoGroup(tvs, current, "random", null, () => draw)?.groupNum).not.toBe(current);
+          const picked = pickAutoGroup(tvs, current, "random", null, () => draw);
+
+          // A null pick fails here too: another group is always available.
+          expect(others).toContain(picked?.groupNum);
         }
       }
     });
