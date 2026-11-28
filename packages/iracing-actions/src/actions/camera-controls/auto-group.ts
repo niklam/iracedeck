@@ -56,15 +56,33 @@
  *   drops it when a user's own switch went out since then: a Cycle Camera
  *   or Change Camera press inside the settle time is not overwritten. A
  *   user's switch that changes the car is a later trigger of its own. A
- *   change the fresh read notices is dated late, by up to
- *   {@link AUTO_GROUP_POLL_MS}: it happened somewhere after the previous read
- *   that still showed the old car. So the send also says how long ago that
- *   read was (`earliestTriggerMsAgo`), and the waiter drops it, too, for a
- *   user's switch of the angle only that went out since then. A tick sees a
- *   change within a frame, so a tick-detected change is dated at the tick
- *   and gives the same age for both: dating it from the tick before would
- *   put a user's Next Car before its own car change, and drop the automatic
- *   switch that answers it. The run reads none of the engine's state.
+ *   change is seen late, by up to {@link AUTO_GROUP_POLL_MS} for one the
+ *   fresh read notices, and by a whole paused stretch for one a tick first
+ *   delivers when playback resumes: it happened somewhere after the last
+ *   tick or read that still showed the old car. So the send also says how
+ *   long ago that read was (`earliestTriggerMsAgo`), and the waiter drops it,
+ *   too, for a user's switch of the angle only that went out since then: an
+ *   angle the user picked after the camera moved is not overwritten. The car
+ *   change itself stays dated at the read that saw it (`triggeredMsAgo`), for
+ *   a tick and a fresh read alike: dating it from the read before would put a
+ *   user's Next Car before its own car change, and drop the automatic switch
+ *   that answers it. The run reads none of the engine's state.
+ * - **A focus switch's echo is no trigger.** A car change within
+ *   {@link AUTO_GROUP_FOCUS_ECHO_MS} after the run's own
+ *   `switchPos(<focus>, group, 0)` went out, with the focus still in effect,
+ *   is recorded as the new car and arms nothing: if iRacing re-picks the car
+ *   on that switch (measured not to under Most Exciting, unmeasured under
+ *   Leader and Incident), it would otherwise retrigger the run every settle
+ *   time. A user's switch to a car in that second ends the focus, so it still
+ *   triggers.
+ * - **An unsettled replay exit holds a focus switch.** While the replay
+ *   state holds a replay the tick no longer shows (`isReplayExitUnsettled`:
+ *   a seek's blip, or the replay left with iRacing's own control, which the
+ *   SDK hears of only when the exit grace runs out), a switch that would
+ *   send the director focus waits and tries again a settle time later, as
+ *   the same car change: a focus sent in the replay must not turn the
+ *   director on live, and naming the car would stop a director still
+ *   choosing in the replay.
  */
 import { getCommands, getController } from "@iracedeck/deck-iracing";
 import {
@@ -73,6 +91,7 @@ import {
   type DirectorFocusMode,
   getCameraGroupsFromSessionInfo,
   getCarNumberRawFromSessionInfo,
+  isReplayExitUnsettled,
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
@@ -96,6 +115,21 @@ export const AUTO_GROUP_SUBSCRIBER_ID = "camera-auto-group";
  * reads a second beside the controller's own hundred.
  */
 export const AUTO_GROUP_POLL_MS = 200;
+
+/**
+ * How long after the run's own `switchPos(<focus>, group, 0)` a car change is
+ * taken as that switch's echo rather than a trigger (#1656). Whether iRacing
+ * re-picks the car when a director focus is sent with a new group is measured
+ * for Most Exciting only (it does not); under Leader or Incident a re-pick
+ * would change `CamCarIdx`, and the run would switch the group again, and
+ * again, every settle time. iRacing applies a broadcast within a frame or
+ * two, and a frozen tick's change is read within {@link AUTO_GROUP_POLL_MS},
+ * so an echo lands well inside a second even with a late frame. The director
+ * itself re-picks at its own pace (3 car changes in 30 s, measured under Most
+ * Exciting), so a real change inside the window is rare; one missed costs a
+ * single group switch, where an echo taken as a trigger is a loop.
+ */
+export const AUTO_GROUP_FOCUS_ECHO_MS = 1_000;
 
 /** What starts a run: its owner, the list and pick order it runs with, and where its lines are logged. */
 export interface AutoGroupStart {
@@ -134,13 +168,19 @@ interface Run {
   /** When (`Date.now()`) the car change that armed the timer last was seen; null before the first. */
   changedAt: number | null;
   /**
-   * The earliest that car change can have been (`Date.now()`): the previous
-   * read that still showed the old car for a change a fresh read noticed,
-   * the tick itself for one a tick delivered; null before the first.
+   * The earliest that car change can have been (`Date.now()`): the last tick
+   * or fresh read that still showed the old car, whichever saw the change;
+   * null before the first.
    */
   changedSince: number | null;
   /** When (`Date.now()`) a tick or fresh read last showed a car; null until the first. */
   lastSeenAt: number | null;
+  /**
+   * When (`Date.now()`) the run last sent its switch as
+   * `switchPos(<focus>, group, 0)`; null until it does. A car change inside
+   * {@link AUTO_GROUP_FOCUS_ECHO_MS} after it is that switch's echo.
+   */
+  focusSentAt: number | null;
   /**
    * Counts the car changes seen: a switch asked for at one count is the
    * answer to that change only, and is dropped once a later one arrives.
@@ -182,6 +222,7 @@ export function toggleAutoGroup(start: AutoGroupStart): AutoGroupToggleResult {
     changedAt: null,
     changedSince: null,
     lastSeenAt: null,
+    focusSentAt: null,
     trigger: 0,
     timer: null,
   };
@@ -318,7 +359,7 @@ function stopPoll(): void {
 
 /** One telemetry tick: into the car-change step. */
 function onTick(telemetry: TelemetryData | null): void {
-  observe(telemetry, "tick");
+  observe(telemetry);
 }
 
 /**
@@ -336,19 +377,23 @@ function onPoll(): void {
     return;
   }
 
-  observe(telemetry, "read");
+  observe(telemetry);
 }
 
 /**
  * The car-change step every read goes through, tick or fresh: records the
  * camera's car and when it was seen, and arms the timer when it changed.
  * Comparing with the car last seen, whichever read saw it, is what keeps a
- * tick and a fresh read of the same change from arming twice. A change a
- * fresh read noticed (`"read"`) can have happened as early as the previous
- * read that showed a car; one a tick delivered is dated at the tick. A read
- * with no car shows nothing, so it moves neither time.
+ * tick and a fresh read of the same change from arming twice. A change is
+ * dated at the read that saw it (`changedAt`, what a user's switch of the car
+ * is weighed against) and can have happened as early as the last read, tick
+ * or fresh, that still showed the old car (`changedSince`, what a user's
+ * switch of the angle is weighed against). A read with no car shows nothing,
+ * so it moves neither time. A change inside {@link AUTO_GROUP_FOCUS_ECHO_MS}
+ * of the run's own focus switch is that switch's echo: the new car is
+ * recorded and nothing is armed.
  */
-function observe(telemetry: TelemetryData | null, source: "tick" | "read"): void {
+function observe(telemetry: TelemetryData | null): void {
   const run = active;
 
   if (run === null || telemetry === null) return;
@@ -370,11 +415,34 @@ function observe(telemetry: TelemetryData | null, source: "tick" | "read"): void
 
   if (car === run.lastCar) return;
 
+  const previousCar = run.lastCar;
+
   run.lastCar = car;
+
+  if (isFocusEcho(run, at)) {
+    run.logger.debug(
+      `Auto group: car ${previousCar} -> ${car} ${at - (run.focusSentAt ?? at)} ms after its own focus switch, taken as that switch's echo, nothing armed`,
+    );
+
+    return;
+  }
+
   run.changedAt = at;
-  run.changedSince = source === "read" && previousSeenAt !== null ? previousSeenAt : at;
+  run.changedSince = previousSeenAt ?? at;
   run.trigger++;
   arm(run);
+}
+
+/**
+ * Whether a car change seen at `at` is the echo of the run's own focus switch:
+ * inside {@link AUTO_GROUP_FOCUS_ECHO_MS} after it, with the director focus
+ * still in effect. A switch to a car or a Next / Previous Car tap since then
+ * has ended the focus, so the user's own pick in that second is a trigger.
+ */
+function isFocusEcho(run: Run, at: number): boolean {
+  if (run.focusSentAt === null || at - run.focusSentAt >= AUTO_GROUP_FOCUS_ECHO_MS) return false;
+
+  return getCommands().camera.focusModeInEffect() !== null;
 }
 
 /**
@@ -471,7 +539,7 @@ function sendAuto(run: Run, trigger: number, car: number): void {
     run.logger.debug(
       `Auto group: the camera moved from car ${car} to ${carIdx} before the switch went out, nothing sent`,
     );
-    observe(telemetry, "read");
+    observe(telemetry);
 
     return;
   }
@@ -485,6 +553,20 @@ function sendAuto(run: Run, trigger: number, car: number): void {
   const camera = getCommands().camera;
   const focus = camera.focusModeInEffect();
   let keep: AutoGroupKeep;
+
+  if (focus !== null && isReplayExitUnsettled(controller.getReplayState())) {
+    // A focus sent in the replay may be one the user has just left with
+    // iRacing's own control, which the SDK hears of only when the exit grace
+    // runs out: sent now, the focus would turn the director on live. Nor can
+    // the car be named, since this may be a seek's blip with the director
+    // still choosing. The switch waits for the state to settle, as the same
+    // car change: a replay tick keeps the focus, the grace running out ends
+    // it (the `replay-left` boundary) and the car is named.
+    run.logger.debug("Auto group: the replay may just have been left, the switch waits for the replay state to settle");
+    arm(run);
+
+    return;
+  }
 
   if (focus !== null) {
     keep = { focus };
@@ -524,6 +606,8 @@ function sendAuto(run: Run, trigger: number, car: number): void {
       : `switchNum(carNumberRaw ${keep.carNumberRaw}), keeping the car`;
 
   if (success) run.lastPicked = target.groupName;
+
+  if (success && "focus" in keep) run.focusSentAt = Date.now();
 
   run.logger.info(success ? "Camera group switched automatically" : "Automatic camera group switch failed");
   run.logger.debug(`Result: ${success}, ${sent}, group: ${target.groupNum} (${target.groupName}), pick: ${run.pick}`);

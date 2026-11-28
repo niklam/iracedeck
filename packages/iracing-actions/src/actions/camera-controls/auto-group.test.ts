@@ -2,6 +2,8 @@ import {
   CameraCommand,
   CameraFocusMode,
   type INativeSDK,
+  initialReplayState,
+  type ReplayState,
   type TelemetryCallback,
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
@@ -14,6 +16,7 @@ import { CAR_CYCLE_BINDING_KEYS } from "../../shared/car-cycle-bindings.js";
 import { noteCameraKeyTap } from "../../shared/car-cycle-focus.js";
 import {
   _resetAutoGroup,
+  AUTO_GROUP_FOCUS_ECHO_MS,
   AUTO_GROUP_POLL_MS,
   AUTO_GROUP_SETTLE_MS,
   AUTO_GROUP_SUBSCRIBER_ID,
@@ -39,6 +42,9 @@ class FakeController {
   });
   readonly getCurrentTelemetry = vi.fn(() => this.telemetry);
   readonly getSessionInfo = vi.fn(() => this.sessionInfo);
+  /** The debounced replay state's fields a test sets; live by default. */
+  replay: Partial<ReplayState> = {};
+  readonly getReplayState = vi.fn((): ReplayState => ({ ...initialReplayState(), ...this.replay }));
 
   /** Sets the camera without a tick, as iRacing does between two deliveries. */
   setCamera(car: number, group: number, extra: Partial<TelemetryData> = {}): void {
@@ -390,8 +396,8 @@ describe("auto group triggers", () => {
 
     expect(engine.requestCameraSwitch).toHaveBeenCalledTimes(1);
     expect(engine.requestCameraSwitch.mock.calls[0][1].triggeredMsAgo).toBe(AUTO_GROUP_SETTLE_MS);
-    // A tick sees the change within a frame: dated at the tick, the earliest it can have been too.
-    expect(engine.requestCameraSwitch.mock.calls[0][1].earliestTriggerMsAgo).toBe(AUTO_GROUP_SETTLE_MS);
+    // The earliest it can have been is the last read that still showed the car before it, the tick of car 4.
+    expect(engine.requestCameraSwitch.mock.calls[0][1].earliestTriggerMsAgo).toBe(AUTO_GROUP_SETTLE_MS + 100);
   });
 
   it("dates a change the fresh read noticed from the read before it that still showed the old car", () => {
@@ -522,16 +528,54 @@ describe("auto group triggers", () => {
       expect(switchNum).toHaveBeenCalledExactlyOnceWith(104, G.TV1, 0);
     });
 
-    it("dates a tick-delivered change at the tick, so an angle pick a frame before it does not drop the switch", () => {
+    it("keeps the switch for an angle pick before the last tick that still showed the old car", () => {
       start();
       vi.advanceTimersByTime(50);
       userSwitch("angle");
+      vi.advanceTimersByTime(10);
+      // A tick 10 ms later still shows car 1, so the pick came before the change.
+      fake.controller.tick();
       vi.advanceTimersByTime(16);
       // iRacing's own move, delivered by the next tick.
       fake.controller.camera(4, G.Nose);
       vi.advanceTimersByTime(AUTO_GROUP_SETTLE_MS);
 
       expect(switchNum).toHaveBeenCalledExactlyOnceWith(104, G.TV1, 0);
+    });
+
+    it("drops it for an angle pick between that tick and the tick that shows the new car: the change may have come first", () => {
+      start();
+      vi.advanceTimersByTime(40);
+      fake.controller.tick();
+      vi.advanceTimersByTime(10);
+      userSwitch("angle");
+      vi.advanceTimersByTime(16);
+      fake.controller.camera(4, G.Nose);
+      vi.advanceTimersByTime(AUTO_GROUP_SETTLE_MS);
+
+      expect(switchNum).not.toHaveBeenCalled();
+    });
+
+    it("keeps an angle picked after a paused-replay car change that a tick, not the fresh read, delivers on resume", () => {
+      start();
+      // The read at 200 still shows car 1; the replay is paused, so no tick.
+      vi.advanceTimersByTime(AUTO_GROUP_POLL_MS);
+      vi.advanceTimersByTime(20);
+      // iRacing moves the camera to car 4 at 220, unseen.
+      fake.controller.setCamera(4, G.Nose);
+      vi.advanceTimersByTime(80);
+      // The user picks an angle at 300, for car 4.
+      userSwitch("angle");
+      vi.advanceTimersByTime(50);
+      // Playback resumes: a tick at 350, before the read at 400, sees car 4.
+      fake.controller.tick();
+      vi.advanceTimersByTime(AUTO_GROUP_SETTLE_MS);
+
+      expect(engine.requestCameraSwitch).toHaveBeenCalledTimes(2);
+      expect(switchNum).not.toHaveBeenCalled();
+      expect(logger.debug).toHaveBeenCalledWith(
+        "Camera controls: automatic switch dropped (auto group), the next camera switch, of the angle only, went out when what asked for it may already have happened",
+      );
     });
 
     it("switches the group for a change the user's Next Car made that the next tick delivered", () => {
@@ -871,7 +915,10 @@ describe("auto group under iRacing's director focus (#1656)", () => {
     director.focus = FocusAtExiting;
     start();
     landOn(4);
+    // The director's next picks, each past the echo window of the switch before.
+    vi.advanceTimersByTime(AUTO_GROUP_FOCUS_ECHO_MS);
     landOn(5);
+    vi.advanceTimersByTime(AUTO_GROUP_FOCUS_ECHO_MS);
     landOn(6);
 
     expect(switchPos.mock.calls.map(([, group]) => GROUPS[group - 1])).toEqual(["TV1", "TV2", "TV3"]);
@@ -902,6 +949,174 @@ describe("auto group under iRacing's director focus (#1656)", () => {
     landOn(5);
 
     expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining("switchNum(carNumberRaw 105), keeping the car"));
+  });
+
+  describe("its own focus switch's echo (a re-pick on the group change)", () => {
+    /** iRacing re-picking the car when the focus switch lands: the camera moves to `car` in the new group. */
+    function repickOnFocusSwitch(car: number): void {
+      switchPos.mockImplementation((_focus, group) => {
+        fake.controller.setCamera(car, group);
+
+        return true;
+      });
+    }
+
+    it.each([
+      ["Leader", FocusAtLeader],
+      ["Incident", FocusAtIncident],
+    ])("under Focus on %s, a re-pick inside the window is recorded and arms nothing: no loop", (_name, focus) => {
+      director.focus = focus;
+      repickOnFocusSwitch(7);
+      start();
+      landOn(4);
+      expect(switchPos).toHaveBeenCalledTimes(1);
+
+      // The next tick delivers the re-pick, then nothing changes for a while.
+      vi.advanceTimersByTime(16);
+      fake.controller.tick();
+      vi.advanceTimersByTime(AUTO_GROUP_SETTLE_MS * 20);
+
+      expect(switchPos).toHaveBeenCalledTimes(1);
+      expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining("taken as that switch's echo, nothing armed"));
+    });
+
+    it("a re-pick the fresh read notices under a frozen tick is an echo too", () => {
+      director.focus = FocusAtLeader;
+      repickOnFocusSwitch(7);
+      start();
+      landOn(4);
+      vi.advanceTimersByTime(AUTO_GROUP_POLL_MS * 10);
+
+      expect(switchPos).toHaveBeenCalledTimes(1);
+    });
+
+    it("a genuine car change after the window still triggers, and is the new car's group change", () => {
+      director.focus = FocusAtLeader;
+      repickOnFocusSwitch(7);
+      start();
+      landOn(4);
+      fake.controller.tick();
+      switchPos.mockImplementation(() => true);
+      vi.advanceTimersByTime(AUTO_GROUP_FOCUS_ECHO_MS);
+
+      landOn(5);
+
+      expect(switchPos.mock.calls.map(([, group]) => GROUPS[group - 1])).toEqual(["TV1", "TV2"]);
+    });
+
+    it("a user's switch to a car inside the window ends the focus, so its car change triggers", () => {
+      director.focus = FocusAtLeader;
+      start();
+      landOn(4);
+      vi.advanceTimersByTime(100);
+      // The user's Next Car tap: the focus record ends, and the car changes.
+      noteCameraKeyTap(CAR_CYCLE_BINDING_KEYS.next);
+      landOn(5);
+
+      expect(switchPos).toHaveBeenCalledTimes(1);
+      expect(switchNum).toHaveBeenCalledExactlyOnceWith(105, G.TV2, 0);
+    });
+
+    it("a switch that keeps the car by number opens no window", () => {
+      start();
+      landOn(4);
+      vi.advanceTimersByTime(100);
+      landOn(5);
+
+      expect(switchNum.mock.calls.map(([car]) => car)).toEqual([104, 105]);
+    });
+
+    it("a focus switch that failed opens no window", () => {
+      director.focus = FocusAtLeader;
+      switchPos.mockImplementationOnce(() => false);
+      start();
+      landOn(4);
+      vi.advanceTimersByTime(100);
+      landOn(5);
+
+      expect(switchPos).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("while the replay exit is unsettled (left with iRacing's own control, or a seek's blip)", () => {
+    /** The debounced state still in a replay through the grace, the last tick already live. */
+    function inExitGrace(): void {
+      fake.controller.replay = { inReplay: true, tickReplayPlaying: false };
+    }
+
+    it("holds a focus switch: nothing goes out while the state is unsettled", () => {
+      director.focus = FocusAtExiting;
+      inExitGrace();
+      start();
+      landOn(4);
+      vi.advanceTimersByTime(AUTO_GROUP_SETTLE_MS * 3);
+
+      expect(switchPos).not.toHaveBeenCalled();
+      expect(switchNum).not.toHaveBeenCalled();
+      expect(logger.debug).toHaveBeenCalledWith(
+        "Auto group: the replay may just have been left, the switch waits for the replay state to settle",
+      );
+    });
+
+    it("names the car once the grace runs out and the leave ends the focus (an exit to live)", () => {
+      director.focus = FocusAtExiting;
+      inExitGrace();
+      start();
+      landOn(4);
+      vi.advanceTimersByTime(AUTO_GROUP_SETTLE_MS);
+
+      // The grace runs out: the SDK's replay-left ends the focus, the state reads live.
+      fake.controller.replay = {};
+      director.focus = null;
+      vi.advanceTimersByTime(AUTO_GROUP_SETTLE_MS);
+
+      expect(switchPos).not.toHaveBeenCalled();
+      expect(switchNum).toHaveBeenCalledExactlyOnceWith(104, G.TV1, 0);
+    });
+
+    it("keeps the focus once a replay tick shows the replay again (a seek's blip)", () => {
+      director.focus = FocusAtExiting;
+      inExitGrace();
+      start();
+      landOn(4);
+      vi.advanceTimersByTime(AUTO_GROUP_SETTLE_MS);
+
+      fake.controller.replay = { inReplay: true, tickReplayPlaying: true };
+      vi.advanceTimersByTime(AUTO_GROUP_SETTLE_MS);
+
+      expect(switchPos).toHaveBeenCalledExactlyOnceWith(FocusAtExiting, G.TV1, 0);
+      expect(switchNum).not.toHaveBeenCalled();
+    });
+
+    it("still answers only its own car change: a later one while it waits takes over", () => {
+      director.focus = FocusAtExiting;
+      inExitGrace();
+      start();
+      landOn(4);
+      fake.controller.camera(5, G.Nose);
+      fake.controller.replay = { inReplay: true, tickReplayPlaying: true };
+      vi.advanceTimersByTime(AUTO_GROUP_SETTLE_MS);
+
+      expect(switchPos).toHaveBeenCalledExactlyOnceWith(FocusAtExiting, G.TV1, 0);
+      expect(fake.controller.telemetry?.CamCarIdx).toBe(5);
+    });
+
+    it("does not hold a switch that keeps the car: with no focus there is nothing to turn on live", () => {
+      inExitGrace();
+      start();
+      landOn(4);
+
+      expect(switchNum).toHaveBeenCalledExactlyOnceWith(104, G.TV1, 0);
+    });
+
+    it("does not hold one in a saved replay, which has no live to leave for", () => {
+      director.focus = FocusAtExiting;
+      fake.controller.replay = { inReplay: true, tickReplayPlaying: false, replayOnlySession: true };
+      start();
+      landOn(4);
+
+      expect(switchPos).toHaveBeenCalledExactlyOnceWith(FocusAtExiting, G.TV1, 0);
+    });
   });
 
   describe("over the SDK's real CameraCommand", () => {
@@ -956,6 +1171,7 @@ describe("auto group under iRacing's director focus (#1656)", () => {
       clearSends();
       start();
       landOn(4);
+      vi.advanceTimersByTime(AUTO_GROUP_FOCUS_ECHO_MS);
       landOn(5);
 
       expect(sends()).toEqual([
