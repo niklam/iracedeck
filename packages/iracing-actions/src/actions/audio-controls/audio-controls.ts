@@ -300,10 +300,12 @@ export class AudioControls extends ConnectionStateAwareAction<AudioControlsSetti
   }
 
   override async onWillAppear(ev: IDeckWillAppearEvent<AudioControlsSettings>): Promise<void> {
-    // BEFORE super: the base stamps a missing `addedWithVersion` with its own
-    // setSettings({...payload, addedWithVersion}). Migrating first (and handing
-    // the base the migrated payload) makes that stamp write land last AND carry
-    // the migrated dial — the other order would drop the stamp.
+    // BEFORE super: the base stamps a missing `addedWithVersion` through
+    // updateSettings, onto a record taken from the payload. Migrating first
+    // (and handing the base the migrated payload) makes that stamp write land
+    // last AND carry the migrated dial — the other order would drop the stamp.
+    // When a PI change has arrived meanwhile, the stamp goes onto that change
+    // instead (#1761); moving these writes onto updateSettings is #1794.
     await this.persistMigratedSettings(ev);
 
     // The fresh-key seed (#1453) joins the same pre-super step, for the same
