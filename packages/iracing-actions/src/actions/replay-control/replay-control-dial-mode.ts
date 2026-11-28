@@ -124,7 +124,8 @@ export interface ReplayDialStepIo extends ReplayDialModeIo {
    * the landing of a search of the plugin's still on its way, which the turn
    * waits for with the turning dial's still mark showing, else the cursor.
    * `act` is handed the step, a miss naming why ("no cursor" included), once
-   * the start is settled: within the call when nothing is on its way. It
+   * the start is settled: within the call when nothing is on its way and no
+   * command pressed before it waits in the gate's slot. It
    * decides and sends synchronously — a record jump, or the paced search —
    * before it yields, so a turn waiting behind it reads the target it
    * recorded. The lookup itself sends nothing. A turn whose replay was left

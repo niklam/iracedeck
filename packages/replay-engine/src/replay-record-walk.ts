@@ -47,6 +47,7 @@ import { MARKER_NEXT_MIN_AHEAD_FRAMES, MARKER_PREVIOUS_MIN_BEHIND_FRAMES } from 
 import { pollUntil } from "./engine-clock.js";
 import {
   closeReplayGateWait,
+  isReplaySlotHeld,
   openReplayGateWait,
   readReplayPosition,
   replayPositionSends,
@@ -314,11 +315,14 @@ function log(): ILogger {
  * async companion of {@link resolveReplayWalkStart}; `act` never sees
  * `search on its way`.
  *
- * - **Nothing to wait for**, and no earlier press waiting: `act` runs at
- *   once, inside this call, with the start {@link resolveReplayWalkStart}
- *   reads.
- * - **A search on its way**, or an earlier press still waiting: the press
- *   joins the one queue of waiting starts. The head waits for the search's
+ * - **Nothing to wait for**, no earlier press waiting and no command held in
+ *   the gate's slot: `act` runs at once, inside this call, with the start
+ *   {@link resolveReplayWalkStart} reads.
+ * - **A search on its way**, an earlier press still waiting, or a command
+ *   held in the slot (pressed before this one, say a search behind a marker
+ *   jump's target, which this press's own jump would replace and drop): the
+ *   press joins the one queue of waiting starts, and waits for that command
+ *   to go out before it reads its start. The head waits for the search's
  *   landing through the gate's own verdict (`waitForReplaySearchLanding`),
  *   as long as the gate's slot holds a press behind it: while nothing shows
  *   it on its way (a paused replay) until the time it could be running is
@@ -359,7 +363,8 @@ export function awaitReplayWalkStart<T>(
   act: (start: SettledReplayWalkStart) => T,
   options: { readonly origin?: string } = {},
 ): Promise<Awaited<T>> {
-  if (waitingStarts.length === 0) {
+  // A command held in the slot was pressed before this press: it goes first (the drain's `replaySlotHeldBefore`).
+  if (waitingStarts.length === 0 && !isReplaySlotHeld()) {
     try {
       const start = resolveReplayWalkStart(readState(), readTelemetry());
 

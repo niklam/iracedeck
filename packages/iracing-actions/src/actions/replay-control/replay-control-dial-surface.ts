@@ -915,7 +915,8 @@ export class ReplayControlDialSurface extends ReleaseDialSurfaceBase<
    * With no cursor to step from it is a miss, and the turn goes to the
    * search. A turn whose replay was left while it waited sends nothing.
    * `act` runs inside an entry ({@link withReading}): the turn's own when
-   * nothing was on its way, a fresh one after a wait, so it decides from
+   * nothing was on its way and no command pressed before it was held in the
+   * gate's slot, a fresh one after a wait, so it decides from
    * the replay as it is then.
    */
   private recordStep(

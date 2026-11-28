@@ -540,6 +540,16 @@ function startWaitsBefore(order: number): boolean {
 }
 
 /**
+ * Whether a command waits in the gate's slot (#1660): every command there
+ * was pressed before a press made now, so a step pressed now waits for it
+ * (`replay-record-walk.ts`'s `awaitReplayWalkStart`) rather than replacing
+ * the target it waits behind and dropping it.
+ */
+export function isReplaySlotHeld(): boolean {
+  return slot !== null;
+}
+
+/**
  * Whether a command pressed before the waiting start `id` still waits in the
  * slot (#1660): held behind a jump an earlier start sent, say. The start waits
  * for it to go out before it reads where it starts, so its own step, a jump

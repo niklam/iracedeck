@@ -1165,6 +1165,72 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
       expect(sim.thrown).toBe(0);
     });
 
+    it("a marker step, then a key's search held behind its jump, then a marker step: the second step waits for the search", async () => {
+      setUp(withIncidents);
+
+      const order: string[] = [];
+      const jumps: Promise<unknown>[] = [];
+      // Nothing on its way: the first step acts inside the call and records its jump's target.
+      const a = jumpPress("a", order, jumps);
+
+      expect(order).toEqual(["a cursor 100000"]);
+      expect(incidentKey()).toEqual({ kind: "held" });
+
+      // Nobody queued, but the incident search waits in the slot: this press waits for it rather than replace the target.
+      const c = jumpPress("c", order, jumps);
+
+      expect(order).toEqual(["a cursor 100000"]);
+
+      await vi.advanceTimersByTimeAsync(10_000);
+      await Promise.all([a, c]);
+      await vi.advanceTimersByTimeAsync(5_000);
+      await Promise.all(jumps);
+
+      expect(order).toEqual(["a cursor 100000", "c cursor 180000"]);
+      expect(sim.calls.filter((call) => call !== "pause")).toEqual([
+        "setPlayPosition 0 150000",
+        "nextIncident",
+        "setPlayPosition 0 230000",
+      ]);
+      expect(sim.thrown).toBe(0);
+    });
+
+    it("the same three presses after a search's landing: the second step waits for the held search too", async () => {
+      setUp(withIncidents);
+      search("nextSession");
+
+      const order: string[] = [];
+      const jumps: Promise<unknown>[] = [];
+      const a = jumpPress("a", order, jumps);
+
+      // Until the first step acts on the landing, while its jump is still on its way.
+      for (let ms = 0; ms < 3_000 && order.length === 0; ms += 10) await vi.advanceTimersByTimeAsync(10);
+
+      await a;
+
+      // The first step has acted from the landing; the queue is empty again.
+      expect(order).toEqual(["a cursor 200000"]);
+      expect(incidentKey()).toEqual({ kind: "held" });
+
+      const c = jumpPress("c", order, jumps);
+
+      expect(order).toEqual(["a cursor 200000"]);
+
+      await vi.advanceTimersByTimeAsync(10_000);
+      await c;
+      await vi.advanceTimersByTimeAsync(5_000);
+      await Promise.all(jumps);
+
+      expect(order).toEqual(["a cursor 200000", "c cursor 280000"]);
+      expect(sim.calls.filter((call) => call !== "pause")).toEqual([
+        "nextSession",
+        "setPlayPosition 0 250000",
+        "nextIncident",
+        "setPlayPosition 0 330000",
+      ]);
+      expect(sim.thrown).toBe(0);
+    });
+
     it("when the start that went first sends nothing, the slot's command goes out before the next start reads", async () => {
       setUp(withIncidents);
       search("nextSession");

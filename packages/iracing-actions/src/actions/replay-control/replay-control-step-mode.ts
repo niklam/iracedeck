@@ -153,7 +153,8 @@ export function createRecordStepMode(config: RecordStepModeConfig): ReplayDialMo
       const step = ticks > 0 ? steps.next : steps.previous;
 
       // The step is taken from the start the surface settles (#1660): at once,
-      // or once a search of the plugin's on its way has landed. A turn that
+      // or once a search of the plugin's on its way has landed or a command
+      // pressed before it has left the gate's slot. A turn that
       // waited, behind an earlier turn whose miss has since started this
       // mode's run, adds to that run as a turn made now would.
       return io.recordStep(step, wanted, (found) => {

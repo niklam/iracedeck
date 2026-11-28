@@ -302,8 +302,10 @@ export function resolveMarkerViewStart(context: ReplayContext): number | null {
 
 /**
  * Where a Next / Previous press steps from (#1660), handed to `act` with the
- * context read at that moment: within the call when nothing is on its way,
- * else once a search of the plugin's on its way has landed or ended
+ * context read at that moment: within the call when nothing is on its way
+ * and no command pressed before it waits in the gate's slot, else once a
+ * search of the plugin's on its way has landed or ended, or that command
+ * has gone out
  * (`awaitReplayWalkStart`, which resolves the waiting presses of every
  * surface in press order). The start is the pending target, the landing, the
  * cursor, or why there is none (`not in a replay`, `no cursor`), never the
