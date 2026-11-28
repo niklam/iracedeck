@@ -57,6 +57,13 @@
  *   from a cycle of its own (a self-recursive helper, a hook that calls its
  *   `super` hook) is outside.
  *
+ * **The tap note (#1656).** Given a `tapNote`, it also holds every camera
+ * key tap to calling that note with the same key, as written, earlier in the
+ * same function body: iRacing's Next / Previous Car bindings pick the car past
+ * the SDK's camera commands, so the director focus those record must hear of
+ * each tap. Which call is the tap, and how a dial io's plumbing is judged, is
+ * in {@link CameraScan.keyTaps}.
+ *
  * **What it cannot see**, by design: a key that flows through an anonymous
  * callback's parameter or an object's property, and a camera surface reached
  * by anything but a call named `getCommands` or `getSDK` (bare, or as a
@@ -110,6 +117,29 @@ export interface CameraScanOptions {
   readonly keySenders: ReadonlySet<string>;
   /** The names a camera key binding is reached by (`CAR_CYCLE_BINDING_KEYS`, `carCycleBindingKey`, …). */
   readonly cameraKeys: ReadonlySet<string>;
+  /**
+   * The call every camera key tap must make first, with the same key
+   * (`noteCameraKeyTap`, #1656), or none to check nothing. See
+   * {@link CameraScan.keyTaps} for the rule.
+   */
+  readonly tapNote?: string;
+}
+
+/**
+ * One tap of a camera key binding where the key leaves the scanned sources
+ * for the action's own key sender, judged against {@link CameraScanOptions.tapNote}.
+ */
+export interface CameraKeyTap {
+  readonly file: string;
+  readonly line: number;
+  /** The key-sending call's text. */
+  readonly detail: string;
+  /** The nearest named function around the tap, or `(top level)`. */
+  readonly context: string;
+  /** Whether the note, with the same key, comes earlier in the same function body. */
+  readonly noted: boolean;
+  /** For a tap not noted, why. */
+  readonly why?: string;
 }
 
 /** What one scan saw. */
@@ -124,6 +154,20 @@ export interface CameraScan {
   readonly sends: readonly CameraSend[];
   /** How many state-method calls (not switches) the files make. */
   readonly stateCalls: number;
+  /**
+   * With a {@link CameraScanOptions.tapNote}, every place a camera key is
+   * tapped into the action's own key sender, in file and line order; empty
+   * without one. A camera keystroke send made on `this` (or bare) is such a
+   * tap itself. One made on another object (the dial's `io.tapBinding(key)`)
+   * reaches the action's sender through plumbing, a function named like the
+   * sender that forwards its key, and the plumbing's own `this.<sender>(…)`
+   * call is the tap: the scan cannot tell which object that is, so it takes
+   * every such plumbing tap in the send's action folder (each action wires its
+   * dial io within its folder), and a send through an object with none there
+   * is reported, never passed. Each tap must call the note with the same key,
+   * as written, earlier in the same function body.
+   */
+  readonly keyTaps: readonly CameraKeyTap[];
 }
 
 /** `<file>:<context>`, the key an exception is written under. */
@@ -1041,6 +1085,119 @@ export function scanCameraSends(sources: ReadonlyMap<string, string>, options: C
     }
   }
 
+  // --- Pass 6: every camera key tap makes the note first, with the same key (#1656).
+  const keyTaps: CameraKeyTap[] = [];
+
+  if (options.tapNote !== undefined) {
+    const tapNote = options.tapNote;
+    const textOf = (node: ts.Node): string => node.getText(node.getSourceFile());
+    const detailOf = (call: ts.CallExpression): string => textOf(call).split("\n")[0].slice(0, 80);
+    const fileNameOf = (node: ts.Node): string => fileOf.get(node.getSourceFile()) ?? node.getSourceFile().fileName;
+    const folderOf = (file: string): string => file.slice(0, Math.max(0, file.lastIndexOf("/")));
+    /** The nearest function around `node` that has a body: the body a note must share with its tap. */
+    const functionOf = (node: ts.Node): ts.Node | undefined => {
+      for (let current = node.parent; current !== undefined; current = current.parent) {
+        if (ts.isFunctionLike(current) && (current as ts.FunctionLikeDeclaration).body !== undefined) return current;
+      }
+
+      return undefined;
+    };
+    /** Whether a key-sending call goes to the action's own sender: on `this` / `super`, or bare. */
+    const isOwnSender = (call: ts.CallExpression): boolean => {
+      const callee = unwrap(call.expression);
+
+      if (ts.isIdentifier(callee)) return true;
+
+      return (
+        ts.isPropertyAccessExpression(callee) &&
+        (callee.expression.kind === ts.SyntaxKind.ThisKeyword || callee.expression.kind === ts.SyntaxKind.SuperKeyword)
+      );
+    };
+    const notes = calls.filter((call) => calleeName(call) === tapNote && call.arguments.length > 0);
+    const keyText = (call: ts.CallExpression): string => textOf(unwrap(call.arguments[0]));
+    /** The tap judged: noted when a note with the same key, as written, comes earlier in the same function body. */
+    const judgeTap = (call: ts.CallExpression): CameraKeyTap => {
+      const body = functionOf(call);
+      const key = keyText(call);
+      const sameBody = notes.filter((note) => body !== undefined && functionOf(note) === body);
+      const noted = sameBody.some((note) => note.getStart() < call.getStart() && keyText(note) === key);
+      let why: string | undefined;
+
+      if (!noted) {
+        why =
+          sameBody.length === 0
+            ? `no ${tapNote}(…) in the same function body`
+            : sameBody.some((note) => keyText(note) === key)
+              ? `${tapNote}(${key}) comes after the tap`
+              : `${tapNote}(…) there names another key than ${key}`;
+      }
+
+      return {
+        file: fileNameOf(call),
+        line: lineOf(call.getSourceFile(), call),
+        detail: detailOf(call),
+        context: nearestDefName(call),
+        noted,
+        ...(why === undefined ? {} : { why }),
+      };
+    };
+
+    /** The plumbing taps by `<folder>:<sender>`: an own-sender call inside a function named like the sender. */
+    const plumbingTaps = new Map<string, ts.CallExpression[]>();
+
+    for (const call of calls) {
+      const name = calleeName(call);
+
+      if (name === undefined || !options.keySenders.has(name) || call.arguments[0] === undefined) continue;
+
+      if (nearestDefName(call) === name && isOwnSender(call)) {
+        const key = `${folderOf(fileNameOf(call))}:${name}`;
+
+        plumbingTaps.set(key, [...(plumbingTaps.get(key) ?? []), call]);
+      }
+    }
+
+    const judged = new Set<ts.CallExpression>();
+
+    for (const call of calls) {
+      const name = calleeName(call);
+
+      if (name === undefined || !options.keySenders.has(name) || call.arguments[0] === undefined) continue;
+
+      if (options.keySenders.has(nearestDefName(call)) || !isCameraKey(call.arguments[0], new Set())) continue;
+
+      if (isOwnSender(call)) {
+        if (!judged.has(call)) keyTaps.push(judgeTap(call));
+
+        judged.add(call);
+        continue;
+      }
+
+      const folder = folderOf(fileNameOf(call));
+      const plumbing = plumbingTaps.get(`${folder}:${name}`) ?? [];
+
+      if (plumbing.length === 0) {
+        keyTaps.push({
+          file: fileNameOf(call),
+          line: lineOf(call.getSourceFile(), call),
+          detail: detailOf(call),
+          context: nearestDefName(call),
+          noted: false,
+          why: `no ${name} plumbing in ${folder || "(root)"} that taps the key on the action's own sender, so the note cannot be checked`,
+        });
+        continue;
+      }
+
+      for (const tap of plumbing) {
+        if (!judged.has(tap)) keyTaps.push(judgeTap(tap));
+
+        judged.add(tap);
+      }
+    }
+
+    keyTaps.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
+  }
+
   sends.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
 
   const wrappers: string[] = [];
@@ -1057,5 +1214,6 @@ export function scanCameraSends(sources: ReadonlyMap<string, string>, options: C
     wrappers: wrappers.sort(),
     sends,
     stateCalls,
+    keyTaps,
   };
 }

@@ -4,6 +4,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 import {
+  type CameraScan,
   type CameraScanOptions,
   type CameraSend,
   engineCameraReaches,
@@ -25,6 +26,8 @@ import {
  * cannot follow — and fails on one that does not run only inside a callback
  * handed to the waiter (#1502). What counts as a send and as "inside" is in
  * the scanner's header, `camera-switch-waiter.single-policy.test-support.ts`.
+ * Every camera key tap it resolves must also call `noteCameraKeyTap` with
+ * its key first (#1656, {@link TAP_NOTE}).
  *
  * The engine's own camera moves are not the waiter's: the two lap presses
  * make theirs through the injected `camera()` while they hold the cursor. The
@@ -90,10 +93,21 @@ const ENGINE_CAMERA_USERS: Readonly<Record<string, string>> = {
     "Jump to Race Start's walk borrows the camera for the pole car and puts it back, inside the press that holds the cursor.",
 };
 
+/**
+ * What a camera key tap calls first, with the same key (#1656): iRacing's Next /
+ * Previous Car bindings pick the camera's car past the SDK's `CameraCommand`,
+ * so a tap must end the director focus it records, or Auto Group would keep
+ * the director on after the user picked a car. Every camera key is held to it,
+ * Sub Camera included, where the note is a no-op: the rule is the key, not
+ * which key it happens to be.
+ */
+const TAP_NOTE = "noteCameraKeyTap";
+
 const OPTIONS: CameraScanOptions = {
   stateMethods: new Set(Object.keys(STATE_METHODS)),
   keySenders: new Set(KEY_SENDERS),
   cameraKeys: new Set(CAMERA_KEYS),
+  tapNote: TAP_NOTE,
 };
 
 /** Scans planted sources, one file per entry. */
@@ -474,6 +488,209 @@ describe("camera switches go through the camera-switch waiter (#1502)", () => {
       for (const source of [local, member, elsewhere, otherExport]) {
         expect(scanCameraSends(new Map([["x.ts", source]]), OPTIONS).waiterCalls).toBe(0);
       }
+    });
+  });
+
+  describe("every camera key tap notes the tap first (#1656)", () => {
+    /** The taps not noted, as `<file>:<line> <context>: <why>`. */
+    const unnoted = (taps: CameraScan["keyTaps"]): string[] =>
+      taps.filter((tap) => !tap.noted).map((tap) => `${tap.file}:${tap.line} ${tap.context}: ${tap.why}`);
+
+    it("every camera key tap in iracing-actions calls noteCameraKeyTap with its key first", () => {
+      expect(unnoted(scan.keyTaps)).toEqual([]);
+    });
+
+    it("finds the real taps: Camera Controls' cycle, Replay Control's two keys and its dial io's plumbing", () => {
+      // 4 taps on 2026-11-28: the dial's Track Order send reaches the action's
+      // sender through the io's `tapBinding`, whose own tap is the one judged.
+      expect(scan.keyTaps.map((tap) => `${tap.file}:${tap.context}`)).toEqual(
+        expect.arrayContaining([
+          "actions/camera-controls/camera-controls.ts:tapCycleBinding",
+          "actions/replay-control/replay-control.ts:executeMode",
+          "actions/replay-control/replay-control.ts:tapBinding",
+        ]),
+      );
+      expect(scan.keyTaps.length).toBeGreaterThanOrEqual(4);
+    });
+
+    describe("positive controls on the real sources: each note removed fails, naming its site", () => {
+      const without = (file: string, call: string): string[] => {
+        const text = sources.get(file);
+
+        if (text === undefined) throw new Error(`${file} is not scanned`);
+
+        // The replace must match exactly once, or the control proves nothing.
+        expect(text.split(call)).toHaveLength(2);
+
+        const mutated = new Map(sources);
+
+        mutated.set(file, text.replace(call, ""));
+
+        return unnoted(scanCameraSends(mutated, OPTIONS).keyTaps);
+      };
+
+      it.each([
+        [
+          "Camera Controls' Cycle by Track Order and Cycle Sub-Camera",
+          "actions/camera-controls/camera-controls.ts",
+          "noteCameraKeyTap(settingKey);",
+          "tapCycleBinding",
+        ],
+        [
+          "Replay Control's dial io",
+          "actions/replay-control/replay-control.ts",
+          "noteCameraKeyTap(settingKey);",
+          "tapBinding",
+        ],
+        [
+          "Replay Control's Next Car key",
+          "actions/replay-control/replay-control.ts",
+          "noteCameraKeyTap(CAR_CYCLE_BINDING_KEYS.next);",
+          "executeMode",
+        ],
+        [
+          "Replay Control's Previous Car key",
+          "actions/replay-control/replay-control.ts",
+          "noteCameraKeyTap(CAR_CYCLE_BINDING_KEYS.previous);",
+          "executeMode",
+        ],
+      ])("%s", (_name, file, call, context) => {
+        expect(without(file, call)).toEqual([expect.stringMatching(new RegExp(`^${file}:\\d+ ${context}: `))]);
+      });
+    });
+
+    describe("positive controls: planted sources", () => {
+      const KEYS = `export const CAR_CYCLE_BINDING_KEYS = { next: "replayControlNextCar", previous: "replayControlPrevCar" } as const;\nexport const SUB_CAMERA_BINDING_KEYS = { next: "cameraNextSub", previous: "cameraPrevSub" } as const;\n`;
+      const HEAD = `${WAITER_IMPORT}import { CAR_CYCLE_BINDING_KEYS, SUB_CAMERA_BINDING_KEYS } from "./keys.js";\nimport { noteCameraKeyTap } from "./note.js";\n`;
+      const action = (body: string): string => `${HEAD}export class Action {\n${body}}\n`;
+      const tapsOf = (files: Record<string, string>): CameraScan["keyTaps"] =>
+        scanCameraSends(new Map(Object.entries({ "keys.ts": KEYS, ...files })), OPTIONS).keyTaps;
+
+      it("passes a tap with the note, same key, earlier in the same body", () => {
+        const noted = action(
+          `  press(): void {\n` +
+            `    void requestCameraSwitch(() => {\n` +
+            `      noteCameraKeyTap(CAR_CYCLE_BINDING_KEYS.next);\n` +
+            `      return this.tapBinding(CAR_CYCLE_BINDING_KEYS.next);\n` +
+            `    }, ${OPTS});\n` +
+            `  }\n`,
+        );
+
+        expect(tapsOf({ "a.ts": noted })).toMatchObject([{ file: "a.ts", line: 9, noted: true }]);
+      });
+
+      it("fails a tap with no note, a note after it, a note of another key or a note in another function", () => {
+        const planted = action(
+          `  none(): void {\n` +
+            `    void requestCameraSwitch(() => this.tapBinding(CAR_CYCLE_BINDING_KEYS.next), ${OPTS});\n` +
+            `  }\n` +
+            `  after(): void {\n` +
+            `    void requestCameraSwitch(() => {\n` +
+            `      void this.tapBinding(CAR_CYCLE_BINDING_KEYS.next);\n` +
+            `      noteCameraKeyTap(CAR_CYCLE_BINDING_KEYS.next);\n` +
+            `    }, ${OPTS});\n` +
+            `  }\n` +
+            `  otherKey(): void {\n` +
+            `    void requestCameraSwitch(() => {\n` +
+            `      noteCameraKeyTap(CAR_CYCLE_BINDING_KEYS.next);\n` +
+            `      void this.tapBinding(CAR_CYCLE_BINDING_KEYS.previous);\n` +
+            `    }, ${OPTS});\n` +
+            `  }\n` +
+            `  outerNote(): void {\n` +
+            `    noteCameraKeyTap(CAR_CYCLE_BINDING_KEYS.next);\n` +
+            `    void requestCameraSwitch(() => this.tapBinding(CAR_CYCLE_BINDING_KEYS.next), ${OPTS});\n` +
+            `  }\n`,
+        );
+
+        expect(unnoted(tapsOf({ "a.ts": planted }))).toEqual([
+          "a.ts:7 none: no noteCameraKeyTap(…) in the same function body",
+          "a.ts:11 after: noteCameraKeyTap(CAR_CYCLE_BINDING_KEYS.next) comes after the tap",
+          "a.ts:18 otherKey: noteCameraKeyTap(…) there names another key than CAR_CYCLE_BINDING_KEYS.previous",
+          "a.ts:23 outerNote: no noteCameraKeyTap(…) in the same function body",
+        ]);
+      });
+
+      it("holds a Sub Camera tap to it too, and follows a key through a parameter, and the note under an alias", () => {
+        const planted =
+          `${WAITER_IMPORT}import { SUB_CAMERA_BINDING_KEYS } from "./keys.js";\nimport { noteCameraKeyTap as note } from "./note.js";\n` +
+          `export class Action {\n` +
+          `  press(): void {\n` +
+          `    this.cycle(SUB_CAMERA_BINDING_KEYS.next);\n` +
+          `  }\n` +
+          `  private cycle(settingKey: string): void {\n` +
+          `    void requestCameraSwitch(() => {\n` +
+          `      note(settingKey);\n` +
+          `      return this.tapBinding(settingKey);\n` +
+          `    }, ${OPTS});\n` +
+          `  }\n` +
+          `  bare(): void {\n` +
+          `    void requestCameraSwitch(() => this.tapBinding(SUB_CAMERA_BINDING_KEYS.previous), ${OPTS});\n` +
+          `  }\n` +
+          `}\n`;
+
+        expect(tapsOf({ "a.ts": planted }).map((tap) => `${tap.line} ${tap.context} ${tap.noted}`)).toEqual([
+          "12 cycle true",
+          "16 bare false",
+        ]);
+      });
+
+      it("judges a tap through a dial io by the plumbing in the send's action folder, and fails one with none there", () => {
+        const mode =
+          `${WAITER_IMPORT}import { CAR_CYCLE_BINDING_KEYS } from "../../keys.js";\n` +
+          `export function turn(io: { tapBinding(key: string): Promise<boolean> }): void {\n` +
+          `  void requestCameraSwitch(() => io.tapBinding(CAR_CYCLE_BINDING_KEYS.next), ${OPTS});\n` +
+          `}\n`;
+        const surface = `export const io = (host: { tapBinding(key: string): Promise<boolean> }) => ({\n  tapBinding: (settingKey: string) => host.tapBinding(settingKey),\n});\n`;
+        const host = (note: string): string =>
+          `import { noteCameraKeyTap } from "../../note.js";\n` +
+          `export class Host {\n` +
+          `  readonly io = {\n` +
+          `    tapBinding: (settingKey: string) => {\n` +
+          `${note}` +
+          `      return this.tapBinding(settingKey);\n` +
+          `    },\n` +
+          `  };\n` +
+          `}\n`;
+        // Another action's plumbing, in another folder: no camera key reaches it, so it is not judged.
+        const other = `export class Other {\n  readonly io = { tapBinding: (settingKey: string) => this.tapBinding(settingKey) };\n}\n`;
+        const keys = { "keys.ts": KEYS };
+        const scanOf = (files: Record<string, string>): CameraScan["keyTaps"] =>
+          scanCameraSends(new Map(Object.entries({ ...keys, ...files })), OPTIONS).keyTaps;
+
+        const noted = scanOf({
+          "actions/x/mode.ts": mode,
+          "actions/x/surface.ts": surface,
+          "actions/x/host.ts": host("      noteCameraKeyTap(settingKey);\n"),
+          "actions/y/other.ts": other,
+        });
+
+        expect(noted.map((tap) => `${tap.file}:${tap.line} ${tap.context} ${tap.noted}`)).toEqual([
+          "actions/x/host.ts:6 tapBinding true",
+        ]);
+        expect(
+          unnoted(
+            scanOf({ "actions/x/mode.ts": mode, "actions/x/surface.ts": surface, "actions/x/host.ts": host("") }),
+          ),
+        ).toEqual(["actions/x/host.ts:5 tapBinding: no noteCameraKeyTap(…) in the same function body"]);
+        expect(unnoted(scanOf({ "actions/x/mode.ts": mode, "actions/y/other.ts": other }))).toEqual([
+          "actions/x/mode.ts:5 turn: no tapBinding plumbing in actions/x that taps the key on the action's own sender, so the note cannot be checked",
+        ]);
+      });
+
+      it("checks nothing without a tap note", () => {
+        const bare = action(`  none(): void {\n    void this.tapBinding(CAR_CYCLE_BINDING_KEYS.next);\n  }\n`);
+        const { tapNote: _ignored, ...withoutNote } = OPTIONS;
+
+        expect(
+          scanCameraSends(
+            new Map([
+              ["keys.ts", KEYS],
+              ["a.ts", bare],
+            ]),
+            withoutNote,
+          ).keyTaps,
+        ).toEqual([]);
+      });
     });
   });
 
