@@ -190,7 +190,7 @@ function reportPreservedLogs(aside, log) {
   const logDir = join(aside, "log");
   if (!existsSync(logDir)) return;
 
-  let count = 0;
+  let count;
   try {
     count = readdirSync(logDir).filter((name) => LOG_FILE_PATTERN.test(name)).length;
   } catch {

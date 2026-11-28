@@ -493,7 +493,7 @@ export function updateTrafficReferenceCurves(
   // than one per car. It emits nothing. `motionRead` says whether the unit got
   // as far as the car's progress: read, or found nothing to read.
   let carIdx = 0;
-  let motionRead = false;
+  let motionRead: boolean;
   const unit = (): void => {
     // A car off the racing surface (out of the world, in the pits) or at no
     // lap position is a known gap in its readings: its record goes, so its

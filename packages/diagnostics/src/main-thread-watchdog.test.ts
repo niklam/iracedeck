@@ -302,7 +302,6 @@ describe("watchdogDailyLogFileName", () => {
 /** Wait until `dir` holds a `*.log` whose contents satisfy `predicate`, or fail after `timeoutMs`. */
 async function waitForLog(dir: string, predicate: (text: string) => boolean, timeoutMs = 5000): Promise<string> {
   const deadline = Date.now() + timeoutMs;
-  let text = "";
 
   for (;;) {
     let names: string[] = [];
@@ -313,7 +312,7 @@ async function waitForLog(dir: string, predicate: (text: string) => boolean, tim
       // Not created yet.
     }
 
-    text = names.map((name) => readFileSync(join(dir, name), "utf-8")).join("");
+    const text = names.map((name) => readFileSync(join(dir, name), "utf-8")).join("");
 
     if (predicate(text)) return text;
 

@@ -478,7 +478,7 @@ export function diffLaps(
   // `previousPosition` / `previousClassPosition` come from baselines we
   // captured at the previous emission, regardless of how this emission's
   // position was resolved — `0` baseline = first-valid-lap, field omitted.
-  let positionForEmit = 0;
+  let positionForEmit: number;
   let classPositionForEmit = 0;
 
   if (resultsSynced && playerResults && playerResults.position > 0) {
