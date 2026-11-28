@@ -120,10 +120,23 @@ export interface ReplayDialStepIo extends ReplayDialModeIo {
   recordJump(owner: string, frame: number): Promise<void>;
   /**
    * The record step (#1426's `findRecordStep`) of `steps` entries from where
-   * the replay is headed, else the cursor (`resolveReplayWalkStart`). A miss
-   * names why, "no cursor" included; nothing is sent.
+   * a step starts (#1660, `awaitReplayWalkStart`): the pending target, else
+   * the landing of a search of the plugin's still on its way, which the turn
+   * waits for with the turning dial's still mark showing, else the cursor.
+   * `act` is handed the step, a miss naming why ("no cursor" included), once
+   * the start is settled: within the call when nothing is on its way and no
+   * command pressed before it waits in the gate's slot. It
+   * decides and sends synchronously — a record jump, or the paced search —
+   * before it yields, so a turn waiting behind it reads the target it
+   * recorded. The lookup itself sends nothing. A turn whose replay was left
+   * while it waited runs no `act` and sends nothing. Resolves with what `act`
+   * returns, settled; a throw in `act` rejects it.
    */
-  recordStep(step: RecordStepSpec, steps: number): RecordStepResult;
+  recordStep(
+    step: RecordStepSpec,
+    steps: number,
+    act: (found: RecordStepResult) => Promise<void> | void,
+  ): Promise<void>;
   /**
    * What a record lookup reads — the store, the camera car, the session info —
    * from this entry's reading, for a view, which reads the record in memory

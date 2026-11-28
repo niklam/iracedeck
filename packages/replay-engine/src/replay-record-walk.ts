@@ -18,9 +18,11 @@
  *
  * - **The anchor** is where the replay is headed while a jump of the plugin's
  *   is under way (the one pending target, `replay-position-state.ts`, #1430),
- *   otherwise the cursor: the controller's debounced frame, which keeps the
- *   last frame a replay tick showed through the exit grace (#1324). With
- *   neither, a press has no cursor to step from.
+ *   else the landing of a search of the plugin's still on its way, which a
+ *   press waits for (#1660, {@link awaitReplayWalkStart}), otherwise the
+ *   cursor: the controller's debounced cursor read, which keeps the last
+ *   frame a replay tick showed through the exit grace (#1324) and the seek
+ *   hold (#1429). With none of them, a press has no cursor to step from.
  * - **Next** is the first entry more than {@link MARKER_NEXT_MIN_AHEAD_FRAMES}
  *   (1 s) past the anchor. **Previous** is the entry the anchor is in when the
  *   anchor is more than {@link MARKER_PREVIOUS_MIN_BEHIND_FRAMES} (2 s) past
@@ -34,12 +36,36 @@
  *   the list rather than wrapping and reports how many steps it took; zero
  *   steps is a miss.
  *
- * Pure apart from the anchor, which reads the gate's pending target.
+ * The walk itself is pure. The start reads the gate's pending target and its
+ * search record; its async companion keeps the one queue of presses waiting
+ * for a search to land, which `_resetReplayEngine` clears.
  */
-import { REPLAY_EXIT_GRACE_MS, type ReplayState, type TelemetryData } from "@iracedeck/iracing-sdk";
+import type { ReplayState, TelemetryData } from "@iracedeck/iracing-sdk";
+import type { ILogger } from "@iracedeck/logger";
 import { MARKER_NEXT_MIN_AHEAD_FRAMES, MARKER_PREVIOUS_MIN_BEHIND_FRAMES } from "@iracedeck/replay-store";
 
-import { readReplayPosition } from "./replay-command-gate.js";
+import { pollUntil } from "./engine-clock.js";
+import {
+  closeReplayGateWait,
+  isReplaySlotHeld,
+  openReplayGateWait,
+  readReplayPosition,
+  replayLastPositionSend,
+  replaySearchOnItsWay,
+  type ReplaySearchOnItsWay,
+  replaySlotHeldBefore,
+  waitForReplaySearchLanding,
+} from "./replay-command-gate.js";
+import { engineLogger, engineReads } from "./replay-engine-env.js";
+import { pendingReplayTarget } from "./replay-position-state.js";
+import { readReplay } from "./replay-reading.js";
+import { pendingReplaySearch, SEARCH_QUEUE_MAX } from "./replay-search-queue.js";
+import {
+  readReplayJumpTimeoutMs,
+  REPLAY_JUMP_MAX_WAIT_MS,
+  REPLAY_JUMP_POLL_MS,
+  TICKS_AFTER_POSITION_SEND,
+} from "./replay-timing.js";
 
 /** The two ways a walk goes: forward (Next, a clockwise turn) or back (Previous, counter-clockwise). */
 export type ReplayWalkDirection = "next" | "previous";
@@ -61,41 +87,544 @@ export function resolveReplayWalkAnchor(liveFrame: number, telemetry: TelemetryD
   return headed?.seeking === true ? headed.frame : liveFrame;
 }
 
-/** Where a press steps from, or why it has nowhere to step from. */
-export type ReplayWalkStart =
+/**
+ * Where a press steps from, once nothing is left to wait for: the pending
+ * target, the cursor, or why there is neither.
+ */
+export type SettledReplayWalkStart =
   | { readonly frame: number; readonly from: "target" | "cursor" }
   | { readonly frame: null; readonly reason: "not in a replay" | "no cursor" };
 
 /**
- * Where a press steps from, read from the controller's debounced replay
- * state: the pending target while one stands, else the cursor. A standing
- * target wins even where the debounced state has given the replay up — a
- * seek longer than the exit grace reads like a replay that was left in a live
- * session — since the plugin's own jump is still headed there, as the gate
- * holds too. Otherwise there is no step outside a replay, and none with no
- * cursor: a tick still reading mid-seek (`IsReplayPlaying` false, frame 0)
- * once the exit grace has run out, where a walk would send the list's first
- * entry. Within the grace the state holds the last frame a replay tick
- * showed, which is the cursor. What a press does with `no cursor` is the
- * caller's: Replay Control's record step sends the key's search, which the
- * gate holds while a seek shows.
+ * Where a press steps from, or why it has nowhere to step from yet: `search
+ * on its way` while a search of the gate's is still on its way, whose landing
+ * is the start but is not known until it lands ({@link awaitReplayWalkStart}
+ * waits for it).
+ */
+export type ReplayWalkStart = SettledReplayWalkStart | { readonly frame: null; readonly reason: "search on its way" };
+
+/**
+ * The id of the last search a waiting start waited out without it landing
+ * (`found-nothing`, `not-landed`, `gave-up`), or null: that search no longer
+ * counts as one a start waits for, so a press after it reads the cursor
+ * rather than waiting for a landing the gate has already given up on.
+ */
+let waitedOutSearchId: number | null = null;
+
+/**
+ * Whether the Replay Control dial's paced search is under way
+ * (`replay-search-queue.ts`, #801): between its searches it holds the
+ * reading, pauses or jumps back, with no search on its way, and a step's
+ * jump then would take the cursor from the run and drop its remaining
+ * detents. A start waits for the whole run as for one search (#1660).
+ */
+function pacedRunUnderWay(): boolean {
+  return pendingReplaySearch() !== null;
+}
+
+/**
+ * The longest a start waits for a paced run to end: every search of the
+ * longest run ({@link SEARCH_QUEUE_MAX}) sent twice, each waited for up to
+ * {@link REPLAY_JUMP_MAX_WAIT_MS}. The run ends itself long before; this only
+ * bounds the poll.
+ */
+const PACED_RUN_MAX_WAIT_MS = 2 * SEARCH_QUEUE_MAX * REPLAY_JUMP_MAX_WAIT_MS;
+
+/** Waits, on the engine clock, until no paced run is under way. Returns how the wait ended. */
+async function waitForPacedRun(): Promise<string> {
+  try {
+    const ended = await pollUntil(() => (pacedRunUnderWay() ? undefined : true), {
+      intervalMs: REPLAY_JUMP_POLL_MS,
+      timeoutMs: PACED_RUN_MAX_WAIT_MS,
+    });
+
+    return ended.kind === "done" ? "the paced run ended" : "the paced run outlasted the wait";
+  } catch (err) {
+    return `failed: ${String(err)}`;
+  }
+}
+
+/**
+ * Waits, on the engine clock, until no command pressed before the waiting
+ * start `gateWait` is held in the gate's slot, which the gate's own poll
+ * sends or drops. Bounded by {@link REPLAY_JUMP_MAX_WAIT_MS}, the longest the
+ * jump such a command waits behind is waited for.
+ */
+async function waitForSlotAhead(gateWait: number): Promise<string> {
+  try {
+    const ended = await pollUntil(() => (replaySlotHeldBefore(gateWait) ? undefined : true), {
+      intervalMs: REPLAY_JUMP_POLL_MS,
+      timeoutMs: REPLAY_JUMP_MAX_WAIT_MS,
+    });
+
+    return ended.kind === "done" ? "the command pressed before it went" : "the command pressed before it still waits";
+  } catch (err) {
+    return `failed: ${String(err)}`;
+  }
+}
+
+/** A reading's `SessionTick`, or null without one (no telemetry, or not a finite number). */
+function sessionTick(telemetry: TelemetryData | null): number | null {
+  const tick = telemetry?.SessionTick;
+
+  return typeof tick === "number" && Number.isFinite(tick) ? tick : null;
+}
+
+/**
+ * The count of the last position send whose spacing a bounded wait ran out
+ * on, or null (#1660): that send's spacing counts as met, and is never
+ * waited for again.
+ */
+let spacingWaivedFor: number | null = null;
+
+/**
+ * Whether the next position command a step sends would come too soon after
+ * the gate's last one (#1660, {@link replayLastPositionSend}): fewer than
+ * {@link TICKS_AFTER_POSITION_SEND} ticks past that send's `SessionTick`,
+ * wherever it was sent, a step's act, a jump sequence's seek after its
+ * pause, a slot release or a press. While the send's tick is not known yet
+ * the gate takes it from its next reading that carries one, so a fresh
+ * reading with a tick says yes; a fresh reading with none cannot show the
+ * ticks have passed, so with the send's tick known it says yes too. Only in
+ * a sim that delivers no tick at all, neither the send's reading nor any
+ * since, does it say no: there is nothing to count. A send a bounded wait
+ * ran out on says no.
+ *
+ * @internal Exported for testing.
+ */
+export function spacingPending(): boolean {
+  const send = replayLastPositionSend();
+
+  if (send === null || send.count === spacingWaivedFor) return false;
+
+  const tick = sessionTick(engineReads().readTelemetry());
+
+  if (send.tick === null) return tick !== null;
+
+  return tick === null || tick - send.tick < TICKS_AFTER_POSITION_SEND;
+}
+
+/** Whether the target `id` a head recorded still stands with its seek not sent: it goes out after the pause reads back. */
+function seekOwed(id: number | null): boolean {
+  if (id === null) return false;
+
+  const target = pendingReplayTarget();
+
+  return target !== null && target.id === id && !target.sent;
+}
+
+/**
+ * Waits, on the engine clock, until the next head may send a position
+ * command (#1660): the seek of the target the head before recorded has gone
+ * out (on a moving replay a jump records its target and pauses, and seeks
+ * only once the pause reads back), and then {@link spacingPending} is clear:
+ * iRacing loses a position command sent too soon after another, and a queue
+ * that resolves two heads back to back would send them milliseconds apart.
+ * Read back, not timed. The bound, the record jump's own wait, is final:
+ * once it runs out the spacing counts as met, and that send is never waited
+ * for again.
+ */
+async function waitForSpacing(owedTarget: number | null): Promise<string> {
+  try {
+    const ended = await pollUntil(() => (seekOwed(owedTarget) || spacingPending() ? undefined : true), {
+      intervalMs: REPLAY_JUMP_POLL_MS,
+      timeoutMs: readReplayJumpTimeoutMs(),
+    });
+
+    if (ended.kind === "done") return `${TICKS_AFTER_POSITION_SEND} new ticks since the last position send`;
+
+    spacingWaivedFor = replayLastPositionSend()?.count ?? null;
+
+    return `no ${TICKS_AFTER_POSITION_SEND} new ticks since the last position send within the bound; the spacing counts as met`;
+  } catch (err) {
+    spacingWaivedFor = replayLastPositionSend()?.count ?? null;
+
+    return `failed: ${String(err)}`;
+  }
+}
+
+/** The search of the gate's a start waits for: on its way, and not one a start has already waited out. */
+function searchToWaitFor(): ReplaySearchOnItsWay | null {
+  const search = replaySearchOnItsWay();
+
+  return search === null || search.id === waitedOutSearchId ? null : search;
+}
+
+/**
+ * Where a press steps from, in order (#1660):
+ *
+ * 1. **`search on its way`** while the dial's paced run is under way
+ *    (`replay-search-queue.ts`), before any target: its final landing is the
+ *    start. A target standing during a run is the run's own (its jump back
+ *    before a step against the play) or one the run started behind and
+ *    waits for; any other surface's jump takes the cursor and ends the run.
+ *    A press that stepped from such a target at once would take the cursor
+ *    from the run and drop its remaining detents.
+ * 2. **The pending target** while one stands. It wins even where the
+ *    debounced state has given the replay up — a seek longer than the exit
+ *    grace reads like a replay that was left in a live session — since the
+ *    plugin's own jump is still headed there, as the gate holds too.
+ * 3. **`search on its way`** while a search of the gate's may still be on its
+ *    way (`replaySearchOnItsWay`: a lap, session or incident search or a go
+ *    to start, never a go to end): its landing is where the replay is
+ *    headed, but iRacing's search has no target the plugin can read, so the
+ *    start is not known until it lands. A press waits for it, or for the
+ *    run, through {@link awaitReplayWalkStart}; a view reads the cursor
+ *    meanwhile.
+ * 4. **`not in a replay`** outside one.
+ * 5. **The cursor**: the frame `telemetry` shows when that tick is the
+ *    replay's, else the state's {@link ReplayState.cursorFrame}, the frame
+ *    it holds through the exit grace and the seek hold (#1429). The tick
+ *    comes first because telemetry is read once per tick for the whole
+ *    process: the gate's polls and the paced run's reads take ticks through
+ *    `getCurrentTelemetry()` that the controller's debounced replay state is
+ *    never stepped with, so its cursor read can still be the frame from
+ *    before a search that has landed. The tick is the newest anyone read; on
+ *    a playing replay it is the frame playing now. With neither (the flag
+ *    reads false past the grace and the hold: a mid-seek tick whose frame
+ *    reads 0 in a saved replay, where a walk would send the list's first
+ *    entry) it is `no cursor`, and what a press does then is the caller's:
+ *    Replay Control's record step sends the key's search, which the gate
+ *    holds while a seek shows.
+ *
+ * Synchronous and sends nothing; it reads the gate's target and search
+ * records as they stand.
  */
 export function resolveReplayWalkStart(
-  state: Pick<ReplayState, "inReplay" | "frame" | "tickReplayPlaying" | "replaySeenAt">,
+  state: Pick<ReplayState, "inReplay" | "cursorFrame">,
   telemetry: TelemetryData | null,
-  nowMs: number,
 ): ReplayWalkStart {
+  if (pacedRunUnderWay()) return { frame: null, reason: "search on its way" };
+
   const headed = readReplayPosition(telemetry);
 
   if (headed?.seeking === true) return { frame: headed.frame, from: "target" };
 
+  if (searchToWaitFor() !== null) return { frame: null, reason: "search on its way" };
+
+  return cursorStart(state, telemetry);
+}
+
+/** Steps 4 and 5 of {@link resolveReplayWalkStart}: outside a replay, else the cursor (fresh tick first) or none. */
+function cursorStart(
+  state: Pick<ReplayState, "inReplay" | "cursorFrame">,
+  telemetry: TelemetryData | null,
+): SettledReplayWalkStart {
   if (!state.inReplay) return { frame: null, reason: "not in a replay" };
 
-  const held = state.replaySeenAt !== null && nowMs - state.replaySeenAt < REPLAY_EXIT_GRACE_MS;
+  const frame = readReplay(telemetry)?.frame ?? state.cursorFrame;
 
-  if (state.frame === null || (!state.tickReplayPlaying && !held)) return { frame: null, reason: "no cursor" };
+  if (frame === null) return { frame: null, reason: "no cursor" };
 
-  return { frame: state.frame, from: "cursor" };
+  return { frame, from: "cursor" };
+}
+
+/** Whether a start has nothing left to wait for. */
+function isSettled(start: ReplayWalkStart): start is SettledReplayWalkStart {
+  return start.frame !== null || start.reason !== "search on its way";
+}
+
+/**
+ * How many waits one start makes before it stops waiting and reads the
+ * cursor. A wait is one search of a key's, or one whole paced run of the
+ * dial's however many searches it sends; a start waits again only when a new
+ * one has begun after the last ended. Each wait is bounded on its own; this
+ * bounds a chain of them that keys or a dial kept going could otherwise make
+ * endless.
+ */
+const MAX_SEARCH_WAITS = 8;
+
+/** A press waiting for its start, in press order. */
+interface WaitingStart {
+  readonly readState: () => Pick<ReplayState, "inReplay" | "cursorFrame">;
+  readonly readTelemetry: () => TelemetryData | null;
+  readonly act: (start: SettledReplayWalkStart) => unknown;
+  /** Its waiting fact in the gate's state seam (`openReplayGateWait`). */
+  readonly gateWait: number;
+  readonly resolve: (value: unknown) => void;
+  readonly reject: (reason: unknown) => void;
+}
+
+/** The starts waiting, first pressed first: the one queue that orders them (#1660). */
+let waitingStarts: WaitingStart[] = [];
+/** Whether {@link drainWaitingStarts} is running. */
+let draining = false;
+/** Bumped by the reset, so a drain from before it stops at its next turn. */
+let drainGeneration = 0;
+
+function log(): ILogger {
+  return engineLogger("ReplayWalk");
+}
+
+/**
+ * Where a press steps from once any search of the gate's on its way has
+ * ended (#1660), handed to `act`, whose result the promise carries. The
+ * async companion of {@link resolveReplayWalkStart}; `act` never sees
+ * `search on its way`.
+ *
+ * - **Nothing to wait for**, no earlier press waiting and no command held in
+ *   the gate's slot: `act` runs at once, inside this call, with the start
+ *   {@link resolveReplayWalkStart} reads.
+ * - **A search on its way**, an earlier press still waiting, or a command
+ *   held in the slot (pressed before this one, say a search behind a marker
+ *   jump's target, which this press's own jump would replace and drop): the
+ *   press joins the one queue of waiting starts, and waits for that command
+ *   to go out before it reads its start. The head waits for the search's
+ *   landing through the gate's own verdict (`waitForReplaySearchLanding`),
+ *   as long as the gate's slot holds a press behind it: while nothing shows
+ *   it on its way (a paused replay) until the time it could be running is
+ *   over, so a long search across hours of tape is waited through rather
+ *   than cancelled by the press's jump; once it is seen on its way, up to
+ *   the landing or {@link REPLAY_JUMP_MAX_WAIT_MS}.
+ *   Whatever the outcome (landed, found nothing, not landed, gave up,
+ *   superseded) the start is read again from the top with fresh reads
+ *   (`readState`, `readTelemetry`): a landing gives the cursor there, a
+ *   search replaced by a jump gives that jump's target, a departure `not in
+ *   a replay`, and a search that did not land the cursor, since it no longer
+ *   counts. While the dial's paced run is under way the press waits for the
+ *   whole run to end, through every search it sends and the pauses between
+ *   them, so its jump does not cancel the run. A new search or run on its
+ *   way is waited for in turn, up to {@link MAX_SEARCH_WAITS} waits.
+ * - **Press order.** Waiting starts resolve in the order they were pressed,
+ *   each read at its own turn, and each `act` runs to its first `await`
+ *   before the next start is read. So `act` must do what the step decides
+ *   synchronously — record a jump's target (`beginReplayJump`), press a
+ *   search through the gate — before it yields: the next press then reads
+ *   that target and steps on from it, so two quick presses during one
+ *   search step twice from its landing, never twice to the same entry.
+ *   The queue does not wait for the promise `act` returns.
+ * - **Busy mark.** While it waits the press shows as `waiting` for
+ *   `options.origin` in the gate's state seam (`openReplayGateWait`), which
+ *   is not the slot and sends nothing; `act` runs in the same gate change
+ *   that ends it, as `sent-on-landing` (or `replay-left` when the start is
+ *   `not in a replay`), so what it sends takes over the still mark without a
+ *   not-done. Replay Control's key and dial and Replay Markers' key and dial
+ *   each pass their context id; with no origin nothing shows.
+ *
+ * A throw from `act`, or from this press's own `readState` or
+ * `readTelemetry`, rejects this press's promise alone and the queue goes on.
+ */
+export function awaitReplayWalkStart<T>(
+  readState: () => Pick<ReplayState, "inReplay" | "cursorFrame">,
+  readTelemetry: () => TelemetryData | null,
+  act: (start: SettledReplayWalkStart) => T,
+  options: { readonly origin?: string } = {},
+): Promise<Awaited<T>> {
+  // A command held in the slot was pressed before this press: it goes first (the drain's `replaySlotHeldBefore`).
+  // A position command that went out within the last ticks: the press waits its turn, so its own jump does not
+  // go out inside the same sim updates (the drain's wait for new ticks).
+  if (waitingStarts.length === 0 && !isReplaySlotHeld() && !spacingPending()) {
+    try {
+      const start = resolveReplayWalkStart(readState(), readTelemetry());
+
+      if (isSettled(start)) return Promise.resolve(act(start));
+    } catch (err) {
+      return Promise.reject(err);
+    }
+  }
+
+  return new Promise<Awaited<T>>((resolve, reject) => {
+    waitingStarts.push({
+      readState,
+      readTelemetry,
+      act,
+      gateWait: openReplayGateWait(options.origin),
+      resolve: resolve as (value: unknown) => void,
+      reject,
+    });
+    log().debug(`Replay step start: waiting for a search to land (${waitingStarts.length} waiting)`);
+
+    if (!draining) void drainWaitingStarts();
+  });
+}
+
+/**
+ * Waits for `search` to land or end, by the gate's verdict. An unseen search
+ * (a paused replay shows none on its way) is waited for until the time it
+ * could still be running is over, as the gate's slot holds a press behind
+ * it: a shorter patience ends a long search's wait `not-landed` while it
+ * still runs, and the press's jump would then cancel it. A seen one is
+ * waited for up to its landing or {@link REPLAY_JUMP_MAX_WAIT_MS}, never less
+ * than the could-run time.
+ */
+async function waitForSearch(search: ReplaySearchOnItsWay): Promise<string> {
+  try {
+    const landing = await waitForReplaySearchLanding({
+      patienceMs: search.couldRunMs,
+      hardBoundMs: Math.max(REPLAY_JUMP_MAX_WAIT_MS, search.couldRunMs),
+    });
+
+    return landing.outcome;
+  } catch (err) {
+    return `failed: ${String(err)}`;
+  }
+}
+
+/**
+ * The head's own reads threw: that press alone rejects with the error, its
+ * waiting fact ends as `refused` (a give-up, so its surface shows not-done
+ * for a second), and the queue goes on with the next press.
+ */
+function dropHead(head: WaitingStart, err: unknown): void {
+  waitingStarts.shift();
+  log().debug(`Replay step start: a press's reads threw (${String(err)}); it is dropped`);
+
+  try {
+    closeReplayGateWait(head.gateWait, "refused", () => undefined);
+  } catch (closeErr) {
+    log().debug(`Replay step start: ending the dropped press's wait threw (${String(closeErr)})`);
+  }
+
+  head.reject(err);
+}
+
+/**
+ * Resolves the waiting starts in press order: the head is read; while a
+ * search is on its way the head waits for it; once its start is settled it
+ * leaves the queue, its waiting fact ends and its `act` runs in that one
+ * gate change, and the next is read.
+ */
+async function drainWaitingStarts(): Promise<void> {
+  const generation = drainGeneration;
+  let waits = 0;
+  /** The target the last head's act recorded, while its seek may still be owed (sent once its pause reads back). */
+  let owedTarget: number | null = null;
+
+  draining = true;
+
+  try {
+    while (generation === drainGeneration) {
+      const head = waitingStarts[0];
+
+      if (head === undefined) return;
+
+      // The head before this one recorded a jump whose seek is still owed, or a position command went out fewer
+      // than TICKS_AFTER_POSITION_SEND ticks ago, wherever from: the sim takes a position command on its next
+      // update, and one sent too soon after it is lost. The next head reads and acts once the seek has gone out and
+      // the ticks have passed, or the bound has run out (`waitForSpacing`), and never waits for the same send twice.
+      if (seekOwed(owedTarget) || spacingPending()) {
+        const outcome = await waitForSpacing(owedTarget);
+
+        owedTarget = null;
+
+        if (generation !== drainGeneration) return;
+
+        log().debug(`Replay step start: ${outcome}`);
+        continue;
+      }
+
+      owedTarget = null;
+
+      let start: ReplayWalkStart;
+
+      try {
+        start = resolveReplayWalkStart(head.readState(), head.readTelemetry());
+      } catch (err) {
+        dropHead(head, err);
+        waits = 0;
+        continue;
+      }
+
+      if (!isSettled(start) && waits < MAX_SEARCH_WAITS) {
+        waits++;
+
+        if (pacedRunUnderWay()) {
+          const outcome = await waitForPacedRun();
+
+          if (generation !== drainGeneration) return;
+
+          log().debug(`Replay step start: ${outcome}`);
+          continue;
+        }
+
+        const search = searchToWaitFor();
+
+        if (search !== null) {
+          const outcome = await waitForSearch(search);
+
+          if (generation !== drainGeneration) return;
+
+          log().debug(`Replay step start: the search on its way ended (${outcome})`);
+          // Landed or not, it is no longer one to wait for: the start is read again from the top.
+          waitedOutSearchId = search.id;
+          continue;
+        }
+      }
+
+      // A command pressed before this start still waits in the slot (behind an earlier start's jump, say): it goes
+      // first, and the start reads again once it has, so its own jump never drops that command.
+      if (isSettled(start) && waits < MAX_SEARCH_WAITS && replaySlotHeldBefore(head.gateWait)) {
+        waits++;
+
+        const outcome = await waitForSlotAhead(head.gateWait);
+
+        if (generation !== drainGeneration) return;
+
+        log().debug(`Replay step start: ${outcome}`);
+        continue;
+      }
+
+      if (!isSettled(start)) {
+        log().debug(`Replay step start: still searching after ${MAX_SEARCH_WAITS} waits; reading the cursor`);
+      }
+
+      waits = 0;
+
+      let settled: SettledReplayWalkStart;
+
+      try {
+        settled = isSettled(start) ? start : cursorStart(head.readState(), head.readTelemetry());
+      } catch (err) {
+        dropHead(head, err);
+        continue;
+      }
+
+      waitingStarts.shift();
+      const reason = settled.frame === null && settled.reason === "not in a replay" ? "replay-left" : "sent-on-landing";
+
+      const targetBefore = pendingReplayTarget()?.id ?? null;
+
+      try {
+        head.resolve(closeReplayGateWait(head.gateWait, reason, () => head.act(settled)));
+      } catch (err) {
+        head.reject(err);
+      }
+
+      // Its act recorded a jump's target: on a moving replay the seek goes out once the pause reads back, outside
+      // the act, and the next head waits for it before the ticks are counted.
+      const targetAfter = pendingReplayTarget()?.id ?? null;
+
+      owedTarget = targetAfter !== targetBefore ? targetAfter : null;
+    }
+  } finally {
+    if (generation === drainGeneration) draining = false;
+  }
+}
+
+/** Why a waiting start's promise rejects when the engine is reset under it: its `act` never runs. */
+export class ReplayWalkStartDropped extends Error {
+  constructor() {
+    super("The replay engine was reset while the step's start waited for a search to land");
+    this.name = "ReplayWalkStartDropped";
+  }
+}
+
+/**
+ * @internal For tests, through `_resetReplayEngine`: no start waiting, none
+ * waited out. Every start still waiting is settled, rejected with
+ * {@link ReplayWalkStartDropped} without running its `act`, so a press
+ * awaited across a reset does not hang.
+ */
+export function _resetReplayRecordWalk(): void {
+  const dropped = waitingStarts;
+
+  drainGeneration++;
+  waitingStarts = [];
+  draining = false;
+  waitedOutSearchId = null;
+  spacingWaivedFor = null;
+
+  for (const start of dropped) start.reject(new ReplayWalkStartDropped());
 }
 
 /**

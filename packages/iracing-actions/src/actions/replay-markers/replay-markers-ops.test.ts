@@ -3,6 +3,7 @@ import { ReplayPosMode, replaySpeedToSdk, type TelemetryData } from "@iracedeck/
 import {
   beginReplayJump,
   describeReplayJump,
+  getReplayGateView,
   pressReplayCommand,
   type ReplayJumpOutcome,
 } from "@iracedeck/replay-engine";
@@ -12,6 +13,8 @@ import {
   capturedJumpSpeed,
   claimReplayCursor,
   currentReplayCursorOwner,
+  type FakeReplay,
+  fakeReplay,
   pendingReplayTarget,
   steppedReplayState,
   type SteppedReplayState,
@@ -21,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { engineOverDeck } from "../../shared/replay-engine-deck.test-support.js";
 import {
+  awaitMarkerStepStart,
   followMarkerJump,
   jumpToMarkerFrame,
   markerIndexAt,
@@ -28,9 +32,10 @@ import {
   readReplayContext,
   REPLAY_EXIT_GRACE_MS,
   type ReplayContext,
+  type ReplayContextResult,
   type ReplayContextSource,
   resolveJumpTarget,
-  resolveMarkerJumpAnchor,
+  resolveMarkerViewStart,
   walkMarkers,
 } from "./replay-markers-ops.js";
 
@@ -114,6 +119,7 @@ describe("resolveJumpTarget", () => {
       telemetry: telemetry as TelemetryData,
       inReplay: telemetry.IsReplayPlaying === true,
       frame: 3_000,
+      cursorFrame: telemetry.IsReplayPlaying === true ? 3_000 : null,
       store: { markers: { list } } as unknown as ReplaySessionStore,
       scope: { subSessionId: 7 },
     };
@@ -337,8 +343,11 @@ describe("the replay state survives the post-seek blip (#1230, read from the con
 
         const context = read(notPlaying, Date.now());
 
-        expect(context).toMatchObject({ inReplay: true, frame: 4_000 });
-        expect(resolveJumpTarget("next", context)?.frame).toBe(5_000);
+        // The frame and the cursor are both held; a step measures from the jump's target (#1660), with no marker past it.
+        expect(context).toMatchObject({ inReplay: true, frame: 4_000, cursorFrame: 4_000 });
+        expect(resolveJumpTarget("next", context, context.cursorFrame)?.frame).toBe(5_000);
+        expect(resolveMarkerViewStart(context)).toBe(1_200_000);
+        expect(resolveJumpTarget("next", context)).toBeNull();
       } finally {
         resetEngine();
         vi.mocked(getCommands).mockReset();
@@ -440,7 +449,24 @@ function resetJumpState(): void {
   vi.mocked(getCommands).mockReset();
 }
 
-describe("the replay's pending target is the anchor (#1230, #1430)", () => {
+/**
+ * Where a view measures a step from (#1660) with the cursor at `cursor` and
+ * the sim's reading `telemetry`, in a replay with no search on its way: the
+ * pending target while it stands, else the cursor.
+ */
+function viewStartAt(cursor: number, telemetry: TelemetryData): number | null {
+  return resolveMarkerViewStart({
+    ok: true,
+    telemetry,
+    inReplay: true,
+    frame: cursor,
+    cursorFrame: cursor,
+    store: {} as ReplaySessionStore,
+    scope: undefined,
+  });
+}
+
+describe("the replay's pending target is where a step starts (#1230, #1430, #1660)", () => {
   beforeEach(resetJumpState);
 
   afterEach(() => {
@@ -455,7 +481,7 @@ describe("the replay's pending target is the anchor (#1230, #1430)", () => {
 
     expect(sim.replay.setPlayPosition).toHaveBeenCalledExactlyOnceWith(ReplayPosMode.Begin, 4_000);
     expect(pendingReplayTarget()).toMatchObject({ frame: 4_000 });
-    expect(resolveMarkerJumpAnchor(500, sim.read())).toBe(4_000);
+    expect(viewStartAt(500, sim.read())).toBe(4_000);
   });
 
   it("a moving replay's jump anchors on its marker before its seek goes out", () => {
@@ -465,7 +491,7 @@ describe("the replay's pending target is the anchor (#1230, #1430)", () => {
 
     // Only the pause is out; the next detent already measures from the marker.
     expect(sim.calls).toEqual(["speed 0"]);
-    expect(resolveMarkerJumpAnchor(500, sim.read())).toBe(4_000);
+    expect(viewStartAt(500, sim.read())).toBe(4_000);
   });
 
   it("a jump still seeking anchors on its marker however long it takes", async () => {
@@ -475,28 +501,28 @@ describe("the replay's pending target is the anchor (#1230, #1430)", () => {
     void jumpToMarkerFrame("dial-next", 4_000, sim.read);
     await vi.advanceTimersByTimeAsync(2_500);
 
-    expect(resolveMarkerJumpAnchor(500, sim.read())).toBe(4_000);
+    expect(viewStartAt(500, sim.read())).toBe(4_000);
   });
 
-  it("the anchor is the live frame once the target has read back, so a later drift cannot revive it", async () => {
+  it("the start is the cursor once the target has read back, so a later drift cannot revive it", async () => {
     const sim = fakeSim(PAUSED);
 
     await settled(jumpToMarkerFrame("next", 4_000, sim.read), 200);
 
-    expect(resolveMarkerJumpAnchor(4_000, sim.read())).toBe(4_000);
+    expect(viewStartAt(4_000, sim.read())).toBe(4_000);
     expect(pendingReplayTarget()).toBeNull();
 
     sim.moveTo(4_500);
 
-    expect(resolveMarkerJumpAnchor(4_500, sim.read())).toBe(4_500);
+    expect(viewStartAt(4_500, sim.read())).toBe(4_500);
   });
 
-  it("any surface's jump is the anchor, a dial's frame move included: the replay is headed there", () => {
+  it("any surface's jump is the start, a dial's frame move included: the replay is headed there", () => {
     const sim = fakeSim(PAUSED);
 
     pressReplayCommand({ kind: "jump", frame: 9_000 }, { by: "dial-frame-jog" });
 
-    expect(resolveMarkerJumpAnchor(500, sim.read())).toBe(9_000);
+    expect(viewStartAt(500, sim.read())).toBe(9_000);
   });
 
   it("a cursor take by a key that sends no replay command leaves a sent target standing", () => {
@@ -505,7 +531,7 @@ describe("the replay's pending target is the anchor (#1230, #1430)", () => {
     void jumpToMarkerFrame("next", 4_000, sim.read);
     cancelReplayCursorOwner("jump-to-my-car");
 
-    expect(resolveMarkerJumpAnchor(500, sim.read())).toBe(4_000);
+    expect(viewStartAt(500, sim.read())).toBe(4_000);
   });
 
   it("a jump that was not sent leaves no target, whatever stood before it", async () => {
@@ -522,7 +548,7 @@ describe("the replay's pending target is the anchor (#1230, #1430)", () => {
     });
 
     expect(pendingReplayTarget()).toBeNull();
-    expect(resolveMarkerJumpAnchor(500, sim.read())).toBe(500);
+    expect(viewStartAt(500, sim.read())).toBe(500);
     await expect(settled(first)).resolves.toEqual({ kind: "cancelled", by: "next" });
   });
 });
@@ -775,6 +801,7 @@ describe("previewAddMarker", () => {
       } as TelemetryData,
       inReplay: true,
       frame: 3_000,
+      cursorFrame: 3_000,
       store: {
         markers: { list: () => markers(1_000) },
         getActiveSession: () => active,
@@ -806,5 +833,141 @@ describe("previewAddMarker", () => {
 
     expect(previewAddMarker({ ...base, frame: 1_060 }, 0)).toBeNull();
     expect(previewAddMarker({ ...base, frame: 1_061 }, 0)?.frame).toBe(1_061);
+  });
+});
+
+describe("where a step starts: a view reads it at once, a press waits for a search to land (#1660)", () => {
+  /** Markers either side of the press frame (12 000) and of the search's landing (20 000). */
+  const store = { markers: { list: vi.fn(() => markers(5_000, 15_000, 25_000)) } } as unknown as ReplaySessionStore;
+  let sim: FakeReplay;
+  let state: SteppedReplayState;
+  let sessionInfo: unknown;
+  let connected: boolean;
+
+  const source: ReplayContextSource = {
+    getConnectionStatus: () => connected,
+    getCurrentTelemetry: () => sim.telemetry(),
+    getSessionInfo: () => sessionInfo,
+    getReplayState: (nowMs) => state.getReplayState(nowMs),
+    isStoreInitialized: () => true,
+    getStore: () => store,
+  };
+  const readContext = (): ReplayContextResult => readReplayContext(source);
+
+  function contextNow(): ReplayContext {
+    const context = readContext();
+
+    if (!context.ok) throw new Error(context.reason);
+
+    return context;
+  }
+
+  /** A press's step: where it started, and the Next marker from there. */
+  function pressNext(): { starts: string[]; done: Promise<number | null> } {
+    const starts: string[] = [];
+    const done = awaitMarkerStepStart(
+      readContext,
+      (context, start) => {
+        starts.push(start.frame === null ? start.reason : `${start.from} ${start.frame}`);
+
+        return context.ok ? (resolveJumpTarget("next", context, start.frame)?.frame ?? null) : null;
+      },
+      "marker-key",
+    );
+
+    return { starts, done };
+  }
+
+  /** A paused replay at 12 000; a Next Session search lands 8 000 frames on, in 1.5 s. */
+  beforeEach(() => {
+    vi.useFakeTimers({ now: PRESS_AT });
+    sim = fakeReplay({ frame: 12_000, minSeekMs: 1_500, searches: { nextSession: (from) => from + 8_000 } });
+    sessionInfo = null;
+    connected = true;
+    state = steppedReplayState(
+      () => sim.telemetry(),
+      () => sessionInfo,
+    );
+    resetEngine({
+      replay: () => sim.replay,
+      readTelemetry: () => sim.telemetry(),
+      inReplay: () => state.getReplayState().inReplay,
+      connected: () => true,
+      seekHold: (hold) => state.noteReplaySeekHold(hold),
+    });
+  });
+
+  afterEach(() => {
+    resetEngine();
+    vi.useRealTimers();
+  });
+
+  it("with nothing on its way, the cursor: for a view, and within the call for a press", async () => {
+    expect(resolveMarkerViewStart(contextNow())).toBe(12_000);
+
+    const { starts, done } = pressNext();
+
+    expect(starts).toEqual(["cursor 12000"]);
+    await expect(done).resolves.toBe(15_000);
+  });
+
+  it("while a search of the plugin's is on its way past the grace, a view reads the cursor and a press waits for the landing", async () => {
+    pressReplayCommand({ kind: "search", search: "nextSession" }, { by: "next-session", origin: "key-1" });
+    await vi.advanceTimersByTimeAsync(REPLAY_EXIT_GRACE_MS + 100);
+
+    const context = contextNow();
+
+    expect(resolveMarkerViewStart(context)).toBe(12_000);
+    expect(resolveJumpTarget("next", context)?.frame).toBe(15_000);
+
+    const { starts, done } = pressNext();
+
+    expect(starts).toEqual([]);
+    // The press shows as waiting under the origin it was handed.
+    expect(getReplayGateView("marker-key").waiting).not.toBeNull();
+
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    // From the landing at 20 000 Next is 25 000; from 12 000 it would have been 15 000.
+    await expect(done).resolves.toBe(25_000);
+    expect(starts).toEqual(["cursor 20000"]);
+    expect(sim.thrown).toBe(0);
+  });
+
+  it("a saved replay's tick read mid-seek past the grace, with no hold, has nothing to step from", async () => {
+    sessionInfo = { WeekendInfo: { SimMode: "replay" } };
+    contextNow(); // the replay sighted at 12 000
+
+    // A seek that is not the plugin's: the gate knows nothing of it, so nothing holds the frame.
+    sim.replay.setPlayPosition(ReplayPosMode.Begin, 40_000);
+    await vi.advanceTimersByTimeAsync(REPLAY_EXIT_GRACE_MS + 100);
+
+    const context = contextNow();
+
+    // From frame 0 Next would be the first marker.
+    expect(context).toMatchObject({ inReplay: true, frame: 0, cursorFrame: null });
+    expect(resolveMarkerViewStart(context)).toBeNull();
+    expect(resolveJumpTarget("next", context)).toBeNull();
+
+    const { starts, done } = pressNext();
+
+    expect(starts).toEqual(["no cursor"]);
+    await expect(done).resolves.toBeNull();
+  });
+
+  it("with no context, a press is handed why, and nothing to step from", async () => {
+    connected = false;
+
+    const handed: Array<[ReplayContextResult, string]> = [];
+
+    await awaitMarkerStepStart(
+      readContext,
+      (context, start) => {
+        handed.push([context, start.frame === null ? start.reason : "a frame"]);
+      },
+      "marker-key",
+    );
+
+    expect(handed).toEqual([[{ ok: false, reason: "Not connected to iRacing" }, "not in a replay"]]);
   });
 });

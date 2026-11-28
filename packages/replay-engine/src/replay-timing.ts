@@ -104,3 +104,16 @@ export function readFastestLapSearchDelayMs(): number {
 export function readReplayJumpTimeoutMs(): number {
   return Math.max(RECORD_JUMP_MIN_TIMEOUT_MS, readFastestLapSearchDelayMs() * STABILIZATION_TIMEOUT_MULTIPLIER);
 }
+
+/**
+ * How many tick indices past a position command's tick the next position
+ * command waits for (#1660): between queued step starts
+ * (`replay-record-walk.ts`), and before a slot command a start's change
+ * would release (`replay-command-gate.ts`). Measured 2026-10-12: a jump
+ * 20 ms after another landed 5 times in 10, and one 35 ms or more after it
+ * 20 times in 20. A send can fall late in its sim update, so two new ticks
+ * can come only about 17 to 20 ms after it; three new ticks always leave at
+ * least two whole sim updates between the sends, about 33 ms or more at
+ * 60 Hz, the 20-of-20 zone. A count read back from the sim, not a time.
+ */
+export const TICKS_AFTER_POSITION_SEND = 3;

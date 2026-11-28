@@ -453,6 +453,76 @@ describe("telemetry-features", () => {
       });
     });
 
+    describe("the cursor read (#1660)", () => {
+      it("is the tick's frame on a replay tick", () => {
+        expect(run([[replayTick(500), 0]])).toMatchObject({ frame: 500, cursorFrame: 500 });
+        expect(run([[replayTick(500), 0]], SAVED_REPLAY)).toMatchObject({ frame: 500, cursorFrame: 500 });
+      });
+
+      it("is the held frame inside the grace, and none once it has run out, between ticks too", () => {
+        const inGrace = run([
+          [replayTick(500), 0],
+          [liveTick(900), 300],
+        ]);
+
+        expect(inGrace).toMatchObject({ inReplay: true, frame: 500, cursorFrame: 500 });
+        expect(replayStateAt(inGrace, 999)).toMatchObject({ cursorFrame: 500 });
+        // The live edge is the frame from here on, never the cursor.
+        expect(replayStateAt(inGrace, 1_000)).toMatchObject({ inReplay: false, frame: 900, cursorFrame: null });
+      });
+
+      it("is the held frame through a seek hold past the grace, and none past the hold and its grace", () => {
+        let state = replaySeekHeld(run([[replayTick(500), 0]]), holding(5_000), 10);
+
+        for (let t = 50; t <= 4_950; t += 50) state = nextReplayState(state, liveTick(900), LIVE_SESSION, t);
+
+        expect(state).toMatchObject({ inReplay: true, frame: 500, cursorFrame: 500 });
+        expect(replayStateAt(state, 5_999)).toMatchObject({ cursorFrame: 500 });
+        expect(nextReplayState(state, liveTick(901), LIVE_SESSION, 6_000)).toMatchObject({
+          inReplay: false,
+          frame: 901,
+          cursorFrame: null,
+        });
+      });
+
+      it("is none in a saved replay past the grace whose tick reads mid-seek at frame 0", () => {
+        const midSeek = telemetry({ IsReplayPlaying: false, ReplayFrameNum: 0, ReplayFrameNumEnd: 100 });
+        const state = run(
+          [
+            [replayTick(500), 0],
+            [midSeek, 300],
+            [midSeek, 1_000],
+          ],
+          SAVED_REPLAY,
+        );
+
+        expect(state).toMatchObject({ inReplay: true, frame: 0, cursorFrame: null });
+      });
+
+      it("is never the live edge: a live session from the car has a frame and no cursor", () => {
+        expect(run([[liveTick(900), 0]])).toMatchObject({ inReplay: false, frame: 900, cursorFrame: null });
+        expect(initialReplayState().cursorFrame).toBeNull();
+      });
+
+      it("is cleared by replayLeftForLive, as the grace is, and the state it leaves is consistent", () => {
+        const inGrace = run([
+          [replayTick(500), 0],
+          [liveTick(900), 300],
+        ]);
+        const left = replayLeftForLive(inGrace, 300);
+
+        expect(left).toMatchObject({ inReplay: false, frame: 900, cursorFrame: null });
+        expect(replayStateAt(left, 300)).toBe(left);
+      });
+
+      it("keeps the frame a tick still reading the replay shows after replayLeftForLive, as inReplay does", () => {
+        const left = replayLeftForLive(run([[replayTick(500), 0]]), 0);
+
+        expect(left).toMatchObject({ inReplay: true, frame: 500, cursorFrame: 500 });
+        expect(replayStateAt(left, 0)).toBe(left);
+      });
+    });
+
     describe("replayLeftForLive", () => {
       it("ends the grace at once outside a saved replay: the next false tick is the car", () => {
         const left = replayLeftForLive(run([[replayTick(500), 0]]), 0);

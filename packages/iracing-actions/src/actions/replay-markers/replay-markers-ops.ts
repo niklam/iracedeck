@@ -19,13 +19,15 @@
 import { readSubSessionId, REPLAY_EXIT_GRACE_MS, type ReplayState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import {
+  awaitReplayWalkStart,
   beginReplayJump,
   describeReplayJump,
   recordedIndexAt,
   type ReplayJumpOutcome,
   type ReplayWalkDirection,
-  resolveReplayWalkAnchor,
+  resolveReplayWalkStart,
   runReplayJump,
+  type SettledReplayWalkStart,
   walkRecordedEntries,
   walkRecordedIndex,
 } from "@iracedeck/replay-engine";
@@ -137,11 +139,20 @@ export interface ReplayContext {
    */
   inReplay: boolean;
   /**
-   * The frame on screen: `ReplayFrameNum` in a replay (through the grace, the
-   * last one a replay read showed) and `ReplayFrameNumEnd` live. Never
-   * `ReplayFrameNumEnd` in a replay, where it is the frames left, not a position.
+   * The frame on screen: `ReplayFrameNum` in a replay (through the grace and
+   * the seek hold, the last one a replay read showed) and `ReplayFrameNumEnd`
+   * live. Never `ReplayFrameNumEnd` in a replay, where it is the frames left,
+   * not a position. What Add and Delete measure from; a Next / Previous step
+   * reads {@link cursorFrame} instead.
    */
   frame: number;
+  /**
+   * The frame on screen as a cursor a step can be measured from (#1660,
+   * `ReplayState.cursorFrame`): the frame a replay tick shows, or the one the
+   * state holds through the grace and the seek hold; null otherwise — the live
+   * edge, or a saved replay's tick read mid-seek past both, whose frame reads 0.
+   */
+  cursorFrame: number | null;
   store: ReplaySessionStore;
   scope: SubSessionScoped | undefined;
 }
@@ -160,19 +171,21 @@ export interface ReplayContextSource {
   getCurrentTelemetry(): TelemetryData | null;
   getSessionInfo(): unknown;
   /**
-   * Whether a replay is on screen and the frame it shows, debounced, as of
-   * `nowMs`: `SDKController.getReplayState()` (#1324), the one instance every
-   * replay consumer reads.
+   * Whether a replay is on screen, the frame it shows and that frame as a
+   * cursor, debounced, as of `nowMs`: `SDKController.getReplayState()`
+   * (#1324), the one instance every replay consumer reads.
    */
-  getReplayState(nowMs: number): Pick<ReplayState, "inReplay" | "frame">;
+  getReplayState(nowMs: number): Pick<ReplayState, "inReplay" | "frame" | "cursorFrame">;
   isStoreInitialized(): boolean;
   getStore(): ReplaySessionStore;
 }
 
 /**
  * Reads the replay context fresh: connected, a store, telemetry, whether a
- * replay is on screen and the frame it shows (the controller's debounced
- * replay state, so a press in the post-seek blip still reads the replay and
+ * replay is on screen, the frame it shows and its cursor (the controller's
+ * debounced replay state, which holds the last replay frame through the exit
+ * grace and, while a seek of the plugin's is out, the seek hold, #1429, so a
+ * press in the post-seek blip or during a long jump still reads the replay and
  * its held frame), and the scope. `nowMs` is injectable for tests; the state
  * is evaluated at it, so a press between ticks sees the grace expire.
  */
@@ -193,6 +206,7 @@ export function readReplayContext(source: ReplayContextSource, nowMs: number = D
     telemetry,
     inReplay: state.inReplay,
     frame: state.frame,
+    cursorFrame: state.cursorFrame,
     store: source.getStore(),
     scope: subSessionId === null ? undefined : { subSessionId },
   };
@@ -200,8 +214,9 @@ export function readReplayContext(source: ReplayContextSource, nowMs: number = D
 
 /**
  * The marker a Next / Previous jump from `fromFrame` lands on, or null when it
- * would send nothing. The one predicate behind the keypad's greyed Next /
- * Previous keys, the dial's first step and the dial's side marks:
+ * would send nothing, as with no frame to step from (`fromFrame` null). The
+ * one predicate behind the keypad's greyed Next / Previous keys, the dial's
+ * first step and the dial's side marks:
  *
  * - out of a replay (the context's debounced `inReplay`) it is always null — iRacing honours replay commands only
  *   out of the car (irsdk_defines.h: "camera and replay commands only work
@@ -215,16 +230,17 @@ export function readReplayContext(source: ReplayContextSource, nowMs: number = D
  *   session steps — and a marker lands on itself, so no offset is added and
  *   no span rule applies.
  *
- * `fromFrame` defaults to the context's live frame; a jump passes
- * {@link resolveMarkerJumpAnchor} — the replay's pending target while the
- * replay has not reached it yet.
+ * `fromFrame` defaults to where a view measures a step from
+ * ({@link resolveMarkerViewStart}); a press passes the start it settled
+ * ({@link awaitMarkerStepStart}). Never the context's `frame`, which is the
+ * live edge from the car and 0 on a saved replay's tick read mid-seek.
  */
 export function resolveJumpTarget(
   direction: MarkerDirection,
   context: ReplayContext,
-  fromFrame: number = context.frame,
+  fromFrame: number | null = resolveMarkerViewStart(context),
 ): ReplayMarker | null {
-  if (!context.inReplay) return null;
+  if (!context.inReplay || fromFrame === null) return null;
 
   const walked = walkRecordedEntries(context.store.markers.list(context.scope), fromFrame, direction, 1);
 
@@ -268,12 +284,60 @@ export function markerIndexAt(markers: readonly ReplayMarker[], frame: number): 
 }
 
 /**
- * The frame every Replay Markers surface measures a jump from — the keypad's
- * Next / Previous and every dial alike: the shared walk's anchor
- * (`resolveReplayWalkAnchor`, moved to the shared `replay-record-walk.ts` in
- * #1426, in `replay-engine` since #1467), the replay's one pending target while it stands, else `liveFrame`.
+ * Where a view — a greyed Next / Previous key, the dial's side marks and its
+ * `k / N` — measures a step from, read synchronously (#1660): the pending
+ * target while it stands, else the cursor ({@link ReplayContext.cursorFrame}),
+ * which is also what it reads while a search of the plugin's is on its way:
+ * a view does not wait for the landing, and redraws when it comes. Null with
+ * neither (outside a replay, or a saved replay's tick read mid-seek past the
+ * grace with no hold), where a view has nothing to step from.
  */
-export const resolveMarkerJumpAnchor = resolveReplayWalkAnchor;
+export function resolveMarkerViewStart(context: ReplayContext): number | null {
+  const start = resolveReplayWalkStart(context, context.telemetry);
+
+  if (start.frame !== null) return start.frame;
+
+  return start.reason === "search on its way" && context.inReplay ? context.cursorFrame : null;
+}
+
+/**
+ * Where a Next / Previous press steps from (#1660), handed to `act` with the
+ * context read at that moment: within the call when nothing is on its way
+ * and no command pressed before it waits in the gate's slot, else once a
+ * search of the plugin's on its way has landed or ended, or that command
+ * has gone out
+ * (`awaitReplayWalkStart`, which resolves the waiting presses of every
+ * surface in press order). The start is the pending target, the landing, the
+ * cursor, or why there is none (`not in a replay`, `no cursor`), never the
+ * context's `frame`. `act` decides and sends synchronously — a jump records
+ * its target before it returns ({@link jumpToMarkerFrame}) — so a press
+ * waiting behind it steps on from that target. While it waits the press
+ * shows as `waiting` for `origin`, the pressed key's or the turned dial's
+ * context id (the replay command gate's state seam), so the surface draws its
+ * still mark as Replay Control's do, handed straight over to the jump `act`
+ * sends. Resolves with what `act` returns; a throw in `act` rejects it.
+ */
+export function awaitMarkerStepStart<T>(
+  readContext: () => ReplayContextResult,
+  act: (context: ReplayContextResult, start: SettledReplayWalkStart) => T,
+  origin: string,
+): Promise<Awaited<T>> {
+  return awaitReplayWalkStart(
+    () => {
+      const context = readContext();
+
+      // No context (not connected, no store, no frame) is nothing to step from; `act` reads why.
+      return context.ok ? context : { inReplay: false, cursorFrame: null };
+    },
+    () => {
+      const context = readContext();
+
+      return context.ok ? context.telemetry : null;
+    },
+    (start) => act(readContext(), start),
+    { origin },
+  );
+}
 
 /**
  * Whether the store holds an active record that a call with `context.scope`
@@ -335,8 +399,8 @@ export function deleteMarkerAt(context: ReplayContext, windowSeconds: number): R
  * how it ended. The replay finishes the way the Replay jump playback setting
  * says: `readTelemetry` is read at the press for the speed to restore, then
  * polled while the sequence waits for the pause and for the landing. Call it
- * only when a jump is meant to be sent, and read the anchor
- * ({@link resolveMarkerJumpAnchor}) first: the jump replaces the target.
+ * only when a jump is meant to be sent, and read where the step starts
+ * ({@link awaitMarkerStepStart}) first: the jump replaces the target.
  *
  * Everything up to the sequence's first wait happens within the call:
  *

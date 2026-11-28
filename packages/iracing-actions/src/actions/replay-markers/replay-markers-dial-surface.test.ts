@@ -1,9 +1,11 @@
 import { ReplayPosMode, replaySpeedToSdk, type TelemetryData } from "@iracedeck/iracing-sdk";
-import { getReplayGateView } from "@iracedeck/replay-engine";
+import { getReplayGateView, pressReplayCommand } from "@iracedeck/replay-engine";
 import {
   cancelReplayCursorOwner,
   claimReplayCursor,
   currentReplayCursorOwner,
+  type FakeReplay,
+  fakeReplay,
   pendingReplayTarget,
   steppedReplayState,
 } from "@iracedeck/replay-engine/testing";
@@ -377,8 +379,7 @@ describe("ReplayMarkersDialSurface", () => {
       const ctx = dialContext();
       await appear(surface, ctx);
 
-      surface.rotate(ctx as never, dial(), ticks, false);
-
+      // What the keypad would pick from here, read before the turn records its target.
       const context = readReplayContext({
         getConnectionStatus: () => true,
         getCurrentTelemetry: () => env.telemetry,
@@ -388,6 +389,8 @@ describe("ReplayMarkersDialSurface", () => {
         getStore: () => store,
       });
       const keypadTarget = context.ok ? resolveJumpTarget(mode, context) : null;
+
+      surface.rotate(ctx as never, dial(), ticks, false);
 
       expect(keypadTarget).not.toBeNull();
       expect(mocks.setPlayPosition).toHaveBeenCalledTimes(1);
@@ -913,6 +916,134 @@ describe("ReplayMarkersDialSurface", () => {
       await appear(surface, ctx);
 
       expect(lastBox(ctx)).toMatch(/data-caption="true"[^>]*>ADD /);
+    });
+  });
+
+  describe("while the replay is seeking (#1660)", () => {
+    let sim: FakeReplay;
+
+    /**
+     * A surface over the engine's fake sim, a paused replay at 12 000 whose
+     * Next Session search lands 8 000 frames on, in 1.5 s; the gate reads the
+     * same sim and the same debounced state.
+     */
+    function surfaceOverSim(sessionInfo: unknown = { WeekendInfo: { SubSessionID: 42 } }): ReplayMarkersDialSurface {
+      sim = fakeReplay({ frame: 12_000, minSeekMs: 1_500, searches: { nextSession: (from) => from + 8_000 } });
+
+      const replay = steppedReplayState(
+        () => sim.telemetry(),
+        () => sessionInfo,
+      );
+
+      resetEngine({
+        replay: () => sim.replay,
+        readTelemetry: () => sim.telemetry(),
+        inReplay: () => replay.getReplayState().inReplay,
+        connected: () => true,
+        seekHold: (hold) => replay.noteReplaySeekHold(hold),
+      });
+
+      return new ReplayMarkersDialSurface({
+        logger: logger as never,
+        readTelemetry: () => sim.telemetry(),
+        readReplayContext: () =>
+          readReplayContext({
+            getConnectionStatus: () => true,
+            getCurrentTelemetry: () => sim.telemetry(),
+            getSessionInfo: () => sessionInfo,
+            getReplayState: replay.getReplayState,
+            isStoreInitialized: () => true,
+            getStore: () => store,
+          }),
+      });
+    }
+
+    const seeks = (): string[] => sim.calls.filter((call) => call.startsWith("setPlayPosition"));
+
+    it("a turn during a search of the plugin's waits for its landing and steps on from there", async () => {
+      // From the landing at 20 000 one detent is 25 000 and two are 30 000; from 12 000 they would be 15 000 and 20 000.
+      setMarkers([5_000, 15_000, 25_000, 30_000]);
+      const surface = surfaceOverSim();
+      const ctx = dialContext();
+      await appear(surface, ctx);
+
+      pressReplayCommand({ kind: "search", search: "nextSession" }, { by: "next-session", origin: "rc-key" });
+      await vi.advanceTimersByTimeAsync(REPLAY_EXIT_GRACE_MS + 100);
+      surface.rotate(ctx as never, dial(), 1, false);
+
+      expect(sim.calls).toEqual(["nextSession"]);
+      // The view does not wait: it reads the cursor, and both sides are lit from 12 000.
+      expect(sides(lastBox(ctx))).toEqual({ left: true, right: true });
+
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(seeks()).toEqual([`setPlayPosition ${ReplayPosMode.Begin} 25000`]);
+      expect(sim.thrown).toBe(0);
+      expect(logger.info).toHaveBeenCalledWith("Dial jumped to next marker");
+    });
+
+    it("a waiting turn shows as waiting on the dial, then hands over to its jump", async () => {
+      setMarkers([5_000, 15_000, 25_000]);
+      const surface = surfaceOverSim();
+      const ctx = dialContext("marker-dial");
+      await appear(surface, ctx);
+
+      pressReplayCommand({ kind: "search", search: "nextSession" }, { by: "next-session", origin: "rc-key" });
+      await vi.advanceTimersByTimeAsync(REPLAY_EXIT_GRACE_MS + 100);
+      surface.rotate(ctx as never, dial(), 1, false);
+
+      expect(getReplayGateView("marker-dial")).toMatchObject({
+        waiting: { since: expect.any(Number) },
+        underWay: null,
+      });
+
+      // The search lands at 1.5 s; the jump it hands over to takes another 1.5 s.
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(getReplayGateView("marker-dial").waiting).toBeNull();
+      expect(getReplayGateView("marker-dial").underWay).not.toBeNull();
+    });
+
+    it("two turns during one search step twice from its landing, the second from the first's marker", async () => {
+      setMarkers([5_000, 15_000, 25_000, 30_000]);
+      const surface = surfaceOverSim();
+      const ctx = dialContext();
+      await appear(surface, ctx);
+
+      pressReplayCommand({ kind: "search", search: "nextSession" }, { by: "next-session", origin: "rc-key" });
+      await vi.advanceTimersByTimeAsync(REPLAY_EXIT_GRACE_MS + 100);
+      surface.rotate(ctx as never, dial(), 1, false);
+      surface.rotate(ctx as never, dial(), 1, false);
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(seeks()).toEqual([
+        `setPlayPosition ${ReplayPosMode.Begin} 25000`,
+        `setPlayPosition ${ReplayPosMode.Begin} 30000`,
+      ]);
+      expect(sim.frame()).toBe(30_000);
+    });
+
+    it("a turn in a saved replay mid-seek past the grace, with no hold, sends nothing and lights no side", async () => {
+      setMarkers([5_000, 15_000]);
+      const surface = surfaceOverSim({ WeekendInfo: { SubSessionID: 42, SimMode: "replay" } });
+      const ctx = dialContext();
+      await appear(surface, ctx);
+
+      // A seek that is not the plugin's: the gate knows nothing of it, so nothing holds the frame.
+      sim.replay.setPlayPosition(ReplayPosMode.Begin, 40_000);
+      await vi.advanceTimersByTimeAsync(REPLAY_EXIT_GRACE_MS + 100);
+
+      const before = sim.calls.length;
+
+      surface.rotate(ctx as never, dial(), 1, false);
+      surface.onTick(ctx.id);
+      await settle(200);
+
+      // From the mid-seek frame 0, a turn would have gone to the first marker.
+      expect(sim.calls.slice(before)).toEqual([]);
+      expect(logger.debug).toHaveBeenCalledWith("Dial next: no cursor; nothing sent");
+      expect(sides(lastBox(ctx))).toEqual({ left: false, right: false });
+      expect(shownValue(lastBox(ctx))).toBe("2");
     });
   });
 

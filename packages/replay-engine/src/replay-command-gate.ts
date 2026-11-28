@@ -47,6 +47,10 @@
  *   and the gate reports per token whether something of it is under way or
  *   waiting ({@link subscribeReplayGate}). It adds no behaviour: the gate
  *   sends the same commands in the same order with and without a listener.
+ *   A press may also wait outside the slot, for a search of the gate's to
+ *   land before it reads where a replay step starts (#1660,
+ *   `replay-record-walk.ts`): {@link openReplayGateWait} puts that up as the
+ *   token's waiting fact, which fills no slot and sends nothing.
  * - **Every speed it sends is the speed state's** (#1467, #1427): a speed, a
  *   pause or a playback step that went out is recorded in
  *   `replay-speed-state.ts` the moment it goes out, as the one pending speed,
@@ -117,6 +121,7 @@ import {
   REPLAY_JUMP_POLL_MS,
   STABILIZATION_POLL_INTERVAL_MS,
   STABILIZATION_TIMEOUT_MULTIPLIER,
+  TICKS_AFTER_POSITION_SEND,
 } from "./replay-timing.js";
 
 export type { ReplayCommandSurface } from "./replay-engine-env.js";
@@ -223,6 +228,8 @@ type SearchRecordKind = ReplaySearchKind | "go-to-start" | "go-to-end";
 
 /** A search the gate sent, or a go to start / end. */
 interface SearchRecord {
+  /** Its identity, for a caller that waited it out ({@link replaySearchOnItsWay}). */
+  readonly id: number;
   readonly kind: SearchRecordKind;
   readonly direction: 1 | -1;
   readonly sentAt: number;
@@ -272,6 +279,12 @@ interface Slot {
   /** The press's own `rememberSpeed`, for a takeover the slot hands it to. What the slot sends itself always remembers. */
   readonly rememberSpeed: boolean;
   readonly pressedAt: number;
+  /**
+   * Its place in press order among the slot's commands and the waiting
+   * starts ({@link openReplayGateWait}), from one counter: a start waiting
+   * with a lower one was pressed first and goes first at a landing (#1660).
+   */
+  readonly order: number;
   readonly behind: "jump" | "search";
   /** The target it waits on; null behind a seek only the witness shows. */
   behindTargetId: number | null;
@@ -287,6 +300,26 @@ interface Slot {
    * that arrives behind it is a first press, which waits, not a second one.
    */
   follow?: boolean;
+  /**
+   * Set when the search it waited behind landed, or could no longer be
+   * running, while a start pressed before it still waited (#1660): it was
+   * held back for those starts, and goes once they have acted
+   * ({@link releaseOnLanding}, or the takeover when no jump of theirs stands),
+   * even if a start's jump has since forgotten the record.
+   */
+  searchLanded?: boolean;
+  /**
+   * Set when a step's start sent a position command in the change that would
+   * release this command (#1660): the tick it went out on, and when. A
+   * command that sends a position command of its own (a go to, or a step,
+   * which can become a jump) stays held until the sim has delivered
+   * {@link TICKS_AFTER_POSITION_SEND} newer ticks, or the record jump's wait
+   * has run out, so two position commands never go out inside the same sim
+   * updates. The ticks count from the gate's last position send
+   * ({@link replayLastPositionSend}); `since` is when the hold began, for its
+   * bound.
+   */
+  spacedFrom?: { readonly since: number };
 }
 
 /** A replay jump holding the cursor (`replay-jump-playback.ts`, the walk). */
@@ -348,6 +381,8 @@ export type ReplayTargetFate =
   | { readonly kind: "replaced"; readonly by: number | null };
 
 let search: SearchRecord | null = null;
+/** The last search record's id. */
+let searchSeq = 0;
 let takeover: Takeover | null = null;
 let slot: Slot | null = null;
 let held: HeldJump | null = null;
@@ -372,6 +407,25 @@ function setFate(id: number, fate: ReplayTargetFate): void {
 }
 /** Whether the latest reading showed a seek nobody recorded (the witness). */
 let witness = false;
+/**
+ * How many position commands went out (#1660): an absolute jump, a go to
+ * start or a go to end the SDK took. Read before and after a step's start
+ * acts, so the queue of waiting starts knows the act sent one.
+ */
+let positionSends = 0;
+/** The position commands {@link positionSends} counts, by their `sendRaw` names. */
+const POSITION_COMMANDS: ReadonlySet<string> = new Set(["setPlayPosition", "goToStart", "goToEnd"]);
+/**
+ * The last position command that went out, wherever it was sent (#1660): a
+ * step's act, a jump sequence's seek after its pause, the gate's owed seek, a
+ * slot release, a press. `count` is {@link positionSends} after it; `tick` is
+ * the `SessionTick` of the reading of the change it went out in, or, when that
+ * reading carried none, of the next reading that does; null until then. The
+ * one baseline the spacing between position commands counts from.
+ */
+let lastPositionSend: { readonly count: number; tick: number | null } | null = null;
+/** The reading the change under way settled on, for the tick of a position command sent in it; null outside a change. */
+let changeReading: TelemetryData | null = null;
 /** The last reading that was the replay's, for a takeover with no frame on screen. */
 let lastReplay: ReplayReading | null = null;
 /** When the gate last went from idle to busy (ms), for the record. */
@@ -431,7 +485,7 @@ const END_CLASS: Record<ReplayGateEndReason, ReplayGateEndClass> = {
 export interface ReplayGateView {
   /** Something of this token's is under way: its target stands, its search may be on its way, or its replay jump holds the cursor. */
   readonly underWay: { readonly since: number; readonly seen: boolean } | null;
-  /** A command of this token's waits in the slot. */
+  /** A command of this token's waits in the slot, or a press of its waits for a landing to read its start (#1660). */
   readonly waiting: { readonly since: number } | null;
 }
 
@@ -473,6 +527,64 @@ let sentSpeeds: ReplaySpeed[] = [];
  */
 let toldSeekHold: ReplaySeekHoldUntil | null = null;
 
+/** A press waiting outside the slot for a search to land before it reads its start (#1660): a waiting fact, nothing more. */
+interface StartWait {
+  readonly origin: string | undefined;
+  readonly since: number;
+  /** Its place in press order (`Slot.order`). */
+  readonly order: number;
+}
+
+/** The waiting starts by handle ({@link openReplayGateWait}). */
+const startWaits = new Map<number, StartWait>();
+/** The last waiting start's handle. */
+let startWaitSeq = 0;
+/** The last press order given to a slot command or a waiting start (#1660). */
+let pressOrder = 0;
+/**
+ * The press order of the start whose `act` is running inside
+ * {@link closeReplayGateWait}, or null (#1660). A press that `act` makes is
+ * that start's own step, so it takes the start's place in press order rather
+ * than a new one behind the starts still waiting.
+ */
+let actingStartOrder: number | null = null;
+
+/** The press order a new press or slot command takes: the acting start's while one acts, else the next. */
+function nextPressOrder(): number {
+  return actingStartOrder ?? ++pressOrder;
+}
+
+/** Whether a start pressed before `order` still waits: it goes before the slot's command at a landing (#1660). */
+function startWaitsBefore(order: number): boolean {
+  for (const start of startWaits.values()) {
+    if (start.order < order) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Whether a command waits in the gate's slot (#1660): every command there
+ * was pressed before a press made now, so a step pressed now waits for it
+ * (`replay-record-walk.ts`'s `awaitReplayWalkStart`) rather than replacing
+ * the target it waits behind and dropping it.
+ */
+export function isReplaySlotHeld(): boolean {
+  return slot !== null;
+}
+
+/**
+ * Whether a command pressed before the waiting start `id` still waits in the
+ * slot (#1660): held behind a jump an earlier start sent, say. The start waits
+ * for it to go out before it reads where it starts, so its own step, a jump
+ * that replaces the target, never drops a command pressed before it.
+ */
+export function replaySlotHeldBefore(id: number): boolean {
+  const wait = startWaits.get(id);
+
+  return wait !== undefined && slot !== null && slot.order < wait.order;
+}
+
 /** Runs `listener` on every change of any token's view. Returns the unsubscribe. */
 export function subscribeReplayGate(listener: (notice: ReplayGateNotice) => void): () => void {
   listeners.add(listener);
@@ -508,6 +620,7 @@ function batch<T>(now: number, change: () => T): T {
     batchDepth--;
 
     if (batchDepth === 0) {
+      changeReading = null;
       publish();
       noteSentSpeeds();
       tellSeekHold();
@@ -637,16 +750,31 @@ function computeViews(): Map<string, ReplayGateView> {
 
   if (held !== null && held.claim.cancelledBy === null) add(held.origin, witness);
 
+  // Waiting: the slot's command, and any start waiting for a landing (#1660); the earliest press is its since.
+  const waiting = new Map<string, number>();
+  const wait = (origin: string | undefined, since: number): void => {
+    if (origin === undefined) return;
+
+    const earlier = waiting.get(origin);
+
+    waiting.set(origin, earlier === undefined ? since : Math.min(earlier, since));
+  };
+
+  if (slot !== null) wait(slot.origin, slot.pressedAt);
+
+  for (const start of startWaits.values()) wait(start.origin, start.since);
+
   const result = new Map<string, ReplayGateView>();
-  const tokens = new Set<string>([...underWay.keys(), ...(slot?.origin === undefined ? [] : [slot.origin])]);
+  const tokens = new Set<string>([...underWay.keys(), ...waiting.keys()]);
 
   for (const origin of tokens) {
     const since = runs.get(origin) ?? batchNow;
     const isUnderWay = underWay.has(origin);
+    const waitingSince = waiting.get(origin);
 
     result.set(origin, {
       underWay: isUnderWay ? { since, seen: underWay.get(origin) ?? false } : null,
-      waiting: slot !== null && slot.origin === origin ? { since: slot.pressedAt } : null,
+      waiting: waitingSince === undefined ? null : { since: waitingSince },
     });
   }
 
@@ -737,7 +865,34 @@ function sendRaw(name: string, send: (replay: ReplayCommandSurface) => boolean):
     log().debug(`Replay command ${name} threw: ${String(err)}`);
   }
 
+  if (ok && POSITION_COMMANDS.has(name)) {
+    positionSends++;
+    lastPositionSend = { count: positionSends, tick: batchDepth > 0 ? sessionTick(changeReading) : null };
+  }
+
   return ok;
+}
+
+/** How many position commands (an absolute jump, a go to start or end) the gate has sent (#1660). */
+export function replayPositionSends(): number {
+  return positionSends;
+}
+
+/** A position command that went out, as the spacing reads it (#1660). */
+export interface ReplayPositionSend {
+  /** {@link replayPositionSends} after it went out. */
+  readonly count: number;
+  /** The `SessionTick` it went out on, or null while no reading since has carried one. */
+  readonly tick: number | null;
+}
+
+/**
+ * The last position command the gate sent, wherever from (#1660): what the
+ * spacing between two position commands counts its ticks from, the step
+ * starts' queue (`replay-record-walk.ts`) and the slot's held release alike.
+ */
+export function replayLastPositionSend(): ReplayPositionSend | null {
+  return lastPositionSend === null ? null : { count: lastPositionSend.count, tick: lastPositionSend.tick };
 }
 
 function describe(command: SlotCommand): string {
@@ -810,6 +965,7 @@ function recordSearch(
 
   endSearch("forgotten");
   search = {
+    id: ++searchSeq,
     kind,
     direction,
     sentAt: now,
@@ -1037,6 +1193,12 @@ function quiet(jumpsOnly: boolean): boolean {
 
 function settle(telemetry: TelemetryData | null, now: number): void {
   const reading = readReplay(telemetry);
+
+  // The change's reading: a position command sent in it went out on its tick. A send whose own change carried no tick
+  // takes the first later reading that does.
+  changeReading = telemetry;
+
+  if (lastPositionSend !== null && lastPositionSend.tick === null) lastPositionSend.tick = sessionTick(telemetry);
 
   if (reading !== null) lastReplay = reading;
 
@@ -1305,6 +1467,7 @@ function holdBehindJump(
     origin: options.origin,
     rememberSpeed: options.rememberSpeed === true,
     pressedAt: now,
+    order: nextPressOrder(),
     behind: "jump",
     behindTargetId: pendingReplayTarget()?.id ?? null,
     jumpPlayback,
@@ -1343,6 +1506,7 @@ function waitBehindSearch(
     origin: options.origin,
     rememberSpeed: options.rememberSpeed === true,
     pressedAt: now,
+    order: nextPressOrder(),
     behind: "search",
     behindTargetId: null,
     jumpPlayback: null,
@@ -1364,6 +1528,8 @@ function takeOver(
   options: ReplayPressOptions,
   telemetry: TelemetryData | null,
   now: number,
+  /** A held command's own press time and place in press order, kept when the slot hands it to the takeover. */
+  keep?: { readonly pressedAt: number; readonly order: number },
 ): ReplayPressResult {
   const record = search;
   const reading = readReplay(telemetry) ?? lastReplay;
@@ -1410,7 +1576,8 @@ function takeOver(
       by: options.by,
       origin: options.origin,
       rememberSpeed: options.rememberSpeed === true,
-      pressedAt: now,
+      pressedAt: keep?.pressedAt ?? now,
+      order: keep?.order ?? nextPressOrder(),
       behind: "jump",
       behindTargetId: target.id,
       jumpPlayback: null,
@@ -1422,11 +1589,52 @@ function takeOver(
   return { kind: "taking-over", ok };
 }
 
+/** Whether a slot command sends a position command of its own: a go to, or a step, which can become a jump. */
+function sendsPosition(command: SlotCommand): boolean {
+  return command.kind === "go-to" || command.kind === "step";
+}
+
+/** A reading's `SessionTick`, or null without one. */
+function sessionTick(telemetry: TelemetryData | null): number | null {
+  const tick = telemetry?.SessionTick;
+
+  return typeof tick === "number" && Number.isFinite(tick) ? tick : null;
+}
+
+/**
+ * Whether a slot command spaced from a start's position command
+ * ({@link Slot.spacedFrom}) may go: read back from the sim's `SessionTick`,
+ * {@link TICKS_AFTER_POSITION_SEND} past the tick of the gate's last
+ * position send ({@link replayLastPositionSend}). While that send's tick is
+ * not known yet (no reading since it carried one), or the reading has none,
+ * it stays held, so it never goes out in the change that sent the start's
+ * seek. Once the record jump's wait has run out it goes, a sim that delivers
+ * no tick not being one the spacing protects. The bound only gives up.
+ */
+function spacingMet(current: Slot, telemetry: TelemetryData | null, now: number): boolean {
+  const from = current.spacedFrom;
+
+  if (from === undefined) return true;
+
+  const sentTick = lastPositionSend?.tick ?? null;
+  const tick = sessionTick(telemetry);
+  const met =
+    now - from.since >= readReplayJumpTimeoutMs() ||
+    (sentTick !== null && tick !== null && tick - sentTick >= TICKS_AFTER_POSITION_SEND);
+
+  if (met) current.spacedFrom = undefined;
+
+  return met;
+}
+
 /** Acts on the slot after a reading has settled the state. */
 function serviceSlot(telemetry: TelemetryData | null, now: number): void {
   const current = slot;
 
   if (current === null) return;
+
+  // A start's position command went out in the change that would release a position command of this one's (#1660).
+  if (!spacingMet(current, telemetry, now)) return;
 
   if (current.behind === "search") {
     serviceBehindSearch(current, telemetry, now);
@@ -1439,22 +1647,57 @@ function serviceSlot(telemetry: TelemetryData | null, now: number): void {
 
 function serviceBehindSearch(current: Slot, telemetry: TelemetryData | null, now: number): void {
   const record = search;
+  // A slot held back at its landing, or at its search's end, still counts it ended once a start's jump has forgotten
+  // the record.
+  const landed = record === null ? current.searchLanded === true : record.landed;
 
-  if (record === null) {
+  if (record === null && !landed) {
     emptySlot("forgotten", "the search it waited on was forgotten");
 
     return;
   }
 
-  if (record.landed) {
-    slot = null;
-    noteEnd(current.origin, "waiting", "sent-on-landing");
-    goOut(current, telemetry, now);
+  if (landed) {
+    // Starts pressed before it go first at the landing, in press order (#1660): it waits until they have acted.
+    if (startWaitsBefore(current.order)) {
+      if (current.searchLanded !== true) {
+        current.searchLanded = true;
+        log().debug(
+          `Replay command held on the landing: ${describe(current.command)} (${current.by}) waits for a step pressed before it`,
+        );
+      }
+
+      return;
+    }
+
+    releaseOnLanding(current, telemetry, now);
 
     return;
   }
 
+  if (record === null) return;
+
   if (!record.onItsWay) {
+    // The search can no longer be running: a start pressed before the command still goes first (#1660), as at a
+    // landing, so the command is held back rather than taking over into that start's step.
+    if (startWaitsBefore(current.order)) {
+      if (current.searchLanded !== true) {
+        current.searchLanded = true;
+        log().debug(
+          `Replay command held at the search's end: ${describe(current.command)} (${current.by}) waits for a step pressed before it`,
+        );
+      }
+
+      return;
+    }
+
+    // Held back, and that start sent a jump: the command is decided against it, as at a landing.
+    if (current.searchLanded === true && jumpUnderWay()) {
+      releaseOnLanding(current, telemetry, now);
+
+      return;
+    }
+
     slot = null;
     noteEnd(current.origin, "waiting", "took-over");
     takeOver(
@@ -1462,8 +1705,68 @@ function serviceBehindSearch(current: Slot, telemetry: TelemetryData | null, now
       { by: current.by, origin: current.origin, rememberSpeed: current.rememberSpeed },
       telemetry,
       now,
+      { pressedAt: current.pressedAt, order: current.order },
     );
+
+    return;
   }
+
+  // A search on its way again (a start that went first sent one): the slot waits for that one, by the table.
+  current.searchLanded = false;
+}
+
+/**
+ * The slot's command goes out on its search's landing. One held back there
+ * for starts pressed before it (#1660) is decided once they have acted, by
+ * the table against what they sent: behind a jump a start sent, a speed, a
+ * search or anything else waits for its read-back, a step becomes a jump one
+ * frame from its target, a go to goes out, and a pause is not sent. The
+ * cursor is not taken from that jump, as the press took it when it was made.
+ * Otherwise it goes out at once, as on every landing.
+ */
+function releaseOnLanding(current: Slot, telemetry: TelemetryData | null, now: number): void {
+  slot = null;
+
+  if (current.searchLanded !== true || !jumpUnderWay() || current.command.kind === "playback") {
+    // Ended by what the send did: a send the SDK refused shows not-done.
+    noteEnd(current.origin, "waiting", goOut(current, telemetry, now) ? "sent-on-landing" : "refused");
+
+    return;
+  }
+
+  const result = decide(
+    current.command,
+    { by: current.by, origin: current.origin, rememberSpeed: current.rememberSpeed },
+    telemetry,
+    now,
+    null,
+    null,
+  );
+  const reheld = slot as Slot | null;
+
+  // A go to end `decide` sent leaves the replay for live, as one `goOut` sends does: the controller drops its grace.
+  if (result.kind === "sent" && result.ok && current.command.kind === "go-to" && current.command.end === "end") {
+    engineReads().leftForLive();
+  }
+
+  if (result.kind === "held" && reheld !== null) {
+    // Still the same press: its place in press order and its waiting fact's start stay.
+    slot = { ...reheld, pressedAt: current.pressedAt, order: current.order };
+    log().debug(`Replay command held: ${describe(current.command)} (${current.by}) now waits for the step's jump`);
+
+    return;
+  }
+
+  // A send the SDK refused ends as refused, so the surface shows not-done; a pause the gate drops is cleared by it.
+  noteEnd(
+    current.origin,
+    "waiting",
+    result.kind === "sent" && result.ok
+      ? "sent-on-landing"
+      : result.kind !== "sent" && current.command.kind === "pause"
+        ? "cleared-by-pause"
+        : "refused",
+  );
 }
 
 function serviceBehindJump(current: Slot, telemetry: TelemetryData | null, now: number): void {
@@ -1580,23 +1883,23 @@ function afterJumpLanded(
   }
 
   slot = null;
-  noteEnd(current.origin, "waiting", "sent-on-landing");
-  goOut(current, telemetry ?? landing, now);
+  noteEnd(current.origin, "waiting", goOut(current, telemetry ?? landing, now) ? "sent-on-landing" : "refused");
 }
 
 /**
  * A waiting command goes out, and what it carries after it waits behind it.
  * A speed it sends is the dial's resume speed too, whichever surface pressed
- * it: what the slot sends later always was (#1467, Decision 4).
+ * it: what the slot sends later always was (#1467, Decision 4). Returns
+ * whether the SDK took the send, which its waiting fact ends by.
  */
-function goOut(current: Slot, telemetry: TelemetryData | null, now: number): void {
+function goOut(current: Slot, telemetry: TelemetryData | null, now: number): boolean {
   const ok = dispatch(current.command, telemetry, now, current.origin, true);
 
   log().debug(`Replay command sent on the landing: ${describe(current.command)} (${current.by}); result ${ok}`);
 
   if (ok && current.command.kind === "go-to" && current.command.end === "end") engineReads().leftForLive();
 
-  if (!ok || (current.command.kind !== "search" && current.command.kind !== "go-to")) return;
+  if (!ok || (current.command.kind !== "search" && current.command.kind !== "go-to")) return ok;
 
   const follow: SlotCommand | null =
     current.jumpPlayback !== null
@@ -1605,7 +1908,7 @@ function goOut(current: Slot, telemetry: TelemetryData | null, now: number): voi
         ? { kind: "speed", speed: current.restoreSpeed.speed, slowMotion: current.restoreSpeed.slowMotion }
         : null;
 
-  if (follow === null) return;
+  if (follow === null) return ok;
 
   slot = {
     command: follow,
@@ -1613,6 +1916,7 @@ function goOut(current: Slot, telemetry: TelemetryData | null, now: number): voi
     origin: current.origin,
     rememberSpeed: current.rememberSpeed,
     pressedAt: current.pressedAt,
+    order: current.order,
     behind: "search",
     behindTargetId: null,
     jumpPlayback: null,
@@ -1620,6 +1924,8 @@ function goOut(current: Slot, telemetry: TelemetryData | null, now: number): voi
     holds: [],
     follow: true,
   };
+
+  return ok;
 }
 
 // ---------------------------------------------------------------------------
@@ -1719,11 +2025,69 @@ export function pressReplayCommand(command: ReplayGateCommand, options: ReplayPr
     const capturedBySequence = before !== null ? capturedJumpSpeed() : null;
 
     takeCursor(options.by, options.origin);
-    result = decide(command, options, telemetry, now, before, capturedBySequence);
+
+    // Its place in press order, before anything is decided (#1660): a step's start pressed before it that still
+    // waits goes first, so a command that would go out at once is held back for it instead. A press a start's own
+    // act makes takes that start's place, so the start's step is never held back behind the starts after it.
+    const order = nextPressOrder();
+
+    result = heldForEarlierStart(command, order)
+      ? holdForEarlierStart(command, options, now, order)
+      : decide(command, options, telemetry, now, before, capturedBySequence);
   });
   arm();
 
   return result;
+}
+
+/**
+ * Whether a press is held back for a step's start pressed before it (#1660):
+ * one still waits, and the table would send the press at once, because
+ * nothing is under way and no search is on its way (a search that landed or
+ * can no longer be running included; the gate reads its landing a moment
+ * before the waiting start acts on it, and a press in that moment would
+ * otherwise overtake the start). Behind a jump or a search on its way the
+ * table holds or sends it as before, and at that landing the slot waits for
+ * the earlier start anyway. An absolute jump is never held back: it is the
+ * newest word on where the replay goes, which the table sends into anything,
+ * and a start still waiting then steps from its target.
+ */
+function heldForEarlierStart(command: ReplayGateCommand, order: number): boolean {
+  return command.kind !== "jump" && startWaitsBefore(order) && !jumpUnderWay() && !searchOnItsWay();
+}
+
+/**
+ * Holds a press back in the slot for a start pressed before it (#1660), as a
+ * command held back at a landing: it goes once the earlier starts have acted
+ * (`closeReplayGateWait` services the slot), decided against a jump one of
+ * them sent, else sent as it is. One slot, newest wins: a command already
+ * held there is replaced.
+ */
+function holdForEarlierStart(
+  command: ReplayGateCommand,
+  options: ReplayPressOptions,
+  now: number,
+  order: number,
+): ReplayPressResult {
+  if (slot !== null) emptySlot("replaced");
+
+  slot = {
+    command,
+    by: options.by,
+    origin: options.origin,
+    rememberSpeed: options.rememberSpeed === true,
+    pressedAt: now,
+    order,
+    behind: "search",
+    behindTargetId: null,
+    jumpPlayback: null,
+    restoreSpeed: null,
+    holds: [],
+    searchLanded: true,
+  };
+  log().debug(`Replay command held: ${describe(command)} (${options.by}) waits for a step pressed before it`);
+
+  return { kind: "held" };
 }
 
 function decide(
@@ -2527,6 +2891,124 @@ export function replaySearchCouldRunMs(): number | null {
   return Math.max(0, search.sentAt + search.couldRunMs - engineNow());
 }
 
+/** A search of the gate's on its way, as a replay step's start waits for it (#1660). */
+export interface ReplaySearchOnItsWay {
+  /** Its identity: a later record is a later search. */
+  readonly id: number;
+  /** How long it could still be running (ms). */
+  readonly couldRunMs: number;
+}
+
+/**
+ * The search a replay step waits for before it reads where it starts
+ * (#1660), or null: one the gate sent that has not landed and is still taken
+ * to be on its way, by the rule the gate settles it by, read without
+ * settling: seen on its way (a playing replay's frame standing still), or
+ * unseen and still inside the time it could be running. The same searches
+ * hold the replay through their seek ({@link seekHoldUntil}): a lap, session
+ * or incident search, and a go to start, whose landing is where the user
+ * sent the replay, so a step pressed during it chains from there instead of
+ * cancelling it with its jump. A go to end never counts: outside a saved
+ * replay it leaves the replay for the car, so there is no landing to step
+ * from.
+ */
+export function replaySearchOnItsWay(): ReplaySearchOnItsWay | null {
+  if (search === null || search.landed || !search.onItsWay || search.kind === "go-to-end") return null;
+
+  const couldRunMs = search.sentAt + search.couldRunMs - engineNow();
+
+  if (!search.seen && couldRunMs <= 0) return null;
+
+  return { id: search.id, couldRunMs: Math.max(0, couldRunMs) };
+}
+
+/**
+ * Puts up a waiting fact for `origin` (#1660): a press that waits for a
+ * search of the gate's to land before it reads where its replay step
+ * starts (`replay-record-walk.ts`'s `awaitReplayWalkStart`). It is a fact in
+ * the state seam only: it neither fills nor empties the slot, the table is
+ * unchanged, and nothing is sent by it, so the busy indicator shows the
+ * press's still mark as it does for a command waiting in the slot. Returns
+ * its handle for {@link closeReplayGateWait}; with no origin it shows
+ * nowhere.
+ */
+export function openReplayGateWait(origin: string | undefined): number {
+  const id = ++startWaitSeq;
+  const now = engineNow();
+
+  batch(now, () => {
+    startWaits.set(id, { origin, since: now, order: ++pressOrder });
+  });
+
+  return id;
+}
+
+/**
+ * Ends the waiting fact `id` for `reason` and runs `then` in the same change,
+ * so whatever the press sends in `then` takes over from its waiting fact in
+ * one notice: the busy indicator goes from the still mark straight to what
+ * was sent, with no rest drawn between. A completed or superseded reason
+ * shows no not-done; a handle already ended only runs `then`.
+ *
+ * The slot is serviced at the end of the same change, after `then`, thrown
+ * or not (#1660): a command held back at its landing for this start goes out
+ * now, or waits behind what `then` sent, before the next start reads where it
+ * starts, so press order holds across the slot. While `then` runs that
+ * command is set aside, so the start's own send, the older press, does not
+ * empty the slot as if it were the newer word.
+ */
+export function closeReplayGateWait<T>(id: number, reason: ReplayGateEndReason, then: () => T): T {
+  const now = engineNow();
+
+  try {
+    return batch(now, () => {
+      const wait = startWaits.get(id);
+
+      if (wait !== undefined) {
+        startWaits.delete(id);
+        noteEnd(wait.origin, "waiting", reason);
+      }
+
+      // A command held back at its landing for this start is newer than it: what the start sends must not replace
+      // it as the newest word ("newest wins"), so it is set aside while the start acts and put back after.
+      const parked = slot !== null && slot.searchLanded === true ? slot : null;
+
+      if (parked !== null) slot = null;
+
+      const outerActing = actingStartOrder;
+      const sendsBefore = positionSends;
+
+      // A press `then` makes is this start's own step: it keeps the start's place in press order.
+      actingStartOrder = wait?.order ?? outerActing;
+
+      try {
+        return then();
+      } finally {
+        actingStartOrder = outerActing;
+
+        if (parked !== null) {
+          // The start's own command waiting in the slot is the older press: the held-back one replaces it.
+          if (slot !== null) emptySlot("replaced", "a newer press held back at the landing takes the slot");
+
+          slot = parked;
+        }
+
+        const telemetry = engineReads().readTelemetry();
+
+        // The start sent a position command: a held one of the slot's waits for the sim to take it first.
+        if (positionSends !== sendsBefore && slot !== null && sendsPosition(slot.command)) {
+          slot.spacedFrom = { since: now };
+        }
+
+        settle(telemetry, now);
+        serviceSlot(telemetry, now);
+      }
+    });
+  } finally {
+    arm();
+  }
+}
+
 /**
  * How the target with `id` ended (#1450): read back, given up, replaced and by
  * which target, cleared, or nothing moved. Null while it still stands, for an
@@ -2680,6 +3162,14 @@ export function _resetReplayCommandGate(): void {
 
   timer = null;
   search = null;
+  searchSeq = 0;
+  startWaits.clear();
+  startWaitSeq = 0;
+  pressOrder = 0;
+  positionSends = 0;
+  lastPositionSend = null;
+  changeReading = null;
+  actingStartOrder = null;
   takeover = null;
   slot = null;
   held = null;

@@ -39,6 +39,7 @@ import {
 import { replaySpeedFromTelemetry, type ReplayState, type TelemetryData } from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import {
+  awaitReplayWalkStart,
   beginReplayJump,
   describeReplayJump,
   findRecordStep,
@@ -62,7 +63,6 @@ import {
   REPLAY_SPEED_HOLD_MS,
   type ReplayGateCommand,
   type ReplayPressResult,
-  resolveReplayWalkStart,
   reverseRememberedSpeed,
   runReplayJump,
   shownReplaySpeed,
@@ -192,9 +192,10 @@ export interface ReplayControlDialHost {
   /** Redraws the keypad keys whose icon follows the replay speed. */
   refreshKeys(): void;
   /**
-   * The controller's debounced replay state at `nowMs` (#1324): where a Lap
-   * or Session turn steps from when no jump of the plugin's is headed
-   * anywhere (`resolveReplayWalkStart`).
+   * The controller's debounced replay state at `nowMs` (#1324): its cursor
+   * (`cursorFrame`) is where a Lap or Session turn steps from when no jump of
+   * the plugin's is headed anywhere and no search of the plugin's is on its
+   * way (`awaitReplayWalkStart`, #1660).
    */
   replayState(nowMs: number): ReplayState;
   /** The session info the SDK holds, or null. */
@@ -906,20 +907,45 @@ export class ReplayControlDialSurface extends ReleaseDialSurfaceBase<
   }
 
   /**
-   * Where a record step of `steps` entries lands (#801), measured from where
-   * the replay is headed while a jump of the plugin's stands, else from the
-   * debounced cursor (`resolveReplayWalkStart`). With no cursor to step from
-   * it is a miss, and the turn goes to the search.
+   * A record step of `steps` entries (#801), handed to `act` once its start
+   * is settled (#1660, `awaitReplayWalkStart`): the pending target while a
+   * jump of the plugin's stands; while a search of the plugin's is on its
+   * way, its landing, which the turn waits for under the dial's origin token
+   * `origin`, so the box shows its still mark; else the debounced cursor.
+   * With no cursor to step from it is a miss, and the turn goes to the
+   * search. A turn whose replay was left while it waited sends nothing.
+   * `act` runs inside an entry ({@link withReading}): the turn's own when
+   * nothing was on its way and no command pressed before it was held in the
+   * gate's slot, a fresh one after a wait, so it decides from
+   * the replay as it is then.
    */
-  private recordStep(step: RecordStepSpec, steps: number): RecordStepResult {
-    const now = Date.now();
-    const start = resolveReplayWalkStart(this.host.replayState(now), this.reading().telemetry, now);
+  private recordStep(
+    step: RecordStepSpec,
+    steps: number,
+    origin: string,
+    act: (found: RecordStepResult) => Promise<void> | void,
+  ): Promise<void> {
+    return awaitReplayWalkStart(
+      () => this.host.replayState(Date.now()),
+      () => this.reading().telemetry,
+      (start) =>
+        this.withReading(() => {
+          if (start.frame === null && start.reason === "not in a replay") {
+            this.host.logger.debug(`Replay control dial: ${step.label} x${steps}: the replay was left; nothing sent`);
 
-    if (start.frame === null) return { hit: false, reason: start.reason };
+            return undefined;
+          }
 
-    this.host.logger.debug(`Replay control dial: ${step.label} x${steps} from ${start.from} frame ${start.frame}`);
+          if (start.frame === null) return act({ hit: false, reason: start.reason });
 
-    return findRecordStep(step, start.frame, this.recordSource(), steps);
+          this.host.logger.debug(
+            `Replay control dial: ${step.label} x${steps} from ${start.from} frame ${start.frame}`,
+          );
+
+          return act(findRecordStep(step, start.frame, this.recordSource(), steps));
+        }),
+      { origin },
+    );
   }
 
   /** What a record lookup reads: the action's record-step source, with the camera car from the running entry's reading. */
@@ -941,7 +967,7 @@ export class ReplayControlDialSurface extends ReleaseDialSurfaceBase<
     return {
       ...this.io,
       recordJump: (owner, frame) => this.recordJump(owner, frame, origin),
-      recordStep: (step, steps) => this.recordStep(step, steps),
+      recordStep: (step, steps, act) => this.recordStep(step, steps, origin, act),
       recordSource: () => this.recordSource(),
       sessionInfo: () => host.sessionInfo(),
       queueSearch: (owner, target, ticks) => queueReplaySearch({ target, ticks, origin, owner }),

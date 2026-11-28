@@ -88,14 +88,15 @@ export {
   observeIncidentSearch,
 } from "./replay-incident-observer.js";
 export {
+  awaitReplayWalkStart,
   recordedIndexAt,
   type RecordedEntry,
   type RecordedSpanRule,
   type RecordedWalkResult,
   type ReplayWalkDirection,
-  resolveReplayWalkAnchor,
   resolveReplayWalkStart,
   type ReplayWalkStart,
+  type SettledReplayWalkStart,
   walkRecordedEntries,
   walkRecordedIndex,
 } from "./replay-record-walk.js";
