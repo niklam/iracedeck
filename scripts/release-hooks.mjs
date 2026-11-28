@@ -47,7 +47,7 @@ let sealPackRecords;
 try {
   ({ formatPackRecordProblems, PACK_RECORDS_DIR, sealPackRecords } = await loadPackRecordModule());
 } catch (err) {
-  throw new Error(`Refusing to release: ${err instanceof Error ? err.message : err}`);
+  throw new Error(`Refusing to release: ${err instanceof Error ? err.message : err}`, { cause: err });
 }
 
 /** `packages/audio-assets/pack-records`, as the restore command names it. */
@@ -69,6 +69,7 @@ try {
   throw new Error(
     `Refusing to release: a voice pack's committed record disagrees with the tree, so its catalog entry would not ` +
       `be what the release publishes. Nothing was written.\n${formatPackRecordProblems(err.problems)}`,
+    { cause: err },
   );
 }
 const voicePackRecordPaths = sealsVoicePacks ? voicePackSeal.sealed.map(({ path: file }) => relativeToRoot(file)) : [];
@@ -302,6 +303,7 @@ if (sealsVoicePacks) {
         `${err instanceof Error ? err.message : err}\nThe version files are untouched. Restore the tree with ` +
         `\`git restore --staged --worktree -- ${CHANGELOG_SOURCE_PATH} ${CHANGELOG_FRAGMENTS_DIR} ${PACK_RECORDS_REL}\`, ` +
         `then release again.`,
+      { cause: err },
     );
   }
   // The plan above decided what the preflight checked and what `git add` stages

@@ -96,7 +96,9 @@ function readVoiceScriptOrThrow(file: string, voiceId: string): CalloutScript {
   try {
     text = readFileSync(file, "utf-8");
   } catch (err) {
-    throw new Error(`Bundled voice "${voiceId}" has no readable callout script at ${file}: ${describe(err)}`);
+    throw new Error(`Bundled voice "${voiceId}" has no readable callout script at ${file}: ${describe(err)}`, {
+      cause: err,
+    });
   }
 
   const parsed = parseCalloutScriptText(text);

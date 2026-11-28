@@ -61,7 +61,7 @@ export function readDevLocal(root, { fs = { existsSync, readFileSync } } = {}) {
   try {
     parsed = JSON.parse(fs.readFileSync(file, "utf-8"));
   } catch (err) {
-    throw new Error(`${DEV_LOCAL_FILE}: not valid JSON (${err.message})`);
+    throw new Error(`${DEV_LOCAL_FILE}: not valid JSON (${err.message})`, { cause: err });
   }
 
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {

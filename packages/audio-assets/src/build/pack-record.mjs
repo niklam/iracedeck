@@ -319,6 +319,7 @@ export function readPackRecord(id, recordsDir = PACK_RECORDS_DIR) {
   } catch (err) {
     throw new Error(
       `${relativeToPackage(file)} could not be read as JSON: ${err instanceof Error ? err.message : err}`,
+      { cause: err },
     );
   }
 
@@ -353,6 +354,7 @@ function readCatalogSha256(id, catalogDir) {
   } catch (err) {
     throw new Error(
       `${relativeToPackage(file)} could not be read as JSON: ${err instanceof Error ? err.message : err}`,
+      { cause: err },
     );
   }
 

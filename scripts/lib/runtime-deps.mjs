@@ -206,6 +206,6 @@ function readJson(file) {
   try {
     return JSON.parse(readFileSync(file, "utf-8"));
   } catch (err) {
-    throw new Error(`runtime-deps: cannot read ${file} (${err.message})`);
+    throw new Error(`runtime-deps: cannot read ${file} (${err.message})`, { cause: err });
   }
 }

@@ -85,6 +85,7 @@ export function loadCalloutPiSections() {
 
     throw new Error(
       `Could not read the @iracedeck/callout-settings registry (is it built?): ${stderr.trim().split("\n")[0]}`,
+      { cause: error },
     );
   }
 

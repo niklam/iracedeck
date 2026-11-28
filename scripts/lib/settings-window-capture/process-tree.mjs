@@ -108,7 +108,7 @@ export async function killProcessTree(pid, deps = {}) {
     // One line: taskkill wraps its reason onto a second one.
     const detail = `${stderr ?? ""}`.replace(/\s+/g, " ").trim();
 
-    throw new Error(`taskkill exited ${code}${detail ? `: ${detail}` : ""}`);
+    throw new Error(`taskkill exited ${code}${detail ? `: ${detail}` : ""}`, { cause: error });
   }
 }
 
