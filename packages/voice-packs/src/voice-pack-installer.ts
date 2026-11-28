@@ -1530,6 +1530,7 @@ export function createVoicePackInstallerFileSystem(logger: ILogger): VoicePackIn
         // errno and never the path.
         const code = (err as NodeJS.ErrnoException | undefined)?.code;
 
+        // eslint-disable-next-line preserve-caught-error -- the caught error names the path, which this error deliberately never carries (see the adapter's doc comment); it is logged above instead
         throw new Error(typeof code === "string" ? code : "read failed");
       }
     },

@@ -83,7 +83,7 @@ export function buildVoiceCatalogData(entriesDir) {
       json = JSON.parse(raw);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      throw new Error(`${relPath}: not valid JSON: ${message}`);
+      throw new Error(`${relPath}: not valid JSON: ${message}`, { cause: err });
     }
 
     const result = VoicePackCatalogEntrySchema.safeParse(json);

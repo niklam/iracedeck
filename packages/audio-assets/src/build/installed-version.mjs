@@ -68,7 +68,9 @@ function readInstalledManifest(name, from) {
       !(err instanceof Error) ||
       /** @type {NodeJS.ErrnoException} */ (err).code !== "ERR_PACKAGE_PATH_NOT_EXPORTED"
     ) {
-      throw new Error(`installedPackageVersion: cannot resolve "${name}" from ${from}: ${errorMessage(err)}`);
+      throw new Error(`installedPackageVersion: cannot resolve "${name}" from ${from}: ${errorMessage(err)}`, {
+        cause: err,
+      });
     }
 
     manifestPath = installedManifest(name, from);

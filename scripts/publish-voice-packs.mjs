@@ -421,6 +421,7 @@ function publishedAssetNames(deps, pack, tag) {
   } catch (error) {
     throw new Error(
       `${pack.id}: could not read the assets on ${tag} from gh release view — ${error instanceof Error ? error.message : error}`,
+      { cause: error },
     );
   }
 
@@ -472,6 +473,7 @@ function assertNotLatest(deps, pack, tag) {
   } catch (error) {
     throw new Error(
       `${pack.id}: could not read the repository's latest release from gh release view — ${error instanceof Error ? error.message : error}`,
+      { cause: error },
     );
   }
 

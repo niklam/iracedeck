@@ -309,7 +309,7 @@ describe("createPluginRollupConfig", () => {
       vi.mocked(copyFileSync).mockImplementation(() => undefined);
       vi.mocked(mkdirSync).mockImplementation(() => undefined);
       const ctx = { error: vi.fn(), info: vi.fn() };
-      let destinations: string[] = [];
+      let destinations: string[];
 
       try {
         hook(pluginNamed(config, "copy-pi-browser-assets"), "generateBundle").call(ctx);

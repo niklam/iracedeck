@@ -230,7 +230,9 @@ export function loadVoiceConfigs(configsDir: string): Map<string, VoiceConfig> {
     } catch (err) {
       // Generic SyntaxError from JSON.parse doesn't say which file failed —
       // in a multi-voice loader that's hostile to debugging.
-      throw new Error(`Failed to parse ${fileName}: ${err instanceof Error ? err.message : String(err)}`);
+      throw new Error(`Failed to parse ${fileName}: ${err instanceof Error ? err.message : String(err)}`, {
+        cause: err,
+      });
     }
 
     const parsed = VoiceConfigSchema.safeParse(json);

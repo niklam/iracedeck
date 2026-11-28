@@ -275,7 +275,7 @@ export function maskInert(command) {
       // continues one, except a `#` where a word could start, which opens a comment.
       if (/[\s;&|()<>]/.test(ch)) endWord(from);
       else if (word < 0 && !(atWord && ch === "#")) word = from;
-      let sub = -1;
+      let sub;
       // A `case` list's pattern `)` reads here as a closer — of a substitution
       // it ends early, and inside `"$(…)"` the rest is then blanked as data with
       // the lex still "sure" (#1328 review). The lexer does not model case lists,
@@ -1995,15 +1995,14 @@ function pipedCommands(command) {
     closers.push({ at, from, open: frame.open });
     Object.assign(frame, { close: at, redirected: commandOf(NO_OPTIONS, command, from, to).stdin !== "pipe" });
   };
-  // A `coproc` runs the command or compound command after it in a subshell.
-  let coproc = false;
   let pending = false;
   for (const c of commands) {
     const end = Math.min(ends[c], command.length);
     let cur = pending;
     // Piped into, piped on or sent to the background: a pipeline stage.
     let stage = pending || stageAfter(command, end);
-    coproc = false;
+    // A `coproc` runs the command or compound command after it in a subshell.
+    let coproc = false;
     for (let i = c; ;) {
       while (i < end && /\s/.test(command[i])) i++;
       if (i >= end || command[i] === "#") break;

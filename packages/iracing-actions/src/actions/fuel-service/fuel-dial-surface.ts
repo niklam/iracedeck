@@ -866,26 +866,22 @@ export class FuelDialSurface extends ReleaseDialSurfaceBase<FuelDialContext, Fue
     }
 
     const fuelOn = this.isFuelFillOn();
-    // Whether this press cleared fueling. Tracked so the continuous-monitoring
-    // re-send baselines (`ctx.throttle.lastSentLtr` and `ctx.lastSentWholeAdd`)
-    // stay in sync: a clear resets them to null, an arm records the amount
-    // actually broadcast.
-    let cleared = false;
-    // The amount actually armed (liters), or null when this press cleared.
+    // The amount actually armed (liters), or null when this press cleared
+    // fueling. Tracked so the continuous-monitoring re-send baselines
+    // (`ctx.throttle.lastSentLtr` and `ctx.lastSentWholeAdd`) stay in sync: a
+    // clear resets them to null, an arm records the amount actually broadcast.
     let armedLtr: number | null = null;
 
     switch (gesture) {
       case "toggle-fueling":
         if (fuelOn) {
           this.pipeline.clearFuel();
-          cleared = true;
           this.host.logger.debug("Toggle: cleared fueling");
         } else {
           const addLtr = this.effectiveAddLtr(ctx);
           this.sendPressAdd(ctx, addLtr);
           // A resolved add of 0 clears instead of arming — keep bookkeeping in sync.
-          cleared = addLtr <= 0;
-          armedLtr = cleared ? null : addLtr;
+          armedLtr = addLtr <= 0 ? null : addLtr;
           this.host.logger.debug(`Toggle: requested ${addLtr.toFixed(2)}L`);
         }
 
@@ -911,15 +907,13 @@ export class FuelDialSurface extends ReleaseDialSurfaceBase<FuelDialContext, Fue
           // amount drops to 0 (see FuelPipeline.sendNoFuel).
           ctx.dialValueLtr = TOGGLE_FULL_EMPTY_LTR;
           this.pipeline.sendNoFuel();
-          cleared = true;
           armedLtr = null;
           this.host.logger.debug("Toggle full/no fuel (no fuel): reduced by max");
         } else {
           ctx.dialValueLtr = maxLtr;
           const addLtr = this.effectiveAddLtr(ctx);
           this.sendPressAdd(ctx, addLtr);
-          cleared = addLtr <= 0;
-          armedLtr = cleared ? null : addLtr;
+          armedLtr = addLtr <= 0 ? null : addLtr;
           this.host.logger.debug(`Toggle full/no fuel (full): requested ${addLtr.toFixed(2)}L`);
         }
 
@@ -939,8 +933,7 @@ export class FuelDialSurface extends ReleaseDialSurfaceBase<FuelDialContext, Fue
         ctx.dialValueLtr = maxLtr;
         const addLtr = this.effectiveAddLtr(ctx);
         this.sendPressAdd(ctx, addLtr);
-        cleared = addLtr <= 0;
-        armedLtr = cleared ? null : addLtr;
+        armedLtr = addLtr <= 0 ? null : addLtr;
         this.host.logger.debug(`Push+turn full: requested ${addLtr.toFixed(2)}L`);
         break;
       }
@@ -949,7 +942,6 @@ export class FuelDialSurface extends ReleaseDialSurfaceBase<FuelDialContext, Fue
         // Push + Turn CCW — empty the request by reducing it by the full tank.
         ctx.dialValueLtr = TOGGLE_FULL_EMPTY_LTR;
         this.pipeline.sendNoFuel();
-        cleared = true;
         armedLtr = null;
         this.host.logger.debug("Push+turn no fuel: reduced by max");
         break;

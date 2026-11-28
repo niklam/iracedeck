@@ -467,10 +467,9 @@ describe("stepReplayProgress — readings", () => {
 
   it("reads every car independently", () => {
     const slice = createReplayProgressState();
-    let last: (number | null)[] | null = null;
 
     APPROACH.forEach(([lc, dp], k) => {
-      last = stepReplayProgress(
+      stepReplayProgress(
         slice,
         tick(100 + k * TICK_S, [
           [lc, dp],
@@ -479,7 +478,7 @@ describe("stepReplayProgress — readings", () => {
       );
     });
 
-    last = stepReplayProgress(
+    const last = stepReplayProgress(
       slice,
       tick(100 + APPROACH.length * TICK_S, [
         [7, 1.0],
