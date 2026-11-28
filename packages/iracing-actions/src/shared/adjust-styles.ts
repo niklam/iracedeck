@@ -72,8 +72,11 @@ export function seedFreshKeyStyle(raw: unknown): Record<string, unknown> | null 
  * Persist {@link seedFreshKeyStyle}'s seed for a freshly placed key and hand
  * the seeded object on as `ev.payload.settings` (#1453). Called BEFORE
  * `super.onWillAppear`: the base class stamps a missing `addedWithVersion`
- * by writing `{...payload, addedWithVersion}`, so that write lands last and
- * carries the seed. Logs and swallows a failed persist: the key then draws
+ * through `updateSettings`, onto a record taken from this seeded payload, so
+ * the stamp write lands last and carries the seed. When a PI change has
+ * arrived in the meantime, the stamp is instead re-applied onto that change
+ * (#1761), which may lack the seed; the key then draws Legacy until a style
+ * is picked (#1794). Logs and swallows a failed persist: the key then draws
  * Legacy until the next write.
  */
 export async function persistFreshKeyStyleSeed<T>(ev: IDeckWillAppearEvent<T>, logger: ILogger): Promise<void> {

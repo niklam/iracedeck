@@ -35,6 +35,7 @@ import {
   type IDeckDialRotateEvent,
   type IDeckDialUpEvent,
   type IDeckDidReceiveSettingsEvent,
+  type IDeckEvent,
   type IDeckKeyDownEvent,
   type IDeckKeyUpEvent,
   type IDeckPlatformAdapter,
@@ -177,30 +178,35 @@ class ElgatoActionContext implements IDeckActionContext {
 /**
  * Wrap an Elgato SDK event into a deck-core event.
  * Full-featured variant for events where action supports setImage/setTitle/isKey.
+ * `isSuperseded` is the event's `ContextEventOrder` arrival's (#1761).
  */
-function wrapEvent<T>(ev: {
-  action: {
-    id: string;
-    device?: { id: string; type: number };
-    setImage(dataUri: string): Promise<void>;
-    setTitle(title: string): Promise<void>;
-    setSettings(settings: unknown): Promise<void>;
-    isKey(): boolean;
-    isDial?(): boolean;
-    setFeedback?(feedback: FeedbackPayload): Promise<void>;
-    setFeedbackLayout?(layout: string): Promise<void>;
-    setTriggerDescription?(descriptions: {
-      rotate?: string;
-      push?: string;
-      touch?: string;
-      longTouch?: string;
-    }): Promise<void>;
-  };
-  payload: { settings: T; coordinates?: { row: number; column: number } };
-}): { action: IDeckActionContext; payload: { settings: T; coordinates?: { row: number; column: number } } } {
+function wrapEvent<T>(
+  ev: {
+    action: {
+      id: string;
+      device?: { id: string; type: number };
+      setImage(dataUri: string): Promise<void>;
+      setTitle(title: string): Promise<void>;
+      setSettings(settings: unknown): Promise<void>;
+      isKey(): boolean;
+      isDial?(): boolean;
+      setFeedback?(feedback: FeedbackPayload): Promise<void>;
+      setFeedbackLayout?(layout: string): Promise<void>;
+      setTriggerDescription?(descriptions: {
+        rotate?: string;
+        push?: string;
+        touch?: string;
+        longTouch?: string;
+      }): Promise<void>;
+    };
+    payload: { settings: T; coordinates?: { row: number; column: number } };
+  },
+  isSuperseded: () => boolean,
+): IDeckEvent<T> {
   return {
     action: new ElgatoActionContext(ev.action),
     payload: ev.payload,
+    isSuperseded,
   };
 }
 
@@ -213,7 +219,10 @@ function wrapEvent<T>(ev: {
  * for cleanup, so this is safe. If future logic needs key vs. dial distinction
  * in onWillDisappear, track the controller type in the context map during onWillAppear.
  */
-function wrapDisappearEvent<T>(ev: WillDisappearEvent<T & JsonObject>): IDeckWillDisappearEvent<T> {
+function wrapDisappearEvent<T>(
+  ev: WillDisappearEvent<T & JsonObject>,
+  isSuperseded: () => boolean,
+): IDeckWillDisappearEvent<T> {
   return {
     action: {
       get id() {
@@ -251,13 +260,17 @@ function wrapDisappearEvent<T>(ev: WillDisappearEvent<T & JsonObject>): IDeckWil
       },
     },
     payload: ev.payload as { settings: T },
+    isSuperseded,
   };
 }
 
 /**
  * Wrap an Elgato dial rotate event (includes ticks in payload).
  */
-function wrapDialRotateEvent<T>(ev: DialRotateEvent<T & JsonObject>): IDeckDialRotateEvent<T> {
+function wrapDialRotateEvent<T>(
+  ev: DialRotateEvent<T & JsonObject>,
+  isSuperseded: () => boolean,
+): IDeckDialRotateEvent<T> {
   return {
     action: new ElgatoActionContext(ev.action),
     payload: {
@@ -265,13 +278,14 @@ function wrapDialRotateEvent<T>(ev: DialRotateEvent<T & JsonObject>): IDeckDialR
       ticks: ev.payload.ticks,
       pressed: ev.payload.pressed,
     },
+    isSuperseded,
   };
 }
 
 /**
  * Wrap an Elgato encoder touch-tap event (Stream Deck+ touchscreen).
  */
-function wrapTouchTapEvent<T>(ev: TouchTapEvent<T & JsonObject>): IDeckTouchTapEvent<T> {
+function wrapTouchTapEvent<T>(ev: TouchTapEvent<T & JsonObject>, isSuperseded: () => boolean): IDeckTouchTapEvent<T> {
   return {
     action: new ElgatoActionContext(ev.action),
     payload: {
@@ -280,6 +294,7 @@ function wrapTouchTapEvent<T>(ev: TouchTapEvent<T & JsonObject>): IDeckTouchTapE
       hold: ev.payload.hold,
       coordinates: ev.payload.coordinates,
     },
+    isSuperseded,
   };
 }
 
@@ -617,13 +632,15 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
         if (order.isLive(action.id)) {
           lifecycleLog().debug(`Context ${action.id}: willAppear arrived while live, delivered as a settings change`);
 
-          return order.enqueue(action.id, "didReceiveSettings", () =>
-            handler.onDidReceiveSettings?.(wrapEvent({ action, payload }) as IDeckDidReceiveSettingsEvent<T>),
+          return order.enqueue(action.id, "didReceiveSettings", ({ isSuperseded }) =>
+            handler.onDidReceiveSettings?.(
+              wrapEvent({ action, payload }, isSuperseded) as IDeckDidReceiveSettingsEvent<T>,
+            ),
           );
         }
 
-        return order.enqueue(action.id, "willAppear", () =>
-          handler.onWillAppear?.(wrapEvent({ action, payload }) as IDeckWillAppearEvent<T>),
+        return order.enqueue(action.id, "willAppear", ({ isSuperseded }) =>
+          handler.onWillAppear?.(wrapEvent({ action, payload }, isSuperseded) as IDeckWillAppearEvent<T>),
         );
       }
 
@@ -632,7 +649,9 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
 
         const handler = current();
 
-        return order.enqueue(ev.action.id, "willDisappear", () => handler.onWillDisappear?.(wrapDisappearEvent<T>(ev)));
+        return order.enqueue(ev.action.id, "willDisappear", ({ isSuperseded }) =>
+          handler.onWillDisappear?.(wrapDisappearEvent<T>(ev, isSuperseded)),
+        );
       }
 
       override onDidReceiveSettings(ev: DidReceiveSettingsEvent<T & JsonObject>): Promise<void> | undefined {
@@ -643,47 +662,59 @@ export class ElgatoPlatformAdapter implements IDeckPlatformAdapter {
 
         const handler = current();
 
-        return order.enqueue(action.id, "didReceiveSettings", () =>
-          handler.onDidReceiveSettings?.(wrapEvent({ action, payload }) as IDeckDidReceiveSettingsEvent<T>),
+        return order.enqueue(action.id, "didReceiveSettings", ({ isSuperseded }) =>
+          handler.onDidReceiveSettings?.(
+            wrapEvent({ action, payload }, isSuperseded) as IDeckDidReceiveSettingsEvent<T>,
+          ),
         );
       }
 
       override onKeyDown(ev: KeyDownEvent<T & JsonObject>): Promise<void> | undefined {
         const handler = current();
 
-        return order.enqueue(ev.action.id, "keyDown", () => handler.onKeyDown?.(wrapEvent(ev) as IDeckKeyDownEvent<T>));
+        return order.enqueue(ev.action.id, "keyDown", ({ isSuperseded }) =>
+          handler.onKeyDown?.(wrapEvent(ev, isSuperseded) as IDeckKeyDownEvent<T>),
+        );
       }
 
       override onKeyUp(ev: KeyUpEvent<T & JsonObject>): Promise<void> | undefined {
         const handler = current();
 
-        return order.enqueue(ev.action.id, "keyUp", () => handler.onKeyUp?.(wrapEvent(ev) as IDeckKeyUpEvent<T>));
+        return order.enqueue(ev.action.id, "keyUp", ({ isSuperseded }) =>
+          handler.onKeyUp?.(wrapEvent(ev, isSuperseded) as IDeckKeyUpEvent<T>),
+        );
       }
 
       override onDialRotate(ev: DialRotateEvent<T & JsonObject>): Promise<void> | undefined {
         const handler = current();
 
-        return order.enqueue(ev.action.id, "dialRotate", () => handler.onDialRotate?.(wrapDialRotateEvent<T>(ev)));
+        return order.enqueue(ev.action.id, "dialRotate", ({ isSuperseded }) =>
+          handler.onDialRotate?.(wrapDialRotateEvent<T>(ev, isSuperseded)),
+        );
       }
 
       override onDialDown(ev: DialDownEvent<T & JsonObject>): Promise<void> | undefined {
         const handler = current();
 
-        return order.enqueue(ev.action.id, "dialDown", () =>
-          handler.onDialDown?.(wrapEvent(ev) as IDeckDialDownEvent<T>),
+        return order.enqueue(ev.action.id, "dialDown", ({ isSuperseded }) =>
+          handler.onDialDown?.(wrapEvent(ev, isSuperseded) as IDeckDialDownEvent<T>),
         );
       }
 
       override onDialUp(ev: DialUpEvent<T & JsonObject>): Promise<void> | undefined {
         const handler = current();
 
-        return order.enqueue(ev.action.id, "dialUp", () => handler.onDialUp?.(wrapEvent(ev) as IDeckDialUpEvent<T>));
+        return order.enqueue(ev.action.id, "dialUp", ({ isSuperseded }) =>
+          handler.onDialUp?.(wrapEvent(ev, isSuperseded) as IDeckDialUpEvent<T>),
+        );
       }
 
       override onTouchTap(ev: TouchTapEvent<T & JsonObject>): Promise<void> | undefined {
         const handler = current();
 
-        return order.enqueue(ev.action.id, "touchTap", () => handler.onTouchTap?.(wrapTouchTapEvent<T>(ev)));
+        return order.enqueue(ev.action.id, "touchTap", ({ isSuperseded }) =>
+          handler.onTouchTap?.(wrapTouchTapEvent<T>(ev, isSuperseded)),
+        );
       }
     }
 

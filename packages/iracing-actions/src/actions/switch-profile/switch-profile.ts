@@ -34,7 +34,7 @@ import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
 
 import { clearSelectIntent } from "../../shared/car-select-intent.js";
-import { availableProfilesForDevice, deviceProfileEntries, profileEntriesEqual } from "../../shared/profile-entries.js";
+import { availableProfilesForDevice, deviceProfilesUpdate } from "../../shared/profile-entries.js";
 
 /**
  * Sentinel `profile` value for the "Back to previous" mode: instead of a named
@@ -235,20 +235,33 @@ export class SwitchProfile extends ConnectionStateAwareAction<SwitchProfileSetti
   }
 
   /**
-   * Push the device-filtered profile list to the PI (once — guarded against the
-   * setSettings→onDidReceiveSettings loop), report the host-profile marker to
-   * the profile history (#762), and refresh the icon.
+   * Push the device-filtered profile list to the PI, report the host-profile
+   * marker to the profile history (#762), and refresh the icon.
+   *
+   * The list is written through `updateSettings` (#1761): merged onto the
+   * context's newest settings, never the event's, so a PI change that arrived
+   * after this event is never reverted, and nothing is written when the list
+   * is already stored. A failed write is warned there and never thrown, so the
+   * marker and the icon below still follow. They read the event's own
+   * settings: the write only adds `_deviceProfiles`, which neither reads.
+   *
+   * A superseded event stops after the write call, which parks the write
+   * itself. When a newer settings event for this key has already arrived, it
+   * runs next and its own sync reports the marker and draws the icon from the
+   * newer settings; doing either here would report a marker, or draw an icon,
+   * the user has already changed. When the key's disappear has arrived, its
+   * profile is already gone, and reporting it now could record it as the
+   * current profile after the one that replaced it has reported.
    */
   private async sync(
     ev: IDeckWillAppearEvent<SwitchProfileSettings> | IDeckDidReceiveSettingsEvent<SwitchProfileSettings>,
   ): Promise<void> {
-    const entries = deviceProfileEntries(ev.action.deviceType);
-    const raw = (ev.payload.settings ?? {}) as Record<string, unknown>;
-    const current = Array.isArray(raw._deviceProfiles) ? (raw._deviceProfiles as unknown[]) : [];
+    await this.updateSettings(
+      ev,
+      deviceProfilesUpdate(ev.action.deviceType, () => true),
+    );
 
-    if (!profileEntriesEqual(current, entries)) {
-      await ev.action.setSettings({ ...raw, _deviceProfiles: entries });
-    }
+    if (ev.isSuperseded?.() === true) return;
 
     const settings = this.parseSettings(ev.payload.settings);
 

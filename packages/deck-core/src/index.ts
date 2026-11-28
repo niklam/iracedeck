@@ -37,6 +37,9 @@ export type {
 // Base action: the key-image funnel, flag overlay and disconnected look
 export { BaseAction } from "./base-action.js";
 
+// The per-context, write-through settings record BaseAction keeps (issue #1761)
+export { ContextSettings, type ContextSettingsUpdater } from "./context-settings.js";
+
 // Common settings (shared by all actions)
 export {
   CommonSettings,
@@ -288,6 +291,7 @@ export {
 // Per-context ordering of lifecycle events, applied at each adapter's dispatch (issue #1597)
 export {
   CONTEXT_EVENT_WAIT_LIMIT_MS,
+  type ContextEventArrival,
   ContextEventOrder,
   type ContextEventKind,
   type ContextEventTask,

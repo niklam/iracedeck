@@ -7,15 +7,19 @@
  * The harness serves a fake sim connection so the flag-overlay and title
  * subscriptions register callbacks the test can drive directly via fake timers.
  */
+import { silentLogger } from "@iracedeck/logger";
 import { onGlobalSettingsChange } from "@iracedeck/settings";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BaseAction } from "./base-action.js";
+import { ContextEventOrder } from "./context-event-order.js";
+import type { ContextSettingsUpdater } from "./context-settings.js";
 import { createFakeSimConnection, type FakeSimConnection } from "./fake-sim-connection.test-support.js";
 import { _resetPluginConfig, initPluginConfig } from "./plugin-config.js";
 import { _resetSimConnection, initializeSimConnection, type OverlayFlag } from "./sim-connection.js";
 import type {
   IDeckActionContext,
+  IDeckActionHandler,
   IDeckDidReceiveSettingsEvent,
   IDeckEvent,
   IDeckWillAppearEvent,
@@ -1050,7 +1054,7 @@ describe("BaseAction image store and overlays", () => {
       await action.onWillAppear(ev);
 
       expect(ev.action.setSettings).toHaveBeenCalledOnce();
-      expect(ev.action.setSettings).toHaveBeenCalledWith(expect.objectContaining({ addedWithVersion: "1.13.0" }));
+      expect(ev.action.setSettings).toHaveBeenCalledWith({ addedWithVersion: "1.13.0" });
     });
 
     it("should not overwrite existing addedWithVersion", async () => {
@@ -1346,5 +1350,368 @@ describe("BaseAction disconnected look: the one image funnel (#1599)", () => {
       expect(action.settingsOf("ctx-a")).toBeUndefined();
       expect(action.settingsOf("ctx-b")).toEqual({ mode: "b" });
     });
+  });
+});
+
+describe("BaseAction settings writes against the newest settings (#1761)", () => {
+  type Settings = Record<string, unknown>;
+  type LifecycleKind = "willAppear" | "willDisappear" | "didReceiveSettings";
+
+  const VERSION = "3.10.0";
+  const PROFILES = ["profile-a", "profile-b"];
+
+  /**
+   * A deck host for one action over the real `ContextEventOrder`, as an
+   * adapter wires it: it stores each context's settings as one whole object,
+   * applying Property Inspector and plugin writes in the order they reach it,
+   * and delivers each event through the order with the frame's settings and
+   * the arrival's `isSuperseded`.
+   */
+  class FakeSettingsHost {
+    readonly stored = new Map<string, Settings>();
+    readonly pluginWrites: Settings[] = [];
+    readonly delivered: LifecycleKind[] = [];
+    /** When true, every plugin write comes back at once as a `didReceiveSettings` carrying it. */
+    echo = false;
+    /** When set, the next plugin write rejects with it and stores nothing. */
+    failNext: Error | null = null;
+
+    private readonly order = new ContextEventOrder(silentLogger);
+    private readonly pending: Promise<unknown>[] = [];
+    private readonly handlerErrors: unknown[] = [];
+
+    constructor(private readonly handler: IDeckActionHandler<Settings>) {}
+
+    /** The key appears with `settings` stored on it. */
+    appear(context: string, settings: Settings): void {
+      this.stored.set(context, structuredClone(settings));
+      this.deliver(context, "willAppear");
+    }
+
+    /** The Property Inspector writes its whole form: the host stores it and tells the plugin. */
+    piWrite(context: string, settings: Settings): void {
+      this.stored.set(context, structuredClone(settings));
+      this.deliver(context, "didReceiveSettings");
+    }
+
+    disappear(context: string): void {
+      this.deliver(context, "willDisappear");
+    }
+
+    /**
+     * Let every delivered event, and whatever it starts, run to the end: drain
+     * the handlers in rounds until a round delivers no further event (an echo,
+     * a re-run), then rethrow the first handler rejection, so a test cannot
+     * pass over a handler that threw after the write it asserts.
+     */
+    async settle(): Promise<void> {
+      let delivered = -1;
+
+      for (let round = 0; round < 50 && delivered !== this.pending.length; round += 1) {
+        delivered = this.pending.length;
+        await Promise.all(this.pending);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+
+      if (delivered !== this.pending.length) throw new Error("FakeSettingsHost: events kept arriving after 50 rounds");
+
+      if (this.handlerErrors.length > 0) throw this.handlerErrors[0];
+    }
+
+    private deliver(context: string, kind: LifecycleKind): void {
+      // The frame's settings, as the host sends them at arrival.
+      const settings = structuredClone(this.stored.get(context) ?? {});
+      const result = this.order.enqueue(context, kind, ({ isSuperseded }) => {
+        const ev: IDeckEvent<Settings> = { action: this.actionFor(context), payload: { settings }, isSuperseded };
+
+        this.delivered.push(kind);
+
+        if (kind === "willAppear") return this.handler.onWillAppear?.(ev);
+
+        if (kind === "willDisappear") return this.handler.onWillDisappear?.(ev);
+
+        return this.handler.onDidReceiveSettings?.(ev);
+      });
+
+      // Caught here so a rejection is never unhandled; settle() rethrows it.
+      if (result) {
+        this.pending.push(
+          result.catch((error: unknown) => {
+            this.handlerErrors.push(error);
+          }),
+        );
+      }
+    }
+
+    private actionFor(context: string): IDeckActionContext {
+      return {
+        id: context,
+        isKey: () => true,
+        isDial: () => false,
+        setImage: async () => undefined,
+        setTitle: async () => undefined,
+        setSettings: async (settings) => {
+          if (this.failNext) {
+            const error = this.failNext;
+
+            this.failNext = null;
+            throw error;
+          }
+
+          this.stored.set(context, structuredClone(settings));
+          this.pluginWrites.push(structuredClone(settings));
+
+          if (this.echo) this.deliver(context, "didReceiveSettings");
+        },
+        setFeedback: async () => undefined,
+        setFeedbackLayout: async () => undefined,
+        setTriggerDescription: async () => undefined,
+        dialCanvas: () => null,
+        setDialCanvas: async () => undefined,
+      };
+    }
+  }
+
+  /**
+   * An action whose appear writes, after its base appear and an optional
+   * gate, each updater in `appearWrites` in turn — the shape of the
+   * profile-list write that #1761 is about — and whose disappear can be held.
+   */
+  class WritingAction extends BaseAction<Settings> {
+    appearGate: Promise<void> | undefined;
+    disappearGate: Promise<void> | undefined;
+    appearWrites: ContextSettingsUpdater[] = [];
+
+    override async onWillAppear(ev: IDeckWillAppearEvent<Settings>): Promise<void> {
+      await super.onWillAppear(ev);
+
+      if (this.appearGate) await this.appearGate;
+
+      for (const update of this.appearWrites) await this.updateSettings(ev, update);
+    }
+
+    override async onWillDisappear(ev: IDeckWillDisappearEvent<Settings>): Promise<void> {
+      if (this.disappearGate) await this.disappearGate;
+
+      await super.onWillDisappear(ev);
+    }
+
+    settingsOf(contextId: string): Readonly<Settings> | undefined {
+      return this.getContextSettings(contextId);
+    }
+  }
+
+  /** The profile-list write: only in the `focus` mode, and only when the list differs. */
+  const profileList: ContextSettingsUpdater = (s) => {
+    if (s.mode !== "focus") return undefined;
+
+    if (JSON.stringify(s._deviceProfiles) === JSON.stringify(PROFILES)) return undefined;
+
+    return { ...s, _deviceProfiles: PROFILES };
+  };
+
+  function gate(): { promise: Promise<void>; open: () => void } {
+    let open: () => void = () => undefined;
+    const promise = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+
+    return { promise, open };
+  }
+
+  function createLogger() {
+    return { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+  }
+
+  function setUp(): { action: WritingAction; host: FakeSettingsHost; logger: ReturnType<typeof createLogger> } {
+    const logger = createLogger();
+    const action = new WritingAction(logger as unknown as ConstructorParameters<typeof WritingAction>[0]);
+    const host = new FakeSettingsHost(action);
+
+    return { action, host, logger };
+  }
+
+  afterEach(() => {
+    _resetPluginConfig();
+  });
+
+  it("the issue's repro: a PI change during the appear's await is not reverted, and the host ends with the PI's object", async () => {
+    const { action, host } = setUp();
+    const appear = gate();
+
+    action.appearGate = appear.promise;
+    action.appearWrites = [profileList];
+
+    host.appear("ctx", { mode: "focus" });
+    host.piWrite("ctx", { mode: "other" });
+    appear.open();
+    await host.settle();
+
+    expect(host.pluginWrites).toEqual([]);
+    expect(host.stored.get("ctx")).toEqual({ mode: "other" });
+    expect(action.settingsOf("ctx")).toEqual({ mode: "other" });
+  });
+
+  it("without a PI change the same appear writes the list (the repro's positive control)", async () => {
+    const { action, host } = setUp();
+    const appear = gate();
+
+    action.appearGate = appear.promise;
+    action.appearWrites = [profileList];
+
+    host.appear("ctx", { mode: "focus" });
+    appear.open();
+    await host.settle();
+
+    expect(host.pluginWrites).toEqual([{ mode: "focus", _deviceProfiles: PROFILES }]);
+    expect(host.stored.get("ctx")).toEqual({ mode: "focus", _deviceProfiles: PROFILES });
+  });
+
+  it("a superseded write whose change still applies is re-applied onto the PI's object", async () => {
+    const { action, host } = setUp();
+    const appear = gate();
+
+    action.appearGate = appear.promise;
+    action.appearWrites = [profileList];
+
+    host.appear("ctx", { mode: "focus", car: 1 });
+    host.piWrite("ctx", { mode: "focus", car: 2 });
+    appear.open();
+    await host.settle();
+
+    expect(host.pluginWrites).toEqual([{ mode: "focus", car: 2, _deviceProfiles: PROFILES }]);
+    expect(host.stored.get("ctx")).toEqual({ mode: "focus", car: 2, _deviceProfiles: PROFILES });
+  });
+
+  it("the addedWithVersion stamp and a second write in the same appear both reach the host", async () => {
+    initPluginConfig({ version: VERSION, platform: "stream-deck" });
+    const { action, host } = setUp();
+
+    action.appearWrites = [profileList];
+
+    host.appear("ctx", { mode: "focus" });
+    await host.settle();
+
+    expect(host.pluginWrites).toEqual([
+      { mode: "focus", addedWithVersion: VERSION },
+      { mode: "focus", addedWithVersion: VERSION, _deviceProfiles: PROFILES },
+    ]);
+    expect(host.stored.get("ctx")).toEqual({ mode: "focus", addedWithVersion: VERSION, _deviceProfiles: PROFILES });
+  });
+
+  it("getContextSettings returns the plugin's own write", async () => {
+    initPluginConfig({ version: VERSION, platform: "stream-deck" });
+    const { action, host } = setUp();
+
+    action.appearWrites = [profileList];
+
+    host.appear("ctx", { mode: "focus" });
+    await host.settle();
+
+    expect(action.settingsOf("ctx")).toEqual(host.stored.get("ctx"));
+    expect(action.settingsOf("ctx")).toEqual({ mode: "focus", addedWithVersion: VERSION, _deviceProfiles: PROFILES });
+  });
+
+  it("a superseded stamp is re-applied onto the newer settings instead of reverting them", async () => {
+    initPluginConfig({ version: VERSION, platform: "stream-deck" });
+    const { action, host } = setUp();
+    const teardown = gate();
+
+    host.appear("ctx", { mode: "a", addedWithVersion: "1.0.0" });
+    await host.settle();
+
+    expect(host.pluginWrites).toEqual([]);
+
+    // A page switch: the teardown is slow, a new key appears under the same
+    // id, and the PI changes it before its appear can run.
+    action.disappearGate = teardown.promise;
+    host.disappear("ctx");
+    host.appear("ctx", { mode: "a" });
+    host.piWrite("ctx", { mode: "b" });
+    teardown.open();
+    await host.settle();
+
+    expect(host.pluginWrites).toEqual([{ mode: "b", addedWithVersion: VERSION }]);
+    expect(host.stored.get("ctx")).toEqual({ mode: "b", addedWithVersion: VERSION });
+  });
+
+  it("an updater that returns undefined writes nothing", async () => {
+    initPluginConfig({ version: VERSION, platform: "stream-deck" });
+    const { action, host } = setUp();
+    const unchanged = vi.fn<ContextSettingsUpdater>(() => undefined);
+
+    action.appearWrites = [unchanged];
+
+    host.appear("ctx", { mode: "focus", addedWithVersion: "1.0.0" });
+    await host.settle();
+
+    expect(unchanged).toHaveBeenCalledOnce();
+    expect(host.pluginWrites).toEqual([]);
+  });
+
+  it("a disappear during the appear's await means no write, and no re-run after a re-appear", async () => {
+    const { action, host } = setUp();
+    const appear = gate();
+    const updater = vi.fn(profileList);
+
+    action.appearGate = appear.promise;
+    action.appearWrites = [updater];
+
+    host.appear("ctx", { mode: "focus" });
+    host.disappear("ctx");
+    appear.open();
+    await host.settle();
+
+    // Parked without being run: the record it would read was no longer the newest.
+    expect(updater).not.toHaveBeenCalled();
+    expect(host.pluginWrites).toEqual([]);
+    expect(action.settingsOf("ctx")).toBeUndefined();
+
+    // The key comes back and the PI changes it: the parked write is gone.
+    action.appearGate = undefined;
+    action.appearWrites = [];
+    host.appear("ctx", { mode: "focus" });
+    host.piWrite("ctx", { mode: "focus", car: 3 });
+    await host.settle();
+
+    expect(updater).not.toHaveBeenCalled();
+    expect(host.pluginWrites).toEqual([]);
+    expect(host.stored.get("ctx")).toEqual({ mode: "focus", car: 3 });
+  });
+
+  it("a rejected write warns, keeps the change in the record, and the next write carries it", async () => {
+    initPluginConfig({ version: VERSION, platform: "stream-deck" });
+    const { action, host, logger } = setUp();
+
+    action.appearWrites = [profileList];
+    host.failNext = new Error("socket closed");
+
+    host.appear("ctx", { mode: "focus" });
+    await host.settle();
+
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("Failed to write settings for ctx"));
+    expect(host.pluginWrites).toEqual([{ mode: "focus", addedWithVersion: VERSION, _deviceProfiles: PROFILES }]);
+    expect(host.stored.get("ctx")).toEqual({ mode: "focus", addedWithVersion: VERSION, _deviceProfiles: PROFILES });
+  });
+
+  it("with a host that echoes every write, the writes converge with no loop", async () => {
+    initPluginConfig({ version: VERSION, platform: "stream-deck" });
+    const { action, host } = setUp();
+
+    host.echo = true;
+    action.appearWrites = [profileList];
+
+    host.appear("ctx", { mode: "focus" });
+    await host.settle();
+
+    // The stamp's echo superseded the list write, which was re-applied on the
+    // echo; that write's echo found nothing parked, and nothing wrote again.
+    expect(host.pluginWrites).toEqual([
+      { mode: "focus", addedWithVersion: VERSION },
+      { mode: "focus", addedWithVersion: VERSION, _deviceProfiles: PROFILES },
+    ]);
+    expect(host.delivered).toEqual(["willAppear", "didReceiveSettings", "didReceiveSettings"]);
+    expect(host.stored.get("ctx")).toEqual({ mode: "focus", addedWithVersion: VERSION, _deviceProfiles: PROFILES });
+    expect(action.settingsOf("ctx")).toEqual(host.stored.get("ctx"));
   });
 });

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   CONTEXT_EVENT_WAIT_LIMIT_MS,
+  type ContextEventArrival,
   type ContextEventKind,
   ContextEventOrder,
   isExclusiveContextEventKind,
@@ -1058,6 +1059,186 @@ describe("ContextEventOrder", () => {
       await flush();
 
       expect(order.size).toBe(0);
+    });
+  });
+
+  describe("the arrival token (#1761)", () => {
+    /**
+     * Enqueue a task that keeps the arrival it is handed and, when given a
+     * gate, stays running until it opens. Returns a reader of that arrival,
+     * which throws when the task never ran.
+     */
+    function capture(
+      order: ContextEventOrder,
+      context: string,
+      kind: ContextEventKind,
+      hold?: Promise<void>,
+    ): () => ContextEventArrival {
+      let seen: ContextEventArrival | undefined;
+
+      void order.enqueue(context, kind, async (arrival) => {
+        seen = arrival;
+
+        if (hold) await hold;
+      });
+
+      return () => {
+        if (seen === undefined) throw new Error(`the ${kind} task for ${context} never ran`);
+
+        return seen;
+      };
+    }
+
+    it("is not superseded for a task that runs alone", async () => {
+      const { order } = createRecorder();
+      const appear = capture(order, "ctx", "willAppear");
+
+      await flush();
+
+      expect(appear().isSuperseded()).toBe(false);
+    });
+
+    it.each(["didReceiveSettings", "willDisappear"] as const)(
+      "turns true when a %s of the context arrives while the task runs",
+      async (later) => {
+        const { order } = createRecorder();
+        const appear = gate();
+        const token = capture(order, "ctx", "willAppear", appear.promise);
+
+        expect(token().isSuperseded()).toBe(false);
+
+        void order.enqueue("ctx", later, () => undefined);
+
+        // Still running: the later event is queued behind it, yet it has arrived.
+        expect(token().isSuperseded()).toBe(true);
+
+        appear.open();
+        await flush();
+
+        expect(token().isSuperseded()).toBe(true);
+      },
+    );
+
+    it.each(["keyDown", "keyUp", "dialDown", "dialUp", "dialRotate", "touchTap", "step:promoteToEncoder"] as const)(
+      "stays false when a %s arrives",
+      async (later) => {
+        const { order } = createRecorder();
+        const appear = gate();
+        const token = capture(order, "ctx", "willAppear", appear.promise);
+
+        void order.enqueue("ctx", later, () => undefined);
+        appear.open();
+        await flush();
+
+        expect(token().isSuperseded()).toBe(false);
+      },
+    );
+
+    it("turns true for an input when a settings change arrives after it", async () => {
+      const { order } = createRecorder();
+      const press = gate();
+
+      void order.enqueue("ctx", "willAppear", () => undefined);
+
+      const token = capture(order, "ctx", "keyDown", press.promise);
+
+      expect(token().isSuperseded()).toBe(false);
+
+      void order.enqueue("ctx", "didReceiveSettings", () => undefined);
+
+      expect(token().isSuperseded()).toBe(true);
+
+      press.open();
+      await flush();
+    });
+
+    it("a settings change of another context supersedes nothing", async () => {
+      const { order } = createRecorder();
+      const token = capture(order, "ctx-1", "willAppear");
+
+      void order.enqueue("ctx-2", "willAppear", () => undefined);
+      void order.enqueue("ctx-2", "didReceiveSettings", () => undefined);
+      await flush();
+
+      expect(token().isSuperseded()).toBe(false);
+    });
+
+    it("a token from before a disappear and a re-appear reads true, after the record was pruned too", async () => {
+      const { order } = createRecorder();
+      const settings = capture(order, "ctx", "willAppear");
+
+      void order.enqueue("ctx", "willDisappear", () => undefined);
+      await flush();
+
+      // Pruned: the context disappeared and nothing of it is pending.
+      expect(order.size).toBe(0);
+      expect(settings().isSuperseded()).toBe(true);
+
+      const reappear = capture(order, "ctx", "willAppear");
+
+      await flush();
+
+      expect(settings().isSuperseded()).toBe(true);
+      expect(reappear().isSuperseded()).toBe(false);
+    });
+
+    it("the disappear's own token is not superseded by itself, even once its record is pruned", async () => {
+      const { order } = createRecorder();
+
+      void order.enqueue("ctx", "willAppear", () => undefined);
+
+      const teardown = capture(order, "ctx", "willDisappear");
+
+      await flush();
+
+      expect(order.size).toBe(0);
+      expect(teardown().isSuperseded()).toBe(false);
+    });
+
+    it("an arrival dropped at arrival supersedes nothing", async () => {
+      const { order } = createRecorder();
+      const appear = gate();
+      const token = capture(order, "ctx", "willAppear", appear.promise);
+
+      // Dropped as a second appear of a live context: the order's safety net.
+      expect(order.enqueue("ctx", "willAppear", () => undefined)).toBeUndefined();
+      expect(token().isSuperseded()).toBe(false);
+
+      appear.open();
+      await flush();
+
+      expect(token().isSuperseded()).toBe(false);
+    });
+
+    it("events dropped after a disappear do not supersede the arrivals before them", async () => {
+      const { order } = createRecorder();
+      const teardown = gate();
+
+      void order.enqueue("ctx", "willAppear", () => undefined);
+
+      const token = capture(order, "ctx", "willDisappear", teardown.promise);
+
+      // Dropped: the context is no longer live.
+      expect(order.enqueue("ctx", "didReceiveSettings", () => undefined)).toBeUndefined();
+      expect(order.enqueue("ctx", "willDisappear", () => undefined)).toBeUndefined();
+      expect(token().isSuperseded()).toBe(false);
+
+      teardown.open();
+      await flush();
+
+      expect(token().isSuperseded()).toBe(false);
+    });
+
+    it("a task that takes no parameter still runs", () => {
+      const { order } = createRecorder();
+      let ran = false;
+      const task = (): void => {
+        ran = true;
+      };
+
+      void order.enqueue("ctx", "willAppear", task);
+
+      expect(ran).toBe(true);
     });
   });
 });

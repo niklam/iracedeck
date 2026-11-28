@@ -29,6 +29,10 @@
  * and a host `willAppear` for a context that is already live is delivered as
  * `didReceiveSettings` with that frame's settings, ordered as an exclusive
  * event, never as a second `onWillAppear`.
+ *
+ * A third is checked since #1761: every event the adapter builds carries its
+ * `ContextEventOrder` arrival's `isSuperseded`, which `BaseAction.updateSettings`
+ * reads so a write never reverts a newer settings change.
  */
 import type { ContextHandlerEventKind } from "./context-event-order.js";
 import type {
@@ -601,6 +605,184 @@ function expectFired(rule: string, when: string, fired: Fired, expected: Fired):
   expectCount(rule, `the dial-rotate broadcast ${when}`, fired.dialRotate, expected.dialRotate);
 }
 
+/**
+ * Throws unless `ev` carries an `isSuperseded` that answers `expected` now.
+ * `what` names the event and the moment, for the message.
+ */
+function expectSuperseded(rule: string, what: string, ev: IDeckEvent<unknown> | undefined, expected: boolean): void {
+  if (ev === undefined) {
+    throw new Error(`${rule}: ${what} never reached the handler (delivery check before a token check)`);
+  }
+
+  if (typeof ev.isSuperseded !== "function") {
+    throw new Error(
+      `${rule}: ${what} carries no isSuperseded; the adapter must put its ContextEventOrder arrival's isSuperseded on every event it builds`,
+    );
+  }
+
+  const actual = ev.isSuperseded();
+
+  if (actual === expected) return;
+
+  throw new Error(`${rule}: expected ${what} to report isSuperseded() ${expected} but it reported ${actual}`);
+}
+
+const arrivalTokenOnEveryEvent: ContextEventOrderScenario = {
+  name: "an event's isSuperseded is false while it runs alone, and true once a later settings event or disappear arrives",
+  async run(harness) {
+    const { adapter, emit } = harness;
+    const rule = "every event carries its arrival's isSuperseded (#1761)";
+    // Swapped per phase, and read when a call starts, as in the input-kind scenario.
+    const gates: Partial<Record<ContextHandlerEventKind, Gate>> = {};
+    const seen = new Map<string, IDeckEvent<unknown>>();
+    const all: Array<{ readonly kind: ContextHandlerEventKind; readonly ev: IDeckEvent<unknown> }> = [];
+    const last = (context: string, kind: ContextHandlerEventKind): IDeckEvent<unknown> | undefined =>
+      seen.get(`${context}:${kind}`);
+
+    const step = async (kind: ContextHandlerEventKind, ev: IDeckEvent<unknown>): Promise<void> => {
+      seen.set(`${ev.action.id}:${kind}`, ev);
+      all.push({ kind, ev });
+
+      const open = gates[kind];
+
+      if (open) await open.promise;
+    };
+
+    const handler: IDeckActionHandler = {
+      onWillAppear: (ev) => step("willAppear", ev),
+      onWillDisappear: (ev) => step("willDisappear", ev),
+      onDidReceiveSettings: (ev) => step("didReceiveSettings", ev),
+      onKeyDown: (ev) => step("keyDown", ev),
+      onKeyUp: (ev) => step("keyUp", ev),
+      onDialDown: (ev) => step("dialDown", ev),
+      onDialUp: (ev) => step("dialUp", ev),
+      onDialRotate: (ev: IDeckDialRotateEvent<unknown>) => step("dialRotate", ev),
+      onTouchTap: (ev: IDeckTouchTapEvent<unknown>) => step("touchTap", ev),
+    };
+    const clearGates = (): void => {
+      for (const key of Object.keys(gates) as ContextHandlerEventKind[]) delete gates[key];
+    };
+
+    adapter.registerAction(CONTEXT_EVENT_ORDER_ACTION_UUID, handler);
+
+    // The lifecycle: an appear, a press and a settings change, each superseded
+    // only by a later lifecycle arrival.
+    const appear = gate();
+    const press = gate();
+    const settings = gate();
+
+    gates.willAppear = appear;
+    gates.keyDown = press;
+    gates.didReceiveSettings = settings;
+
+    emit("willAppear", "ctx-1");
+    await settle();
+
+    expectSuperseded(rule, "the willAppear while it runs alone", last("ctx-1", "willAppear"), false);
+
+    // Input supersedes nothing: the press waits behind the appear.
+    emit("keyDown", "ctx-1");
+    await settle();
+
+    expectSuperseded(rule, "the willAppear after a keyDown arrived", last("ctx-1", "willAppear"), false);
+
+    // A settings change arrives while the appear still runs, queued behind it and the press.
+    emit("didReceiveSettings", "ctx-1");
+    await settle();
+
+    expectSuperseded(rule, "the willAppear after a didReceiveSettings arrived", last("ctx-1", "willAppear"), true);
+
+    appear.open();
+    await settle();
+
+    // The press arrived before the settings change, so it is superseded by it too.
+    expectSuperseded(rule, "the keyDown that arrived before a didReceiveSettings", last("ctx-1", "keyDown"), true);
+
+    press.open();
+    await settle();
+
+    expectSuperseded(rule, "the didReceiveSettings while it runs alone", last("ctx-1", "didReceiveSettings"), false);
+
+    emit("willDisappear", "ctx-1");
+    await settle();
+
+    expectSuperseded(
+      rule,
+      "the didReceiveSettings after a willDisappear arrived",
+      last("ctx-1", "didReceiveSettings"),
+      true,
+    );
+
+    settings.open();
+    await settle();
+
+    expectSuperseded(rule, "the willDisappear, the last event to arrive", last("ctx-1", "willDisappear"), false);
+
+    // A host appear for a live context, delivered as a settings change, carries its token too.
+    clearGates();
+    emit("willAppear", "ctx-late");
+    await settle();
+
+    const late = gate();
+
+    gates.didReceiveSettings = late;
+    emit("willAppear", "ctx-late", { settings: { marker: 2 } });
+    await settle();
+
+    expectSuperseded(
+      rule,
+      "the settings change a late willAppear was delivered as, while it runs alone",
+      last("ctx-late", "didReceiveSettings"),
+      false,
+    );
+
+    emit("willDisappear", "ctx-late");
+    await settle();
+
+    expectSuperseded(
+      rule,
+      "the settings change a late willAppear was delivered as, after a willDisappear arrived",
+      last("ctx-late", "didReceiveSettings"),
+      true,
+    );
+
+    late.open();
+    await settle();
+
+    // Every input kind this host sends: false alone, true once a settings change arrives behind it.
+    for (const kind of supportedInputs(harness)) {
+      const context = `ctx-token-${kind}`;
+      const input = gate();
+
+      clearGates();
+      emit("willAppear", context, { controller: controllerFor(kind) });
+      await settle();
+
+      gates[kind] = input;
+      emitInput(harness, kind, context);
+      await settle();
+
+      expectSuperseded(rule, `the ${kind} while it runs alone`, last(context, kind), false);
+
+      emit("didReceiveSettings", context);
+      await settle();
+
+      expectSuperseded(rule, `the ${kind} after a didReceiveSettings arrived`, last(context, kind), true);
+
+      input.open();
+      await settle();
+    }
+
+    // And every other event the adapter built on the way: a release a host
+    // event makes alongside its press (Mirabox's knob) included.
+    for (const { kind, ev } of all) {
+      if (typeof ev.isSuperseded !== "function") {
+        throw new Error(`${rule}: a ${kind} for ${ev.action.id} carries no isSuperseded`);
+      }
+    }
+  },
+};
+
 const broadcastsFireForLiveContextsOnly: ContextEventOrderScenario = {
   name: "broadcasts fire only for a live context",
   async run(harness) {
@@ -730,4 +912,5 @@ export const CONTEXT_EVENT_ORDER_SCENARIOS: readonly ContextEventOrderScenario[]
   settingsChangeIsExclusive,
   reappearWaitsForTeardown,
   lateAppearForLiveContext,
+  arrivalTokenOnEveryEvent,
 ];

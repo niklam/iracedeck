@@ -68,7 +68,7 @@ import { getGlobalColors, getGlobalSettings, updateGlobalSettings } from "@irace
 import z from "zod";
 
 import { getSelectIntent } from "../../shared/car-select-intent.js";
-import { availableProfilesForDevice, deviceProfileEntries, profileEntriesEqual } from "../../shared/profile-entries.js";
+import { availableProfilesForDevice, deviceProfilesUpdate } from "../../shared/profile-entries.js";
 import { migrateUseViewedCarToDriverTarget } from "./migrate-use-viewed-car.js";
 import { buildAdminCommand, buildAdminCommandPrefix, resolveDriverTarget } from "./race-admin-commands.js";
 import { RACE_ADMIN_MODE_META, RACE_ADMIN_MODES, type RaceAdminMode } from "./race-admin-modes.js";
@@ -281,22 +281,35 @@ export class RaceAdmin extends SimIRacingAction<RaceAdminSettings> {
 
   /**
    * Detect a legacy `useViewedCar` setting and persist the migrated shape to
-   * Stream Deck storage so the legacy key is permanently dropped. Logs and
-   * swallows persist failures — the runtime always reads via `parseSettings`,
-   * so a failed persist doesn't block functionality.
+   * Stream Deck storage so the legacy key is permanently dropped. Written
+   * through `updateSettings` (#1761), so the migration applies to the
+   * context's newest settings and the profile-list write after it merges onto
+   * the migrated record instead of restoring `useViewedCar`. A failed persist
+   * is warned there and never thrown — the runtime always reads via
+   * `parseSettings`, so it doesn't block functionality.
+   *
+   * Whether the key needs migrating is judged first on the settings the host
+   * delivered, not on the record. That reproduces the decision made before
+   * #1761; it does not fix it. By the time this runs, `BaseAction` has put
+   * this appearance's `addedWithVersion` stamp into the record, so judged on
+   * the record a fresh key's first event would read as an implicit-legacy key
+   * and be backfilled to `viewed-car`; judged on the payload, that first event
+   * keeps the `type-in-chat` default. Only the first event: any later event
+   * whose payload carries the stamp but no `driverTarget` still passes the
+   * implicit-legacy case and is backfilled to `viewed-car`, exactly as before
+   * #1761 — the host's echo of the stamp write, on a host that echoes, or the
+   * key's next appearance when the PI never stored a `driverTarget`.
    */
   private async persistMigratedSettings(
     ev: IDeckWillAppearEvent<RaceAdminSettings> | IDeckDidReceiveSettingsEvent<RaceAdminSettings>,
   ): Promise<void> {
-    const { migrated, changed } = migrateUseViewedCarToDriverTarget(ev.payload.settings);
+    if (!migrateUseViewedCarToDriverTarget(ev.payload.settings).changed) return;
 
-    if (!changed) return;
+    await this.updateSettings(ev, (current) => {
+      const { migrated, changed } = migrateUseViewedCarToDriverTarget(current);
 
-    try {
-      await ev.action.setSettings(migrated);
-    } catch (err) {
-      this.logger.warn(`Failed to persist migrated race-admin settings: ${err instanceof Error ? err.message : err}`);
-    }
+      return changed ? migrated : undefined;
+    });
   }
 
   // ── Lifecycle ───────────────────────────────────────────────
@@ -307,7 +320,7 @@ export class RaceAdmin extends SimIRacingAction<RaceAdminSettings> {
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
     this.rememberContext(ev, settings);
-    await this.pushDeviceProfiles(ev, settings);
+    await this.pushDeviceProfiles(ev);
 
     await this.updateDisplay(ev, settings);
 
@@ -346,7 +359,7 @@ export class RaceAdmin extends SimIRacingAction<RaceAdminSettings> {
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
     this.rememberContext(ev, settings);
-    await this.pushDeviceProfiles(ev, settings);
+    await this.pushDeviceProfiles(ev);
     await this.updateDisplay(ev, settings);
   }
 
@@ -658,26 +671,20 @@ export class RaceAdmin extends SimIRacingAction<RaceAdminSettings> {
 
   /**
    * Push the device-filtered profile list for the Target Profile PI dropdown
-   * (select-car mode only; guarded against the setSettings→onDidReceiveSettings
-   * echo loop by only writing on change — same pattern as Switch Profile).
+   * (select-car mode only), through `updateSettings` (#1761): the list is
+   * merged onto the context's newest settings, never the event's, and only
+   * while those settings are still in select-car, so a Mode change that
+   * arrived after this event is never reverted, and the `useViewedCar`
+   * migration written just before stays written. Nothing is written when the
+   * list is already stored; a failed write is warned there and never thrown.
    */
   private async pushDeviceProfiles(
     ev: IDeckWillAppearEvent<RaceAdminSettings> | IDeckDidReceiveSettingsEvent<RaceAdminSettings>,
-    settings: RaceAdminSettings,
   ): Promise<void> {
-    if (settings.mode !== "select-car") return;
-
-    const entries = deviceProfileEntries(ev.action.deviceType);
-    const raw = (ev.payload.settings ?? {}) as Record<string, unknown>;
-    const current = Array.isArray(raw._deviceProfiles) ? (raw._deviceProfiles as unknown[]) : [];
-
-    if (profileEntriesEqual(current, entries)) return;
-
-    try {
-      await ev.action.setSettings({ ...raw, _deviceProfiles: entries });
-    } catch (err) {
-      this.logger.warn(`Failed to push device profiles: ${err instanceof Error ? err.message : err}`);
-    }
+    await this.updateSettings(
+      ev,
+      deviceProfilesUpdate(ev.action.deviceType, (current) => this.parseSettings(current).mode === "select-car"),
+    );
   }
 
   /**

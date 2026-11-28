@@ -24,6 +24,9 @@
  * - {@link LateAppearDropReferenceAdapter} is the ordered one without that
  *   rule, letting the order drop the host's late appear. The late-appear
  *   scenario must fail on it.
+ * - {@link NoArrivalTokenReferenceAdapter} is the ordered one that leaves the
+ *   arrival's `isSuperseded` off the events it builds (#1761). The
+ *   arrival-token scenario must fail on it.
  *
  * They implement {@link ContextEventOrderAdapter}, the slice of the platform
  * adapter the suite drives, not `IDeckPlatformAdapter` itself: declaring that
@@ -72,17 +75,22 @@ function fakeContext(id: string, controller: Controller): IDeckActionContext {
   };
 }
 
-/** Call the handler method `event` names with a deck-core event built now, as an adapter's task does. */
+/**
+ * Call the handler method `event` names with a deck-core event built now, as an
+ * adapter's task does, carrying `isSuperseded` when given.
+ */
 function dispatch(
   handler: IDeckActionHandler,
   event: ContextEventOrderHostEvent,
   context: string,
   controller: Controller,
   payload: ContextEventOrderPayload,
+  isSuperseded: (() => boolean) | undefined,
 ): Promise<void> | void {
   const base: IDeckEvent<unknown> = {
     action: fakeContext(context, controller),
     payload: { settings: payload.settings ?? {} },
+    ...(isSuperseded ? { isSuperseded } : {}),
   };
 
   switch (event) {
@@ -102,14 +110,14 @@ function dispatch(
       return handler.onDialUp?.(base);
     case "dialRotate": {
       const rotate: IDeckDialRotateEvent<unknown> = {
-        action: base.action,
+        ...base,
         payload: { settings: base.payload.settings, ticks: payload.ticks ?? 1, pressed: payload.pressed ?? false },
       };
 
       return handler.onDialRotate?.(rotate);
     }
     case "touchTap":
-      return handler.onTouchTap?.({ action: base.action, payload: { ...base.payload, tapPos: [0, 0], hold: false } });
+      return handler.onTouchTap?.({ ...base, payload: { ...base.payload, tapPos: [0, 0], hold: false } });
   }
 }
 
@@ -165,14 +173,18 @@ abstract class ReferenceAdapter implements ContextEventOrderAdapter {
     for (const callback of callbacks) callback();
   }
 
-  /** The handler call for one host event, built when called, as a task does. */
+  /**
+   * The handler call for one host event, built when called, as a task does;
+   * the event carries `isSuperseded` when given (#1761).
+   */
   protected call(
     handler: IDeckActionHandler,
     event: ContextEventOrderHostEvent,
     context: string,
     payload: ContextEventOrderPayload,
+    isSuperseded?: () => boolean,
   ): Promise<void> | void {
-    return dispatch(handler, event, context, this.controllers.get(context) ?? "Keypad", payload);
+    return dispatch(handler, event, context, this.controllers.get(context) ?? "Keypad", payload, isSuperseded);
   }
 
   /** One host event at arrival, synchronous: what each reference does with it is the difference between them. */
@@ -288,8 +300,8 @@ export class InTaskLivenessReferenceAdapter extends SerialReferenceAdapter {
 
 /**
  * The pattern a real adapter follows: broadcasts behind `isLive`, every handler
- * call through `enqueue`, and a host `willAppear` for a live context delivered
- * as a settings change.
+ * call through `enqueue` with the arrival's `isSuperseded` on its event, and a
+ * host `willAppear` for a live context delivered as a settings change.
  */
 export class OrderedReferenceAdapter extends ReferenceAdapter {
   protected readonly order = new ContextEventOrder(silentLogger);
@@ -306,8 +318,8 @@ export class OrderedReferenceAdapter extends ReferenceAdapter {
     // not a second appear: converted at arrival, so the order's own drop of a
     // live willAppear (frame settings included) is a safety net never reached.
     if (event === "willAppear" && this.order.isLive(context)) {
-      void this.order.enqueue(context, "didReceiveSettings", () =>
-        this.call(handler, "didReceiveSettings", context, payload),
+      void this.order.enqueue(context, "didReceiveSettings", ({ isSuperseded }) =>
+        this.call(handler, "didReceiveSettings", context, payload, this.token(isSuperseded)),
       );
 
       return;
@@ -315,7 +327,14 @@ export class OrderedReferenceAdapter extends ReferenceAdapter {
 
     // Discarded on purpose: the harness's `emit` returns nothing, and a
     // discarded result is safe (never an unhandled rejection) but silent.
-    void this.order.enqueue(context, event, () => this.call(handler, event, context, payload));
+    void this.order.enqueue(context, event, ({ isSuperseded }) =>
+      this.call(handler, event, context, payload, this.token(isSuperseded)),
+    );
+  }
+
+  /** The `isSuperseded` the events carry: the arrival's own here. */
+  protected token(isSuperseded: () => boolean): (() => boolean) | undefined {
+    return isSuperseded;
   }
 }
 
@@ -333,6 +352,19 @@ export class LateAppearDropReferenceAdapter extends OrderedReferenceAdapter {
   ): void {
     if (this.order.isLive(context)) this.broadcast(event);
 
-    void this.order.enqueue(context, event, () => this.call(handler, event, context, payload));
+    void this.order.enqueue(context, event, ({ isSuperseded }) =>
+      this.call(handler, event, context, payload, this.token(isSuperseded)),
+    );
+  }
+}
+
+/**
+ * The ordered reference that leaves the arrival's `isSuperseded` off every
+ * event it builds, as an adapter did before #1761. The arrival-token scenario
+ * must fail on it, and only that one.
+ */
+export class NoArrivalTokenReferenceAdapter extends OrderedReferenceAdapter {
+  protected override token(): undefined {
+    return undefined;
   }
 }

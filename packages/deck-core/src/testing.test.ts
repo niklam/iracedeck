@@ -9,7 +9,8 @@ import * as testing from "./testing.js";
  * suite and its harness types, which no production source may import — an
  * adapter imports `ContextEventOrder` from the barrel and runs the suite from
  * its tests. It also re-exports the real dial-gesture helpers and icon
- * throttle, for tests that mock the barrel (#1375). This file holds the two
+ * throttle (#1375), and the real `ContextSettings` and `ContextEventOrder`
+ * (#1761), for tests that mock the barrel. This file holds the two
  * surfaces apart; that no production source imports the entry is the root
  * guard's, `scripts/testing-entries-test-only.test.mjs`, which holds every
  * package's `./testing` entry to it (#1375).
@@ -17,6 +18,8 @@ import * as testing from "./testing.js";
 
 /** The real implementations the entry re-exports for tests that mock the barrel (#1375). */
 const REAL_IMPLEMENTATIONS = [
+  "ContextEventOrder",
+  "ContextSettings",
   "IconUpdateThrottle",
   "NOOP_HOLD_PREVIEW",
   "classifyDialRelease",

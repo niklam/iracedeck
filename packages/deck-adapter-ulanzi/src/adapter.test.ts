@@ -678,6 +678,27 @@ describe("UlanziPlatformAdapter", () => {
       expect(delivered.payload.settings).toBe(settings);
     });
 
+    it("hands the teardown and the re-appear the step's arrival token, superseded by a later settings change (#1761)", async () => {
+      const { handler } = recordingHandler();
+      adapter.registerAction(UUID, handler);
+
+      await appear();
+      await rotate(1);
+
+      const teardown = handler.onWillDisappear.mock.calls[0][0];
+      const reappear = handler.onWillAppear.mock.calls[1][0];
+
+      // The step supersedes nothing, not even the Keypad appear before it.
+      expect(handler.onWillAppear.mock.calls[0][0].isSuperseded?.()).toBe(false);
+      expect(teardown.isSuperseded?.()).toBe(false);
+      expect(reappear.isSuperseded?.()).toBe(false);
+
+      await nonDial("didReceiveSettings", { mode: "newer" });
+
+      expect(teardown.isSuperseded?.()).toBe(true);
+      expect(reappear.isSuperseded?.()).toBe(true);
+    });
+
     it("promotes only once: later dial input goes straight to the dial surface", async () => {
       const { handler, hooks } = recordingHandler();
       adapter.registerAction(UUID, handler);

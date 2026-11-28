@@ -185,10 +185,11 @@ export class AiSpotterControls extends ConnectionStateAwareAction<AiSpotterContr
   private readonly repeat = new RepeatController(this.logger);
 
   override async onWillAppear(ev: IDeckWillAppearEvent<AiSpotterControlsSettings>): Promise<void> {
-    // BEFORE super (#1453): the base stamps a missing `addedWithVersion` with
-    // its own setSettings({...payload, addedWithVersion}). Seeding first, and
-    // handing the base the seeded payload, makes that stamp write land last
-    // AND carry the seeded style.
+    // BEFORE super (#1453): the base stamps a missing `addedWithVersion`
+    // through updateSettings, onto a record taken from the payload. Seeding
+    // first, and handing the base the seeded payload, makes that stamp write
+    // land last AND carry the seeded style — unless a PI change has arrived
+    // meanwhile, when the stamp goes onto that change instead (#1761, #1794).
     await persistFreshKeyStyleSeed(ev, this.logger);
     await super.onWillAppear(ev);
     const settings = this.parseSettings(ev.payload.settings);

@@ -107,11 +107,13 @@ class VSDActionContext implements IDeckActionContext {
 
 /**
  * Create a deck-core event from a VSD event with full action context.
+ * `isSuperseded` is the event's `ContextEventOrder` arrival's (#1761).
  */
 function wrapEvent<T>(
   client: VSDClient,
   data: VSDEvent & { context: string },
   controllerType: ControllerType,
+  isSuperseded: () => boolean,
 ): IDeckEvent<T> {
   const payload = data.payload as Record<string, unknown> | undefined;
   const coordinates = payload?.coordinates as { row: number; column: number } | undefined;
@@ -119,6 +121,7 @@ function wrapEvent<T>(
   return {
     action: new VSDActionContext(client, data.context, controllerType),
     payload: { settings: (payload?.settings ?? {}) as T, coordinates },
+    isSuperseded,
   };
 }
 
@@ -126,7 +129,10 @@ function wrapEvent<T>(
  * Create a deck-core disappear event with no-op stubs.
  * Similar to Elgato adapter: disappearing actions don't need setImage/setTitle.
  */
-function wrapDisappearEvent<T>(data: VSDEvent & { context: string }): IDeckWillDisappearEvent<T> {
+function wrapDisappearEvent<T>(
+  data: VSDEvent & { context: string },
+  isSuperseded: () => boolean,
+): IDeckWillDisappearEvent<T> {
   return {
     action: {
       get id() {
@@ -164,6 +170,7 @@ function wrapDisappearEvent<T>(data: VSDEvent & { context: string }): IDeckWillD
       },
     },
     payload: { settings: (data.payload?.settings ?? {}) as T },
+    isSuperseded,
   };
 }
 
@@ -174,6 +181,7 @@ function wrapDialRotateEvent<T>(
   client: VSDClient,
   data: VSDEvent & { context: string },
   controllerType: ControllerType,
+  isSuperseded: () => boolean,
 ): IDeckDialRotateEvent<T> {
   return {
     action: new VSDActionContext(client, data.context, controllerType),
@@ -184,6 +192,7 @@ function wrapDialRotateEvent<T>(
       // is native, not Elgato-only). Default false when the frame omits it.
       pressed: data.payload?.pressed ?? false,
     },
+    isSuperseded,
   };
 }
 
@@ -400,20 +409,20 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
           `Context ${event.context}: willAppear arrived while live, delivered as a settings change`,
         );
 
-        await this.order.enqueue(event.context, "didReceiveSettings", () =>
-          handler.onDidReceiveSettings?.(wrapEvent<T>(this.client, event, controllerOf(event.context))),
+        await this.order.enqueue(event.context, "didReceiveSettings", ({ isSuperseded }) =>
+          handler.onDidReceiveSettings?.(wrapEvent<T>(this.client, event, controllerOf(event.context), isSuperseded)),
         );
 
         return;
       }
 
-      await this.order.enqueue(event.context, "willAppear", () => {
+      await this.order.enqueue(event.context, "willAppear", ({ isSuperseded }) => {
         this.contextControllers.set(
           event.context,
           ((event.payload?.controller as string) ?? "Keypad") as ControllerType,
         );
 
-        return handler.onWillAppear?.(wrapEvent<T>(this.client, event, controllerOf(event.context)));
+        return handler.onWillAppear?.(wrapEvent<T>(this.client, event, controllerOf(event.context), isSuperseded));
       });
     });
 
@@ -423,10 +432,10 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
 
       const event = data as VSDEvent & { context: string };
 
-      await this.order.enqueue(event.context, "willDisappear", () => {
+      await this.order.enqueue(event.context, "willDisappear", ({ isSuperseded }) => {
         this.contextControllers.delete(event.context);
 
-        return handler.onWillDisappear?.(wrapDisappearEvent<T>(event));
+        return handler.onWillDisappear?.(wrapDisappearEvent<T>(event, isSuperseded));
       });
     });
 
@@ -436,8 +445,8 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
 
       const event = data as VSDEvent & { context: string };
 
-      await this.order.enqueue(event.context, "didReceiveSettings", () =>
-        handler.onDidReceiveSettings?.(wrapEvent<T>(this.client, event, controllerOf(event.context))),
+      await this.order.enqueue(event.context, "didReceiveSettings", ({ isSuperseded }) =>
+        handler.onDidReceiveSettings?.(wrapEvent<T>(this.client, event, controllerOf(event.context), isSuperseded)),
       );
     });
 
@@ -450,8 +459,8 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
 
       if (this.order.isLive(event.context)) for (const cb of this.keyDownCallbacks) cb();
 
-      await this.order.enqueue(event.context, "keyDown", () =>
-        handler.onKeyDown?.(wrapEvent<T>(this.client, event, controllerOf(event.context))),
+      await this.order.enqueue(event.context, "keyDown", ({ isSuperseded }) =>
+        handler.onKeyDown?.(wrapEvent<T>(this.client, event, controllerOf(event.context), isSuperseded)),
       );
     });
 
@@ -461,8 +470,8 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
 
       const event = data as VSDEvent & { context: string };
 
-      await this.order.enqueue(event.context, "keyUp", () =>
-        handler.onKeyUp?.(wrapEvent<T>(this.client, event, controllerOf(event.context))),
+      await this.order.enqueue(event.context, "keyUp", ({ isSuperseded }) =>
+        handler.onKeyUp?.(wrapEvent<T>(this.client, event, controllerOf(event.context), isSuperseded)),
       );
     });
 
@@ -474,8 +483,8 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
 
       if (this.order.isLive(event.context)) for (const cb of this.dialRotateCallbacks) cb();
 
-      await this.order.enqueue(event.context, "dialRotate", () =>
-        handler.onDialRotate?.(wrapDialRotateEvent<T>(this.client, event, controllerOf(event.context))),
+      await this.order.enqueue(event.context, "dialRotate", ({ isSuperseded }) =>
+        handler.onDialRotate?.(wrapDialRotateEvent<T>(this.client, event, controllerOf(event.context), isSuperseded)),
       );
     });
 
@@ -503,9 +512,9 @@ export class VSDPlatformAdapter implements IDeckPlatformAdapter {
 
       if (this.order.isLive(event.context)) for (const cb of this.dialDownCallbacks) cb();
 
-      await this.order.enqueue(event.context, "dialDown", async () => {
-        await handler.onDialDown?.(wrapEvent<T>(this.client, event, controllerOf(event.context)));
-        await handler.onDialUp?.(wrapEvent<T>(this.client, event, controllerOf(event.context)));
+      await this.order.enqueue(event.context, "dialDown", async ({ isSuperseded }) => {
+        await handler.onDialDown?.(wrapEvent<T>(this.client, event, controllerOf(event.context), isSuperseded));
+        await handler.onDialUp?.(wrapEvent<T>(this.client, event, controllerOf(event.context), isSuperseded));
       });
     });
 

@@ -2,6 +2,7 @@ import { notifyProfileVisible, requestProfileSwitch, requestProfileSwitchBack } 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { _resetSelectIntents, getSelectIntent, setSelectIntent } from "../../shared/car-select-intent.js";
+import { ContextSettingsActionBase } from "../../shared/context-settings-action.test-support.js";
 import {
   defaultProfileForDevice,
   generateSwitchProfileSvg,
@@ -28,7 +29,10 @@ vi.mock("../data/profiles.json", () => ({
   ],
 }));
 
-vi.mock("@iracedeck/deck-core", () => {
+vi.mock("@iracedeck/deck-core", async () => {
+  // The base's settings half is the REAL per-context record (#1761).
+  const { ContextSettingsActionBase } = await import("../../shared/context-settings-action.test-support.js");
+
   // Minimal reimplementation of the #753 profile-name helpers (the real ones
   // are covered by deck-core's own device-profiles tests).
   const SUFFIXES_LONGEST_FIRST = ["Corsair Galleon", "Plus XL", "Mini", "Plus", "Neo", "XL", "SD"];
@@ -88,12 +92,10 @@ vi.mock("@iracedeck/deck-core", () => {
       parse: (d: Record<string, unknown>) => ({ ...d }),
       safeParse: (d: Record<string, unknown>) => ({ success: true, data: { ...d } }),
     },
-    ConnectionStateAwareAction: class {
+    ConnectionStateAwareAction: class extends ContextSettingsActionBase {
       logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
       setKeyImage = vi.fn();
       setRegenerateCallback = vi.fn();
-      async onWillAppear(): Promise<void> {}
-      async onDidReceiveSettings(): Promise<void> {}
     },
     PROFILE_NAMES: {
       default: "iRaceDeck Default",
@@ -235,6 +237,12 @@ describe("SwitchProfile", () => {
   });
 
   describe("class behaviour", () => {
+    const xlEntries = [
+      { name: "iRaceDeck Default XL", label: "iRaceDeck Default" },
+      { name: "iRaceDeck Replay XL", label: "iRaceDeck Replay" },
+      { name: "iRaceDeck Car Selector XL", label: "iRaceDeck Car Selector" },
+    ];
+
     beforeEach(() => {
       vi.clearAllMocks();
     });
@@ -245,17 +253,10 @@ describe("SwitchProfile", () => {
 
       await action.onWillAppear({ action: a, payload: { settings: {} } } as never);
 
-      expect(a.setSettings).toHaveBeenCalledWith(
-        expect.objectContaining({
-          _deviceProfiles: [
-            { name: "iRaceDeck Default XL", label: "iRaceDeck Default" },
-            { name: "iRaceDeck Replay XL", label: "iRaceDeck Replay" },
-            { name: "iRaceDeck Car Selector XL", label: "iRaceDeck Car Selector" },
-          ],
-        }),
-      );
+      expect(a.setSettings).toHaveBeenCalledTimes(1);
+      expect(a.setSettings).toHaveBeenCalledWith({ _deviceProfiles: xlEntries });
 
-      // Already up to date → no redundant setSettings (avoids the ping-pong loop).
+      // Already up to date → an unchanged list writes nothing.
       a.setSettings.mockClear();
       await action.onDidReceiveSettings({
         action: a,
@@ -282,15 +283,129 @@ describe("SwitchProfile", () => {
         payload: { settings: { _deviceProfiles: ["iRaceDeck Default", "iRaceDeck Replay"] } },
       } as never);
 
-      expect(a.setSettings).toHaveBeenCalledWith(
-        expect.objectContaining({
-          _deviceProfiles: [
-            { name: "iRaceDeck Default XL", label: "iRaceDeck Default" },
-            { name: "iRaceDeck Replay XL", label: "iRaceDeck Replay" },
-            { name: "iRaceDeck Car Selector XL", label: "iRaceDeck Car Selector" },
-          ],
-        }),
-      );
+      expect(a.setSettings).toHaveBeenCalledWith({ _deviceProfiles: xlEntries });
+    });
+
+    it("writes the newest settings plus the list, not the event's payload (#1761)", async () => {
+      const action = new SwitchProfile();
+      const a = keyAction();
+      const newer = { profile: "iRaceDeck Replay XL", hostProfile: "iRaceDeck Replay" };
+
+      // A PI change arrived while this appear ran: nothing is written from the
+      // appear's settings; the list is written onto the newer settings.
+      await action.onWillAppear({
+        action: a,
+        payload: { settings: { profile: "" } },
+        isSuperseded: () => true,
+      } as never);
+
+      expect(a.setSettings).not.toHaveBeenCalled();
+
+      await action.onDidReceiveSettings({ action: a, payload: { settings: newer } } as never);
+
+      expect(a.setSettings).toHaveBeenCalledTimes(1);
+      expect(a.setSettings).toHaveBeenCalledWith({ ...newer, _deviceProfiles: xlEntries });
+    });
+
+    it("reports no marker and draws no icon from a superseded event; the newer event does both (#1761)", async () => {
+      _resetSelectIntents();
+      setSelectIntent("dev-1", { action: "focus-camera" });
+
+      try {
+        const action = new SwitchProfile();
+        const a = keyAction();
+
+        // The appear's marker is the Replay profile; the newer settings, already
+        // arrived and queued behind it, carry the Car Selector marker.
+        await action.onWillAppear({
+          action: a,
+          payload: { settings: { profile: "iRaceDeck Replay XL", hostProfile: "iRaceDeck Replay" } },
+          isSuperseded: () => true,
+        } as never);
+
+        expect(a.setSettings).not.toHaveBeenCalled();
+        expect(notifyProfileVisible).not.toHaveBeenCalled();
+        // A Replay marker would have cleared the intent; the superseded event leaves it.
+        expect(getSelectIntent("dev-1")).toEqual({ action: "focus-camera" });
+        expect(a.setTitle).not.toHaveBeenCalled();
+        expect(action["setKeyImage"]).not.toHaveBeenCalled();
+        expect(action["setRegenerateCallback"]).not.toHaveBeenCalled();
+
+        const newer = { profile: "iRaceDeck Car Selector XL", hostProfile: "iRaceDeck Car Selector" };
+
+        await action.onDidReceiveSettings({
+          action: a,
+          payload: { settings: newer },
+          isSuperseded: () => false,
+        } as never);
+
+        expect(a.setSettings).toHaveBeenCalledTimes(1);
+        expect(a.setSettings).toHaveBeenCalledWith({ ...newer, _deviceProfiles: xlEntries });
+        expect(notifyProfileVisible).toHaveBeenCalledTimes(1);
+        expect(notifyProfileVisible).toHaveBeenCalledWith("dev-1", "iRaceDeck Car Selector XL");
+        expect(getSelectIntent("dev-1")).toEqual({ action: "focus-camera" });
+        expect(a.setTitle).toHaveBeenCalledTimes(1);
+        expect(a.setTitle).toHaveBeenCalledWith("");
+        expect(action["setKeyImage"]).toHaveBeenCalledTimes(1);
+        expect(action["setKeyImage"]).toHaveBeenCalledWith(expect.anything(), "assembled:<svg>CAR SELECTOR</svg>");
+      } finally {
+        _resetSelectIntents();
+      }
+    });
+
+    it("reports no marker from an appear its own disappear has superseded (#1761)", async () => {
+      const action = new SwitchProfile();
+      const a = keyAction();
+      const appear = {
+        action: a,
+        payload: { settings: { hostProfile: "iRaceDeck Replay" } },
+        isSuperseded: () => true,
+      };
+
+      await action.onWillAppear(appear as never);
+      await action.onWillDisappear(appear as never);
+
+      expect(a.setSettings).not.toHaveBeenCalled();
+      expect(notifyProfileVisible).not.toHaveBeenCalled();
+      expect(action["setKeyImage"]).not.toHaveBeenCalled();
+    });
+
+    it("keeps this appearance's addedWithVersion stamp under the list (#1761)", async () => {
+      ContextSettingsActionBase.stampVersion = "3.10.0";
+
+      try {
+        const action = new SwitchProfile();
+        const a = keyAction();
+
+        await action.onWillAppear({ action: a, payload: { settings: { profile: "iRaceDeck Replay XL" } } } as never);
+
+        expect(a.setSettings).toHaveBeenLastCalledWith({
+          profile: "iRaceDeck Replay XL",
+          addedWithVersion: "3.10.0",
+          _deviceProfiles: xlEntries,
+        });
+      } finally {
+        ContextSettingsActionBase.stampVersion = undefined;
+      }
+    });
+
+    it("still reports its marker, clears the intent and draws its icon when the list write is rejected (#1761)", async () => {
+      _resetSelectIntents();
+      setSelectIntent("dev-1", { action: "focus-camera" });
+      const action = new SwitchProfile();
+      const a = keyAction({ setSettings: vi.fn().mockRejectedValue(new Error("host refused")) });
+
+      await expect(
+        action.onWillAppear({ action: a, payload: { settings: { hostProfile: "iRaceDeck Replay" } } } as never),
+      ).resolves.toBeUndefined();
+
+      expect(a.setSettings).toHaveBeenCalledTimes(1);
+      expect(notifyProfileVisible).toHaveBeenCalledWith("dev-1", "iRaceDeck Replay XL");
+      expect(getSelectIntent("dev-1")).toBeUndefined();
+      expect(a.setTitle).toHaveBeenCalledWith("");
+      expect(action["setKeyImage"]).toHaveBeenCalledTimes(1);
+      expect(action["logger"].warn).toHaveBeenCalledWith(expect.stringContaining("host refused"));
+      _resetSelectIntents();
     });
 
     it("switches to the selected profile on key down, targeting the button's device and its first page", async () => {

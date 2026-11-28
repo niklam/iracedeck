@@ -103,7 +103,7 @@ import { carCycleBindingKey } from "../../shared/car-cycle-bindings.js";
 import { noteCameraKeyTap } from "../../shared/car-cycle-focus.js";
 import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { setSelectIntent } from "../../shared/car-select-intent.js";
-import { availableProfilesForDevice, deviceProfileEntries, profileEntriesEqual } from "../../shared/profile-entries.js";
+import { availableProfilesForDevice, deviceProfilesUpdate } from "../../shared/profile-entries.js";
 import { unavailableLook } from "../../shared/unavailable-look.js";
 import {
   autoGroupNames,
@@ -1300,7 +1300,7 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     await this.persistMigratedSettings(ev);
     const settings = this.parseSettings(ev.payload.settings);
     this.activeContexts.set(ev.action.id, settings);
-    await this.pushDeviceProfiles(ev, settings);
+    await this.pushDeviceProfiles(ev);
 
     // A fresh writer for this placement; one left from an earlier placement of
     // the same context stops at its next step.
@@ -1369,7 +1369,7 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
       this.stopAutoGroupOffered(ev.action.id, "key");
     }
 
-    await this.pushDeviceProfiles(ev, settings);
+    await this.pushDeviceProfiles(ev);
     await this.requestSettingsWrite(ev);
   }
 
@@ -1446,24 +1446,20 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
   /**
    * Detect a legacy `target: "focus-on-exiting"` setting and persist the
    * migrated shape (`target: "focus-on-most-exciting"`) so the legacy value
-   * is permanently dropped. Logs and swallows persist failures — the runtime
-   * always reads via `parseSettings`, so a failed persist doesn't block
-   * functionality.
+   * is permanently dropped. Written through `updateSettings` (#1761), so it
+   * migrates the context's newest settings and a later write in the same
+   * handler merges onto the migrated record. A failed persist is warned there
+   * and never thrown — the runtime always reads via `parseSettings`, so it
+   * doesn't block functionality.
    */
   private async persistMigratedSettings(
     ev: IDeckWillAppearEvent<CameraControlsSettings> | IDeckDidReceiveSettingsEvent<CameraControlsSettings>,
   ): Promise<void> {
-    const { migrated, changed } = migrateFocusOnExitingToMostExciting(ev.payload.settings);
+    await this.updateSettings(ev, (current) => {
+      const { migrated, changed } = migrateFocusOnExitingToMostExciting(current);
 
-    if (!changed) return;
-
-    try {
-      await ev.action.setSettings(migrated);
-    } catch (err) {
-      this.logger.warn(
-        `Failed to persist migrated camera-controls settings: ${err instanceof Error ? err.message : err}`,
-      );
-    }
+      return changed ? migrated : undefined;
+    });
   }
 
   /** A key's ask for a camera switch: its context, and how the waiter's log names the press. */
@@ -2030,26 +2026,22 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
 
   /**
    * Push the device-filtered profile list for the focus-select-car PI dropdown
-   * (guarded against the setSettings→onDidReceiveSettings echo loop by only
-   * writing on change — the Switch Profile pattern).
+   * (#790), through `updateSettings` (#1761): the list is merged onto the
+   * context's newest settings, never the event's, and only while those
+   * settings are still in Focus Pick Car, so a Mode change that arrived after
+   * this event is never reverted. Nothing is written when the list is already
+   * stored; a failed write is warned there and never thrown.
    */
   private async pushDeviceProfiles(
     ev: IDeckWillAppearEvent<CameraControlsSettings> | IDeckDidReceiveSettingsEvent<CameraControlsSettings>,
-    settings: CameraControlsSettings,
   ): Promise<void> {
-    if (settings.target !== "focus-select-car") return;
-
-    const entries = deviceProfileEntries(ev.action.deviceType);
-    const raw = (ev.payload.settings ?? {}) as Record<string, unknown>;
-    const current = Array.isArray(raw._deviceProfiles) ? (raw._deviceProfiles as unknown[]) : [];
-
-    if (profileEntriesEqual(current, entries)) return;
-
-    try {
-      await ev.action.setSettings({ ...raw, _deviceProfiles: entries });
-    } catch (err) {
-      this.logger.warn(`Failed to push device profiles: ${err instanceof Error ? err.message : err}`);
-    }
+    await this.updateSettings(
+      ev,
+      deviceProfilesUpdate(
+        ev.action.deviceType,
+        (current) => this.parseSettings(current).target === "focus-select-car",
+      ),
+    );
   }
 
   /**

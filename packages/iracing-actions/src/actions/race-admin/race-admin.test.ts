@@ -19,6 +19,7 @@ import { getGlobalSettings, updateGlobalSettings } from "@iracedeck/settings";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { _resetSelectIntents, setSelectIntent } from "../../shared/car-select-intent.js";
+import { ContextSettingsActionBase } from "../../shared/context-settings-action.test-support.js";
 import { availableProfilesForDevice } from "../../shared/profile-entries.js";
 import { engineOverDeck } from "../../shared/replay-engine-deck.test-support.js";
 import { buildAdminCommand, buildAdminCommandPrefix, resolveDriverTarget } from "./race-admin-commands.js";
@@ -41,15 +42,21 @@ vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => ({
   resolveTemplate: vi.fn((template: string) => template),
 }));
 
-// The bundled-profile reader is mocked (unit-tested in
-// shared/profile-entries.test.ts); the echo-loop guard keeps its real logic.
+// The bundled profiles the shared reader (unit-tested in
+// shared/profile-entries.test.ts) reads are mocked to a device (type 2)
+// shipping the two Race Admin profiles. The data is mocked rather than the
+// reader's exports, so the real profile-list updater the action writes
+// through (#1761) lists the same entries; press-time resolution keeps its
+// device-blind double.
+vi.mock("../data/profiles.json", () => ({
+  default: [
+    { name: "iRaceDeck Race Admin Cars XL", deviceType: 2, displayName: "iRaceDeck Race Admin Cars" },
+    { name: "iRaceDeck Race Admin Per Car XL", deviceType: 2, displayName: "iRaceDeck Race Admin Per Car" },
+  ],
+}));
 vi.mock("../../shared/profile-entries.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../shared/profile-entries.js")>()),
   availableProfilesForDevice: vi.fn(() => ["iRaceDeck Race Admin Cars XL", "iRaceDeck Race Admin Per Car XL"]),
-  deviceProfileEntries: vi.fn(() => [
-    { name: "iRaceDeck Race Admin Cars XL", label: "iRaceDeck Race Admin Cars" },
-    { name: "iRaceDeck Race Admin Per Car XL", label: "iRaceDeck Race Admin Per Car" },
-  ]),
 }));
 
 // The session-touching selector helpers are mocked (unit-tested in
@@ -193,7 +200,7 @@ const { mockGetGlobalSettings } = vi.hoisted(() => ({
   mockGetGlobalSettings: vi.fn((): Record<string, unknown> => ({ chatOpenToPasteDelayMs: 10 })),
 }));
 
-vi.mock("@iracedeck/deck-core", () => ({
+vi.mock("@iracedeck/deck-core", async () => ({
   IconUpdateThrottle: class {
     schedule(_id: string, render: () => unknown): void {
       try {
@@ -233,7 +240,10 @@ vi.mock("@iracedeck/deck-core", () => ({
 
     return availableNames.includes(suffixed) ? suffixed : undefined;
   },
-  ConnectionStateAwareAction: class MockConnectionStateAwareAction {
+  // The base's settings half is the REAL per-context record (#1761).
+  ConnectionStateAwareAction: class MockConnectionStateAwareAction
+    extends (await import("../../shared/context-settings-action.test-support.js")).ContextSettingsActionBase
+  {
     logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     sdkController = {
       subscribe: vi.fn(),
@@ -244,9 +254,6 @@ vi.mock("@iracedeck/deck-core", () => ({
     setKeyImage = vi.fn();
     updateKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
-    async onWillAppear(_ev: unknown): Promise<void> {}
-    async onWillDisappear(_ev: unknown): Promise<void> {}
-    async onDidReceiveSettings(_ev: unknown): Promise<void> {}
   },
   getClipboard: vi.fn(() => ({ setClipboardText: mockSetClipboardText })),
   requestProfileSwitch: vi.fn(async () => {}),
@@ -1118,16 +1125,16 @@ describe("RaceAdmin", () => {
       await action.onWillAppear(ev);
 
       const setSettings = (ev as { action: { setSettings: ReturnType<typeof vi.fn> } }).action.setSettings;
-      expect(setSettings).toHaveBeenCalledWith(
-        expect.objectContaining({
-          _deviceProfiles: [
-            { name: "iRaceDeck Race Admin Cars XL", label: "iRaceDeck Race Admin Cars" },
-            { name: "iRaceDeck Race Admin Per Car XL", label: "iRaceDeck Race Admin Per Car" },
-          ],
-        }),
-      );
+      expect(setSettings).toHaveBeenCalledTimes(1);
+      expect(setSettings).toHaveBeenCalledWith({
+        ...selectorSettings,
+        _deviceProfiles: [
+          { name: "iRaceDeck Race Admin Cars XL", label: "iRaceDeck Race Admin Cars" },
+          { name: "iRaceDeck Race Admin Per Car XL", label: "iRaceDeck Race Admin Per Car" },
+        ],
+      });
 
-      // Second appear with the entries already stored: no redundant write (echo-loop guard).
+      // Second appear with the entries already stored: an unchanged list writes nothing.
       setSettings.mockClear();
       const ev2 = {
         action: { id: "ctx-sel", deviceId: "dev-1", deviceType: 2, setSettings },
@@ -1159,6 +1166,150 @@ describe("RaceAdmin", () => {
       await action.onWillAppear(ev);
 
       expect((ev as { action: { setSettings: ReturnType<typeof vi.fn> } }).action.setSettings).not.toHaveBeenCalled();
+    });
+
+    describe("settings writes against the newest settings (#1761)", () => {
+      const raceAdminEntries = [
+        { name: "iRaceDeck Race Admin Cars XL", label: "iRaceDeck Race Admin Cars" },
+        { name: "iRaceDeck Race Admin Per Car XL", label: "iRaceDeck Race Admin Per Car" },
+      ];
+      const { driverTarget: _driverTarget, ...legacySelector } = selectorSettings;
+
+      /** One select-car key's events, all writing to the same `setSettings`. */
+      function selectorContext() {
+        const setSettings = vi.fn<(settings: Record<string, unknown>) => Promise<void>>(async () => {});
+        const action = { id: "ctx-sel", deviceId: "dev-1", deviceType: 2, setSettings };
+        const event = (settings: Record<string, unknown>, superseded = false) =>
+          ({
+            action,
+            payload: { settings, coordinates: { column: 1, row: 0 } },
+            isSuperseded: () => superseded,
+          }) as never;
+
+        return { setSettings, event, written: () => setSettings.mock.calls.map(([settings]) => settings) };
+      }
+
+      afterEach(() => {
+        ContextSettingsActionBase.stampVersion = undefined;
+      });
+
+      it("migrates a legacy useViewedCar key and lists the profiles in one consistent object", async () => {
+        const action = new RaceAdmin();
+        const { event, written } = selectorContext();
+
+        await action.onWillAppear(event({ ...legacySelector, useViewedCar: true }));
+
+        const migrated = { ...legacySelector, driverTarget: "viewed-car" };
+
+        // The list write merges onto the migrated record: it neither restores
+        // useViewedCar nor drops driverTarget.
+        expect(written()).toEqual([migrated, { ...migrated, _deviceProfiles: raceAdminEntries }]);
+        expect(action["getContextSettings"]("ctx-sel")).toEqual({ ...migrated, _deviceProfiles: raceAdminEntries });
+      });
+
+      it("backfills a stamped key with no driverTarget and keeps the backfill under the list", async () => {
+        const action = new RaceAdmin();
+        const { event, written } = selectorContext();
+
+        await action.onWillAppear(event({ ...legacySelector, addedWithVersion: "1.15.0" }));
+
+        const final = written().at(-1);
+
+        expect(written()).toHaveLength(2);
+        expect(final).toEqual({
+          ...legacySelector,
+          addedWithVersion: "1.15.0",
+          driverTarget: "viewed-car",
+          _deviceProfiles: raceAdminEntries,
+        });
+        expect(final).not.toHaveProperty("useViewedCar");
+      });
+
+      it("keeps this appearance's stamp, the migration and the list together", async () => {
+        ContextSettingsActionBase.stampVersion = "3.10.0";
+        const action = new RaceAdmin();
+        const { event, written } = selectorContext();
+
+        await action.onWillAppear(event({ ...legacySelector, useViewedCar: false }));
+
+        expect(written().at(-1)).toEqual({
+          ...legacySelector,
+          addedWithVersion: "3.10.0",
+          driverTarget: "specific",
+          _deviceProfiles: raceAdminEntries,
+        });
+      });
+
+      it("does not backfill viewed-car on a fresh key whose only stamp is this appearance's", async () => {
+        // The base has stamped the record before the migration runs; that
+        // stamp must not make a brand-new key read as an implicit-legacy one.
+        ContextSettingsActionBase.stampVersion = "3.10.0";
+        const action = new RaceAdmin();
+        const { event, written } = selectorContext();
+
+        await action.onWillAppear(event(legacySelector));
+
+        expect(written()).toEqual([
+          { ...legacySelector, addedWithVersion: "3.10.0" },
+          { ...legacySelector, addedWithVersion: "3.10.0", _deviceProfiles: raceAdminEntries },
+        ]);
+      });
+
+      it("never writes the list when newer settings in another Mode have arrived", async () => {
+        const action = new RaceAdmin();
+        const { setSettings, event } = selectorContext();
+
+        await action.onWillAppear(event(selectorSettings, true));
+        await action.onDidReceiveSettings(event({ ...selectorSettings, mode: "yellow" }));
+
+        expect(setSettings).not.toHaveBeenCalled();
+      });
+
+      it("writes the list onto the newer settings when they are still in select-car", async () => {
+        const action = new RaceAdmin();
+        const { event, written } = selectorContext();
+        const newer = { ...selectorSettings, selectorPage: "1" };
+
+        await action.onWillAppear(event(selectorSettings, true));
+
+        expect(written()).toEqual([]);
+
+        await action.onDidReceiveSettings(event(newer));
+
+        expect(written()).toEqual([{ ...newer, _deviceProfiles: raceAdminEntries }]);
+      });
+
+      it("re-applies a superseded migration onto newer settings that still carry the legacy key", async () => {
+        const action = new RaceAdmin();
+        const { event, written } = selectorContext();
+        const newer = { ...legacySelector, useViewedCar: true, selectorPage: "1" };
+
+        await action.onWillAppear(event({ ...legacySelector, useViewedCar: true }, true));
+
+        expect(written()).toEqual([]);
+
+        await action.onDidReceiveSettings(event(newer));
+
+        const final = written().at(-1);
+
+        expect(final).toEqual({
+          ...legacySelector,
+          selectorPage: "1",
+          driverTarget: "viewed-car",
+          _deviceProfiles: raceAdminEntries,
+        });
+        expect(final).not.toHaveProperty("useViewedCar");
+      });
+
+      it("judges the Mode from the newest record, not the event it is handed", async () => {
+        const action = new RaceAdmin();
+        const { setSettings, event } = selectorContext();
+
+        await action.onWillAppear(event({ ...selectorSettings, mode: "yellow" }));
+        await action["pushDeviceProfiles"](event(selectorSettings));
+
+        expect(setSettings).not.toHaveBeenCalled();
+      });
     });
 
     describe("focus-camera intent (#790)", () => {
