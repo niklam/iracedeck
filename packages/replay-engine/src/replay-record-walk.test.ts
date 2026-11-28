@@ -340,6 +340,42 @@ describe("the wait for new ticks after a position send, without a SessionTick (#
 
   const at = (frame: number) => ({ IsReplayPlaying: true, ReplayFrameNum: frame }) as TelemetryData;
 
+  it("counts from the send's SessionTick alone: readings without a tick are no change against it", async () => {
+    const ticked = (frame: number, tick: number) => ({ ...at(frame), SessionTick: tick }) as TelemetryData;
+    // Tickless readings whose frame moves would count as changes if they were compared with the tick's mark.
+    const samples: (TelemetryData | null)[] = [
+      at(101),
+      at(102),
+      at(103),
+      null,
+      ticked(104, 101),
+      ticked(105, 102),
+      ticked(106, 103),
+    ];
+    let reads = 0;
+    let readsAtEnd = 0;
+
+    resetEngine({
+      readTelemetry: () => {
+        reads++;
+
+        return samples.length > 0 ? (samples.shift() as TelemetryData | null) : ticked(106, 103);
+      },
+    });
+
+    const done = waitForNewTicks(tickMark(ticked(100, 100))).then((outcome) => {
+      readsAtEnd = reads;
+
+      return outcome;
+    });
+
+    await vi.advanceTimersByTimeAsync(500);
+
+    await expect(done).resolves.toBe("3 new ticks since the last head's jump");
+    // Ended on SessionTick 103, the seventh read.
+    expect(readsAtEnd).toBe(7);
+  });
+
   it("counts only real changes of the flag and frame: a read with no telemetry is no tick", async () => {
     // Reads with no telemetry between the same frame would read as changes if they counted.
     const samples: (TelemetryData | null)[] = [null, at(100), null, at(100), at(101), null, at(102), at(103)];
@@ -1565,6 +1601,71 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
     expect(sentAt).toHaveLength(2);
     expect(simUpdate(sentAt[1] ?? 0) - simUpdate(firstSentAt)).toBeGreaterThanOrEqual(3);
     expect(sim.frame()).toBe(300_000);
+  });
+
+  it("a fresh press whose spacing read has no tick waits in the queue rather than jump at once", async () => {
+    setUp();
+
+    // From `tickless` on, every read of the sim drops its SessionTick.
+    let tickless = false;
+    const read = sim.telemetry.bind(sim);
+
+    Object.assign(sim, {
+      telemetry: (): TelemetryData => {
+        const telemetry = read();
+
+        if (!tickless) return telemetry;
+
+        const { SessionTick: _dropped, ...rest } = telemetry;
+
+        return rest as TelemetryData;
+      },
+    });
+    search("nextSession");
+
+    const order: string[] = [];
+    const jumps: Promise<unknown>[] = [];
+    const press = (name: string) =>
+      awaitReplayWalkStart(
+        readState,
+        () => sim.telemetry(),
+        (start) => {
+          order.push(`${name} ${start.frame === null ? start.reason : `${start.from} ${start.frame}`}`);
+
+          if (start.frame === null) return;
+
+          const frame = start.frame + 50_000;
+          const jump = beginReplayJump(`test-${name}`, sim.telemetry(), undefined, Date.now(), { frame });
+
+          jumps.push(runReplayJump(jump, { frame, readTelemetry: () => sim.telemetry() }).finally(() => jump.end()));
+        },
+      );
+    const first = press("a");
+
+    for (let ms = 0; ms < 3_000 && order.length === 0; ms++) await vi.advanceTimersByTimeAsync(1);
+
+    expect(order).toEqual(["a cursor 200000"]);
+
+    // The queued head's seek went out on a tick; the reads after it carry none.
+    tickless = true;
+
+    const second = press("b");
+
+    expect(order).toEqual(["a cursor 200000"]);
+
+    await vi.advanceTimersByTimeAsync(300);
+
+    expect(order).toEqual(["a cursor 200000"]);
+
+    tickless = false;
+    await vi.advanceTimersByTimeAsync(500);
+    await Promise.all([first, second]);
+
+    expect(order).toHaveLength(2);
+    expect(order[1]).toMatch(/^b (target|cursor) 250000$/);
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    await Promise.allSettled(jumps);
   });
 
   it("when the tick stops advancing, each queued head acts once the bound runs out, and none waits forever", async () => {

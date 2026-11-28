@@ -202,7 +202,8 @@ export function tickMark(telemetry: TelemetryData | null): TickMark {
  * ends once it reads that many past the send's, however many updates one
  * poll spans; without one, once the flag and frame have changed that many
  * times, counted over real samples only: a read with no telemetry is no
- * tick and changes nothing. Read back, not timed: the bound only gives up,
+ * tick and changes nothing. A send that carried a `SessionTick` is counted
+ * from it alone: a reading without one is ignored, never a change. Read back, not timed: the bound only gives up,
  * at the record jump's own wait.
  *
  * @internal Exported for testing.
@@ -221,8 +222,9 @@ export async function waitForNewTicks(sent: TickMark): Promise<string> {
 
         const now = tickMark(telemetry);
 
-        if (sent.tick !== null && now.tick !== null) {
-          return now.tick - sent.tick >= TICKS_AFTER_POSITION_SEND ? true : undefined;
+        // Counted from a tick, only a reading with a tick says anything: one without is no change against it.
+        if (sent.tick !== null) {
+          return now.tick !== null && now.tick - sent.tick >= TICKS_AFTER_POSITION_SEND ? true : undefined;
         }
 
         if (last === null) {
@@ -288,7 +290,10 @@ function notePositionSend(before: PositionMark): TickMark | null {
 /**
  * Whether a position command went out fewer than
  * {@link TICKS_AFTER_POSITION_SEND} ticks ago, by a fresh `SessionTick`.
- * Without a tick on both readings it cannot count, and says no.
+ * With no send noted it says no. A fresh reading with no tick (no
+ * telemetry, or no finite `SessionTick`) cannot show the ticks have passed,
+ * so it says yes and keeps the mark: the press joins the queue, whose wait
+ * for new ticks is bounded. Only a reading enough ticks past clears it.
  */
 function positionSendTooRecent(): boolean {
   const sent = lastPositionSend;
@@ -297,7 +302,7 @@ function positionSendTooRecent(): boolean {
 
   const now = tickMark(engineReads().readTelemetry());
 
-  if (now.tick !== null && now.tick - sent.tick < TICKS_AFTER_POSITION_SEND) return true;
+  if (now.tick === null || now.tick - sent.tick < TICKS_AFTER_POSITION_SEND) return true;
 
   lastPositionSend = null;
 
