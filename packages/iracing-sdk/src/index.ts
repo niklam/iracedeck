@@ -8,7 +8,15 @@
 export { IRacingSDK } from "./IRacingSDK.js";
 
 // SDK Controller (manages connections and subscribers)
-export { SDKController, type SDKControllerOptions, TELEMETRY_INTERVAL_MS, TelemetryCallback } from "./SDKController.js";
+export {
+  SDKController,
+  type SDKControllerOptions,
+  type SimContextBoundary,
+  type SimContextBoundaryListener,
+  type SimContextBoundarySource,
+  TELEMETRY_INTERVAL_MS,
+  TelemetryCallback,
+} from "./SDKController.js";
 
 // Interfaces for dependency injection
 export type { ChatSendTiming, INativeSDK } from "./interfaces.js";

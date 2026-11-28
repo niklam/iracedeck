@@ -53,6 +53,29 @@ export const TELEMETRY_INTERVAL_MS = 10;
 const UPDATE_ID = "controller:update";
 const RECONNECT_ID = "controller:reconnect";
 const DISCONNECT_ID = "controller:disconnect";
+/** The prefix of the reporter id each context-boundary listener is called under (#1656). */
+const BOUNDARY_LISTENER_ID_PREFIX = "controller:context-boundary:";
+
+/**
+ * A point past which nothing the plugin sent iRacing can be assumed to still
+ * be in effect (#1656): the connection to iRacing was lost (a sim exit, a
+ * dropped connection, the last subscriber leaving), the session number
+ * changed, or a replay was entered or left (the debounced replay state,
+ * {@link SDKController.getReplayState}). Only the connection loss is certain
+ * to end such state; whether iRacing keeps it across the other three is not
+ * measured, so a listener that holds sim-side state it cannot read back
+ * clears it at all four, as the cheaper mistake.
+ */
+export type SimContextBoundary = "connection-lost" | "session-changed" | "replay-entered" | "replay-left";
+
+/** Called once per {@link SimContextBoundary} the controller passes. */
+export type SimContextBoundaryListener = (boundary: SimContextBoundary) => void;
+
+/** Whatever reports {@link SimContextBoundary}s: `SDKController`, or a stand-in in a test. */
+export interface SimContextBoundarySource {
+  /** Registers `listener`; the returned function removes it. */
+  onContextBoundary(listener: SimContextBoundaryListener): () => void;
+}
 
 export interface SDKControllerOptions {
   /**
@@ -73,7 +96,7 @@ export interface SDKControllerOptions {
   now?: () => number;
 }
 
-export class SDKController {
+export class SDKController implements SimContextBoundarySource {
   private readonly sdk: IRacingSDK;
   private readonly logger: ILogger;
   private subscribers = new Map<string, TelemetryCallback>();
@@ -125,6 +148,22 @@ export class SDKController {
    */
   private readonly replayState = new ReplayStateTracker();
   /**
+   * The context-boundary listeners (#1656), by reporter id. Not subscribers:
+   * registering one starts no loop and removing the last stops none.
+   */
+  private readonly boundaryListeners = new Map<string, SimContextBoundaryListener>();
+  private nextBoundaryListenerId = 0;
+  /**
+   * The last `SessionNum` a fresh read carried that names a session (a whole
+   * number from 0), or null since the connection reset. A read of -1 (what
+   * iRacing reports while it carries out a replay seek) or a missing field
+   * leaves it as it was, so a seek that lands in the same session is not a
+   * session change.
+   */
+  private lastSessionNum: number | null = null;
+  /** The debounced replay state's `inReplay` at the last step, to see it change (#1656). */
+  private lastInReplay = false;
+  /**
    * The error boundary around every subscriber call and every piece of the
    * controller's own work (#1558), under the policy of
    * {@link SDKControllerOptions.onSubscriberError}.
@@ -140,7 +179,7 @@ export class SDKController {
       logger,
       now: options.now,
       policy: options.onSubscriberError,
-      isRegistered: (id) => this.subscribers.has(id),
+      isRegistered: (id) => this.subscribers.has(id) || this.boundaryListeners.has(id),
     });
   }
 
@@ -265,13 +304,34 @@ export class SDKController {
       return undefined;
     });
 
+    const resetHeld = this.resetConnection();
+
+    return disconnectHeld ?? resetHeld;
+  }
+
+  /**
+   * The one reset of the connection state, wherever the connection ends: the
+   * last subscriber leaving (`stop`), a connect attempt that finds iRacing
+   * gone (`tryConnect`), the poll noticing the drop (`update`) and the app
+   * monitor's exit (`setReconnectEnabled(false)`). Forgets the cached read and
+   * template context, resets the `SessionTick` dedupe so the next connection's
+   * first frame always notifies (#493), starts the replay state live with
+   * nothing sighted (#1324) and the session unknown, and then tells every
+   * context-boundary listener the connection was lost (#1656), before any
+   * subscriber hears of it. Returns the first listener error held under
+   * `"rethrow"`.
+   */
+  private resetConnection(): HeldError {
     this.isConnected = false;
+    this.lastValidTelemetry = null;
     this.lastTemplateContext = null;
     this.templateContextDirty = true;
     this.lastSessionTick = -1;
     this.replayState.reset();
+    this.lastSessionNum = null;
+    this.lastInReplay = false;
 
-    return disconnectHeld;
+    return this.notifyBoundary("connection-lost");
   }
 
   /**
@@ -282,40 +342,87 @@ export class SDKController {
     const wasConnected = this.isConnected;
     const connected = this.sdk.connect();
 
-    // Update connection state
-    this.isConnected = connected;
-
     // Notify subscribers if connection state changed
     if (connected !== wasConnected) {
+      let held: HeldError;
+
       if (connected) {
+        this.isConnected = true;
         this.logger.info("[SDKController] Connected to iRacing");
       } else {
         this.logger.info("[SDKController] Disconnected from iRacing");
         // The update loop skips `update()` while the SDK reads disconnected,
-        // so this is where a dropped connection is noticed: the replay state
-        // must not report the last tick's replay to a read made meanwhile.
-        this.replayState.reset();
+        // so this is where a dropped connection is noticed: nothing of the
+        // last connection (its replay state above all) may reach a read made
+        // meanwhile.
+        held = this.resetConnection();
       }
 
       // Notify all subscribers of connection state change. The read this
       // delivers is a fresh one, stepped like a poll's (#1324).
       const telemetry = this.sdk.getTelemetry();
 
-      if (connected && telemetry) this.stepReplayState(telemetry);
+      if (connected && telemetry) held = this.stepFreshRead(telemetry);
 
-      return this.notifySubscribers(telemetry);
+      // Fan out before combining, so under "rethrow" a held listener error
+      // never stops the subscribers from hearing of the change.
+      const notified = this.notifySubscribers(telemetry);
+
+      return held ?? notified;
     }
 
     return undefined;
   }
 
   /**
-   * Steps the replay state with one fresh telemetry read (#1324).
-   * `getSessionInfo` is cached on the SDK by its update counter, so the
-   * per-poll read costs a header check.
+   * Steps the replay state with one fresh telemetry read (#1324), then tells
+   * the context-boundary listeners of each boundary the read crossed (#1656):
+   * `SessionNum` moving from one session to another, and the debounced replay
+   * state entering or leaving a replay. The replay boundaries follow the
+   * debounced state, not the raw flag, so the blip after a seek is not one,
+   * and the grace running out on a paused replay is seen on the next poll,
+   * which steps whether or not the tick advanced. `getSessionInfo` is cached
+   * on the SDK by its update counter, so the per-poll read costs a header
+   * check. Returns the first listener error held under `"rethrow"`.
    */
-  private stepReplayState(telemetry: TelemetryData): void {
-    this.replayState.step(telemetry, this.sdk.getSessionInfo(), Date.now());
+  private stepFreshRead(telemetry: TelemetryData): HeldError {
+    const nowMs = Date.now();
+
+    this.replayState.step(telemetry, this.sdk.getSessionInfo(), nowMs);
+
+    let held: HeldError;
+    const sessionNum = telemetry.SessionNum;
+
+    if (typeof sessionNum === "number" && Number.isInteger(sessionNum) && sessionNum >= 0) {
+      const changed = this.lastSessionNum !== null && sessionNum !== this.lastSessionNum;
+
+      this.lastSessionNum = sessionNum;
+
+      if (changed) held = this.notifyBoundary("session-changed");
+    }
+
+    const { inReplay } = this.replayState.read(nowMs);
+
+    if (inReplay !== this.lastInReplay) {
+      this.lastInReplay = inReplay;
+
+      const replayHeld = this.notifyBoundary(inReplay ? "replay-entered" : "replay-left");
+
+      held ??= replayHeld;
+    }
+
+    return held;
+  }
+
+  /**
+   * Tell every context-boundary listener of `boundary`, in registration
+   * order, each inside the error boundary under its own id, so a throw
+   * neither leaves the controller nor stops another listener (#1558).
+   */
+  private notifyBoundary(boundary: SimContextBoundary): HeldError {
+    this.logger.debug(`[SDKController] Context boundary: ${boundary}`);
+
+    return this.boundary.callEach(this.boundaryListeners, (listener) => listener(boundary));
   }
 
   /**
@@ -336,18 +443,13 @@ export class SDKController {
           return undefined;
         });
 
-        this.isConnected = false;
-        this.lastValidTelemetry = null;
-        this.lastTemplateContext = null;
-        this.templateContextDirty = true;
-        this.lastSessionTick = -1;
-        this.replayState.reset();
+        const resetHeld = this.resetConnection();
 
         // Fan out before combining, so under "rethrow" a held disconnect error
         // never stops the subscribers from hearing of the disconnect.
         const notified = this.notifySubscribers(null);
 
-        return disconnectHeld ?? notified;
+        return disconnectHeld ?? resetHeld ?? notified;
       }
 
       return undefined;
@@ -369,7 +471,7 @@ export class SDKController {
 
     // Every fresh read steps the replay state, before the dedupe below: a
     // repeated tick carries the flag too (#1324).
-    this.stepReplayState(telemetry);
+    const steppedHeld = this.stepFreshRead(telemetry);
 
     // Dedupe by iRacing's `SessionTick`. We poll faster than iRacing's
     // 60 Hz write rate (see TELEMETRY_INTERVAL_MS) so the same tick will
@@ -382,7 +484,7 @@ export class SDKController {
     const tick = telemetry.SessionTick;
 
     if (tick !== undefined && tick === this.lastSessionTick) {
-      return undefined;
+      return steppedHeld;
     }
 
     this.lastSessionTick = tick ?? -1;
@@ -391,7 +493,9 @@ export class SDKController {
     this.lastValidTelemetry = telemetry;
     this.templateContextDirty = true;
 
-    return this.notifySubscribers(telemetry);
+    const notified = this.notifySubscribers(telemetry);
+
+    return steppedHeld ?? notified;
   }
 
   /**
@@ -422,6 +526,27 @@ export class SDKController {
   }
 
   /**
+   * Registers a listener for each {@link SimContextBoundary} the controller
+   * passes (#1656): told of a connection loss by the one connection reset,
+   * before any subscriber hears of it, and of a session change or a replay
+   * entered or left on the fresh read that shows it. It is not a subscriber:
+   * registering starts no poll and removing the last stops none, so a holder
+   * of sim-side state (`createSDK` wires the camera's director-focus record
+   * here) can listen for the life of the process without keeping iRacing
+   * connected. A listener's throw is reported like a subscriber's (#1558).
+   * The returned function removes the listener.
+   */
+  onContextBoundary(listener: SimContextBoundaryListener): () => void {
+    const id = `${BOUNDARY_LISTENER_ID_PREFIX}${this.nextBoundaryListenerId++}`;
+
+    this.boundaryListeners.set(id, listener);
+
+    return () => {
+      if (this.boundaryListeners.delete(id)) this.boundary.forget(id);
+    };
+  }
+
+  /**
    * Enable or disable reconnection attempts.
    * Used by app monitor to pause reconnection when iRacing is not running.
    *
@@ -444,20 +569,13 @@ export class SDKController {
         return undefined;
       });
 
-      this.isConnected = false;
-      this.lastValidTelemetry = null;
-      this.lastTemplateContext = null;
-      this.templateContextDirty = true;
-      // Reset dedupe state so the first frame of the next iRacing session
-      // is never suppressed by a stale tick value (issue #493 follow-up).
-      this.lastSessionTick = -1;
-      this.replayState.reset();
+      const resetHeld = this.resetConnection();
 
       // Fan out before combining, so under "rethrow" a held disconnect error
       // never stops the subscribers from hearing of the disconnect.
       const notified = this.notifySubscribers(null);
 
-      throwHeld(disconnectHeld ?? notified);
+      throwHeld(disconnectHeld ?? resetHeld ?? notified);
     } else if (enabled && this.subscribers.size > 0 && !this.isConnected) {
       // Re-enabling and we have subscribers - try to connect immediately.
       // `sdk.connect()` can throw, so the attempt runs inside the same

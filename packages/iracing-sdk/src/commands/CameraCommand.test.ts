@@ -1,8 +1,15 @@
+import type { ILogger } from "@iracedeck/logger";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { INativeSDK } from "../interfaces.js";
+import type { SimContextBoundary, SimContextBoundaryListener, SimContextBoundarySource } from "../SDKController.js";
 import { CameraState } from "../types.js";
-import { CameraCommand, DIRECTOR_FOCUS_MODES, isDirectorFocusMode } from "./CameraCommand.js";
+import {
+  CameraCommand,
+  DIRECTOR_FOCUS_MODES,
+  endFocusAtContextBoundaries,
+  isDirectorFocusMode,
+} from "./CameraCommand.js";
 import { BroadcastMsg, CameraFocusMode } from "./constants.js";
 
 function createMockNative(): INativeSDK {
@@ -401,6 +408,102 @@ describe("CameraCommand", () => {
       cameraCommand.forgetFocusMode();
 
       expect(mockNative.broadcastMsg).not.toHaveBeenCalled();
+    });
+
+    describe("ends at every context boundary the controller reports", () => {
+      /** A boundary source that hands its one listener to the test, and a camera wired to it with a logger that records the debug lines. */
+      function wired(): {
+        camera: CameraCommand;
+        cross: (boundary: SimContextBoundary) => void;
+        debug: string[];
+        remove: () => void;
+        listeners: () => number;
+      } {
+        const debug: string[] = [];
+        const logger: ILogger = {
+          trace: vi.fn(),
+          debug: (message: string) => debug.push(message),
+          info: vi.fn(),
+          warn: vi.fn(),
+          error: vi.fn(),
+          withLevel: () => logger,
+          createScope: () => logger,
+        };
+        const registered = new Set<SimContextBoundaryListener>();
+        const source: SimContextBoundarySource = {
+          onContextBoundary: (listener) => {
+            registered.add(listener);
+
+            return () => registered.delete(listener);
+          },
+        };
+        const camera = new CameraCommand(mockNative, logger);
+        const remove = endFocusAtContextBoundaries(camera, source);
+
+        return {
+          camera,
+          cross: (boundary) => registered.forEach((listener) => listener(boundary)),
+          debug,
+          remove,
+          listeners: () => registered.size,
+        };
+      }
+
+      it.each([
+        ["connection-lost", "the connection to iRacing was lost"],
+        ["session-changed", "the session changed"],
+        ["replay-entered", "a replay was entered"],
+        ["replay-left", "the replay was left"],
+      ] as const)("%s clears it, logged with its own reason and sending nothing", (boundary, reason) => {
+        const { camera, cross, debug } = wired();
+        camera.focusOnMostExciting(14, 0);
+        vi.mocked(mockNative.broadcastMsg).mockClear();
+        debug.length = 0;
+
+        cross(boundary);
+
+        expect(camera.focusModeInEffect()).toBeNull();
+        expect(mockNative.broadcastMsg).not.toHaveBeenCalled();
+        expect(debug).toHaveLength(1);
+        expect(debug[0]).toContain("FocusAtExiting -> none");
+        expect(debug[0]).toContain(`(${reason}`);
+      });
+
+      it("a boundary with no focus in effect logs nothing", () => {
+        const { cross, debug } = wired();
+
+        cross("connection-lost");
+
+        expect(debug).toEqual([]);
+      });
+
+      it("a focus set after the boundary is in effect again", () => {
+        const { camera, cross } = wired();
+        camera.focusOnLeader(14, 0);
+        cross("session-changed");
+
+        camera.focusOnIncident(14, 0);
+
+        expect(camera.focusModeInEffect()).toBe(FocusAtIncident);
+      });
+
+      it("returns the function that removes its listener", () => {
+        const { camera, cross, remove, listeners } = wired();
+        expect(listeners()).toBe(1);
+
+        remove();
+        camera.focusOnLeader(14, 0);
+        cross("connection-lost");
+
+        expect(listeners()).toBe(0);
+        expect(camera.focusModeInEffect()).toBe(FocusAtLeader);
+      });
+
+      it("adds no public method to the class", () => {
+        const names = Object.getOwnPropertyNames(CameraCommand.prototype);
+
+        expect(names.filter((name) => /boundary/i.test(name))).toEqual([]);
+      });
     });
 
     it("names exactly the three director focus modes", () => {

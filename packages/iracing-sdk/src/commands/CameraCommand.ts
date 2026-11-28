@@ -34,6 +34,16 @@
  * not known here, and one ended there still reads as in effect. It is
  * run-scoped: a new instance (a plugin start) has none.
  *
+ * It also ends at every context boundary the SDK controller reports
+ * (`SimContextBoundary`, wired by `createSDK` through
+ * {@link endFocusAtContextBoundaries}), since the instance outlives them all:
+ * one `Commands` serves the whole process. A lost connection to iRacing (a
+ * sim exit above all) certainly ends the director focus. A session change and
+ * a replay entered or left may not; nobody has measured whether iRacing keeps
+ * a director focus across them, so they clear it too, on the class's rule for
+ * a doubt: a record wrongly cleared costs the director its turn at Auto
+ * Group's next send, one wrongly kept takes the car from the user.
+ *
  * It lives here, not in an action, because this class is the one choke point
  * every switch passes: a record kept beside it would have to be told by each
  * car-changing send (Camera Controls, Replay Control, Race Admin, the replay
@@ -43,6 +53,7 @@
 import { ILogger } from "@iracedeck/logger";
 
 import type { INativeSDK } from "../interfaces.js";
+import type { SimContextBoundary, SimContextBoundarySource } from "../SDKController.js";
 import { addFlag, CameraState, removeFlag } from "../types.js";
 import { BroadcastCommand } from "./BroadcastCommand.js";
 import { BroadcastMsg, CameraFocusMode } from "./constants.js";
@@ -65,6 +76,21 @@ export const DIRECTOR_FOCUS_MODES: readonly DirectorFocusMode[] = Object.freeze(
 export function isDirectorFocusMode(target: number): target is DirectorFocusMode {
   return (DIRECTOR_FOCUS_MODES as readonly number[]).includes(target);
 }
+
+/** The log reason each context boundary ends the record with (the file header). */
+const CONTEXT_BOUNDARY_REASONS: Readonly<Record<SimContextBoundary, string>> = {
+  "connection-lost": "the connection to iRacing was lost",
+  "session-changed": "the session changed (unmeasured, cleared to be safe)",
+  "replay-entered": "a replay was entered (unmeasured, cleared to be safe)",
+  "replay-left": "the replay was left (unmeasured, cleared to be safe)",
+};
+
+/**
+ * The key of the record's context-boundary reset. Module-private, so the
+ * reset is no public method of the class: only
+ * {@link endFocusAtContextBoundaries} reaches it.
+ */
+const END_FOCUS_AT_BOUNDARY: unique symbol = Symbol("CameraCommand.endFocusAtBoundary");
 
 /**
  * Camera control commands
@@ -139,6 +165,11 @@ export class CameraCommand extends BroadcastCommand {
     if (sent && focus !== null) this.setFocusMode(focus, `switch to target ${target}`);
 
     return sent;
+  }
+
+  /** Ends the record at a context boundary, logged with that boundary's own reason (the file header). Sends nothing. */
+  [END_FOCUS_AT_BOUNDARY](boundary: SimContextBoundary): void {
+    this.setFocusMode(null, CONTEXT_BOUNDARY_REASONS[boundary]);
   }
 
   private setFocusMode(mode: DirectorFocusMode | null, why: string): void {
@@ -262,6 +293,16 @@ export class CameraCommand extends BroadcastCommand {
 
     return this.switchPos(currentCarIdx, currentGroup + direction, 0);
   }
+}
+
+/**
+ * Ends `camera`'s director-focus record at every context boundary `source`
+ * reports (the file header): `createSDK` wires its camera to its controller
+ * here, where the two meet. Internal to the SDK, so neither barrel exports it.
+ * Returns the function that removes the listener.
+ */
+export function endFocusAtContextBoundaries(camera: CameraCommand, source: SimContextBoundarySource): () => void {
+  return source.onContextBoundary((boundary) => camera[END_FOCUS_AT_BOUNDARY](boundary));
 }
 
 function describeFocus(mode: DirectorFocusMode | null): string {
