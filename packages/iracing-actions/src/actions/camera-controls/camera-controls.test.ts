@@ -16,15 +16,19 @@ import {
   FASTEST_LAP_WALK_OWNER,
   steppedReplayState,
 } from "@iracedeck/replay-engine/testing";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import z from "zod";
 
+import { borderColorForState, statusBarNA, statusBarOff, statusBarOn } from "../../icons/status-bar.js";
 import { CAR_CYCLE_BINDING_KEYS } from "../../shared/car-cycle-bindings.js";
 import { _resetSelectIntents, getSelectIntent } from "../../shared/car-select-intent.js";
 import { describePressShapeRouting } from "../../shared/press-shape.test-support.js";
 import { engineOverDeck } from "../../shared/replay-engine-deck.test-support.js";
 import keyBindings from "../data/key-bindings.json" with { type: "json" };
+import { _resetAutoGroup, autoGroupOwner } from "./auto-group.js";
 import {
+  AUTO_GROUP_TITLE,
+  autoGroupKeyState,
   CAMERA_GROUP_MAP,
   CAMERA_GROUPS_SETTING_KEY,
   CameraControls,
@@ -38,6 +42,7 @@ import {
   DEFAULT_CAMERA_GROUPS,
   DEFAULT_ENABLED_GROUPS,
   extractIconArtwork,
+  generateAutoGroupKeySvg,
   generateCameraControlsSvg,
   generateCameraSelectSvg,
   generateCycleCameraGridSvg,
@@ -53,6 +58,21 @@ import {
   SUB_CAMERA_BINDING_KEYS,
 } from "./camera-controls.js";
 import { DialSettings } from "./camera-dial-surface.js";
+
+// Every CameraControls registers an Auto Group listener in auto-group.ts's
+// module-level set; dispose each after its test so no later toggle redraws
+// a stale instance through the shared hoisted mocks (#1656).
+const constructed: CameraControls[] = [];
+
+function track(action: CameraControls): CameraControls {
+  constructed.push(action);
+
+  return action;
+}
+
+afterEach(() => {
+  for (const action of constructed.splice(0)) action._dispose();
+});
 
 // Cycle icon mocks
 vi.mock("@iracedeck/icons/camera-cycle/camera-next.svg", () => ({
@@ -139,6 +159,15 @@ vi.mock("@iracedeck/icons/camera-focus/set-camera-state.svg", () => ({
 vi.mock("@iracedeck/icons/camera-focus/focus-select-car.svg", () => ({
   default: '<svg xmlns="http://www.w3.org/2000/svg">focus-select-car {{mainLabel}} {{subLabel}}</svg>',
 }));
+// Auto Group (#1656): its standalone artwork snippet and the tri-state chrome template.
+vi.mock("@iracedeck/icons/camera-focus/auto-group.svg", () => ({
+  default:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 84 75"><desc>{}</desc><path data-art="auto-group" fill="{{graphic1Color}}"/></svg>',
+}));
+vi.mock("../../../icons/camera-controls-auto-group.svg", () => ({
+  default:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144" data-template="auto-group">{{borderDefs}}<rect width="144" height="144" fill="{{backgroundColor}}"/>{{borderContent}}{{iconContent}}</svg>',
+}));
 
 // focus-select-car (#790): the shared device-filtered bundled-profile reader
 // (unit-tested in shared/profile-entries.test.ts), mocked to a device that
@@ -172,8 +201,11 @@ vi.mock("@iracedeck/sim-events-iracing", () => ({
   getLiveRacePositions: vi.fn(() => null),
 }));
 
-const { mockGetGlobalSettings, mockCamera } = vi.hoisted(() => ({
+const { mockGetGlobalSettings, mockCamera, autoGroupSdk } = vi.hoisted(() => ({
   mockGetGlobalSettings: vi.fn(() => ({})),
+  // The SDK controller the Auto Group automation subscribes to (#1656); while
+  // null, `getController` is the real one.
+  autoGroupSdk: { controller: null as unknown },
   // Stable camera-command surface so tests can assert WHICH SDK command a cycle
   // dispatches (switchNum vs the raw cycle helper). `getCommands` returns this
   // same object every call; `vi.clearAllMocks()` in beforeEach resets its history.
@@ -187,13 +219,21 @@ const { mockGetGlobalSettings, mockCamera } = vi.hoisted(() => ({
     focusOnLeader: vi.fn(() => true),
     focusOnIncident: vi.fn(() => true),
     focusOnMostExciting: vi.fn(() => true),
+    // The director focus the SDK keeps (#1656): none, unless a test sets one.
+    focusModeInEffect: vi.fn((): number | null => null),
+    noteCarKeyTapped: vi.fn(),
   },
 }));
 
-vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@iracedeck/deck-iracing")>()),
-  getCommands: vi.fn(() => ({ camera: mockCamera })),
-}));
+vi.mock("@iracedeck/deck-iracing", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@iracedeck/deck-iracing")>();
+
+  return {
+    ...actual,
+    getCommands: vi.fn(() => ({ camera: mockCamera })),
+    getController: () => (autoGroupSdk.controller ?? actual.getController()) as ReturnType<typeof actual.getController>,
+  };
+});
 
 vi.mock("@iracedeck/deck-core", async () => ({
   // The dial surface arms the REAL hold-preview helper (#1120) on every dial
@@ -231,6 +271,13 @@ vi.mock("@iracedeck/deck-core", async () => ({
   requestProfileSwitch: vi.fn(),
   resolveProfileNameForDevice: vi.fn((name: string) => `${name} XL`),
   generateBorderParts: vi.fn(() => ({ defs: "", rects: "" })),
+  // The Auto Group key's tri-state layout (#1656): the full key area, and a
+  // transform that records the area the artwork was fitted into.
+  computeGraphicArea: vi.fn(() => ({ x: 8, y: 8, width: 128, height: 128 })),
+  applyGraphicTransform: vi.fn(
+    (content: string, _bounds: unknown, area: { y: number; height: number }) =>
+      `<g data-area="${area.y},${area.height}">${content}</g>`,
+  ),
   getGlobalBorderSettings: vi.fn(() => ({})),
   getGlobalGraphicSettings: vi.fn(() => ({})),
   LogLevel: { Info: 2 },
@@ -333,7 +380,7 @@ vi.mock("@iracedeck/deck-core", async () => ({
 
 vi.mock("@iracedeck/settings", () => ({
   // #803 dial surface: the host wires a global-settings listener in its
-  // constructor; return a no-op unsubscribe so `new CameraControls()` succeeds.
+  // constructor; return a no-op unsubscribe so `track(new CameraControls())` succeeds.
   onGlobalSettingsChange: vi.fn(() => vi.fn()),
   getGlobalColors: vi.fn(() => ({})),
   getGlobalSettings: mockGetGlobalSettings,
@@ -1086,7 +1133,7 @@ describe("CameraControls", () => {
     });
 
     it("sets the focus intent and switches to the Car Selector profile on page 0", async () => {
-      const action = new CameraControls();
+      const action = track(new CameraControls());
       await action.onKeyDown(makeKeyDownEvent(focusSelectSettings));
 
       expect(getSelectIntent("dev-1")).toEqual({ action: "focus-camera" });
@@ -1095,7 +1142,7 @@ describe("CameraControls", () => {
 
     it("does not set an intent when no selector profile resolves for the device", async () => {
       vi.mocked(resolveProfileNameForDevice).mockReturnValue(undefined);
-      const action = new CameraControls();
+      const action = track(new CameraControls());
       await action.onKeyDown(makeKeyDownEvent(focusSelectSettings));
 
       expect(getSelectIntent("dev-1")).toBeUndefined();
@@ -1103,7 +1150,7 @@ describe("CameraControls", () => {
     });
 
     it("ignores dial presses for focus-select-car", async () => {
-      const action = new CameraControls();
+      const action = track(new CameraControls());
       // A dial instance stores the keypad half beside its dial half.
       const settings = { ...focusSelectSettings, dial: DialSettings.parse({}) };
       // The dial is on the deck first: an input event never creates a context (#1329).
@@ -1150,7 +1197,7 @@ describe("CameraControls", () => {
 
     describe("pushDeviceProfiles", () => {
       it("pushes the device-filtered profile entries on appear when none are stored", async () => {
-        const action = new CameraControls();
+        const action = track(new CameraControls());
         const ev = makeWillAppearEvent(focusSelectSettings);
 
         await action.onWillAppear(ev);
@@ -1165,7 +1212,7 @@ describe("CameraControls", () => {
       });
 
       it("does not push device profiles when they already match (echo-loop guard)", async () => {
-        const action = new CameraControls();
+        const action = track(new CameraControls());
         const ev = makeWillAppearEvent({
           ...focusSelectSettings,
           _deviceProfiles: [{ name: "iRaceDeck Car Selector XL", label: "iRaceDeck Car Selector" }],
@@ -1179,7 +1226,7 @@ describe("CameraControls", () => {
       });
 
       it("does not push device profiles for a different target", async () => {
-        const action = new CameraControls();
+        const action = track(new CameraControls());
         const ev = makeWillAppearEvent({ ...focusSelectSettings, target: "focus-your-car" });
 
         await action.onWillAppear(ev);
@@ -1227,7 +1274,7 @@ describe("CameraControls dial surface (host integration)", () => {
   }
 
   it("routes a dial willAppear to the surface: pushes the name icon and subscribes to telemetry", async () => {
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     const ctx = dialContext();
 
     await action.onWillAppear({ action: ctx, payload: { settings: { dial: { mode: "car" } } } } as never);
@@ -1239,7 +1286,7 @@ describe("CameraControls dial surface (host integration)", () => {
   });
 
   it("reuses the keypad cycle dispatch (SDK camera command) on a dial rotation", async () => {
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 3 });
     vi.mocked(getCommands).mockClear();
 
@@ -1255,7 +1302,7 @@ describe("CameraControls dial surface (host integration)", () => {
   });
 
   it("does not focus for a keypad focus-select-car on a dial press (gesture default is none)", async () => {
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     const ctx = dialContext();
     await action.onWillAppear({ action: ctx, payload: { settings: { dial: {} } } } as never);
 
@@ -1346,7 +1393,7 @@ describe("cycle-sub-camera taps the iRacing sub-camera binding (#852)", () => {
   });
 
   it("taps the Next Sub-Camera binding on a next detent — no camera broadcast", async () => {
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 0, CamGroupNumber: 9, CamCameraNumber: 2 });
     sdk(action).getSessionInfo.mockReturnValue({});
 
@@ -1363,10 +1410,12 @@ describe("cycle-sub-camera taps the iRacing sub-camera binding (#852)", () => {
     // The broadcast camera argument is inert for sub-cameras — never dispatch one.
     expect(mockCamera.switchNum).not.toHaveBeenCalled();
     expect(mockCamera.switchPos).not.toHaveBeenCalled();
+    // A sub-camera keeps the car, so iRacing's director focus stays (#1656).
+    expect(mockCamera.noteCarKeyTapped).not.toHaveBeenCalled();
   });
 
   it("taps the Previous Sub-Camera binding on a previous detent", async () => {
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 0, CamGroupNumber: 9, CamCameraNumber: 2 });
     sdk(action).getSessionInfo.mockReturnValue({});
 
@@ -1383,7 +1432,7 @@ describe("cycle-sub-camera taps the iRacing sub-camera binding (#852)", () => {
   });
 
   it("the keypad Cycle Sub-Camera taps the SAME bindings (shared dispatch)", async () => {
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 0, CamGroupNumber: 9, CamCameraNumber: 2 });
     sdk(action).getSessionInfo.mockReturnValue({});
 
@@ -1397,7 +1446,7 @@ describe("cycle-sub-camera taps the iRacing sub-camera binding (#852)", () => {
   });
 
   it("works with the pace car focused — the binding needs no car, position, or camera number", async () => {
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     // carIdx 64 (pace car): no classified race position, which stalled every
     // position-addressed dispatch. A key tap is focus-independent.
     sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 64, CamGroupNumber: 10, CamCameraNumber: 3 });
@@ -1417,7 +1466,7 @@ describe("cycle-sub-camera taps the iRacing sub-camera binding (#852)", () => {
   });
 
   it("dispatches even with no session info at all (out of session)", async () => {
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 0, CamGroupNumber: 20, CamCameraNumber: 30 });
     sdk(action).getSessionInfo.mockReturnValue(undefined);
 
@@ -1434,7 +1483,7 @@ describe("cycle-sub-camera taps the iRacing sub-camera binding (#852)", () => {
   });
 
   it("steps exactly once per detent regardless of the group camera list (iRacing owns the wrap)", async () => {
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     // A single-camera group used to no-op, and an unlisted current camera used
     // to trigger a recovery target. Neither applies now: the sim decides what
     // the next sub-camera is, so every detent is exactly one tap and the
@@ -1459,7 +1508,7 @@ describe("cycle-sub-camera taps the iRacing sub-camera binding (#852)", () => {
   // menus, a stalled tick) must not swallow the press the way it must for the
   // telemetry-derived cycle modes.
   it("still taps the binding while telemetry is unavailable", async () => {
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     sdk(action).getCurrentTelemetry.mockReturnValue(null);
     sdk(action).getSessionInfo.mockReturnValue({});
 
@@ -1472,7 +1521,7 @@ describe("cycle-sub-camera taps the iRacing sub-camera binding (#852)", () => {
   });
 
   it("sends nothing and warns when the binding is unset, instead of logging a cycle", async () => {
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     const spy = action as unknown as {
       isBindingMissing: ReturnType<typeof vi.fn>;
       logger: { info: ReturnType<typeof vi.fn>; warn: ReturnType<typeof vi.fn> };
@@ -1557,7 +1606,7 @@ describe("cycle-driving keeps focus by car number (pace-car stall #803)", () => 
   });
 
   it("dispatches switchNum to keep the focused car and advance the group on a next detent (pace car focused)", async () => {
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 0, CamGroupNumber: 9, CamCameraNumber: 2 });
     sdk(action).getSessionInfo.mockReturnValue({});
     vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(0); // pace car raw #0
@@ -1574,7 +1623,7 @@ describe("cycle-driving keeps focus by car number (pace-car stall #803)", () => 
   });
 
   it("decrements the group on a previous detent", async () => {
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 0, CamGroupNumber: 9, CamCameraNumber: 2 });
     sdk(action).getSessionInfo.mockReturnValue({});
     vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(0);
@@ -1589,7 +1638,7 @@ describe("cycle-driving keeps focus by car number (pace-car stall #803)", () => 
   });
 
   it("the keypad Cycle Driving Camera uses the SAME switchNum dispatch (shared fix)", async () => {
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 0, CamGroupNumber: 9, CamCameraNumber: 2 });
     sdk(action).getSessionInfo.mockReturnValue({});
     vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(0);
@@ -1604,7 +1653,7 @@ describe("cycle-driving keeps focus by car number (pace-car stall #803)", () => 
   });
 
   it("falls back to the raw cycle helper when the focused car's number can't be resolved", async () => {
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 3, CamGroupNumber: 9, CamCameraNumber: 2 });
     sdk(action).getSessionInfo.mockReturnValue({});
     vi.mocked(getCarNumberRawFromSessionInfo).mockReturnValue(null);
@@ -1653,7 +1702,7 @@ describe("cycle-car focuses the neighbour by car number (pace-car recovery #803)
   });
 
   it("focuses the first car by number when the pace car (excluded from the list) has focus, next detent", async () => {
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 0, CamGroupNumber: 9, CamCameraNumber: 2 });
     sdk(action).getSessionInfo.mockReturnValue({});
     vi.mocked(getAllCarNumbers).mockReturnValue(CARS);
@@ -1670,7 +1719,7 @@ describe("cycle-car focuses the neighbour by car number (pace-car recovery #803)
   });
 
   it("focuses the last car by number on a previous detent from the pace car", async () => {
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 0, CamGroupNumber: 9, CamCameraNumber: 2 });
     sdk(action).getSessionInfo.mockReturnValue({});
     vi.mocked(getAllCarNumbers).mockReturnValue(CARS);
@@ -1684,7 +1733,7 @@ describe("cycle-car focuses the neighbour by car number (pace-car recovery #803)
   });
 
   it("steps to the adjacent car by number for a normally-classified focused car", async () => {
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 5, CamGroupNumber: 9, CamCameraNumber: 2 });
     sdk(action).getSessionInfo.mockReturnValue({});
     vi.mocked(getAllCarNumbers).mockReturnValue(CARS);
@@ -1703,7 +1752,7 @@ describe("cycle-car focuses the neighbour by car number (pace-car recovery #803)
     // carIdx 9 despawned post-race (NotInWorld, lap telemetry -1). A switch to
     // it works (#885 skipped it on the opposite premise), so the keypad Cycle
     // Car walk lands on #12, same as the dial car-number mode.
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     sdk(action).getCurrentTelemetry.mockReturnValue({
       CamCarIdx: 5,
       CamGroupNumber: 9,
@@ -1735,7 +1784,7 @@ describe("cycle-car focuses the neighbour by car number (pace-car recovery #803)
     const trackSurface = [...notInWorld];
     lapDistPct[64] = 0.0595;
     trackSurface[64] = 2;
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     sdk(action).getCurrentTelemetry.mockReturnValue({
       CamCarIdx: 5,
       CamGroupNumber: 9,
@@ -1771,7 +1820,7 @@ describe("cycle-car focuses the neighbour by car number (pace-car recovery #803)
     // there is nowhere to go. The raw cycleCar fallback is reserved for the
     // true out-of-session case (empty car list), matching the dial's
     // no-fallback contract.
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 5, CamGroupNumber: 9, CamCameraNumber: 2 });
     sdk(action).getSessionInfo.mockReturnValue({});
     vi.mocked(getAllCarNumbers).mockReturnValue([CARS[0]]);
@@ -1786,7 +1835,7 @@ describe("cycle-car focuses the neighbour by car number (pace-car recovery #803)
   });
 
   it("falls back to cycleCar when the field is empty (out of session)", async () => {
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     sdk(action).getCurrentTelemetry.mockReturnValue({ CamCarIdx: 3, CamGroupNumber: 9, CamCameraNumber: 2 });
     sdk(action).getSessionInfo.mockReturnValue({});
     vi.mocked(getAllCarNumbers).mockReturnValue([]);
@@ -1847,7 +1896,7 @@ describe("Cycle Car and the dial's car-number mode agree on a missing CamCarIdx 
   });
 
   async function pressNext(telemetry: TelemetryData): Promise<void> {
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     mockSim(action, telemetry);
 
     await action.onKeyDown({
@@ -1870,7 +1919,7 @@ describe("Cycle Car and the dial's car-number mode agree on a missing CamCarIdx 
   });
 
   it("the dial's car-number mode lands on the same car as the keypad for a missing CamCarIdx", async () => {
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     mockSim(action, { CamGroupNumber: 9, CamCameraNumber: 2 });
     const settings = { dial: { mode: "car-number" } };
 
@@ -1942,7 +1991,7 @@ describe("cycle-track-order taps iRacing's Next / Previous Car binding (#1277)",
   ];
 
   function newAction(telemetry: unknown = TELEMETRY): CameraControls {
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     sdk(action).getCurrentTelemetry.mockReturnValue(telemetry);
     sdk(action).getSessionInfo.mockReturnValue({});
     vi.mocked(getAllCarNumbers).mockReturnValue(CARS);
@@ -1989,6 +2038,46 @@ describe("cycle-track-order taps iRacing's Next / Previous Car binding (#1277)",
     expect(spy(action).tapBinding).toHaveBeenCalledTimes(1);
     expect(spy(action).tapBinding).toHaveBeenCalledWith(CAR_CYCLE_BINDING_KEYS.next);
     expectNoCameraBroadcast();
+  });
+
+  it.each(["next", "previous"] as const)(
+    "a %s tap ends iRacing's director focus first: the car is the user's pick (#1656)",
+    async (direction) => {
+      const action = newAction();
+
+      await press(action, direction);
+
+      expect(mockCamera.noteCarKeyTapped).toHaveBeenCalledTimes(1);
+      expect(mockCamera.noteCarKeyTapped.mock.invocationCallOrder[0]).toBeLessThan(
+        spy(action).tapBinding.mock.invocationCallOrder[0],
+      );
+    },
+  );
+
+  it.each(["next", "previous"] as const)(
+    "a %s binding cleared while the switch waited taps nothing and ends no director focus (#1656)",
+    async (direction) => {
+      const action = newAction();
+      // Set at the press, gone by the time the waiter sends.
+      spy(action).isBindingMissing.mockReturnValueOnce(false).mockReturnValue(true);
+
+      await press(action, direction);
+
+      expect(spy(action).isBindingMissing).toHaveBeenCalledTimes(2);
+      expect(spy(action).tapBinding).not.toHaveBeenCalled();
+      expect(mockCamera.noteCarKeyTapped).not.toHaveBeenCalled();
+      expect(spy(action).logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("binding not configured — nothing sent"),
+      );
+    },
+  );
+
+  it("a dial turn's tap ends the director focus too (#1656)", async () => {
+    const action = newAction();
+
+    await turn(action, 1);
+
+    expect(mockCamera.noteCarKeyTapped).toHaveBeenCalledTimes(1);
   });
 
   it("taps Previous Car on a CAR BEHIND press and sends no camera broadcast", async () => {
@@ -2188,7 +2277,7 @@ describe("Change Camera resolves the group by name in the session (#958)", () =>
   }
 
   function setup(groups: { groupNum: number; groupName: string }[]): CameraControls {
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ CamCarIdx: 4, CamGroupNumber: 9 });
     vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue({});
     vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue(groups);
@@ -2260,7 +2349,7 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
     telemetry: TelemetryData | null,
     groups = LAKELAND_GROUPS,
   ): Promise<CameraControls> {
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(telemetry);
     vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue({});
     captureTick(action, (tick) => (subscriber = tick));
@@ -2475,7 +2564,7 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
     async function reappearWhileFirstWriteHeld(
       settle: (finish: { resolve: (written: boolean) => void; reject: (err: Error) => void }) => void,
     ): Promise<CameraControls> {
-      const action = new CameraControls();
+      const action = track(new CameraControls());
       let held: { resolve: (written: boolean) => void; reject: (err: Error) => void } | undefined;
       vi.mocked(action["updateKeyImage"]).mockImplementationOnce(
         () => new Promise<boolean>((resolve, reject) => (held = { resolve, reject })),
@@ -2639,7 +2728,7 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
     });
 
     it("writes a key's settings first even when its subscription ticks at once (#1653 review)", async () => {
-      const action = new CameraControls();
+      const action = track(new CameraControls());
       vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ CamGroupNumber: 12 }); // TV1
       vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue({});
       // The SDK calls a new subscriber at once, inside subscribe.
@@ -2663,7 +2752,7 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
     });
 
     it("sends no image for a placement that left while its title was out (#1653 review)", async () => {
-      const action = new CameraControls();
+      const action = track(new CameraControls());
       vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(null);
       vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue({});
       captureTick(action, (tick) => (subscriber = tick));
@@ -2718,7 +2807,7 @@ describe("Cycle Camera key icon: next or current group (#959)", () => {
     });
 
     it("subscribes a key before its first write, so a refused first write is retried", async () => {
-      const action = new CameraControls();
+      const action = track(new CameraControls());
       vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ CamGroupNumber: 12 }); // TV1
       vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue({});
       captureTick(action, (tick) => (subscriber = tick));
@@ -3153,7 +3242,7 @@ describe("Switch by Car Number press (#1353)", () => {
   });
 
   function setup(sessionInfo: SessionInfo | null): CameraControls {
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({
       CamCarIdx: 4,
       CamGroupNumber: 9,
@@ -3260,6 +3349,15 @@ describe("camera switches wait for a replay jump to land (#1428 / #1435)", () =>
   let replayOn: boolean;
   /** Every camera command and binding tap sent, as `name(args)`, and whether the sim was moving the replay then. */
   let sent: { call: string; moving: boolean }[];
+  /** The camera's director-focus record (#1656): reads and bookkeeping, never a send. */
+  const DIRECTOR_FOCUS_RECORD: ReadonlySet<string> = new Set(["focusModeInEffect", "noteCarKeyTapped"]);
+
+  /** The stand-in camera's commands that send, by name: every method but the director-focus record. */
+  function sendingCommands(): Array<[string, Mock<(...args: unknown[]) => boolean>]> {
+    return Object.entries(mockCamera).filter(([name]) => !DIRECTOR_FOCUS_RECORD.has(name)) as Array<
+      [string, Mock<(...args: unknown[]) => boolean>]
+    >;
+  }
 
   /** The sim's telemetry with the camera the fake does not carry: on `camCarIdx`, group 9, sub-camera 2. */
   const telemetry = (): TelemetryData => ({
@@ -3279,7 +3377,7 @@ describe("camera switches wait for a replay jump to land (#1428 / #1435)", () =>
 
     replayOn = options.live !== true;
     vi.mocked(getCommands).mockReturnValue({ camera: mockCamera, replay: sim.replay } as never);
-    action = new CameraControls();
+    action = track(new CameraControls());
 
     const sdk = action["sdkController"];
 
@@ -3304,7 +3402,7 @@ describe("camera switches wait for a replay jump to land (#1428 / #1435)", () =>
     sent = [];
     camCarIdx = 1;
 
-    for (const [name, command] of Object.entries(mockCamera)) {
+    for (const [name, command] of sendingCommands()) {
       command.mockImplementation((...args: unknown[]) => {
         sent.push({ call: `${name}(${args.join(", ")})`, moving: sim.busy() });
 
@@ -3321,7 +3419,7 @@ describe("camera switches wait for a replay jump to land (#1428 / #1435)", () =>
   });
 
   afterEach(() => {
-    for (const command of Object.values(mockCamera)) command.mockImplementation(() => true);
+    for (const [, command] of sendingCommands()) command.mockImplementation(() => true);
 
     vi.mocked(getCommands).mockImplementation(() => ({ camera: mockCamera }) as never);
     vi.mocked(getAllCarNumbers).mockReturnValue([]);
@@ -3598,7 +3696,7 @@ describe("camera switches wait for a replay jump to land (#1428 / #1435)", () =>
 });
 
 describe("CameraControls press shape", () => {
-  describePressShapeRouting(() => new CameraControls(), { dial: { pressAction: "focus-my-car" } });
+  describePressShapeRouting(() => track(new CameraControls()), { dial: { pressAction: "focus-my-car" } });
 });
 
 // A broadcaster-style camera file (#1653): custom names beside standard ones,
@@ -3786,7 +3884,7 @@ describe("Change Camera presses a group by name (#1653)", () => {
   }
 
   function setup(groups: { groupNum: number; groupName: string }[]): CameraControls {
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ CamCarIdx: 4, CamGroupNumber: 1 });
     vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue({});
     vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue(groups);
@@ -3910,7 +4008,7 @@ describe("Camera Controls keys on a group the session lacks (#1653)", () => {
     sessionInfo: SessionInfo | null = {},
     telemetry: TelemetryData | null = { CamCarIdx: 4, CamGroupNumber: 5 },
   ): Promise<CameraControls> {
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue(telemetry);
     vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue(sessionInfo);
     captureTick(action, (tick) => (subscriber = tick));
@@ -4539,7 +4637,7 @@ describe("one generic icon for every custom camera group (#1653)", () => {
   }
 
   async function appearCycle(settings: Record<string, unknown>, camGroup: number): Promise<CameraControls> {
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ CamCarIdx: 4, CamGroupNumber: camGroup });
     vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue({});
     captureTick(action, (tick) => (subscriber = tick));
@@ -4639,12 +4737,729 @@ describe("one generic icon for every custom camera group (#1653)", () => {
   });
 
   it("draws the generic glyph for a custom group on the dial carousel", async () => {
-    const action = new CameraControls();
+    const action = track(new CameraControls());
     const host = (action as unknown as { dialSurface: { host: { getGroupGlyph(name: string): unknown } } }).dialSurface
       .host;
 
     expect(JSON.stringify(host.getGroupGlyph("DynamicTV"))).toContain("custom-artwork");
     expect(JSON.stringify(host.getGroupGlyph("TV1"))).toContain("tv1-artwork");
     expect(host.getGroupGlyph("")).toBeNull();
+  });
+});
+
+describe("Auto Group on Car Change key (#1656)", () => {
+  /** A stand-in SDK controller for the automation's own telemetry subscription. */
+  const controller = { subscribe: vi.fn(), unsubscribe: vi.fn() };
+
+  /** Every key and dial that appeared in a test, so the test's end can take it off screen again. */
+  let shown: { action: CameraControls; ctx: { id: string } }[];
+
+  function keyContext(id: string) {
+    return {
+      id,
+      deviceId: "dev-1",
+      deviceType: 0,
+      isKey: () => true,
+      isDial: () => false,
+      setTitle: vi.fn(async () => {}),
+      setSettings: vi.fn(async () => {}),
+      setImage: vi.fn(async () => {}),
+    };
+  }
+
+  const flush = (): Promise<unknown> => new Promise((resolve) => setTimeout(resolve, 0));
+
+  /** A Camera Controls instance with a session whose camera groups are `groups` (null: no session). */
+  function newAction(groups: { groupNum: number; groupName: string }[] | null = ROAD_GROUPS): CameraControls {
+    const action = track(new CameraControls());
+    vi.mocked(action["sdkController"].getCurrentTelemetry).mockReturnValue({ CamCarIdx: 4, CamGroupNumber: 5 });
+    vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue(groups === null ? null : {});
+    vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue(groups ?? []);
+
+    return action;
+  }
+
+  async function appear(
+    action: CameraControls,
+    id: string,
+    settings: Record<string, unknown> = {},
+  ): Promise<ReturnType<typeof keyContext>> {
+    const ctx = keyContext(id);
+    shown.push({ action, ctx });
+    await action.onWillAppear({ action: ctx, payload: { settings: { target: "auto-group", ...settings } } } as never);
+
+    return ctx;
+  }
+
+  async function press(action: CameraControls, ctx: ReturnType<typeof keyContext>, settings = {}): Promise<void> {
+    await action.onKeyDown({ action: ctx, payload: { settings: { target: "auto-group", ...settings } } } as never);
+    await flush();
+  }
+
+  /** The last image the key was sent, decoded: settings writes and redraws alike. */
+  function lastImage(action: CameraControls, id: string): string {
+    const sent: { order: number; image: unknown }[] = [];
+    const writes = vi.mocked(action["setKeyImage"]).mock;
+    const redraws = vi.mocked(action["updateKeyImage"]).mock;
+
+    writes.calls.forEach(([ev, image], i) => {
+      if ((ev as { action: { id: string } }).action.id === id)
+        sent.push({ order: writes.invocationCallOrder[i], image });
+    });
+    redraws.calls.forEach(([contextId, image], i) => {
+      if (contextId === id) sent.push({ order: redraws.invocationCallOrder[i], image });
+    });
+
+    // Settings writes and redraws interleave: the one sent last is what the key shows.
+    const last = sent.sort((a, b) => a.order - b.order).at(-1)?.image;
+
+    return decodeURIComponent(String(last));
+  }
+
+  /** The tri-state the key's last image shows, read off its status bar. */
+  function keyState(action: CameraControls, id: string): "on" | "off" | "na" | null {
+    const image = lastImage(action, id);
+
+    if (image.includes(statusBarOn())) return "on";
+
+    if (image.includes(statusBarOff())) return "off";
+
+    if (image.includes(statusBarNA())) return "na";
+
+    return null;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetAutoGroup();
+    autoGroupSdk.controller = controller;
+    shown = [];
+  });
+
+  afterEach(async () => {
+    for (const { action, ctx } of shown) await action.onWillDisappear({ action: ctx } as never);
+
+    _resetAutoGroup();
+    autoGroupSdk.controller = null;
+    vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue([]);
+  });
+
+  describe("settings", () => {
+    const ActionFields = z.object(CameraControlsSettingsFields);
+
+    it("defaults to In order with no list stored, which reads as TV1, TV2 and TV3", () => {
+      const parsed = ActionFields.parse({ target: "auto-group" });
+
+      expect(parsed.autoGroupPick).toBe("in-order");
+      expect(parsed.autoGroupSubset).toBeUndefined();
+    });
+
+    it("keeps the key's mode when either field holds junk", () => {
+      const parsed = ActionFields.parse({ target: "auto-group", autoGroupSubset: 42, autoGroupPick: "sideways" });
+
+      expect(parsed.target).toBe("auto-group");
+      expect(parsed.autoGroupPick).toBe("in-order");
+      expect(parsed.autoGroupSubset).toBeUndefined();
+    });
+
+    it("keeps a stored list and Random", () => {
+      const subset = { groups: { Chase: true } };
+      const parsed = ActionFields.parse({ target: "auto-group", autoGroupSubset: subset, autoGroupPick: "random" });
+
+      expect(parsed.autoGroupSubset).toEqual(subset);
+      expect(parsed.autoGroupPick).toBe("random");
+    });
+  });
+
+  describe("autoGroupKeyState", () => {
+    it("is on for the owner and off for any other key while a candidate exists", () => {
+      expect(autoGroupKeyState(true, false)).toBe("on");
+      expect(autoGroupKeyState(false, false)).toBe("off");
+    });
+
+    it("is N/A with no candidate, the owner's included", () => {
+      expect(autoGroupKeyState(false, true)).toBe("na");
+      expect(autoGroupKeyState(true, true)).toBe("na");
+    });
+  });
+
+  describe("the tri-state key (Pit Crew toggle layout)", () => {
+    const lastBorderState = (): unknown => vi.mocked(deckCore.resolveBorderSettings).mock.calls.at(-1)?.[3];
+
+    it.each([
+      ["on", statusBarOn(), "#2ecc71"],
+      ["off", statusBarOff(), "#e74c3c"],
+      ["na", statusBarNA(), "#888888"],
+    ] as const)("draws %s with its status bar and the same state colour on the border", (state, bar, colour) => {
+      const svg = decodeURIComponent(generateAutoGroupKeySvg({}, state));
+
+      expect(svg).toContain('data-template="auto-group"');
+      expect(svg).toContain(bar);
+      expect(lastBorderState()).toBe(borderColorForState(state));
+      expect(borderColorForState(state)).toBe(colour);
+    });
+
+    it("draws the artwork, coloured, above the status bar", () => {
+      vi.mocked(deckCore.resolveIconColors).mockReturnValueOnce({ graphic1Color: "#abcdef" });
+
+      const svg = decodeURIComponent(generateAutoGroupKeySvg({}, "on"));
+
+      expect(svg).toContain('data-art="auto-group" fill="#abcdef"');
+      // Fitted into y 8..92: the bar starts at 100, with the Pit Crew toggles' 8-unit gap.
+      expect(svg).toContain('data-area="8,84"');
+      expect(svg.indexOf('data-art="auto-group"')).toBeLessThan(svg.indexOf(statusBarOn()));
+      expect(vi.mocked(deckCore.applyGraphicTransform).mock.calls.at(-1)?.[1]).toEqual({
+        x: 0,
+        y: 0,
+        width: 84,
+        height: 75,
+      });
+    });
+
+    it("hides the title by its template, with AUTO GROUP as the default text a per-key override shows", () => {
+      vi.mocked(deckCore.resolveTitleSettings).mockReturnValueOnce({
+        showTitle: false,
+        showGraphics: true,
+        titleText: AUTO_GROUP_TITLE,
+        bold: true,
+        fontSize: 9,
+        position: "top",
+        customPosition: 0,
+      });
+
+      const hidden = decodeURIComponent(generateAutoGroupKeySvg({}, "off"));
+
+      expect(AUTO_GROUP_TITLE).toBe("AUTO\nGROUP");
+      expect(vi.mocked(deckCore.resolveTitleSettings).mock.calls.at(-1)?.[3]).toBe(AUTO_GROUP_TITLE);
+      expect(hidden).not.toContain(AUTO_GROUP_TITLE);
+
+      const shown = decodeURIComponent(generateAutoGroupKeySvg({ titleOverrides: { showTitle: true } }, "off"));
+
+      expect(shown).toContain(`<text>${AUTO_GROUP_TITLE}</text>`);
+    });
+
+    it("draws no artwork when the graphic is hidden, keeping the status bar", () => {
+      vi.mocked(deckCore.resolveTitleSettings).mockReturnValueOnce({
+        showTitle: false,
+        showGraphics: false,
+        titleText: AUTO_GROUP_TITLE,
+        bold: true,
+        fontSize: 9,
+        position: "top",
+        customPosition: 0,
+      });
+
+      const svg = decodeURIComponent(generateAutoGroupKeySvg({}, "on"));
+
+      expect(svg).not.toContain('data-art="auto-group"');
+      expect(svg).toContain(statusBarOn());
+    });
+
+    it("is what generateCameraControlsSvg draws for the mode, never through the unavailable look", () => {
+      const svg = decodeURIComponent(generateCameraControlsSvg({ target: "auto-group" }, false, true, "na"));
+
+      expect(svg).toContain(statusBarNA());
+      expect(vi.mocked(deckCore.assembleIcon)).not.toHaveBeenCalled();
+    });
+
+    it("defaults to off through generateCameraControlsSvg", () => {
+      const svg = decodeURIComponent(generateCameraControlsSvg({ target: "auto-group" }));
+
+      expect(svg).toContain(statusBarOff());
+      expect(lastBorderState()).toBe(borderColorForState("off"));
+    });
+
+    it("passes no state border for any other mode", () => {
+      generateCameraControlsSvg({ target: "focus-your-car" }, false, false, "on");
+
+      expect(lastBorderState()).toBeUndefined();
+    });
+  });
+
+  describe("presses", () => {
+    it("is off at a plugin start", async () => {
+      const action = newAction();
+      await appear(action, "ag-1");
+
+      expect(autoGroupOwner()).toBeNull();
+      expect(keyState(action, "ag-1")).toBe("off");
+    });
+
+    it("starts on the first press and stops on the second, redrawing the key each time", async () => {
+      const action = newAction();
+      const ctx = await appear(action, "ag-1");
+
+      await press(action, ctx);
+
+      expect(autoGroupOwner()).toBe("ag-1");
+      expect(controller.subscribe).toHaveBeenCalledTimes(1);
+      expect(keyState(action, "ag-1")).toBe("on");
+
+      await press(action, ctx);
+
+      expect(autoGroupOwner()).toBeNull();
+      expect(controller.unsubscribe).toHaveBeenCalledTimes(1);
+      expect(keyState(action, "ag-1")).toBe("off");
+    });
+
+    it("starts with the key's own list and pick order", async () => {
+      const action = newAction();
+      const settings = { autoGroupSubset: { groups: { Chase: true, Nose: true } }, autoGroupPick: "random" };
+      const ctx = await appear(action, "ag-1", settings);
+
+      await press(action, ctx, settings);
+
+      expect(action["logger"].debug).toHaveBeenCalledWith("Auto group owner ag-1, pick random, groups: Chase, Nose");
+    });
+
+    it("hands the automation to a second key, which lights while the first goes off", async () => {
+      const action = newAction();
+      const first = await appear(action, "ag-1");
+      const second = await appear(action, "ag-2");
+
+      await press(action, first);
+      await press(action, second);
+
+      expect(autoGroupOwner()).toBe("ag-2");
+      expect(keyState(action, "ag-1")).toBe("off");
+      expect(keyState(action, "ag-2")).toBe("on");
+      // A takeover keeps the one telemetry subscription.
+      expect(controller.subscribe).toHaveBeenCalledTimes(1);
+      expect(controller.unsubscribe).not.toHaveBeenCalled();
+    });
+
+    it("hands it over between the two Camera Controls actions (camera-focus and the legacy camera-cycle UUID)", async () => {
+      const focus = newAction();
+      const cycle = newAction();
+      const first = await appear(focus, "ag-focus");
+      const second = await appear(cycle, "ag-cycle");
+
+      await press(focus, first);
+
+      expect(keyState(focus, "ag-focus")).toBe("on");
+      expect(keyState(cycle, "ag-cycle")).toBe("off");
+
+      await press(cycle, second);
+
+      expect(autoGroupOwner()).toBe("ag-cycle");
+      expect(keyState(focus, "ag-focus")).toBe("off");
+      expect(keyState(cycle, "ag-cycle")).toBe("on");
+    });
+
+    it("stops redrawing a disposed instance when the owner changes (#1656 review)", async () => {
+      const kept = newAction();
+      const disposed = newAction();
+      const keptKey = await appear(kept, "ag-kept");
+      const disposedKey = await appear(disposed, "ag-disposed");
+      await press(disposed, disposedKey);
+      expect(keyState(disposed, "ag-disposed")).toBe("on");
+      const redraws = vi.mocked(disposed["updateKeyImage"]).mock.calls.length;
+
+      disposed._dispose();
+      await press(kept, keptKey); // a takeover: every live listener hears it
+
+      expect(autoGroupOwner()).toBe("ag-kept");
+      expect(keyState(kept, "ag-kept")).toBe("on");
+      expect(vi.mocked(disposed["updateKeyImage"]).mock.calls.length).toBe(redraws);
+    });
+
+    it("draws on only on the owner: every other Auto Group key stays off", async () => {
+      const action = newAction();
+      const keys = [await appear(action, "ag-1"), await appear(action, "ag-2"), await appear(action, "ag-3")];
+
+      await press(action, keys[1]);
+
+      expect(keys.map((ctx) => keyState(action, ctx.id))).toEqual(["off", "on", "off"]);
+    });
+
+    it("keeps running when its key leaves the screen, and the key is on again when it is back", async () => {
+      const action = newAction();
+      const ctx = await appear(action, "ag-1");
+      await press(action, ctx);
+
+      await action.onWillDisappear({ action: ctx } as never);
+
+      expect(autoGroupOwner()).toBe("ag-1");
+      expect(controller.unsubscribe).not.toHaveBeenCalled();
+
+      await appear(action, "ag-1");
+
+      expect(keyState(action, "ag-1")).toBe("on");
+    });
+
+    it("leaves it off and warns when the SDK controller refuses the subscription", async () => {
+      autoGroupSdk.controller = {
+        subscribe: () => {
+          throw new Error("not connected");
+        },
+        unsubscribe: vi.fn(),
+      };
+      const action = newAction();
+      const ctx = await appear(action, "ag-1");
+
+      await press(action, ctx);
+
+      expect(autoGroupOwner()).toBeNull();
+      expect(action["logger"].warn).toHaveBeenCalledWith("Auto group could not start: not connected");
+      expect(keyState(action, "ag-1")).toBe("off");
+    });
+
+    it("sends no camera switch at the press", async () => {
+      const action = newAction();
+      const ctx = await appear(action, "ag-1");
+
+      await press(action, ctx);
+
+      expect(mockCamera.switchNum).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("settings edits", () => {
+    async function edit(
+      action: CameraControls,
+      ctx: ReturnType<typeof keyContext>,
+      settings: Record<string, unknown>,
+    ): Promise<void> {
+      await action.onDidReceiveSettings({
+        action: ctx,
+        payload: { settings: { target: "auto-group", ...settings } },
+      } as never);
+    }
+
+    it("applies the owner's edited list and pick order to the running automation at once", async () => {
+      const action = newAction();
+      const ctx = await appear(action, "ag-1");
+      await press(action, ctx);
+
+      await edit(action, ctx, { autoGroupSubset: { groups: { Chase: true } }, autoGroupPick: "random" });
+
+      expect(autoGroupOwner()).toBe("ag-1");
+      expect(action["logger"].debug).toHaveBeenCalledWith("Auto group settings updated: pick random, groups: Chase");
+    });
+
+    it("ignores another key's edit until that key is pressed", async () => {
+      const action = newAction();
+      const owner = await appear(action, "ag-1");
+      const other = await appear(action, "ag-2");
+      await press(action, owner);
+
+      await edit(action, other, { autoGroupSubset: { groups: { Chase: true } } });
+
+      expect(autoGroupOwner()).toBe("ag-1");
+      expect(action["logger"].debug).not.toHaveBeenCalledWith(expect.stringContaining("Auto group settings updated"));
+    });
+
+    it("stops the automation when the owning key moves to another mode, which then draws that mode", async () => {
+      const action = newAction();
+      const ctx = await appear(action, "ag-1");
+      await press(action, ctx);
+
+      await edit(action, ctx, { target: "focus-your-car" });
+      await flush();
+
+      expect(autoGroupOwner()).toBeNull();
+      expect(controller.unsubscribe).toHaveBeenCalledTimes(1);
+      expect(action["logger"].info).toHaveBeenCalledWith("Auto group stopped: its key no longer offers it");
+      expect(lastImage(action, "ag-1")).toContain("focus-your-car");
+      expect(lastImage(action, "ag-1")).not.toContain('data-template="auto-group"');
+    });
+
+    it("leaves it running when another key moves to another mode", async () => {
+      const action = newAction();
+      const owner = await appear(action, "ag-1");
+      const other = await appear(action, "ag-2");
+      await press(action, owner);
+
+      await edit(action, other, { target: "focus-your-car" });
+      await flush();
+
+      expect(autoGroupOwner()).toBe("ag-1");
+      expect(controller.unsubscribe).not.toHaveBeenCalled();
+      expect(keyState(action, "ag-1")).toBe("on");
+    });
+  });
+
+  describe("the dial gesture (spec decision 9)", () => {
+    const MARKER = 'data-auto-group-marker="on"';
+    const DIAL = {
+      mode: "camera",
+      pressAction: "auto-group",
+      autoGroupSubset: { groups: { Chase: true } },
+      autoGroupPick: "random",
+    };
+
+    function dialContext(id: string) {
+      return {
+        id,
+        deviceId: "dev-1",
+        deviceType: 7,
+        isKey: () => false,
+        isDial: () => true,
+        dialCanvas: () => ({ id: "sd-plus-strip", width: 200, height: 100 }) as const,
+        setDialCanvas: vi.fn(async (_dataUri: string) => {}),
+        setImage: vi.fn(async () => {}),
+        setTitle: vi.fn(async () => {}),
+        setSettings: vi.fn(async () => {}),
+        setFeedback: vi.fn(async () => {}),
+        setTriggerDescription: vi.fn(async () => {}),
+      };
+    }
+
+    async function appearDial(action: CameraControls, id: string, dial: Record<string, unknown> = DIAL) {
+      const ctx = dialContext(id);
+      shown.push({ action, ctx });
+      await action.onWillAppear({ action: ctx, payload: { settings: { dial } } } as never);
+
+      return ctx;
+    }
+
+    async function pressDial(action: CameraControls, ctx: ReturnType<typeof dialContext>, dial = DIAL) {
+      await action.onDialDown({ action: ctx, payload: { settings: { dial } } } as never);
+      await action.onDialUp({ action: ctx, payload: { settings: { dial } } } as never);
+      await flush();
+    }
+
+    const marked = (ctx: ReturnType<typeof dialContext>): boolean =>
+      decodeURIComponent(String(ctx.setDialCanvas.mock.calls.at(-1)?.[0])).includes(MARKER);
+
+    it("starts and stops the automation with the dial's own list, the dial as its owner", async () => {
+      const action = newAction();
+      const ctx = await appearDial(action, "dial-1");
+
+      expect(marked(ctx)).toBe(false);
+
+      await pressDial(action, ctx);
+
+      expect(autoGroupOwner()).toBe("dial-1");
+      expect(action["logger"].debug).toHaveBeenCalledWith("Auto group owner dial-1, pick random, groups: Chase");
+      expect(marked(ctx)).toBe(true);
+
+      await pressDial(action, ctx);
+
+      expect(autoGroupOwner()).toBeNull();
+      expect(marked(ctx)).toBe(false);
+    });
+
+    it("hands over between a dial and a key, each showing on only while it owns", async () => {
+      const action = newAction();
+      const dial = await appearDial(action, "dial-1");
+      const key = await appear(action, "ag-1");
+
+      await pressDial(action, dial);
+      await press(action, key);
+
+      expect(autoGroupOwner()).toBe("ag-1");
+      expect(keyState(action, "ag-1")).toBe("on");
+      expect(marked(dial)).toBe(false);
+
+      await pressDial(action, dial);
+
+      expect(autoGroupOwner()).toBe("dial-1");
+      expect(keyState(action, "ag-1")).toBe("off");
+      expect(marked(dial)).toBe(true);
+    });
+
+    it("moves the marker to a dial of the other Camera Controls action", async () => {
+      const focus = newAction();
+      const cycle = newAction();
+      const first = await appearDial(focus, "dial-focus");
+      const second = await appearDial(cycle, "dial-cycle");
+
+      await pressDial(focus, first);
+      await pressDial(cycle, second);
+
+      expect(marked(first)).toBe(false);
+      expect(marked(second)).toBe(true);
+    });
+
+    it("applies the owning dial's edited list at once, and ignores another dial's", async () => {
+      const action = newAction();
+      const owner = await appearDial(action, "dial-1");
+      const other = await appearDial(action, "dial-2");
+      await pressDial(action, owner);
+
+      await action.onDidReceiveSettings({
+        action: other,
+        payload: { settings: { dial: { ...DIAL, autoGroupSubset: { groups: { Nose: true } } } } },
+      } as never);
+
+      expect(action["logger"].debug).not.toHaveBeenCalledWith(expect.stringContaining("Auto group settings updated"));
+
+      await action.onDidReceiveSettings({
+        action: owner,
+        payload: {
+          settings: { dial: { ...DIAL, autoGroupSubset: { groups: { Nose: true } }, autoGroupPick: "in-order" } },
+        },
+      } as never);
+
+      expect(action["logger"].debug).toHaveBeenCalledWith("Auto group settings updated: pick in-order, groups: Nose");
+    });
+
+    it("keeps running when its dial leaves the screen", async () => {
+      const action = newAction();
+      const ctx = await appearDial(action, "dial-1");
+      await pressDial(action, ctx);
+
+      await action.onWillDisappear({ action: ctx } as never);
+
+      expect(autoGroupOwner()).toBe("dial-1");
+    });
+
+    describe("an owning dial whose settings no longer offer the gesture", () => {
+      afterEach(() => {
+        vi.unstubAllGlobals();
+      });
+
+      async function editDial(action: CameraControls, ctx: { id: string }, dial: Record<string, unknown>) {
+        await action.onDidReceiveSettings({ action: ctx, payload: { settings: { dial } } } as never);
+        await flush();
+      }
+
+      it("stops it when no slot is left on Auto Group on/off, and the marker goes", async () => {
+        const action = newAction();
+        const ctx = await appearDial(action, "dial-1");
+        await pressDial(action, ctx);
+
+        await editDial(action, ctx, { ...DIAL, pressAction: "focus-my-car" });
+
+        expect(autoGroupOwner()).toBeNull();
+        expect(controller.unsubscribe).toHaveBeenCalledTimes(1);
+        expect(action["logger"].info).toHaveBeenCalledWith("Auto group stopped: its dial no longer offers it");
+        expect(marked(ctx)).toBe(false);
+      });
+
+      it("keeps it, with a live update, while another slot still offers it", async () => {
+        const action = newAction();
+        const ctx = await appearDial(action, "dial-1");
+        await pressDial(action, ctx);
+
+        await editDial(action, ctx, {
+          ...DIAL,
+          pressAction: "none",
+          longTouchAction: "auto-group",
+          autoGroupPick: "in-order",
+        });
+
+        expect(autoGroupOwner()).toBe("dial-1");
+        expect(action["logger"].debug).toHaveBeenCalledWith(
+          "Auto group settings updated: pick in-order, groups: Chase",
+        );
+        expect(marked(ctx)).toBe(true);
+      });
+
+      it("counts only Press on a host without the extended gestures (Mirabox Push)", async () => {
+        vi.stubGlobal("__FEATURE_DIAL_EXTENDED_GESTURES__", false);
+        const action = newAction();
+        const ctx = await appearDial(action, "dial-1");
+        await pressDial(action, ctx);
+
+        await editDial(action, ctx, { ...DIAL, pressAction: "none", longPressAction: "auto-group" });
+
+        expect(autoGroupOwner()).toBeNull();
+        expect(marked(ctx)).toBe(false);
+      });
+
+      it("leaves it running when another dial drops the gesture", async () => {
+        const action = newAction();
+        const owner = await appearDial(action, "dial-1");
+        const other = await appearDial(action, "dial-2");
+        await pressDial(action, owner);
+
+        await editDial(action, other, { ...DIAL, pressAction: "focus-my-car" });
+
+        expect(autoGroupOwner()).toBe("dial-1");
+        expect(controller.unsubscribe).not.toHaveBeenCalled();
+        expect(marked(owner)).toBe(true);
+      });
+    });
+
+    it("keeps the dial's Mode and gestures when its two fields hold junk", () => {
+      const parsed = z.object(CameraControlsSettingsFields).parse({
+        dial: { mode: "race-position", pressAction: "auto-group", autoGroupSubset: 3, autoGroupPick: ["x"] },
+      });
+
+      expect(parsed.dial.mode).toBe("race-position");
+      expect(parsed.dial.pressAction).toBe("auto-group");
+      expect(parsed.dial.autoGroupPick).toBe("in-order");
+      expect(parsed.dial.autoGroupSubset).toBeUndefined();
+    });
+  });
+
+  describe("the N/A state", () => {
+    it("is drawn while a session lacks every ticked group, in place of the unavailable look", async () => {
+      const action = newAction(CASE_TWIN_GROUPS);
+      await appear(action, "ag-1");
+
+      expect(keyState(action, "ag-1")).toBe("na");
+      expect(anyIconDimmed()).toBe(false);
+    });
+
+    it("is drawn for an empty list in a session", async () => {
+      const action = newAction();
+      await appear(action, "ag-1", { autoGroupSubset: { groups: { TV1: false } } });
+
+      expect(keyState(action, "ag-1")).toBe("na");
+    });
+
+    it("is not drawn while the session has one ticked group", async () => {
+      const action = newAction(CASE_TWIN_GROUPS);
+      await appear(action, "ag-1", { autoGroupSubset: { groups: { TV1: true, Chase: true } } });
+
+      expect(keyState(action, "ag-1")).toBe("off");
+    });
+
+    it("is never drawn with no session, an empty list included", async () => {
+      const action = newAction(null);
+      await appear(action, "ag-1", { autoGroupSubset: { groups: {} } });
+
+      expect(keyState(action, "ag-1")).toBe("off");
+    });
+
+    it("still toggles the automation on a press, and the owner shows N/A while the track has no candidate", async () => {
+      const action = newAction(CASE_TWIN_GROUPS);
+      const ctx = await appear(action, "ag-1");
+
+      await press(action, ctx);
+
+      expect(autoGroupOwner()).toBe("ag-1");
+      expect(controller.subscribe).toHaveBeenCalledTimes(1);
+      expect(keyState(action, "ag-1")).toBe("na");
+      expect(vi.mocked(deckCore.resolveBorderSettings).mock.calls.at(-1)?.[3]).toBe(borderColorForState("na"));
+      expect(mockCamera.switchNum).not.toHaveBeenCalled();
+
+      await press(action, ctx);
+
+      expect(autoGroupOwner()).toBeNull();
+      expect(keyState(action, "ag-1")).toBe("na");
+    });
+
+    it("redraws the owner on when a session update brings a candidate, and N/A again when it goes", async () => {
+      const action = newAction(CASE_TWIN_GROUPS);
+      let tick: (() => void) | undefined;
+      captureTick(action, (t) => (tick = t));
+      const ctx = await appear(action, "ag-1");
+      await press(action, ctx);
+      expect(keyState(action, "ag-1")).toBe("na");
+
+      vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue({});
+      vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue(ROAD_GROUPS);
+      tick?.();
+      await flush();
+
+      expect(autoGroupOwner()).toBe("ag-1");
+      expect(keyState(action, "ag-1")).toBe("on");
+
+      const redraws = vi.mocked(action["updateKeyImage"]).mock.calls.length;
+      tick?.();
+      await flush();
+      expect(vi.mocked(action["updateKeyImage"]).mock.calls.length).toBe(redraws);
+
+      vi.mocked(action["sdkController"].getSessionInfo).mockReturnValue({});
+      vi.mocked(getCameraGroupsFromSessionInfo).mockReturnValue(CASE_TWIN_GROUPS);
+      tick?.();
+      await flush();
+
+      expect(keyState(action, "ag-1")).toBe("na");
+    });
   });
 });

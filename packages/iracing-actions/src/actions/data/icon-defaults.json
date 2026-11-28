@@ -41,6 +41,7 @@
   "camera-focus": {
     "backgroundColor": "#2a3a4a",
     "textColor": "#ffffff",
+    "graphic1Color": "#ffffff",
     "borderColor": "#5a6a7a"
   },
   "camera-select": {
@@ -221,6 +222,12 @@
     "backgroundColor": "#2a3444",
     "textColor": "#ffffff",
     "graphic1Color": "#f1c40f"
+  },
+  "camera-controls-auto-group": {
+    "backgroundColor": "#2a3a4a",
+    "textColor": "#ffffff",
+    "graphic1Color": "#ffffff",
+    "borderColor": "#5a6a7a"
   },
   "car-control-drs": {
     "backgroundColor": "#2a3a2a",

@@ -94,18 +94,77 @@ function panelFrame(w: number, h: number): { radius: number; inset: number; stro
   };
 }
 
+/** The strip's hold-preview centre size: the car number size every car strip uses. */
+const PENDING_CENTRE_FONT = 40;
+/**
+ * The smallest the preview shrinks to: the side labels' own size. Only a side
+ * label too long for its half of the strip can push the fit below it, and an
+ * unreadably small preview would be worse than one that grazes that label.
+ */
+const PENDING_CENTRE_MIN_FONT = 11;
+/** Clear space kept between the preview and a side slot. */
+const PENDING_SIDE_CLEARANCE = 2;
+
+/**
+ * Bold Arial's advance widths in em for what the strips draw: digits, `#`,
+ * the space and the capitals (every name is upper-cased); anything else takes
+ * a capital's 0.722. The 0.6 em average `fitValueFontSize` fits by is right
+ * for digits but short for a word such as AUTO OFF (5.1 em, not 4.8), and
+ * fitting the preview between the side slots needs the real width.
+ */
+const BOLD_ADVANCE_GROUPS: ReadonlyArray<readonly [string, number]> = [
+  [" I", 0.278],
+  ["#0123456789J", 0.556],
+  ["FLTZ", 0.611],
+  ["EPSVXY", 0.667],
+  ["ABCDHKNRU", 0.722],
+  ["GOQ", 0.778],
+  ["M", 0.833],
+  ["W", 0.944],
+];
+const BOLD_ADVANCE: ReadonlyMap<string, number> = new Map(
+  BOLD_ADVANCE_GROUPS.flatMap(([chars, em]) => [...chars].map((char) => [char, em] as const)),
+);
+const BOLD_ADVANCE_FALLBACK = 0.722;
+
+/** The width `text` takes in bold Arial at `fontSize`. */
+function boldTextWidth(text: string, fontSize: number): number {
+  let em = 0;
+
+  for (const char of text) em += BOLD_ADVANCE.get(char) ?? BOLD_ADVANCE_FALLBACK;
+
+  return em * fontSize;
+}
+
+/** A side slot's horizontal reach: its centre x and the width it draws. */
+interface SideExtent {
+  cx: number;
+  width: number;
+}
+
 /**
  * The centre slot while a hold preview is pending (issue #1120): the outcome
  * in the big car-number typography every car strip already uses for its
  * centre, in the preview's colour, underlined by the shared pending bar. ONE
  * helper for all four carousels, so a Camera preview and a Fuel Service
  * preview read as the same language — and so the sides, which every renderer
- * draws before its centre, are never touched by the preview.
+ * draws before its centre, are never touched by the preview: the text is
+ * fitted to the width the drawn side slots (`sides`) leave free, or to the
+ * panel interior when there are none. A car number keeps the full 40 px
+ * where it fits; a word preview (#1656's AUTO OFF) shrinks.
  */
-function pendingCentre(w: number, h: number, pending: DialPendingPreview): string {
+function pendingCentre(w: number, h: number, pending: DialPendingPreview, sides: readonly SideExtent[]): string {
   const { inset, strokeWidth } = panelFrame(w, h);
   const valueY = Math.round(h * 0.72);
-  const text = `<text x="${w / 2}" y="${valueY}" text-anchor="middle" fill="${pending.color}" font-family="Arial, sans-serif" font-size="40" font-weight="bold">${escapeXml(pending.text)}</text>`;
+  const panelWidth = w - 2 * (inset + strokeWidth + 8);
+  const freeWidth = sides.reduce(
+    (width, side) => Math.min(width, 2 * (Math.abs(w / 2 - side.cx) - side.width / 2 - PENDING_SIDE_CLEARANCE)),
+    panelWidth,
+  );
+  const em = boldTextWidth(pending.text, 1);
+  const fitted = em > 0 ? Math.floor(freeWidth / em) : PENDING_CENTRE_FONT;
+  const size = Math.max(PENDING_CENTRE_MIN_FONT, Math.min(PENDING_CENTRE_FONT, fitted));
+  const text = `<text x="${w / 2}" y="${valueY}" text-anchor="middle" fill="${pending.color}" font-family="Arial, sans-serif" font-size="${size}" font-weight="bold">${escapeXml(pending.text)}</text>`;
   // Just under the value's baseline, clamped inside the panel — the border
   // strokes ON the inset rect, so half of it eats inward (as `renderDialBox`).
   const barTop = Math.min(valueY + 6, h - inset - Math.round(strokeWidth / 2) - PENDING_BAR_HEIGHT);
@@ -163,6 +222,7 @@ export function renderCameraCarousel(args: {
   if (!args.current && !args.pending) return identityBox(w, h, args.identityLabel, colors);
 
   const parts: string[] = [dialPanel(w, h, colors), titleLine(w, h, args.title, colors)];
+  const sides: SideExtent[] = [];
 
   // Side slots (dimmed), drawn behind the centre.
   for (const [slot, cx] of [
@@ -171,15 +231,21 @@ export function renderCameraCarousel(args: {
   ] as const) {
     if (!slot) continue;
 
-    if (slot.glyph) parts.push(placeGlyph(slot.glyph, cx, h * 0.5, 26, 0.4));
-    else
+    if (slot.glyph) {
+      parts.push(placeGlyph(slot.glyph, cx, h * 0.5, 26, 0.4));
+      sides.push({ cx, width: 26 });
+    } else {
+      const name = slot.name.toUpperCase();
+
       parts.push(
-        `<text x="${cx}" y="${Math.round(h * 0.56)}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="11" font-weight="bold" opacity="0.4">${escapeXml(slot.name.toUpperCase())}</text>`,
+        `<text x="${cx}" y="${Math.round(h * 0.56)}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="11" font-weight="bold" opacity="0.4">${escapeXml(name)}</text>`,
       );
+      sides.push({ cx, width: boldTextWidth(name, 11) });
+    }
   }
 
   if (args.pending) {
-    parts.push(pendingCentre(w, h, args.pending));
+    parts.push(pendingCentre(w, h, args.pending, sides));
   } else if (args.current) {
     // Centre glyph (if mapped) with the group name beneath it.
     if (args.current.glyph) parts.push(placeGlyph(args.current.glyph, w / 2, h * 0.5, 42, 1));
@@ -242,6 +308,7 @@ export function renderSubCameraCarousel(args: {
   if (!args.current && !args.pending) return identityBox(w, h, args.identityLabel, colors);
 
   const parts: string[] = [dialPanel(w, h, colors), titleLine(w, h, args.title, colors)];
+  const sides: SideExtent[] = [];
 
   for (const [name, cx] of [
     [args.left, w * 0.15],
@@ -249,13 +316,16 @@ export function renderSubCameraCarousel(args: {
   ] as const) {
     if (!name) continue;
 
+    const label = name.toUpperCase();
+
     parts.push(
-      `<text x="${cx}" y="${Math.round(h * 0.52)}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="11" font-weight="bold" opacity="0.4">${escapeXml(name.toUpperCase())}</text>`,
+      `<text x="${cx}" y="${Math.round(h * 0.52)}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="11" font-weight="bold" opacity="0.4">${escapeXml(label)}</text>`,
     );
+    sides.push({ cx, width: boldTextWidth(label, 11) });
   }
 
   if (args.pending) {
-    parts.push(pendingCentre(w, h, args.pending));
+    parts.push(pendingCentre(w, h, args.pending, sides));
   } else if (args.current) {
     parts.push(
       `<text x="${w / 2}" y="${Math.round(h * 0.68)}" text-anchor="middle" fill="${colors.value}" font-family="Arial, sans-serif" font-size="20" font-weight="bold">${escapeXml(args.current.toUpperCase())}</text>`,
@@ -307,6 +377,7 @@ export function renderCarCarousel(
   if (!args.center && !args.pending) return identityBox(w, h, args.identityLabel, colors);
 
   const parts: string[] = [dialPanel(w, h, colors), titleLine(w, h, args.title, colors)];
+  const sides: SideExtent[] = [];
 
   for (const [num, cx] of [
     [args.left, w * 0.16],
@@ -317,10 +388,11 @@ export function renderCarCarousel(
     parts.push(
       `<text x="${cx}" y="${Math.round(h * 0.62)}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="18" font-weight="bold" opacity="0.45">#${escapeXml(num)}</text>`,
     );
+    sides.push({ cx, width: boldTextWidth(`#${num}`, 18) });
   }
 
   if (args.pending) {
-    parts.push(pendingCentre(w, h, args.pending));
+    parts.push(pendingCentre(w, h, args.pending, sides));
   } else if (args.center) {
     parts.push(
       `<text x="${w / 2}" y="${Math.round(h * 0.72)}" text-anchor="middle" fill="${colors.value}" font-family="Arial, sans-serif" font-size="40" font-weight="bold">#${escapeXml(args.center)}</text>`,
@@ -363,6 +435,7 @@ export function renderRacePositionCarousel(args: {
   if (!args.centerCarNumber && !args.pending) return identityBox(w, h, args.identityLabel, colors);
 
   const parts: string[] = [dialPanel(w, h, colors), titleLine(w, h, args.title, colors)];
+  const sides: SideExtent[] = [];
 
   for (const [pos, cx] of [
     [args.leftPosition, w * 0.16],
@@ -373,10 +446,11 @@ export function renderRacePositionCarousel(args: {
     parts.push(
       `<text x="${cx}" y="${Math.round(h * 0.62)}" text-anchor="middle" fill="${colors.label}" font-family="Arial, sans-serif" font-size="18" font-weight="bold" opacity="0.45">P${pos}</text>`,
     );
+    sides.push({ cx, width: boldTextWidth(`P${pos}`, 18) });
   }
 
   if (args.pending) {
-    parts.push(pendingCentre(w, h, args.pending));
+    parts.push(pendingCentre(w, h, args.pending, sides));
   } else if (args.centerCarNumber && args.centerPosition !== null) {
     parts.push(
       `<text x="${w / 2}" y="${Math.round(h * 0.68)}" text-anchor="middle" fill="${colors.value}" font-family="Arial, sans-serif" font-size="40" font-weight="bold">P${args.centerPosition}</text>`,

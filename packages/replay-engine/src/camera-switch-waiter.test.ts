@@ -13,6 +13,7 @@ import {
   type CameraSwitchOptions,
   isCameraSwitchWaiting,
   requestCameraSwitch,
+  YIELDING_SWITCH_MAX_WAIT_MS,
 } from "./camera-switch-waiter.js";
 import { holdLapPressSlot } from "./lap-press.js";
 import {
@@ -44,9 +45,10 @@ import {
 import { _configureReplayEngine } from "./replay-engine-env.js";
 import { resetEngine } from "./replay-engine-reset.test-support.js";
 import { watchReplayLeft } from "./replay-left.test-support.js";
+import { pendingReplaySearch, queueReplaySearch } from "./replay-search-queue.js";
 import { resolveLiveSpeed } from "./replay-speed-state.js";
 import { noteReplaySpeedSent } from "./replay-speed-state.test-support.js";
-import { REPLAY_JUMP_MAX_WAIT_MS } from "./replay-timing.js";
+import { REPLAY_JUMP_MAX_WAIT_MS, STABILIZATION_POLL_INTERVAL_MS } from "./replay-timing.js";
 
 let debug: Mock<(message: string) => void>;
 let warn: Mock<(message: string) => void>;
@@ -667,6 +669,596 @@ describe("requestCameraSwitch", () => {
 
       expect(send).toHaveBeenCalledOnce();
       expect(jumps.waitToSettle).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe("a yielding switch: an automation's gives way to a user's (#1656)", () => {
+    /** Auto Group on Car Change's request, as `auto-group.ts` makes it. */
+    function automatic(overrides: Partial<CameraSwitchOptions> = {}): CameraSwitchOptions {
+      return options({
+        by: "camera-controls auto-group",
+        yields: true,
+        interruptsWalks: false,
+        label: "Camera controls",
+        name: "auto group",
+        asked: "camera moved to another car",
+        surface: "the auto group",
+        ...overrides,
+      });
+    }
+
+    /** The engine over a quiet fake replay, for the tests that need the real presses, searches and gate. */
+    function engineOver(sim: FakeReplay): FakeReplay {
+      _configureReplayEngine({
+        logger: engineRootLogger,
+        now: () => Date.now(),
+        replay: () => sim.replay,
+        readTelemetry: () => sim.telemetry(),
+        inReplay: () => true,
+        connected: () => true,
+      });
+
+      return sim;
+    }
+
+    /** A Jump to Fastest Lap press whose walk runs until `finish()`. */
+    function lapPress(): { press: Promise<unknown>; finish: () => void; claim: () => ReplayCursorClaim | null } {
+      let claim: ReplayCursorClaim | null = null;
+      let finish!: () => void;
+      const press = holdLapPressSlot(
+        "ctx-fastest",
+        { owner: FASTEST_LAP_WALK_OWNER, noun: "walk", label: "Jump to fastest lap" },
+        (pressJump) => {
+          claim = pressJump.claim;
+
+          return new Promise<void>((resolve) => (finish = resolve));
+        },
+      );
+
+      return { press, finish: () => finish(), claim: () => claim };
+    }
+
+    it("never replaces a waiting switch that does not yield: it is dropped, at once", async () => {
+      const jump = jumpUnderWay();
+      const user = vi.fn();
+      const auto = vi.fn();
+
+      const a = requestCameraSwitch(user, options({ jumps: jump.jumps }));
+      let dropped = false;
+      const b = requestCameraSwitch(auto, automatic({ jumps: jump.jumps })).then(() => (dropped = true));
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(dropped).toBe(true);
+      expect(isCameraSwitchWaiting()).toBe(true);
+      expect(debug).toHaveBeenCalledWith(
+        "Camera controls: automatic switch dropped (auto group), the next car switch waiting for a jump goes first",
+      );
+      expect(debug).not.toHaveBeenCalledWith(expect.stringContaining("now goes to the auto group"));
+
+      jump.land();
+      await Promise.all([a, b]);
+
+      expect(user).toHaveBeenCalledOnce();
+      expect(auto).not.toHaveBeenCalled();
+      expect(jump.jumps.waitToSettle).toHaveBeenCalledOnce();
+    });
+
+    it("a switch that does not yield replaces a waiting yielding one and waits on its own terms", async () => {
+      const autoJump = jumpUnderWay();
+      const auto = vi.fn();
+      const a = requestCameraSwitch(auto, automatic({ jumps: autoJump.jumps }));
+
+      expect(isCameraSwitchWaiting()).toBe(true);
+
+      const userJump = jumpUnderWay();
+      const user = vi.fn();
+      const b = requestCameraSwitch(user, options({ jumps: userJump.jumps }));
+
+      expect(debug).toHaveBeenCalledWith(
+        "Camera controls: automatic switch dropped (auto group), the next car switch asked for after it goes instead",
+      );
+      // Its own wait, with its own jump reads: not the "now goes to" of a switch folded into the waiting one's.
+      expect(debug).toHaveBeenCalledWith(
+        "Dial track order: ticks=1; a jump is under way, the next car switch waits for it",
+      );
+      expect(userJump.jumps.waitToSettle).toHaveBeenCalledOnce();
+
+      userJump.land();
+      await b;
+
+      expect(user).toHaveBeenCalledOnce();
+      expect(isCameraSwitchWaiting()).toBe(false);
+
+      // The yielding switch's wait ends when its jump lands, and sends nothing.
+      autoJump.land();
+      await a;
+
+      expect(auto).not.toHaveBeenCalled();
+      expect(user).toHaveBeenCalledOnce();
+    });
+
+    it("a switch that does not yield goes out at once over a yielding one when nothing it waits for is under way", async () => {
+      const jump = jumpUnderWay();
+      const auto = vi.fn();
+      const a = requestCameraSwitch(auto, automatic({ jumps: jump.jumps }));
+      const user = vi.fn();
+
+      void requestCameraSwitch(user, options({ jumps: quiet() }));
+
+      expect(user).toHaveBeenCalledOnce();
+      expect(isCameraSwitchWaiting()).toBe(false);
+
+      jump.land();
+      await a;
+
+      expect(auto).not.toHaveBeenCalled();
+    });
+
+    it("the newest yielding switch replaces a waiting yielding one", async () => {
+      const jump = jumpUnderWay();
+      const first = vi.fn();
+      const second = vi.fn();
+
+      const a = requestCameraSwitch(first, automatic({ jumps: jump.jumps }));
+      const b = requestCameraSwitch(second, automatic({ jumps: jump.jumps }));
+
+      jump.land();
+      await Promise.all([a, b]);
+
+      expect(first).not.toHaveBeenCalled();
+      expect(second).toHaveBeenCalledOnce();
+      expect(jump.jumps.waitToSettle).toHaveBeenCalledOnce();
+    });
+
+    it("waits for a whole lap press, its walk included, and interrupts no walk", async () => {
+      engineOver(fakeReplay({ frame: 2_000 }));
+
+      const walk = lapPress();
+
+      // An angle-only switch that does not yield goes out at once during the walk's search.
+      const angle = vi.fn();
+
+      await requestCameraSwitch(angle, options({ by: "cycle-camera", interruptsWalks: false }));
+      expect(angle).toHaveBeenCalledOnce();
+
+      // A yielding one waits, and interrupts the walk even when it asks to.
+      const auto = vi.fn();
+      const request = requestCameraSwitch(auto, automatic({ interruptsWalks: true }));
+
+      expect(isCameraSwitchWaiting()).toBe(true);
+      expect(walk.claim()?.interruptedBy).toBeNull();
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(auto).not.toHaveBeenCalled();
+
+      walk.finish();
+      await walk.press;
+      await vi.advanceTimersByTimeAsync(500);
+      await request;
+
+      expect(auto).toHaveBeenCalledOnce();
+      expect(walk.claim()?.interruptedBy).toBeNull();
+    });
+
+    it("a wait ended under it stops polling at its next read, and sends nothing (second read)", async () => {
+      engineOver(fakeReplay({ frame: 2_000 }));
+
+      const walk = lapPress();
+      const autoJumps = quiet();
+      const auto = vi.fn();
+      let ended = false;
+      const request = requestCameraSwitch(auto, automatic({ jumps: autoJumps })).then(() => (ended = true));
+
+      // While it is the current wait, the press holds it.
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(isCameraSwitchWaiting()).toBe(true);
+      expect(ended).toBe(false);
+
+      // A user's switch ends its wait: the run stops at its next read, with the press still holding.
+      const user = vi.fn();
+
+      await requestCameraSwitch(user, options({ by: "cycle-camera", interruptsWalks: false, jumps: quiet() }));
+      expect(user).toHaveBeenCalledOnce();
+
+      await vi.advanceTimersByTimeAsync(STABILIZATION_POLL_INTERVAL_MS);
+      expect(ended).toBe(true);
+      expect(autoJumps.waitToSettle).not.toHaveBeenCalled();
+
+      // Nothing of it runs once the press ends: no wait for the jumps, no send.
+      walk.finish();
+      await walk.press;
+      await vi.advanceTimersByTimeAsync(500);
+      await request;
+
+      expect(autoJumps.waitToSettle).not.toHaveBeenCalled();
+      expect(auto).not.toHaveBeenCalled();
+      expect(user).toHaveBeenCalledOnce();
+    });
+
+    it("keeps waiting through a lap press that starts while it waits, and goes out after it", async () => {
+      engineOver(fakeReplay({ frame: 2_000 }));
+
+      const jump = jumpUnderWay();
+      const auto = vi.fn();
+      const request = requestCameraSwitch(auto, automatic({ jumps: jump.jumps }));
+      const walk = lapPress();
+
+      expect(isCameraSwitchWaiting()).toBe(true);
+      expect(debug).toHaveBeenCalledWith(
+        "Camera controls: the auto group switch waits for the Jump to fastest lap press too",
+      );
+      expect(debug).not.toHaveBeenCalledWith(expect.stringContaining("dropped"));
+
+      // Its jump lands, but the press still holds it.
+      jump.jumps.waitToSettle.mockImplementation(() => Promise.resolve<ReplaySettledOutcome>("settled"));
+      jump.land();
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(auto).not.toHaveBeenCalled();
+
+      walk.finish();
+      await walk.press;
+      await vi.advanceTimersByTimeAsync(500);
+      await request;
+
+      expect(auto).toHaveBeenCalledOnce();
+      expect(jump.jumps.waitToSettle).toHaveBeenCalledTimes(2);
+    });
+
+    it("waits for a paced search's run, which holds no switch that does not yield", async () => {
+      engineOver(fakeReplay({ frame: 2_000, searches: { nextLap: (from) => from + 3_000 }, minSeekMs: 1_000 }));
+      queueReplaySearch({ target: "lap", ticks: 3, origin: "dial", owner: "replay-control-dial lap" });
+      await vi.advanceTimersByTimeAsync(10);
+
+      expect(pendingReplaySearch()).not.toBeNull();
+
+      let searchAtSend: unknown = "unsent";
+      const auto = vi.fn(() => {
+        searchAtSend = pendingReplaySearch();
+      });
+      const request = requestCameraSwitch(auto, automatic());
+
+      expect(isCameraSwitchWaiting()).toBe(true);
+      await vi.advanceTimersByTimeAsync(1_500);
+      expect(auto).not.toHaveBeenCalled();
+
+      for (let waited = 0; waited < 60_000 && pendingReplaySearch() !== null; waited += 100) {
+        await vi.advanceTimersByTimeAsync(100);
+      }
+
+      expect(pendingReplaySearch()).toBeNull();
+      await vi.advanceTimersByTimeAsync(1_000);
+      await request;
+
+      expect(auto).toHaveBeenCalledOnce();
+      expect(searchAtSend).toBeNull();
+    });
+
+    it("is not dropped at the ceiling of one jump, only at its own", async () => {
+      engineOver(fakeReplay({ frame: 2_000 }));
+      lapPress();
+
+      const auto = vi.fn();
+      const request = requestCameraSwitch(auto, automatic());
+
+      await vi.advanceTimersByTimeAsync(REPLAY_JUMP_MAX_WAIT_MS + 1_000);
+      expect(isCameraSwitchWaiting()).toBe(true);
+      expect(debug).not.toHaveBeenCalledWith(expect.stringContaining("dropped"));
+
+      await vi.advanceTimersByTimeAsync(YIELDING_SWITCH_MAX_WAIT_MS - REPLAY_JUMP_MAX_WAIT_MS);
+      await request;
+
+      expect(auto).not.toHaveBeenCalled();
+      expect(isCameraSwitchWaiting()).toBe(false);
+      expect(debug).toHaveBeenCalledWith(
+        "Camera controls: automatic switch dropped (auto group), the replay was still busy at the longest it waits",
+      );
+    });
+
+    it("its ceiling is a full paced search waited for at the ceiling of each jump", () => {
+      expect(YIELDING_SWITCH_MAX_WAIT_MS).toBe(10 * REPLAY_JUMP_MAX_WAIT_MS);
+    });
+
+    it("is dropped when stillValid() is false once the wait ends", async () => {
+      const jump = jumpUnderWay();
+      const auto = vi.fn();
+      let valid = true;
+      const request = requestCameraSwitch(auto, automatic({ jumps: jump.jumps, stillValid: () => valid }));
+
+      valid = false;
+      jump.land();
+      await request;
+
+      expect(auto).not.toHaveBeenCalled();
+      expect(debug).toHaveBeenCalledWith(
+        "Camera controls: automatic switch dropped (auto group), the auto group no longer asks for it",
+      );
+    });
+
+    describe("a user's switch that went out after its trigger (triggeredMsAgo, second read)", () => {
+      /** A user's angle switch, sent at once on a quiet replay: Cycle Camera's. */
+      async function userSwitch(): Promise<Mock<() => void>> {
+        const user = vi.fn();
+
+        await requestCameraSwitch(user, options({ by: "cycle-camera", name: "cycle camera", jumps: quiet() }));
+        expect(user).toHaveBeenCalledOnce();
+
+        return user;
+      }
+
+      it("drops it at the request: a switch sent at the trigger's moment or after it", async () => {
+        // The car changes at 1_000_000; the user cycles the camera at once, at the same moment.
+        await userSwitch();
+        await vi.advanceTimersByTimeAsync(250);
+
+        const auto = vi.fn();
+
+        await requestCameraSwitch(auto, automatic({ jumps: quiet(), triggeredMsAgo: 250 }));
+
+        expect(auto).not.toHaveBeenCalled();
+        expect(isCameraSwitchWaiting()).toBe(false);
+        expect(debug).toHaveBeenCalledWith(
+          "Camera controls: automatic switch dropped (auto group), the cycle camera switch went out after what asked for it",
+        );
+      });
+
+      it("drops it at the request without touching the switch waiting in the slot", async () => {
+        await userSwitch();
+        await vi.advanceTimersByTimeAsync(100);
+
+        // A yielding switch that gave no trigger waits behind a jump.
+        const jump = jumpUnderWay();
+        const first = vi.fn();
+        const a = requestCameraSwitch(first, automatic({ jumps: jump.jumps }));
+
+        await vi.advanceTimersByTimeAsync(150);
+
+        const second = vi.fn();
+
+        await requestCameraSwitch(second, automatic({ jumps: jump.jumps, triggeredMsAgo: 250 }));
+
+        expect(second).not.toHaveBeenCalled();
+        expect(debug).not.toHaveBeenCalledWith(expect.stringContaining("now goes to"));
+
+        jump.land();
+        await a;
+
+        expect(first).toHaveBeenCalledOnce();
+        expect(second).not.toHaveBeenCalled();
+      });
+
+      it("sends it when the user's switch went out before its trigger", async () => {
+        await userSwitch();
+        await vi.advanceTimersByTimeAsync(251);
+
+        const auto = vi.fn();
+
+        await requestCameraSwitch(auto, automatic({ jumps: quiet(), triggeredMsAgo: 250 }));
+
+        expect(auto).toHaveBeenCalledOnce();
+      });
+
+      it("sends it when it gives no trigger, or one that is not a finite number", async () => {
+        await userSwitch();
+        await vi.advanceTimersByTimeAsync(100);
+
+        const sent: number[] = [];
+
+        for (const [i, triggeredMsAgo] of [undefined, Number.NaN, Number.POSITIVE_INFINITY].entries()) {
+          await requestCameraSwitch(() => sent.push(i), automatic({ jumps: quiet(), triggeredMsAgo }));
+        }
+
+        expect(sent).toEqual([0, 1, 2]);
+      });
+
+      it("never drops a switch that does not yield, whatever it says", async () => {
+        await userSwitch();
+
+        const later = vi.fn();
+
+        await requestCameraSwitch(later, options({ jumps: quiet(), triggeredMsAgo: 10_000 }));
+
+        expect(later).toHaveBeenCalledOnce();
+      });
+
+      it("drops one that waited once a user's switch has gone out since its trigger, and sends nothing for it", async () => {
+        const jump = jumpUnderWay();
+        const auto = vi.fn();
+        const request = requestCameraSwitch(auto, automatic({ jumps: jump.jumps, triggeredMsAgo: 250 }));
+
+        expect(isCameraSwitchWaiting()).toBe(true);
+        await vi.advanceTimersByTimeAsync(400);
+
+        // The user's switch ends this one's wait as it goes out; the waiter's
+        // send-time check of the trigger is the second line behind that.
+        const user = await userSwitch();
+
+        jump.land();
+        await request;
+
+        expect(auto).not.toHaveBeenCalled();
+        expect(user).toHaveBeenCalledOnce();
+        expect(isCameraSwitchWaiting()).toBe(false);
+      });
+
+      it("sends one that waited when the only user's switch went out before its trigger", async () => {
+        await userSwitch();
+        await vi.advanceTimersByTimeAsync(300);
+
+        const jump = jumpUnderWay();
+        const auto = vi.fn();
+        const request = requestCameraSwitch(auto, automatic({ jumps: jump.jumps, triggeredMsAgo: 250 }));
+
+        expect(isCameraSwitchWaiting()).toBe(true);
+        await vi.advanceTimersByTimeAsync(5_000);
+        jump.land();
+        await request;
+
+        expect(auto).toHaveBeenCalledOnce();
+      });
+
+      it("counts a switch only once it went out: one still waiting, or dropped, does not drop it", async () => {
+        const jump = jumpUnderWay();
+        const user = vi.fn();
+        const a = requestCameraSwitch(user, options({ jumps: jump.jumps, stillValid: () => false }));
+
+        // The user's switch waits, so this one is dropped by the slot rule, not by a send.
+        await requestCameraSwitch(vi.fn(), automatic({ jumps: jump.jumps, triggeredMsAgo: 250 }));
+        expect(debug).toHaveBeenCalledWith(
+          "Camera controls: automatic switch dropped (auto group), the next car switch waiting for a jump goes first",
+        );
+
+        // The user's switch is dropped at its send (its key left): it never went out.
+        jump.land();
+        await a;
+        expect(user).not.toHaveBeenCalled();
+
+        const auto = vi.fn();
+
+        await requestCameraSwitch(auto, automatic({ jumps: quiet(), triggeredMsAgo: 250 }));
+
+        expect(auto).toHaveBeenCalledOnce();
+      });
+    });
+
+    describe("a trigger seen late, with its earliest moment (earliestTriggerMsAgo)", () => {
+      /**
+       * The timeline of a car change Auto Group's 200 ms read notices in a
+       * paused replay. At 1_000_000 the read still shows the old car; the car
+       * changes at +20; the read at +200 sees it; the settle timer asks at
+       * +450. The trigger was 250 ms before the request, the earliest it can
+       * have been 450 ms before it.
+       */
+      const TRIGGERED_MS_AGO = 250;
+      const EARLIEST_MS_AGO = 450;
+
+      /** A user's switch of the angle only, sent at once: Cycle Camera's. */
+      async function angleSwitch(): Promise<void> {
+        await requestCameraSwitch(
+          vi.fn(),
+          options({ by: "cycle-camera", name: "cycle camera", interruptsWalks: false, jumps: quiet() }),
+        );
+      }
+
+      /** A user's switch of the car, sent at once: Next Car's. */
+      async function carSwitch(): Promise<void> {
+        await requestCameraSwitch(vi.fn(), options({ jumps: quiet() }));
+      }
+
+      /** Auto Group's request at +450, with both ages unless overridden. */
+      async function autoAt450(overrides: Partial<CameraSwitchOptions> = {}): Promise<Mock<() => void>> {
+        const auto = vi.fn();
+
+        await vi.advanceTimersByTimeAsync(1_000_450 - Date.now());
+        await requestCameraSwitch(
+          auto,
+          automatic({
+            jumps: quiet(),
+            triggeredMsAgo: TRIGGERED_MS_AGO,
+            earliestTriggerMsAgo: EARLIEST_MS_AGO,
+            ...overrides,
+          }),
+        );
+
+        return auto;
+      }
+
+      it("drops it when the user picked an angle after the car changed but before the read saw it", async () => {
+        await vi.advanceTimersByTimeAsync(100);
+        await angleSwitch();
+
+        const auto = await autoAt450();
+
+        expect(auto).not.toHaveBeenCalled();
+        expect(debug).toHaveBeenCalledWith(
+          "Camera controls: automatic switch dropped (auto group), the cycle camera switch, of the angle only, went out when what asked for it may already have happened",
+        );
+      });
+
+      it("sends it on the same timeline without the earliest moment: the trigger is the read that saw it", async () => {
+        await vi.advanceTimersByTimeAsync(100);
+        await angleSwitch();
+
+        const auto = await autoAt450({ earliestTriggerMsAgo: undefined });
+
+        expect(auto).toHaveBeenCalledOnce();
+      });
+
+      it("sends it when the user's switch in that window changed the car: that switch is what it answers", async () => {
+        await vi.advanceTimersByTimeAsync(100);
+        await carSwitch();
+
+        const auto = await autoAt450();
+
+        expect(auto).toHaveBeenCalledOnce();
+      });
+
+      it("sends it when the angle pick went out before the earliest moment", async () => {
+        vi.setSystemTime(1_000_000 - 10);
+        await angleSwitch();
+
+        const auto = await autoAt450();
+
+        expect(auto).toHaveBeenCalledOnce();
+      });
+
+      it("drops it for an angle pick at the earliest moment itself", async () => {
+        await angleSwitch();
+
+        const auto = await autoAt450();
+
+        expect(auto).not.toHaveBeenCalled();
+      });
+
+      it("sends it when a switch of the car followed the angle pick inside the window", async () => {
+        await vi.advanceTimersByTimeAsync(50);
+        await angleSwitch();
+        await vi.advanceTimersByTimeAsync(50);
+        await carSwitch();
+
+        const auto = await autoAt450();
+
+        expect(auto).toHaveBeenCalledOnce();
+      });
+
+      it("drops it when an angle pick followed a switch of the car inside the window", async () => {
+        await vi.advanceTimersByTimeAsync(50);
+        await carSwitch();
+        await vi.advanceTimersByTimeAsync(50);
+        await angleSwitch();
+
+        const auto = await autoAt450();
+
+        expect(auto).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ["shorter than triggeredMsAgo", 100],
+        ["not a finite number", Number.NaN],
+      ])("takes the trigger itself as the earliest moment when it is %s", async (_label, earliestTriggerMsAgo) => {
+        await vi.advanceTimersByTimeAsync(100);
+        await angleSwitch();
+
+        const auto = await autoAt450({ earliestTriggerMsAgo });
+
+        expect(auto).toHaveBeenCalledOnce();
+      });
+
+      it("bounds nothing on a switch that gives no trigger", async () => {
+        await vi.advanceTimersByTimeAsync(100);
+        await angleSwitch();
+
+        const auto = await autoAt450({ triggeredMsAgo: undefined });
+
+        expect(auto).toHaveBeenCalledOnce();
+      });
+    });
+
+    it("goes out at once on a quiet replay", async () => {
+      const auto = vi.fn();
+
+      await requestCameraSwitch(auto, automatic({ jumps: quiet() }));
+
+      expect(auto).toHaveBeenCalledOnce();
     });
   });
 

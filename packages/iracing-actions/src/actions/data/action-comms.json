@@ -1415,6 +1415,9 @@
     },
     "set-camera-state": {
       "method": "api"
+    },
+    "auto-group": {
+      "method": "api"
     }
   },
   "camera-focus-dial": {
@@ -1466,6 +1469,9 @@
       "method": "api"
     },
     "focus-on-most-exciting": {
+      "method": "api"
+    },
+    "auto-group": {
       "method": "api"
     }
   },

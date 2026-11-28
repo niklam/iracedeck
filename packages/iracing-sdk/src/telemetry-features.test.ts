@@ -11,8 +11,10 @@ import {
   isPitLimiterEngaged,
   isPostRace,
   isPreGreen,
+  isReplayExitUnsettled,
   nextReplayState,
   REPLAY_EXIT_GRACE_MS,
+  replayLastShownAt,
   replayLeftForLive,
   replaySeekHeld,
   type ReplaySeekHoldUntil,
@@ -520,6 +522,73 @@ describe("telemetry-features", () => {
 
         expect(left).toMatchObject({ inReplay: true, frame: 500, cursorFrame: 500 });
         expect(replayStateAt(left, 0)).toBe(left);
+      });
+    });
+
+    describe("replayLastShownAt (#1656)", () => {
+      it("is null before any replay", () => {
+        expect(replayLastShownAt(run([[liveTick(900), 0]]))).toBeNull();
+      });
+
+      it("is the last replay tick, through the grace", () => {
+        const state = run([
+          [replayTick(500), 0],
+          [replayTick(510), 100],
+          [liveTick(900), 400],
+        ]);
+
+        expect(replayLastShownAt(state)).toBe(100);
+      });
+
+      it("is the seek hold's capped end when it runs past the last sighting", () => {
+        const sighted = run([[replayTick(500), 100]]);
+
+        expect(replayLastShownAt(replaySeekHeld(sighted, holding(2_000), 100))).toBe(2_000);
+        expect(replayLastShownAt(replaySeekHeld(sighted, holding(9_000, 3_000), 100))).toBe(3_100);
+      });
+
+      it("is the time of the plugin's own exit to live once the sighting is dropped for it", () => {
+        expect(replayLastShownAt(replayLeftForLive(run([[replayTick(500), 0]]), 250))).toBe(250);
+      });
+
+      it("is null once the step that saw the grace run out has dropped the sighting", () => {
+        const state = run([
+          [replayTick(500), 0],
+          [liveTick(900), REPLAY_EXIT_GRACE_MS + 10],
+        ]);
+
+        expect(state.inReplay).toBe(false);
+        expect(replayLastShownAt(state)).toBeNull();
+      });
+    });
+
+    describe("isReplayExitUnsettled (#1656)", () => {
+      it("is true while only the grace holds the replay: a seek's blip or an exit, not yet told apart", () => {
+        const state = run([
+          [replayTick(500), 0],
+          [liveTick(900), 300],
+        ]);
+
+        expect(isReplayExitUnsettled(state)).toBe(true);
+        expect(isReplayExitUnsettled(replayStateAt(state, REPLAY_EXIT_GRACE_MS))).toBe(false);
+      });
+
+      it("is false on a replay tick and live", () => {
+        expect(isReplayExitUnsettled(run([[replayTick(500), 0]]))).toBe(false);
+        expect(isReplayExitUnsettled(run([[liveTick(900), 0]]))).toBe(false);
+      });
+
+      it("is false in a saved replay, which has no live to leave for", () => {
+        const state = run(
+          [
+            [replayTick(500), 0],
+            [liveTick(900), 300],
+          ],
+          SAVED_REPLAY,
+        );
+
+        expect(state.inReplay).toBe(true);
+        expect(isReplayExitUnsettled(state)).toBe(false);
       });
     });
 

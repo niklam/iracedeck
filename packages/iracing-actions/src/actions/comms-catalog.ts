@@ -397,6 +397,9 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "switch-by-position": api,
     "switch-by-car-number": api,
     "set-camera-state": api,
+    // Auto Group on Car Change (#1656): switches the camera's group through SDK
+    // camera broadcasts only, so it needs no binding.
+    "auto-group": api,
   }),
 
   // The dial surface of Camera Controls (#803). Rotation cycles the camera or
@@ -425,6 +428,8 @@ export const COMMS_CATALOG: Record<string, ActionCommEntry> = {
     "focus-on-leader": api,
     "focus-on-incident": api,
     "focus-on-most-exciting": api,
+    // Auto Group on/off (#1656): the dial's own list, SDK camera broadcasts only.
+    "auto-group": api,
   }),
 
   "cockpit-misc": entry("control", {

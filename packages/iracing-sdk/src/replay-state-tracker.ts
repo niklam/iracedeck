@@ -11,6 +11,7 @@
 import {
   initialReplayState,
   nextReplayState,
+  replayLastShownAt,
   replayLeftForLive,
   replaySeekHeld,
   type ReplayState,
@@ -66,6 +67,15 @@ export class ReplayStateTracker {
         : null;
 
     this.state = replaySeekHeld(this.state, until, nowMs);
+  }
+
+  /**
+   * The last moment the replay can be taken to have been on screen, as
+   * `replayLastShownAt` reads it (#1656), or null. Read before a step: the
+   * step that sees the grace run out drops the sighting it is worked out from.
+   */
+  lastShownAt(): number | null {
+    return replayLastShownAt(this.state);
   }
 
   /** Back to live with nothing sighted — what a dropped connection means. */

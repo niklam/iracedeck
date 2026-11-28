@@ -556,6 +556,38 @@ export function replayLeftForLive(state: ReplayState, nowMs: number): ReplayStat
 }
 
 /**
+ * The last moment the replay can be taken to have been on screen (#1656), on
+ * the state's clock: the later of the last replay sighting and the seek
+ * hold's capped end, the point the exit grace runs from; with no sighting, the
+ * time of a pending live exit of the plugin's own ({@link replayLeftForLive});
+ * else null. Read it before the step that drops the sighting: when the grace
+ * runs out the replay was left at this moment, a second before the step that
+ * says so, and anything sent after it was sent outside the replay.
+ */
+export function replayLastShownAt(state: ReplayState): number | null {
+  const seenAt = state.replaySeenAt;
+
+  if (seenAt === null) return state.liveExitAt;
+
+  const holdEnd = seekHoldEnd(state);
+
+  return holdEnd === null ? seenAt : Math.max(seenAt, holdEnd);
+}
+
+/**
+ * Whether the state holds a replay the last tick no longer showed (#1656):
+ * `inReplay` only through the exit grace or a seek hold, outside a saved
+ * replay. That is a seek's blip, a seek of the plugin's own under way, or the
+ * replay left with iRacing's own controls, and only the grace running out
+ * tells the last apart from the others: until it does, nobody knows whether
+ * the camera is in the replay or live. A saved replay has no live to leave
+ * for, so it is never unsettled.
+ */
+export function isReplayExitUnsettled(state: ReplayState): boolean {
+  return state.inReplay && !state.tickReplayPlaying && !state.replayOnlySession;
+}
+
+/**
  * Whether the session is in a POST-RACE phase — the checkered flag is out or the
  * field is in cool-down. The mirror image of {@link isPreGreen}: both are
  * defined as EXPLICIT state sets (not a `=== Racing` negation) so a missing

@@ -38,7 +38,7 @@ It appears on the dials where iRaceDeck can work the result out before you let g
 - **Setup Brakes** — ABS on/off
 - **Setup Traction** — TC on/off
 - **Setup Chassis** — which spring side the dial switches to
-- **Camera Controls** — the car number a Focus My Car press will jump to
+- **Camera Controls** — the car number a Focus My Car press will jump to, or `AUTO ON` / `AUTO OFF` for Auto Group on/off
 - **Replay Markers** — the marker a Delete Marker press will remove, or the marker an Add Marker press will place
 - **Replay Control** — what the replay will do: the speed and direction it will play at, the pause, the jump to live (`LIVE`) or to the race start (`START`), or, for Jump to My Car, `MY CAR`; a Long Press left at **Mode default** previews what it runs in the dial's mode (Jump to My Car in Track Order, Cars by Number and Cars by Position, Set 1x and Play in the others)
 

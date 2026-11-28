@@ -418,12 +418,12 @@ describe("SDKController", () => {
       vi.mocked(mockSdk.isConnected).mockReturnValue(false);
       vi.mocked(mockSdk.connect).mockReturnValue(false);
 
-      // The reconnect interval (2000ms) will call tryConnect
-      // connect() returns false, so isConnected changes from true to false
-      // This triggers notification to subscribers
+      // The reconnect interval (2000ms) will call tryConnect, which finds the
+      // connection dropped and tells the subscribers with no telemetry, as
+      // every other loss does.
       vi.advanceTimersByTime(2000);
 
-      expect(callback).toHaveBeenCalledWith(expect.anything(), false);
+      expect(callback).toHaveBeenCalledWith(null, false);
     });
   });
 
@@ -1355,5 +1355,364 @@ describe("SDKController subscriber isolation (#1558)", () => {
       // At t=150 s, 60 s after the last throw: 2 + 9000 polls in all.
       expect(reported[2].message).toBe("broken-action recovered: no errors for 60s, after 9002 times in all");
     });
+  });
+});
+
+describe("SDKController context boundaries (#1656)", () => {
+  let mockSdk: IRacingSDK;
+  let controller: SDKController;
+  let seen: string[];
+  let lines: LogLine[];
+
+  const tick = (sessionTick: number, fields: Partial<TelemetryData> = {}): TelemetryData =>
+    ({
+      SessionTick: sessionTick,
+      IsReplayPlaying: false,
+      ReplayFrameNum: 0,
+      ReplayFrameNumEnd: 1,
+      ...fields,
+    }) as TelemetryData;
+
+  /** Records every boundary in `seen`. */
+  function listen(): void {
+    controller.onContextBoundary((boundary) => seen.push(boundary));
+  }
+
+  /** Records every subscriber delivery in `seen`, as `sub:tick` / `sub:null`, in one order with the boundaries. */
+  function subscribe(): void {
+    controller.subscribe("sub", (telemetry) => seen.push(telemetry === null ? "sub:null" : "sub:tick"));
+  }
+
+  /** Reads `t` on each of the next `polls` polls. */
+  function poll(t: TelemetryData | null, polls = 1): void {
+    vi.mocked(mockSdk.getTelemetry).mockReturnValue(t);
+    vi.advanceTimersByTime(TELEMETRY_INTERVAL_MS * polls);
+  }
+
+  /** The boundaries alone, without the subscriber deliveries. */
+  const boundaries = (): string[] => seen.filter((entry) => !entry.startsWith("sub:"));
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    mockSdk = createMockSDK();
+    const recording = createRecordingLogger();
+    lines = recording.lines;
+    controller = new SDKController(mockSdk, recording.logger);
+    seen = [];
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
+
+  it("a listener is not a subscriber: registering starts no poll and connects nothing", () => {
+    listen();
+
+    expect(vi.getTimerCount()).toBe(0);
+    expect(mockSdk.connect).not.toHaveBeenCalled();
+  });
+
+  describe("the connection lost", () => {
+    beforeEach(() => {
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(tick(1, { SessionNum: 0 }));
+      listen();
+      subscribe();
+      poll(tick(2, { SessionNum: 0 }));
+      seen.length = 0;
+    });
+
+    it("is told when the poll notices the drop, before any subscriber hears of it", () => {
+      // The loop's guard reads connected once more; update()'s own check then reads the drop.
+      vi.mocked(mockSdk.isConnected).mockReturnValueOnce(true).mockReturnValue(false);
+      poll(null);
+
+      expect(seen).toEqual(["connection-lost", "sub:null"]);
+    });
+
+    it("is told when a connect attempt finds iRacing gone, before any subscriber hears of it", () => {
+      vi.mocked(mockSdk.isConnected).mockReturnValue(false);
+      vi.mocked(mockSdk.connect).mockReturnValue(false);
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(null);
+      vi.advanceTimersByTime(2000);
+
+      expect(seen).toEqual(["connection-lost", "sub:null"]);
+    });
+
+    it("is told when the app monitor disables reconnecting (iRacing terminated)", () => {
+      controller.setReconnectEnabled(false);
+
+      expect(seen).toEqual(["connection-lost", "sub:null"]);
+    });
+
+    it("is told when the last subscriber leaves, and the listener stays registered for the next connection", () => {
+      controller.unsubscribe("sub");
+      expect(seen).toEqual(["connection-lost"]);
+
+      seen.length = 0;
+      subscribe();
+      controller.unsubscribe("sub");
+      expect(boundaries()).toEqual(["connection-lost"]);
+    });
+
+    it("is told when the reconnect poll finds the connection dropped though iRacing is back by its connect, before the new connection is used", () => {
+      // iRacing dropped and returned between two reconnect polls: the SDK reads
+      // the old connection gone, and the connect at once succeeds.
+      vi.mocked(mockSdk.isConnected).mockReturnValue(false);
+      vi.mocked(mockSdk.connect).mockReturnValue(true);
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(tick(2, { SessionNum: 3 }));
+      vi.advanceTimersByTime(2000);
+
+      expect(seen).toEqual(["connection-lost", "sub:null", "sub:tick"]);
+      expect(controller.getConnectionStatus()).toBe(true);
+    });
+
+    it("starts that new connection with nothing of the old one: no session change, and no tick deduped against the old one", () => {
+      vi.mocked(mockSdk.isConnected).mockReturnValue(false);
+      vi.mocked(mockSdk.connect).mockReturnValue(true);
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(tick(2, { SessionNum: 3 }));
+      vi.advanceTimersByTime(2000);
+      vi.mocked(mockSdk.isConnected).mockReturnValue(true);
+      seen.length = 0;
+
+      // The same SessionTick as the old connection's last: a carried-over
+      // dedupe would swallow it, and the old session (0) would read as changed.
+      poll(tick(2, { SessionNum: 3 }));
+      poll(tick(3, { SessionNum: 3 }));
+
+      expect(seen).toEqual(["sub:tick", "sub:tick"]);
+    });
+
+    it("forgets the session, so the first session after a reconnect is no session change", () => {
+      vi.mocked(mockSdk.isConnected).mockReturnValueOnce(true).mockReturnValue(false);
+      poll(null);
+      vi.mocked(mockSdk.isConnected).mockReturnValue(true);
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(tick(1, { SessionNum: 3 }));
+      vi.advanceTimersByTime(2000);
+      poll(tick(2, { SessionNum: 3 }));
+
+      expect(controller.getConnectionStatus()).toBe(true);
+      expect(boundaries()).toEqual(["connection-lost"]);
+    });
+  });
+
+  describe("a session change", () => {
+    beforeEach(() => {
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(tick(1, { SessionNum: 0 }));
+      listen();
+      subscribe();
+    });
+
+    it("is told on the first read in another session, once", () => {
+      poll(tick(2, { SessionNum: 0 }));
+      poll(tick(3, { SessionNum: 1 }));
+      poll(tick(4, { SessionNum: 1 }), 5);
+
+      expect(boundaries()).toEqual(["session-changed"]);
+    });
+
+    it("is told before the subscribers hear the tick", () => {
+      poll(tick(2, { SessionNum: 0 }));
+      seen.length = 0;
+      poll(tick(3, { SessionNum: 1 }));
+
+      expect(seen).toEqual(["session-changed", "sub:tick"]);
+    });
+
+    it("is told even on a poll the SessionTick dedupe drops", () => {
+      poll(tick(2, { SessionNum: 0 }));
+      seen.length = 0;
+      poll(tick(2, { SessionNum: 1 }));
+
+      expect(seen).toEqual(["session-changed"]);
+    });
+
+    it("is not one when a seek reads -1 and lands in the same session", () => {
+      poll(tick(2, { SessionNum: 2 }));
+      seen.length = 0;
+      poll(tick(3, { SessionNum: -1 }));
+      poll(tick(4, { SessionNum: 2 }));
+
+      expect(boundaries()).toEqual([]);
+    });
+
+    it("is one when a seek reads -1 and lands in another session", () => {
+      poll(tick(2, { SessionNum: 2 }));
+      seen.length = 0;
+      poll(tick(3, { SessionNum: -1 }));
+      poll(tick(4, { SessionNum: 1 }));
+
+      expect(boundaries()).toEqual(["session-changed"]);
+    });
+
+    it("is not one for the first session read, nor for reads without the field", () => {
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(tick(1));
+      controller.unsubscribe("sub");
+      seen.length = 0;
+      subscribe();
+
+      poll(tick(2));
+      poll(tick(3, { SessionNum: 0 }));
+      poll(tick(4));
+      poll(tick(5, { SessionNum: 0 }));
+
+      expect(boundaries()).toEqual([]);
+    });
+  });
+
+  describe("a replay entered or left", () => {
+    const replay = (sessionTick: number, frame: number, fields: Partial<TelemetryData> = {}): TelemetryData =>
+      tick(sessionTick, { IsReplayPlaying: true, ReplayFrameNum: frame, ReplayFrameNumEnd: 100, ...fields });
+
+    beforeEach(() => {
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(tick(1));
+      listen();
+      subscribe();
+      poll(tick(2));
+      seen.length = 0;
+    });
+
+    it("is told on the first replay tick, before the subscribers hear it", () => {
+      poll(replay(3, 500));
+
+      expect(seen).toEqual(["replay-entered", "sub:tick"]);
+    });
+
+    it("follows the debounced state: the blip after a seek is neither, the grace running out is the leave", () => {
+      poll(replay(3, 500));
+      seen.length = 0;
+
+      // The ~300 ms blip after a seek, then the replay again.
+      poll(tick(4), 30);
+      poll(replay(5, 800));
+      expect(boundaries()).toEqual([]);
+
+      // Left for real: told once the grace has run out on a repeated tick, not before.
+      poll(tick(6), 90);
+      expect(boundaries()).toEqual([]);
+      poll(tick(6), 20);
+      expect(boundaries()).toEqual(["replay-left"]);
+    });
+
+    it("the plugin's own goToEnd is told as a leave once the first live tick shows it", () => {
+      poll(replay(3, 500));
+      seen.length = 0;
+
+      controller.noteReplayLeftForLive();
+      poll(replay(4, 500));
+      expect(boundaries()).toEqual([]);
+      poll(tick(5));
+
+      expect(boundaries()).toEqual(["replay-left"]);
+    });
+
+    describe("the moment each is told with", () => {
+      let moments: Array<[string, number]>;
+
+      beforeEach(() => {
+        moments = [];
+        controller.onContextBoundary((boundary, passedAtMs) => moments.push([boundary, passedAtMs]));
+      });
+
+      it("a leave as the grace runs out is told with the last replay tick, a second earlier", () => {
+        poll(replay(3, 500));
+        const lastReplayTick = Date.now();
+        poll(tick(4), 120);
+
+        expect(moments).toEqual([
+          ["replay-entered", lastReplayTick],
+          ["replay-left", lastReplayTick],
+        ]);
+      });
+
+      it("a leave after a seek hold of the plugin's own is told with the hold's end", () => {
+        poll(replay(3, 500));
+        controller.noteReplaySeekHold({ remainingMs: 2000, maxPastSightingMs: 10_000 });
+        const holdEnd = Date.now() + 2000;
+        poll(tick(4), 400);
+
+        expect(moments.filter(([boundary]) => boundary === "replay-left")).toEqual([["replay-left", holdEnd]]);
+      });
+
+      it("the plugin's own goToEnd is told with the time it was sent", () => {
+        poll(replay(3, 500));
+        poll(replay(4, 500));
+        controller.noteReplayLeftForLive();
+        const sentAt = Date.now();
+        poll(replay(5, 500));
+        poll(tick(6));
+
+        expect(moments.filter(([boundary]) => boundary === "replay-left")).toEqual([["replay-left", sentAt]]);
+      });
+
+      it("an enter, a session change and a connection loss are told with the time they were seen", () => {
+        poll(replay(3, 500));
+        const enteredAt = Date.now();
+        poll(replay(4, 500, { SessionNum: 0 }));
+        poll(replay(5, 500, { SessionNum: 1 }));
+        const changedAt = Date.now();
+        vi.advanceTimersByTime(50);
+        controller.setReconnectEnabled(false);
+
+        expect(moments).toEqual([
+          ["replay-entered", enteredAt],
+          ["session-changed", changedAt],
+          ["connection-lost", Date.now()],
+        ]);
+      });
+    });
+
+    it("a replay open at a disconnect is no leave of its own: the connection loss covers it", () => {
+      poll(replay(3, 500));
+      seen.length = 0;
+
+      controller.setReconnectEnabled(false);
+
+      expect(boundaries()).toEqual(["connection-lost"]);
+    });
+  });
+
+  it("the returned function removes the listener", () => {
+    const listener = vi.fn();
+    const remove = controller.onContextBoundary(listener);
+    subscribe();
+
+    remove();
+    controller.unsubscribe("sub");
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it("a listener's throw is reported under its own id and stops neither another listener nor the subscribers", () => {
+    vi.mocked(mockSdk.getTelemetry).mockReturnValue(tick(1));
+    controller.onContextBoundary(() => {
+      throw new Error("listener failed");
+    });
+    listen();
+    subscribe();
+    seen.length = 0;
+
+    expect(() => controller.setReconnectEnabled(false)).not.toThrow();
+
+    expect(seen).toEqual(["connection-lost", "sub:null"]);
+    const reported = reporterLines(lines).filter((line) => line.level === "error");
+    expect(reported).toHaveLength(1);
+    expect(reported[0].message).toMatch(/^controller:context-boundary:0 threw: Error: listener failed\n/);
+  });
+
+  it("under rethrow, a listener's throw leaves the entry point once every subscriber heard of the change", () => {
+    const rethrowing = new SDKController(mockSdk, undefined, { onSubscriberError: "rethrow" });
+    vi.mocked(mockSdk.getTelemetry).mockReturnValue(tick(1));
+    rethrowing.onContextBoundary(() => {
+      throw new Error("listener failed");
+    });
+    const subscriber = vi.fn();
+    rethrowing.subscribe("sub", subscriber);
+    subscriber.mockClear();
+
+    expect(() => rethrowing.setReconnectEnabled(false)).toThrow("listener failed");
+
+    expect(subscriber).toHaveBeenCalledWith(null, false);
+    expect(rethrowing.getConnectionStatus()).toBe(false);
   });
 });

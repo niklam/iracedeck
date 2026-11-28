@@ -7,6 +7,7 @@
 import { IRacingNative } from "@iracedeck/iracing-native";
 import { type ErrorPolicy, ILogger, silentLogger } from "@iracedeck/logger";
 
+import { endFocusAtContextBoundaries } from "./commands/CameraCommand.js";
 import {
   CameraCommand,
   ChatCommand,
@@ -118,6 +119,11 @@ export function createSDK(logger: ILogger = silentLogger, options: SDKFactoryOpt
     onSubscriberError: options.onSubscriberError,
   });
   const commands = createCommands(native, logger, options);
+
+  // The camera's director-focus record outlives every connection, session and
+  // replay this bundle sees, so it ends at each boundary the controller
+  // reports (#1656). A listener, not a subscriber: it keeps no poll running.
+  endFocusAtContextBoundaries(commands.camera, controller);
 
   return { sdk, controller, commands };
 }

@@ -108,6 +108,7 @@
 				<option value="switch-by-position">Switch by Position</option>
 				<option value="switch-by-car-number">Switch by Car Number</option>
 				<option value="set-camera-state">Set Camera State</option>
+				<option value="auto-group">Auto Group on Car Change</option>
 			</sdpi-select>
 		</sdpi-item>
 
@@ -136,6 +137,27 @@
 			<div class="camera-groups-buttons">
 				<button id="btn-select-all" type="button">Select All</button>
 				<button id="btn-clear" type="button">Clear Selection</button>
+			</div>
+		</div>
+
+		<%# Auto Group on Car Change (#1656): the key's own list (autoGroupSubset, the %>
+		<%# same name → boolean map as Cycle Camera's subset; TV1-3 ticked on a fresh key) %>
+		<%# and how the next group is picked from it. Defaults mirror auto-group-pick.ts. %>
+		<div id="auto-group-section" class="hidden">
+			<sdpi-item label="Pick">
+				<sdpi-select setting="autoGroupPick" default="in-order">
+					<option value="in-order">In order</option>
+					<option value="random">Random</option>
+				</sdpi-select>
+			</sdpi-item>
+			<div class="ird-section-heading">Camera Groups</div>
+			<div id="auto-group-grid" class="camera-groups-grid"></div>
+			<div class="camera-groups-buttons">
+				<button id="auto-group-btn-select-all" type="button">Select All</button>
+				<button id="auto-group-btn-clear" type="button">Clear Selection</button>
+			</div>
+			<div class="ird-supporting-text">
+				A press turns it on or off. While it is on, each time the camera moves to another car, it switches to the next ticked group the track has.
 			</div>
 		</div>
 
@@ -224,6 +246,7 @@
 					<option value="focus-on-leader">Focus on Leader</option>
 					<option value="focus-on-incident">Focus on Incident</option>
 					<option value="focus-on-most-exciting">Focus on Most Exciting</option>
+					<option value="auto-group">Auto Group on/off</option>
 				</sdpi-select>
 			</sdpi-item>
 
@@ -236,6 +259,7 @@
 					<option value="focus-on-leader">Focus on Leader</option>
 					<option value="focus-on-incident">Focus on Incident</option>
 					<option value="focus-on-most-exciting">Focus on Most Exciting</option>
+					<option value="auto-group">Auto Group on/off</option>
 				</sdpi-select>
 			</sdpi-item>
 
@@ -247,6 +271,7 @@
 					<option value="focus-on-leader">Focus on Leader</option>
 					<option value="focus-on-incident">Focus on Incident</option>
 					<option value="focus-on-most-exciting">Focus on Most Exciting</option>
+					<option value="auto-group">Auto Group on/off</option>
 				</sdpi-select>
 			</sdpi-item>
 
@@ -258,9 +283,30 @@
 					<option value="focus-on-leader">Focus on Leader</option>
 					<option value="focus-on-incident">Focus on Incident</option>
 					<option value="focus-on-most-exciting">Focus on Most Exciting</option>
+					<option value="auto-group">Auto Group on/off</option>
 				</sdpi-select>
 			</sdpi-item>
 			<% } %>
+
+			<%# Auto Group on/off (#1656): the dial's own list and pick order, shown while %>
+			<%# any gesture above is Auto Group on/off. Defaults mirror the key's. %>
+			<div id="dial-auto-group-section" class="hidden">
+				<sdpi-item label="Pick">
+					<sdpi-select setting="dial.autoGroupPick" default="in-order">
+						<option value="in-order">In order</option>
+						<option value="random">Random</option>
+					</sdpi-select>
+				</sdpi-item>
+				<div class="ird-section-heading">Auto Group Camera Groups</div>
+				<div id="dial-auto-group-grid" class="camera-groups-grid"></div>
+				<div class="camera-groups-buttons">
+					<button id="dial-auto-group-btn-select-all" type="button">Select All</button>
+					<button id="dial-auto-group-btn-clear" type="button">Clear Selection</button>
+				</div>
+				<div class="ird-supporting-text">
+					Auto Group on/off uses this dial's own list. While it is on, each time the camera moves to another car, it switches to the next ticked group the track has.
+				</div>
+			</div>
 
 			<%- include('dial-appearance') %>
 		</div>
@@ -313,6 +359,10 @@
 					"RR Susp": "Suspension RR"
 				};
 				var DEFAULT_ENABLED = ["Nose", "Cockpit", "Chase", "TV1", "TV2", "TV3"];
+				// Auto Group on Car Change's fresh list (#1656): the three groups every
+				// track has — auto-group-pick.ts AUTO_GROUP_DEFAULT_GROUPS, held to it
+				// by camera-focus-pi.test.ts like the lists above.
+				var AUTO_GROUP_DEFAULT_ENABLED = ["TV1", "TV2", "TV3"];
 				// Legacy spellings an older PI saved (camera-groups.ts LEGACY_NAMES).
 				// The action reads a legacy key as its canonical group, so the grid
 				// folds it in too — otherwise it shows the group off while the key
@@ -365,11 +415,13 @@
 					return Object.create(null);
 				}
 
-				function isGroupEnabled(state, name) {
+				// `defaults` is the grid's own fresh list: Cycle Camera's DEFAULT_ENABLED,
+				// or Auto Group's AUTO_GROUP_DEFAULT_ENABLED (#1656).
+				function isGroupEnabled(state, name, defaults) {
 					if (own(state, name)) {
 						return state[name] === true;
 					}
-					return DEFAULT_ENABLED.indexOf(name) !== -1;
+					return defaults.indexOf(name) !== -1;
 				}
 
 				// A legacy key enables its canonical group when either is on (the
@@ -414,17 +466,17 @@
 					return state;
 				}
 
-				function ensureAllGroupsTracked(state) {
+				function ensureAllGroupsTracked(state, defaults) {
 					for (var i = 0; i < ALL_GROUPS.length; i++) {
 						if (!own(state, ALL_GROUPS[i])) {
-							state[ALL_GROUPS[i]] = DEFAULT_ENABLED.indexOf(ALL_GROUPS[i]) !== -1;
+							state[ALL_GROUPS[i]] = defaults.indexOf(ALL_GROUPS[i]) !== -1;
 						}
 					}
 				}
 
-				// Shared grid renderer — the SAME markup for the keypad Cycle Camera
-				// selector and the dial Cycle Camera selector (#803).
-				function renderGroupCheckboxes(gridId, state, onToggle) {
+				// Shared grid renderer — the SAME markup for the keypad and dial Cycle
+				// Camera selectors (#803) and the keypad and dial Auto Group ones (#1656).
+				function renderGroupCheckboxes(gridId, state, onToggle, defaults) {
 					var grid = document.getElementById(gridId);
 					if (!grid) return;
 
@@ -434,7 +486,7 @@
 					var focusedGroup = active && active !== grid && grid.contains(active) && active.dataset ? active.dataset.group : undefined;
 
 					grid.innerHTML = "";
-					drawGroupCheckboxes(grid, state, onToggle);
+					drawGroupCheckboxes(grid, state, onToggle, defaults);
 
 					if (focusedGroup === undefined) return;
 
@@ -448,7 +500,7 @@
 					}
 				}
 
-				function drawGroupCheckboxes(grid, state, onToggle) {
+				function drawGroupCheckboxes(grid, state, onToggle, defaults) {
 
 					for (var s = 0; s < GROUP_SECTIONS.length; s++) {
 						var section = GROUP_SECTIONS[s];
@@ -462,7 +514,7 @@
 							var label = document.createElement("label");
 							var checkbox = document.createElement("input");
 							checkbox.type = "checkbox";
-							checkbox.checked = isGroupEnabled(state, name);
+							checkbox.checked = isGroupEnabled(state, name, defaults);
 							checkbox.dataset.group = name;
 							checkbox.addEventListener("change", function (ev) {
 								onToggle(ev.target.dataset.group, ev.target.checked);
@@ -476,7 +528,7 @@
 					// Remembered groups (#1653): the custom groups the catalog knows plus any
 					// the stored subset ticks — this track's first, the rest dimmed. Never
 					// ticked by default: isGroupEnabled reads a name absent from the map as
-					// off unless it is in DEFAULT_ENABLED, which holds only standard groups.
+					// off unless it is in the grid's defaults, which hold only standard groups.
 					var remembered = window.irdCameraGroups ? window.irdCameraGroups.rememberedGroups(catalog, state) : [];
 					if (remembered.length === 0) return;
 
@@ -492,7 +544,7 @@
 						entryLabel.title = entry.title;
 						var entryBox = document.createElement("input");
 						entryBox.type = "checkbox";
-						entryBox.checked = isGroupEnabled(state, entry.name);
+						entryBox.checked = isGroupEnabled(state, entry.name, defaults);
 						entryBox.dataset.group = entry.name;
 						entryBox.addEventListener("change", function (ev) {
 							onToggle(ev.target.dataset.group, ev.target.checked);
@@ -506,8 +558,11 @@
 				// A camera-group selector bound to a settings hook. The keypad uses a
 				// per-action hook (with a legacy global fallback); the dial uses the
 				// GLOBAL cameraGroupSubset directly — the same set the dial rotation
-				// honors via getEnabledGroupNames(undefined) (#803).
-				function createGroupSelector(gridId, selectAllId, clearId) {
+				// honors via getEnabledGroupNames(undefined) (#803). The two Auto Group
+				// grids (#1656) bind the key's autoGroupSubset and the dial's
+				// dial.autoGroupSubset, with no fallback. `defaults` is the list a grid
+				// shows, and fills in on its first choice, while nothing is stored.
+				function createGroupSelector(gridId, selectAllId, clearId, defaults) {
 					var state = emptyGroupMap();
 					var save = null;
 					// Whether the state is a real stored value (pushed or held) or the
@@ -555,7 +610,7 @@
 								return;
 							}
 							known = true;
-							ensureAllGroupsTracked(state);
+							ensureAllGroupsTracked(state, defaults);
 							// A custom group is in the map only while ticked (#1653), so
 							// unticking one drops it rather than storing false.
 							if (checked || ALL_GROUPS.indexOf(name) !== -1) {
@@ -564,13 +619,13 @@
 								delete state[name];
 							}
 							persist();
-						});
+						}, defaults);
 						applyReady();
 					}
 					function setAll(value) {
 						if (!ready) return;
 						known = true;
-						ensureAllGroupsTracked(state);
+						ensureAllGroupsTracked(state, defaults);
 						for (var i = 0; i < ALL_GROUPS.length; i++) {
 							state[ALL_GROUPS[i]] = value;
 						}
@@ -651,8 +706,26 @@
 					};
 				}
 
-				var keypadSelector = createGroupSelector("camera-groups-grid", "btn-select-all", "btn-clear");
-				var dialSelector = createGroupSelector("dial-camera-groups-grid", "dial-btn-select-all", "dial-btn-clear");
+				var keypadSelector = createGroupSelector("camera-groups-grid", "btn-select-all", "btn-clear", DEFAULT_ENABLED);
+				var dialSelector = createGroupSelector("dial-camera-groups-grid", "dial-btn-select-all", "dial-btn-clear", DEFAULT_ENABLED);
+				var autoGroupSelector = createGroupSelector(
+					"auto-group-grid",
+					"auto-group-btn-select-all",
+					"auto-group-btn-clear",
+					AUTO_GROUP_DEFAULT_ENABLED
+				);
+				var dialAutoGroupSelector = createGroupSelector(
+					"dial-auto-group-grid",
+					"dial-auto-group-btn-select-all",
+					"dial-auto-group-btn-clear",
+					AUTO_GROUP_DEFAULT_ENABLED
+				);
+				var allSelectors = [keypadSelector, dialSelector, autoGroupSelector, dialAutoGroupSelector];
+
+				// The dial's gesture slots (#1656): the Auto Group section shows while
+				// any of them is Auto Group on/off. A knob build compiles only Press.
+				var DIAL_GESTURE_SETTINGS = ["dial.pressAction", "dial.longPressAction", "dial.tapAction", "dial.longTouchAction"];
+				var AUTO_GROUP_VALUE = "auto-group";
 
 				// Conditional visibility
 				function updateVisibility(target) {
@@ -698,6 +771,10 @@
 					if (cameraGroupNote) {
 						cameraGroupNote.classList.toggle("hidden", target !== "change-camera");
 					}
+					var autoGroupSection = document.getElementById("auto-group-section");
+					if (autoGroupSection) {
+						autoGroupSection.classList.toggle("hidden", target !== AUTO_GROUP_VALUE);
+					}
 				}
 
 				// Dial Mode visibility — the shared camera-groups selector shows only
@@ -705,6 +782,28 @@
 				function updateDialVisibility(mode) {
 					var section = document.getElementById("dial-camera-groups-section");
 					if (section) section.classList.toggle("hidden", mode !== "camera");
+				}
+
+				// The dial's gesture selects this build compiled, in slot order.
+				function dialGestureSelects() {
+					var found = [];
+					for (var i = 0; i < DIAL_GESTURE_SETTINGS.length; i++) {
+						var select = document.querySelector("sdpi-select[setting=\"" + DIAL_GESTURE_SETTINGS[i] + "\"]");
+						if (select) found.push(select);
+					}
+					return found;
+				}
+
+				// The dial's Auto Group list shows while any gesture slot is Auto Group
+				// on/off (#1656).
+				function updateDialAutoGroupVisibility(selects) {
+					var section = document.getElementById("dial-auto-group-section");
+					if (!section) return;
+					var any = false;
+					for (var i = 0; i < selects.length; i++) {
+						if (selects[i].value === AUTO_GROUP_VALUE) any = true;
+					}
+					section.classList.toggle("hidden", !any);
 				}
 
 				async function initializePI() {
@@ -724,8 +823,7 @@
 							if (raw === lastCatalog) return;
 							lastCatalog = raw;
 							catalog = window.irdCameraGroups ? window.irdCameraGroups.parseCatalog(value) : null;
-							keypadSelector.render();
-							dialSelector.render();
+							for (var i = 0; i < allSelectors.length; i++) allSelectors[i].render();
 						}
 						var catalogHook = window.SDPIComponents.useGlobalSettings(CATALOG_KEY, applyCatalog);
 						// sdpi hands a subscription only the pushes after it, and this one
@@ -750,7 +848,6 @@
 						var keypadResolved = false;
 						var legacyGroups = null;
 						var legacyKnown = false;
-						var dialKnown = false;
 						// A delivery is taken only when it is a change for the grid it feeds
 						// (the selector's `accept`, #1653 review): an echo of the grid's own
 						// saves and a repeat of an older value never replace an unsaved edit.
@@ -795,19 +892,33 @@
 							// subset an earlier push brought and this one cleared (#1653 review).
 							keypadSelector.setReady(legacyKnown);
 						}
-						function takeDial(value, held) {
-							if (!dialSelector.accept(rawOf(value))) return;
-							dialKnown = true;
-							var groups = readGroups(value);
-							if (groups) {
-								if (held) dialSelector.seedState(groups);
-								else dialSelector.setState(groups);
-							} else if (held) {
-								dialSelector.showDefault(emptyGroupMap());
-							} else {
-								dialSelector.setDefault(emptyGroupMap());
+						// A grid bound to one subset with no fallback — the dial's global
+						// one, and the two Auto Group lists (#1656): nothing stored shows the
+						// grid's defaults, and the grid takes choices once its subscription
+						// or its held value has answered.
+						function bindOwnSubset(selector, subscribe) {
+							var settled = false;
+							function take(value, held) {
+								if (!selector.accept(rawOf(value))) return;
+								settled = true;
+								var groups = readGroups(value);
+								if (groups) {
+									if (held) selector.seedState(groups);
+									else selector.setState(groups);
+								} else if (held) {
+									selector.showDefault(emptyGroupMap());
+								} else {
+									selector.setDefault(emptyGroupMap());
+								}
+								selector.markReady();
 							}
-							dialSelector.markReady();
+							var hook = subscribe(function (value) {
+								take(value, false);
+							});
+							selector.setSave(hook[1]);
+							hook[0]().then(function (held) {
+								if (!settled) take(held, true);
+							});
 						}
 
 						var legacyHook = window.SDPIComponents.useGlobalSettings(SETTING_KEY, takeLegacy);
@@ -815,10 +926,17 @@
 							takeKeypad(value, false);
 						});
 						keypadSelector.setSave(keypadHook[1]);
-						var dialHook = window.SDPIComponents.useGlobalSettings(SETTING_KEY, function (value) {
-							takeDial(value, false);
+						bindOwnSubset(dialSelector, function (callback) {
+							return window.SDPIComponents.useGlobalSettings(SETTING_KEY, callback);
 						});
-						dialSelector.setSave(dialHook[1]);
+						bindOwnSubset(autoGroupSelector, function (callback) {
+							return window.SDPIComponents.useSettings("autoGroupSubset", callback);
+						});
+						// A dotted key reads and writes settings.dial.autoGroupSubset,
+						// as every dial.* sdpi binding does.
+						bindOwnSubset(dialAutoGroupSelector, function (callback) {
+							return window.SDPIComponents.useSettings("dial.autoGroupSubset", callback);
+						});
 
 						keypadHook[0]().then(function (held) {
 							if (!keypadResolved) takeKeypad(held, true);
@@ -826,17 +944,12 @@
 						legacyHook[0]().then(function (held) {
 							if (!legacyKnown) takeLegacy(held);
 						});
-						dialHook[0]().then(function (held) {
-							if (!dialKnown) takeDial(held, true);
-						});
 					} else {
 						// No settings to wait for, and none to save to.
-						keypadSelector.markReady();
-						dialSelector.markReady();
+						for (var r = 0; r < allSelectors.length; r++) allSelectors[r].markReady();
 					}
 
-					keypadSelector.wireButtons();
-					dialSelector.wireButtons();
+					for (var w = 0; w < allSelectors.length; w++) allSelectors[w].wireButtons();
 
 					// Restrict car number input to digits only (preserve leading zeros)
 					var carNumberField = document.getElementById("car-number-field");
@@ -887,8 +1000,34 @@
 						});
 					}
 
-					keypadSelector.render();
-					dialSelector.render();
+					// Dial gesture visibility (#1656): the same three signals as the
+					// Mode selects — a change, an input, and the poll that catches a
+					// value sdpi sets from stored settings.
+					var gestureSelects = dialGestureSelects();
+					var refreshDialAutoGroup = function () {
+						updateDialAutoGroupVisibility(gestureSelects);
+					};
+					refreshDialAutoGroup();
+					for (var g = 0; g < gestureSelects.length; g++) {
+						gestureSelects[g].addEventListener("change", refreshDialAutoGroup);
+						gestureSelects[g].addEventListener("input", refreshDialAutoGroup);
+					}
+					if (gestureSelects.length > 0) {
+						var lastGestures = null;
+						window.irdPoll(function () {
+							var current = gestureSelects
+								.map(function (select) {
+									return select.value;
+								})
+								.join("|");
+							if (current !== lastGestures) {
+								lastGestures = current;
+								refreshDialAutoGroup();
+							}
+						});
+					}
+
+					for (var d = 0; d < allSelectors.length; d++) allSelectors[d].render();
 
 					// Switch to the dial view last, so a slow/failed controller lookup
 					// still leaves a fully functional keypad PI (the default view).

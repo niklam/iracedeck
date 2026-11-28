@@ -100,6 +100,7 @@ import { getLiveRacePositions } from "@iracedeck/sim-events-iracing";
 import z from "zod";
 
 import { CAR_CYCLE_BINDING_KEYS } from "../../shared/car-cycle-bindings.js";
+import { noteCameraKeyTap } from "../../shared/car-cycle-focus.js";
 import { computeCarNumberTarget } from "../../shared/car-cycling.js";
 import { RepeatController } from "../../shared/repeat-controller.js";
 import {
@@ -610,7 +611,17 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
     sessionInfo: () => this.sdkController.getSessionInfo(),
     recordSource: (telemetry) => this.recordStepSource(telemetry),
     // The Track Order mode's binding (#801); `isBindingMissing` is stateless.
-    tapBinding: (settingKey) => this.tapBinding(settingKey),
+    // A Next / Previous Car tap that goes out ends the director focus the SDK
+    // keeps (#1656). The turn checked the binding when it asked, but it can
+    // be cleared while the switch waits behind a jump: then nothing is sent,
+    // and nothing is noted.
+    tapBinding: (settingKey) => {
+      if (this.isBindingMissing(settingKey)) return Promise.resolve(false);
+
+      noteCameraKeyTap(settingKey);
+
+      return this.tapBinding(settingKey);
+    },
     isBindingMissing: (keys) => this.isBindingMissing(keys),
   });
 
@@ -973,6 +984,50 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
       stillValid: () => this.activeContexts.has(contextId) && this.sdkController.getReplayState().inReplay,
       logger: this.logger,
     });
+  }
+
+  /**
+   * The Next / Previous Car (Track Order) key: taps iRacing's car binding
+   * through {@link requestKeyCameraSwitch}, or warns when it is unset. The
+   * binding is checked at the press, as Camera Controls' cycle keys check
+   * theirs: an unset one has nothing to send, so it never replaces a switch
+   * waiting behind a jump.
+   */
+  private requestCarCycleTap(contextId: string, mode: ReplayControlMode, direction: "next" | "previous"): void {
+    const key = CAR_CYCLE_BINDING_KEYS[direction];
+    const label = direction === "next" ? "Next car" : "Previous car";
+
+    if (this.isBindingMissing(key)) {
+      this.logger.warn(`${label} binding not configured — nothing sent`);
+      this.logger.debug(`binding: ${key}`);
+
+      return;
+    }
+
+    this.requestKeyCameraSwitch(contextId, mode, label.toLowerCase(), () => this.tapCarCycleBinding(key, label));
+  }
+
+  /**
+   * The car binding's tap, as the waiter sends it. Only a tap that goes out
+   * ends the director focus the SDK keeps (#1656), so a binding cleared while
+   * the switch waited behind a jump sends nothing and notes nothing; the
+   * note comes before the tap, so a tap that throws still counts as the
+   * user's pick.
+   */
+  private tapCarCycleBinding(carKey: string, label: string): Promise<boolean> {
+    if (this.isBindingMissing(carKey)) {
+      this.logger.warn(`${label} binding not configured — nothing sent`);
+      this.logger.debug(`binding: ${carKey}, cleared while the switch waited`);
+
+      return Promise.resolve(false);
+    }
+
+    noteCameraKeyTap(carKey);
+    const tapped = this.tapBinding(carKey);
+
+    this.logger.info(`${label} executed (keystroke)`);
+
+    return tapped;
   }
 
   /**
@@ -1439,23 +1494,11 @@ export class ReplayControl extends SimIRacingAction<ReplayControlSettings> {
         // Send the configured keystroke (default: V) so iRacing's own car-ordering
         // drives the cycle. Telemetry-driven selection picks the wrong driver during
         // replay-while-towed, where CamCarIdx reflects the live field.
-        this.requestKeyCameraSwitch(contextId, mode, "next car", () => {
-          const tapped = this.tapBinding(CAR_CYCLE_BINDING_KEYS.next);
-
-          this.logger.info("Next car executed (keystroke)");
-
-          return tapped;
-        });
+        this.requestCarCycleTap(contextId, mode, "next");
         break;
       }
       case "prev-car": {
-        this.requestKeyCameraSwitch(contextId, mode, "previous car", () => {
-          const tapped = this.tapBinding(CAR_CYCLE_BINDING_KEYS.previous);
-
-          this.logger.info("Previous car executed (keystroke)");
-
-          return tapped;
-        });
+        this.requestCarCycleTap(contextId, mode, "previous");
         break;
       }
       case "next-car-number":
