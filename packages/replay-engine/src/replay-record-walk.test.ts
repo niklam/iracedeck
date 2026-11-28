@@ -1260,7 +1260,7 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
     });
   });
 
-  it("sends the second queued head's jump only once the sim has delivered two new ticks after the first's", async () => {
+  it("sends the second queued head's jump only once the sim has delivered three new ticks after the first's", async () => {
     setUp();
     search("nextSession");
 
@@ -1304,8 +1304,10 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
 
     expect(order).toEqual(["a cursor 200000", "b target 250000"]);
     expect(sentAt).toHaveLength(2);
-    // The second jump went out at least two sim updates after the first, which iRacing then reliably takes.
-    expect(simUpdate(sentAt[1] ?? 0) - simUpdate(sentAt[0] ?? 0)).toBeGreaterThanOrEqual(2);
+    // The second jump went out three tick indices after the first, at least two whole sim updates later, which
+    // iRacing then reliably takes.
+    expect(simUpdate(sentAt[1] ?? 0) - simUpdate(sentAt[0] ?? 0)).toBeGreaterThanOrEqual(3);
+    expect((sentAt[1] ?? 0) - (sentAt[0] ?? 0)).toBeGreaterThan(2 * (1000 / 60));
     expect(sim.calls.filter((call) => call.startsWith("setPlayPosition"))).toEqual([
       "setPlayPosition 0 250000",
       "setPlayPosition 0 300000",
@@ -1313,7 +1315,7 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
     expect(sim.frame()).toBe(300_000);
   });
 
-  it("a fresh press a tick after a queued head's jump waits until two ticks have passed before its own goes out", async () => {
+  it("a fresh press a tick after a queued head's jump waits until three ticks have passed before its own goes out", async () => {
     setUp();
     search("nextSession");
 
@@ -1367,7 +1369,7 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
 
     expect(order).toEqual(["a cursor 200000", "b target 250000"]);
     expect(sentAt).toHaveLength(2);
-    expect(simUpdate(sentAt[1] ?? 0) - simUpdate(firstSentAt)).toBeGreaterThanOrEqual(2);
+    expect(simUpdate(sentAt[1] ?? 0) - simUpdate(firstSentAt)).toBeGreaterThanOrEqual(3);
     expect(sim.frame()).toBe(300_000);
   });
 

@@ -159,12 +159,15 @@ async function waitForSlotAhead(gateWait: number): Promise<string> {
 }
 
 /**
- * How many sim updates the next head waits for after a head's position
- * command (#1660): measured 2026-10-12, a jump 20 ms after another landed 5
- * times in 10 and one 35 ms or more after it 20 times in 20, about two
- * updates at 60 Hz.
+ * How many tick indices past the send's tick the next position command
+ * waits for (#1660). Measured 2026-10-12: a jump 20 ms after another landed
+ * 5 times in 10, and one 35 ms or more after it 20 times in 20. A send can
+ * fall late in its sim update, so two new ticks can come only about 17 to
+ * 20 ms after it; three new ticks always leave at least two whole sim
+ * updates between the sends, about 33 ms or more at 60 Hz, the 20-of-20
+ * zone. A count read back from the sim, not a time.
  */
-const TICKS_AFTER_POSITION_SEND = 2;
+const TICKS_AFTER_POSITION_SEND = 3;
 
 /**
  * Which tick a reading is (#1660): its `SessionTick`, which advances every
@@ -557,8 +560,8 @@ async function drainWaitingStarts(): Promise<void> {
       if (head === undefined) return;
 
       // The head before this one, or a press just before this one joined, sent a position command: the sim takes it
-      // on its next update, and one sent within the same update is lost. The next head reads and acts once two
-      // newer ticks show the first was taken.
+      // on its next update, and one sent within the same update is lost. The next head reads and acts once
+      // TICKS_AFTER_POSITION_SEND newer ticks show the first was taken.
       const sentMark = sentOnTick ?? (positionSendTooRecent() ? lastPositionSend : null);
 
       if (sentMark !== null) {
