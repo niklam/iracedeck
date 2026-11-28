@@ -234,6 +234,65 @@ async function waitForNewTicks(sent: TickMark): Promise<string> {
   }
 }
 
+/**
+ * The tick the last position command a step's act sent went out on, a
+ * queued head's or an immediate press's alike, or null (#1660). Kept only
+ * when the reading carries a `SessionTick`, the one mark a single read can
+ * count ticks from: what lets a press made a tick after a head's jump wait
+ * its turn rather than jump within the same sim updates.
+ */
+let lastPositionSend: TickMark | null = null;
+
+/** The gate's count of position sends and the pending target, before a step's act. */
+interface PositionMark {
+  readonly sends: number;
+  readonly targetId: number | null;
+}
+
+function positionMark(): PositionMark {
+  return { sends: replayPositionSends(), targetId: pendingReplayTarget()?.id ?? null };
+}
+
+/**
+ * The tick an act sent a position command on, when it sent one since
+ * `before` or recorded a jump's target whose seek may already be out, else
+ * null: what the next queued head waits on. A command that actually went out
+ * is also noted for the next press ({@link lastPositionSend}) when the
+ * reading carries a `SessionTick`.
+ */
+function notePositionSend(before: PositionMark): TickMark | null {
+  const after = positionMark();
+
+  if (after.sends === before.sends && after.targetId === before.targetId) return null;
+
+  const mark = tickMark(engineReads().readTelemetry());
+
+  // Only a command that went out keeps a later press waiting: a target recorded behind a pause has no seek out yet,
+  // and the next press's jump retargets it at once by the gate's table.
+  if (after.sends !== before.sends && mark.tick !== null) lastPositionSend = mark;
+
+  return mark;
+}
+
+/**
+ * Whether a position command went out fewer than
+ * {@link TICKS_AFTER_POSITION_SEND} ticks ago, by a fresh `SessionTick`.
+ * Without a tick on both readings it cannot count, and says no.
+ */
+function positionSendTooRecent(): boolean {
+  const sent = lastPositionSend;
+
+  if (sent === null || sent.tick === null) return false;
+
+  const now = tickMark(engineReads().readTelemetry());
+
+  if (now.tick !== null && now.tick - sent.tick < TICKS_AFTER_POSITION_SEND) return true;
+
+  lastPositionSend = null;
+
+  return false;
+}
+
 /** The search of the gate's a start waits for: on its way, and not one a start has already waited out. */
 function searchToWaitFor(): ReplaySearchOnItsWay | null {
   const search = replaySearchOnItsWay();
@@ -402,11 +461,21 @@ export function awaitReplayWalkStart<T>(
   options: { readonly origin?: string } = {},
 ): Promise<Awaited<T>> {
   // A command held in the slot was pressed before this press: it goes first (the drain's `replaySlotHeldBefore`).
-  if (waitingStarts.length === 0 && !isReplaySlotHeld()) {
+  // A position command that went out within the last ticks: the press waits its turn, so its own jump does not
+  // go out inside the same sim updates (the drain's wait for new ticks).
+  if (waitingStarts.length === 0 && !isReplaySlotHeld() && !positionSendTooRecent()) {
     try {
       const start = resolveReplayWalkStart(readState(), readTelemetry());
 
-      if (isSettled(start)) return Promise.resolve(act(start));
+      if (isSettled(start)) {
+        const before = positionMark();
+
+        try {
+          return Promise.resolve(act(start));
+        } finally {
+          notePositionSend(before);
+        }
+      }
     } catch (err) {
       return Promise.reject(err);
     }
@@ -487,11 +556,12 @@ async function drainWaitingStarts(): Promise<void> {
 
       if (head === undefined) return;
 
-      // The head before this one sent a position command: the sim takes it on its next update, and one sent within
-      // the same update is lost. The next head reads and acts once two newer ticks show the first was taken.
-      if (sentOnTick !== null) {
-        const sentMark = sentOnTick;
+      // The head before this one, or a press just before this one joined, sent a position command: the sim takes it
+      // on its next update, and one sent within the same update is lost. The next head reads and acts once two
+      // newer ticks show the first was taken.
+      const sentMark = sentOnTick ?? (positionSendTooRecent() ? lastPositionSend : null);
 
+      if (sentMark !== null) {
         sentOnTick = null;
 
         const outcome = await waitForNewTicks(sentMark);
@@ -569,8 +639,7 @@ async function drainWaitingStarts(): Promise<void> {
       waitingStarts.shift();
       const reason = settled.frame === null && settled.reason === "not in a replay" ? "replay-left" : "sent-on-landing";
 
-      const targetBefore = pendingReplayTarget()?.id ?? null;
-      const sendsBefore = replayPositionSends();
+      const before = positionMark();
 
       try {
         head.resolve(closeReplayGateWait(head.gateWait, reason, () => head.act(settled)));
@@ -579,9 +648,7 @@ async function drainWaitingStarts(): Promise<void> {
       }
 
       // Its act sent a position command, or recorded a jump's target whose seek may already be out.
-      if (replayPositionSends() !== sendsBefore || (pendingReplayTarget()?.id ?? null) !== targetBefore) {
-        sentOnTick = tickMark(engineReads().readTelemetry());
-      }
+      sentOnTick = notePositionSend(before);
     }
   } finally {
     if (generation === drainGeneration) draining = false;
@@ -609,6 +676,7 @@ export function _resetReplayRecordWalk(): void {
   waitingStarts = [];
   draining = false;
   waitedOutSearchId = null;
+  lastPositionSend = null;
 
   for (const start of dropped) start.reject(new ReplayWalkStartDropped());
 }

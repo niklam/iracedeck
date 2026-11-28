@@ -1313,6 +1313,64 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
     expect(sim.frame()).toBe(300_000);
   });
 
+  it("a fresh press a tick after a queued head's jump waits until two ticks have passed before its own goes out", async () => {
+    setUp();
+    search("nextSession");
+
+    const sentAt: number[] = [];
+    const setPlayPosition = vi.mocked(sim.replay.setPlayPosition);
+    const send = setPlayPosition.getMockImplementation();
+
+    setPlayPosition.mockImplementation((mode, frame) => {
+      sentAt.push(Date.now());
+
+      return send?.(mode, frame) ?? false;
+    });
+
+    const order: string[] = [];
+    const jumps: Promise<unknown>[] = [];
+    const press = (name: string) =>
+      awaitReplayWalkStart(
+        readState,
+        () => sim.telemetry(),
+        (start) => {
+          order.push(`${name} ${start.frame === null ? start.reason : `${start.from} ${start.frame}`}`);
+
+          if (start.frame === null) return;
+
+          const frame = start.frame + 50_000;
+          const jump = beginReplayJump(`test-${name}`, sim.telemetry(), undefined, Date.now(), { frame });
+
+          jumps.push(runReplayJump(jump, { frame, readTelemetry: () => sim.telemetry() }).finally(() => jump.end()));
+        },
+      );
+    const simUpdate = (t: number): number => Math.floor(t / (1000 / 60));
+    const first = press("a");
+
+    // Until the queued head acts on the landing and sends its jump.
+    for (let ms = 0; ms < 3_000 && sentAt.length === 0; ms++) await vi.advanceTimersByTimeAsync(1);
+
+    expect(order).toEqual(["a cursor 200000"]);
+
+    // One sim update later, with nobody queued and nothing held: a fresh press.
+    const firstSentAt = sentAt[0] ?? 0;
+
+    while (simUpdate(Date.now()) < simUpdate(firstSentAt) + 1) await vi.advanceTimersByTimeAsync(1);
+
+    const second = press("b");
+
+    expect(order).toEqual(["a cursor 200000"]);
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    await Promise.all([first, second]);
+    await Promise.all(jumps);
+
+    expect(order).toEqual(["a cursor 200000", "b target 250000"]);
+    expect(sentAt).toHaveLength(2);
+    expect(simUpdate(sentAt[1] ?? 0) - simUpdate(firstSentAt)).toBeGreaterThanOrEqual(2);
+    expect(sim.frame()).toBe(300_000);
+  });
+
   it("resolves every press waiting on one search to its landing", async () => {
     setUp();
     search("nextSession");
