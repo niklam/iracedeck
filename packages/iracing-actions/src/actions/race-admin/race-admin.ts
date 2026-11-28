@@ -289,10 +289,16 @@ export class RaceAdmin extends SimIRacingAction<RaceAdminSettings> {
    * `parseSettings`, so it doesn't block functionality.
    *
    * Whether the key needs migrating is judged first on the settings the host
-   * delivered, as before #1761: by the time this runs, `BaseAction` has put
-   * this appearance's `addedWithVersion` stamp into the record, and a fresh
-   * key carrying only that stamp would read as an implicit-legacy key and be
-   * backfilled to `viewed-car` instead of taking the `type-in-chat` default.
+   * delivered, not on the record. That reproduces the decision made before
+   * #1761; it does not fix it. By the time this runs, `BaseAction` has put
+   * this appearance's `addedWithVersion` stamp into the record, so judged on
+   * the record a fresh key's first event would read as an implicit-legacy key
+   * and be backfilled to `viewed-car`; judged on the payload, that first event
+   * keeps the `type-in-chat` default. Only the first event: any later event
+   * whose payload carries the stamp but no `driverTarget` still passes the
+   * implicit-legacy case and is backfilled to `viewed-car`, exactly as before
+   * #1761 — the host's echo of the stamp write, on a host that echoes, or the
+   * key's next appearance when the PI never stored a `driverTarget`.
    */
   private async persistMigratedSettings(
     ev: IDeckWillAppearEvent<RaceAdminSettings> | IDeckDidReceiveSettingsEvent<RaceAdminSettings>,
