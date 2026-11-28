@@ -3,14 +3,17 @@
  *
  * Three actions push a device-filtered bundled-profile list to their PI
  * dropdowns (Switch Profile, Race Admin's select-car, Camera Controls'
- * focus-select-car), resolve a stored profile name against the same list at
- * press time, and guard the PI write with the same change comparison so the
- * setSettings→onDidReceiveSettings echo loop terminates. All of it lives here
- * so it can't drift between the actions (#790 review, #1375): this module is
- * the one reader of the generated `profiles.json`, which the Stream Deck
- * plugin's automatic session-kind switcher (#1111) also reaches through the
- * package's `availableProfilesForDevice` export.
+ * focus-select-car) and resolve a stored profile name against the same list at
+ * press time. All three write the list through one updater,
+ * {@link deviceProfilesUpdate}, which `BaseAction.updateSettings` runs against
+ * the context's newest settings rather than the event's snapshot (#1761). All
+ * of it lives here so it can't drift between the actions (#790 review, #1375):
+ * this module is the one reader of the generated `profiles.json`, which the
+ * Stream Deck plugin's automatic session-kind switcher (#1111) also reaches
+ * through the package's `availableProfilesForDevice` export.
  */
+import type { ContextSettingsUpdater } from "@iracedeck/deck-core";
+
 import profilesData from "../actions/data/profiles.json" with { type: "json" };
 
 /** A `_deviceProfiles` entry: manifest name + clean display label (#753). */
@@ -60,4 +63,43 @@ export function profileEntriesEqual(current: readonly unknown[], entries: readon
       );
     })
   );
+}
+
+/**
+ * The settings write that pushes a device's profile list into a context's
+ * `_deviceProfiles` (#1761), for `BaseAction.updateSettings`.
+ *
+ * It reads the settings it is handed — the context's newest record, never the
+ * event's payload — so a write never reverts a change that arrived after the
+ * event, and `applies` decides from those same settings whether the key's Mode
+ * still shows the profile dropdown: a key the user has since moved to another
+ * Mode gets no write. It returns `undefined` (nothing to write) when the Mode
+ * does not apply or the record already holds these entries, and otherwise the
+ * record with the entries in place.
+ *
+ * It is pure, as every updater must be: `updateSettings` may park it behind a
+ * newer settings event and run it again on those settings. Whether the host
+ * echoes the write back as a `didReceiveSettings` differs between hosts, and
+ * nothing depends on it: on an echo the entries are already present, so the
+ * updater returns `undefined` and the exchange stops there.
+ *
+ * @param deviceType - The device whose bundled profiles are listed.
+ * @param applies - Whether the context's Mode shows the profile dropdown,
+ *   judged from the settings the updater runs on.
+ */
+export function deviceProfilesUpdate(
+  deviceType: number | undefined,
+  applies: (current: Readonly<Record<string, unknown>>) => boolean,
+): ContextSettingsUpdater {
+  const entries = deviceProfileEntries(deviceType);
+
+  return (current) => {
+    if (!applies(current)) return undefined;
+
+    const stored = Array.isArray(current._deviceProfiles) ? (current._deviceProfiles as unknown[]) : [];
+
+    if (profileEntriesEqual(stored, entries)) return undefined;
+
+    return { ...current, _deviceProfiles: entries };
+  };
 }
