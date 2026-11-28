@@ -28,7 +28,20 @@
  *   `requestCameraSwitch` with `interruptsWalks: false`; its target is worked
  *   out when it goes out, from the camera as it is then, and it keeps the
  *   car (`switchNum` with its `CarNumberRaw`), so it cannot trigger the run
- *   again. It is dropped if the run was stopped or replaced while it waited,
+ *   again. **It never takes the car from iRacing's director** (#1656): when
+ *   the SDK's `CameraCommand.focusModeInEffect()` reads a director focus
+ *   (the plugin's last camera switch was Focus on Leader, Incident or Most
+ *   Exciting, and no switch to a car or Next / Previous Car key tap came
+ *   after it), the switch is `switchPos(<that focus>, group, 0)` instead. On
+ *   the sim a `switchNum` to the very car on camera stopped the director (3
+ *   car changes in 30 s before it, none after), while `switchPos` with the
+ *   focus changed the group, kept the car, and left the director choosing
+ *   the next one, whose change is a trigger like any other. The read is the
+ *   SDK's, at the send, since every switch from any action passes there; a
+ *   focus turned on from iRacing's own camera screen is not seen, so there
+ *   the switch names the car and takes it over, and one ended there still
+ *   reads as in effect, so there the switch hands the car back to the
+ *   director. It is dropped if the run was stopped or replaced while it waited,
  *   or if a later car change arrived meanwhile: that change has its own timer
  *   and its own send, so each change ends in at most one switch. It is
  *   dropped too when the fresh read at the send finds the camera on another
@@ -55,7 +68,9 @@
  */
 import { getCommands, getController } from "@iracedeck/deck-iracing";
 import {
+  CameraFocusMode,
   type CameraGroup,
+  type DirectorFocusMode,
   getCameraGroupsFromSessionInfo,
   getCarNumberRawFromSessionInfo,
   type TelemetryData,
@@ -98,6 +113,13 @@ export type AutoGroupToggleResult = "started" | "replaced" | "stopped";
 
 /** Hears the owner change: the new owner on a start or a replace, null on a stop. */
 export type AutoGroupChangeListener = (owner: string | null) => void;
+
+/**
+ * What the switch keeps while it changes the group: the director focus in
+ * effect (sent as `switchPos(<focus>, group, 0)`), or else the camera's car
+ * (`switchNum(<its CarNumberRaw>, group, 0)`).
+ */
+type AutoGroupKeep = { readonly focus: DirectorFocusMode } | { readonly carNumberRaw: number };
 
 /** The one running automation. The object is its own identity: a replace makes a new one. */
 interface Run {
@@ -454,14 +476,30 @@ function sendAuto(run: Run, trigger: number, car: number): void {
     return;
   }
 
-  const sessionInfo = controller.getSessionInfo();
-  const carNumberRaw = sessionInfo ? getCarNumberRawFromSessionInfo(sessionInfo, carIdx) : null;
+  // The director focus, read as the switch goes out (#1656): with Focus on
+  // Leader, Incident or Most Exciting in charge, the switch names that focus
+  // rather than the car, so iRacing changes the group and goes on picking the
+  // cars; naming the car (on the sim, even the car already on camera) hands
+  // the car to the user and stops the director. With no focus in effect it
+  // keeps the car by its number, as before.
+  const camera = getCommands().camera;
+  const focus = camera.focusModeInEffect();
+  let keep: AutoGroupKeep;
 
-  if (carNumberRaw === null) {
-    run.logger.info("Auto group switch skipped: the camera's car has no car number");
-    run.logger.debug(`carIdx: ${carIdx}`);
+  if (focus !== null) {
+    keep = { focus };
+  } else {
+    const sessionInfo = controller.getSessionInfo();
+    const carNumberRaw = sessionInfo ? getCarNumberRawFromSessionInfo(sessionInfo, carIdx) : null;
 
-    return;
+    if (carNumberRaw === null) {
+      run.logger.info("Auto group switch skipped: the camera's car has no car number");
+      run.logger.debug(`carIdx: ${carIdx}`);
+
+      return;
+    }
+
+    keep = { carNumberRaw };
   }
 
   const currentGroup = typeof telemetry.CamGroupNumber === "number" ? telemetry.CamGroupNumber : null;
@@ -476,14 +514,19 @@ function sendAuto(run: Run, trigger: number, car: number): void {
   // In order moves on only once the switch went out: a send that failed
   // (false) or threw (the waiter logs it) leaves the place in the list, so
   // the next car change offers the same group again rather than skipping it.
-  const success = getCommands().camera.switchNum(carNumberRaw, target.groupNum, 0);
+  const success =
+    "focus" in keep
+      ? camera.switchPos(keep.focus, target.groupNum, 0)
+      : camera.switchNum(keep.carNumberRaw, target.groupNum, 0);
+  const sent =
+    "focus" in keep
+      ? `switchPos(${CameraFocusMode[keep.focus]}), keeping the director focus`
+      : `switchNum(carNumberRaw ${keep.carNumberRaw}), keeping the car`;
 
   if (success) run.lastPicked = target.groupName;
 
   run.logger.info(success ? "Camera group switched automatically" : "Automatic camera group switch failed");
-  run.logger.debug(
-    `Result: ${success}, carNumberRaw: ${carNumberRaw}, group: ${target.groupNum} (${target.groupName}), pick: ${run.pick}`,
-  );
+  run.logger.debug(`Result: ${success}, ${sent}, group: ${target.groupNum} (${target.groupName}), pick: ${run.pick}`);
 }
 
 /** How long ago (`Date.now()`) `at` was, never negative; undefined for no time. */

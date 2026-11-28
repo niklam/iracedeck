@@ -1,9 +1,17 @@
-import type { TelemetryCallback, TelemetryData } from "@iracedeck/iracing-sdk";
+import {
+  CameraCommand,
+  CameraFocusMode,
+  type INativeSDK,
+  type TelemetryCallback,
+  type TelemetryData,
+} from "@iracedeck/iracing-sdk";
 import type { ILogger } from "@iracedeck/logger";
 import type { CameraSwitchOptions } from "@iracedeck/replay-engine";
 import { resetEngine } from "@iracedeck/replay-engine/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { CAR_CYCLE_BINDING_KEYS } from "../../shared/car-cycle-bindings.js";
+import { noteCameraKeyTap } from "../../shared/car-cycle-focus.js";
 import {
   _resetAutoGroup,
   AUTO_GROUP_POLL_MS,
@@ -53,7 +61,7 @@ class FakeController {
 
 type SwitchRequest = { send: () => unknown; options: CameraSwitchOptions };
 
-const { engine, fake, switchNum } = vi.hoisted(() => {
+const { engine, fake, switchNum, switchPos, director } = vi.hoisted(() => {
   const state = {
     /** When false, `requestCameraSwitch` holds each request in `held` instead of sending it. */
     sendAtOnce: true,
@@ -75,15 +83,31 @@ const { engine, fake, switchNum } = vi.hoisted(() => {
         return Promise.resolve();
       }),
     },
-    fake: { controller: null as unknown as FakeController },
+    fake: {
+      controller: null as unknown as FakeController,
+      /** When set, `getCommands().camera` is this real `CameraCommand` rather than the stand-in. */
+      realCamera: null as unknown,
+    },
     switchNum: vi.fn((_carNumberRaw: number, _group: number, _camera: number) => true),
+    switchPos: vi.fn((_position: number, _group: number, _camera: number) => true),
+    /** What the stand-in's `focusModeInEffect` reads (#1656). */
+    director: { focus: null as number | null },
   };
 });
 
 vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@iracedeck/deck-iracing")>()),
   getController: () => fake.controller,
-  getCommands: () => ({ camera: { switchNum } }),
+  getCommands: () => ({
+    camera: fake.realCamera ?? {
+      switchNum,
+      switchPos,
+      focusModeInEffect: () => director.focus,
+      forgetFocusMode: () => {
+        director.focus = null;
+      },
+    },
+  }),
 }));
 
 vi.mock("@iracedeck/replay-engine", async (importOriginal) => {
@@ -160,6 +184,9 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.clearAllMocks();
   switchNum.mockImplementation(() => true);
+  switchPos.mockImplementation(() => true);
+  director.focus = null;
+  fake.realCamera = null;
   fake.controller = new FakeController();
   fake.controller.sessionInfo = sessionInfo();
   fake.controller.setCamera(1, G.Nose);
@@ -789,6 +816,194 @@ describe("auto group picking", () => {
     engine.state.held[0].send();
 
     expect(switchedGroups()).toEqual(["TV2"]);
+  });
+});
+
+describe("auto group under iRacing's director focus (#1656)", () => {
+  const { FocusAtIncident, FocusAtLeader, FocusAtExiting } = CameraFocusMode;
+
+  it.each([
+    ["Most Exciting", FocusAtExiting],
+    ["Leader", FocusAtLeader],
+    ["Incident", FocusAtIncident],
+  ])("with Focus on %s in effect, changes only the group: switchPos(<focus>, group, 0)", (_name, focus) => {
+    director.focus = focus;
+    start();
+    landOn(4);
+
+    expect(switchPos).toHaveBeenCalledExactlyOnceWith(focus, G.TV1, 0);
+    expect(switchNum).not.toHaveBeenCalled();
+  });
+
+  it("with no focus in effect, keeps the car: switchNum(<car number>, group, 0)", () => {
+    start();
+    landOn(4);
+
+    expect(switchNum).toHaveBeenCalledExactlyOnceWith(104, G.TV1, 0);
+    expect(switchPos).not.toHaveBeenCalled();
+  });
+
+  it("reads the focus when the switch goes out, not when the timer fired", () => {
+    engine.state.sendAtOnce = false;
+    start();
+    landOn(4);
+
+    expect(engine.state.held).toHaveLength(1);
+
+    // Focus on Most Exciting goes out while the switch waits behind a jump.
+    director.focus = FocusAtExiting;
+    engine.state.held[0].send();
+
+    expect(switchPos).toHaveBeenCalledExactlyOnceWith(FocusAtExiting, G.TV1, 0);
+    expect(switchNum).not.toHaveBeenCalled();
+  });
+
+  it("needs no car number under a focus: a car without one still gets its group", () => {
+    director.focus = FocusAtExiting;
+    start();
+    landOn(9);
+
+    expect(switchPos).toHaveBeenCalledExactlyOnceWith(FocusAtExiting, G.TV1, 0);
+    expect(logger.info).not.toHaveBeenCalledWith("Auto group switch skipped: the camera's car has no car number");
+  });
+
+  it("picks In order as before, moving on after each switch that went out", () => {
+    director.focus = FocusAtExiting;
+    start();
+    landOn(4);
+    landOn(5);
+    landOn(6);
+
+    expect(switchPos.mock.calls.map(([, group]) => GROUPS[group - 1])).toEqual(["TV1", "TV2", "TV3"]);
+  });
+
+  it("leaves the place in the list when the focus switch failed", () => {
+    director.focus = FocusAtExiting;
+    switchPos.mockImplementationOnce(() => false);
+    start();
+    landOn(4);
+    landOn(5);
+
+    expect(switchPos.mock.calls.map(([, group]) => GROUPS[group - 1])).toEqual(["TV1", "TV1"]);
+    expect(logger.info).toHaveBeenCalledWith("Automatic camera group switch failed");
+  });
+
+  it("says at debug which form went out", () => {
+    director.focus = FocusAtExiting;
+    start();
+    landOn(4);
+
+    expect(logger.info).toHaveBeenCalledWith("Camera group switched automatically");
+    expect(logger.debug).toHaveBeenCalledWith(
+      expect.stringContaining("switchPos(FocusAtExiting), keeping the director focus"),
+    );
+
+    director.focus = null;
+    landOn(5);
+
+    expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining("switchNum(carNumberRaw 105), keeping the car"));
+  });
+
+  describe("over the SDK's real CameraCommand", () => {
+    let camera: CameraCommand;
+
+    beforeEach(() => {
+      const native: INativeSDK = {
+        startup: vi.fn(),
+        shutdown: vi.fn(),
+        isConnected: vi.fn(),
+        getHeader: vi.fn(),
+        getData: vi.fn(),
+        waitForData: vi.fn(),
+        getSessionInfoStr: vi.fn(),
+        getVarHeaderEntry: vi.fn(),
+        varNameToIndex: vi.fn(),
+        broadcastMsg: vi.fn(),
+        sendChatMessage: vi.fn(),
+      };
+
+      camera = new CameraCommand(native);
+      fake.realCamera = camera;
+      vi.spyOn(camera, "switchPos");
+      vi.spyOn(camera, "switchNum");
+    });
+
+    /** Every `switchPos` / `switchNum` since the last clear, `switchPos` first. */
+    function sends(): Array<[string, number, number, number]> {
+      return [
+        ...vi.mocked(camera.switchPos).mock.calls.map(([target, group, cam]): [string, number, number, number] => [
+          "switchPos",
+          target,
+          group,
+          cam,
+        ]),
+        ...vi.mocked(camera.switchNum).mock.calls.map(([target, group, cam]): [string, number, number, number] => [
+          "switchNum",
+          target,
+          group,
+          cam,
+        ]),
+      ];
+    }
+
+    function clearSends(): void {
+      vi.mocked(camera.switchPos).mockClear();
+      vi.mocked(camera.switchNum).mockClear();
+    }
+
+    it("after a Focus on Most Exciting press, every group switch is a switchPos, and the focus stays", () => {
+      camera.focusOnMostExciting(G.Nose, 0);
+      clearSends();
+      start();
+      landOn(4);
+      landOn(5);
+
+      expect(sends()).toEqual([
+        ["switchPos", FocusAtExiting, G.TV1, 0],
+        ["switchPos", FocusAtExiting, G.TV2, 0],
+      ]);
+      expect(camera.focusModeInEffect()).toBe(FocusAtExiting);
+    });
+
+    it("a switch to a car in between ends it: the next group switch keeps the car", () => {
+      camera.focusOnMostExciting(G.Nose, 0);
+      start();
+      landOn(4);
+
+      // The user picks car 6 (Focus Your Car, Switch by Car Number, Race Admin, ...).
+      camera.switchNum(106, G.TV1, 0);
+      clearSends();
+      landOn(6, G.TV1);
+
+      expect(sends()).toEqual([["switchNum", 106, G.TV2, 0]]);
+    });
+
+    it("a Cycle Camera in between ends it too: it targets the camera's car", () => {
+      camera.focusOnLeader(G.Nose, 0);
+      start();
+      camera.cycleCamera(4, G.Nose, 1);
+      clearSends();
+      landOn(4);
+
+      expect(sends()).toEqual([["switchNum", 104, G.TV1, 0]]);
+    });
+
+    it("a Next / Previous Car key tap in between ends it", () => {
+      camera.focusOnIncident(G.Nose, 0);
+      start();
+      noteCameraKeyTap(CAR_CYCLE_BINDING_KEYS.next);
+      clearSends();
+      landOn(4);
+
+      expect(sends()).toEqual([["switchNum", 104, G.TV1, 0]]);
+    });
+
+    it("a fresh CameraCommand (a plugin start) has none: the group switch keeps the car", () => {
+      start();
+      landOn(4);
+
+      expect(sends()).toEqual([["switchNum", 104, G.TV1, 0]]);
+    });
   });
 });
 
