@@ -1,5 +1,6 @@
 import { requestProfileSwitch, resolveProfileNameForDevice } from "@iracedeck/deck-core";
 import * as deckCore from "@iracedeck/deck-core";
+import { ContextEventOrder } from "@iracedeck/deck-core/testing";
 import { getCommands } from "@iracedeck/deck-iracing";
 import {
   getAllCarNumbers,
@@ -8,6 +9,7 @@ import {
   type SessionInfo,
   type TelemetryData,
 } from "@iracedeck/iracing-sdk";
+import { silentLogger } from "@iracedeck/logger";
 import { beginReplayJump, pressReplayCommand, runReplayJump } from "@iracedeck/replay-engine";
 import {
   claimReplayCursor,
@@ -1313,6 +1315,85 @@ describe("CameraControls", () => {
 
         expect(setSettings).toHaveBeenCalledTimes(1);
         expect(setSettings).toHaveBeenCalledWith({ ...newer, _deviceProfiles: carSelectorEntries });
+      });
+
+      it("keeps a Mode change made while the appear awaits, through the real event order (#1761)", async () => {
+        // The issue's repro end to end: the events run through the REAL
+        // ContextEventOrder, built as an adapter builds them, so the arrival
+        // token is the order's own and not a stub.
+        ContextSettingsActionBase.stampVersion = "3.10.0";
+        const action = track(new CameraControls());
+        const orderLogger = { ...silentLogger, debug: vi.fn(), warn: vi.fn() };
+        const order = new ContextEventOrder(orderLogger);
+
+        // The host stores one object per context, replaced whole by each
+        // plugin write and by each PI change. The first write, the appear's
+        // addedWithVersion stamp, is held in flight: the await BaseAction's
+        // appear makes before the action's own profile-list write.
+        let hostSettings: Record<string, unknown> = { ...focusSelectSettings };
+        let writes = 0;
+        let releaseStamp = (): void => {};
+        const stampHeld = new Promise<void>((resolve) => {
+          releaseStamp = resolve;
+        });
+        const setSettings = vi.fn<(settings: Record<string, unknown>) => Promise<void>>(async (next) => {
+          hostSettings = next;
+          writes += 1;
+
+          if (writes === 1) await stampHeld;
+        });
+        const context = {
+          id: "ctx-1",
+          deviceId: "dev-1",
+          deviceType: 2,
+          isKey: () => true,
+          isDial: () => false,
+          setSettings,
+          setTitle: vi.fn(async () => {}),
+        };
+
+        // As an adapter dispatches: enqueued at arrival with the settings the
+        // host delivered, the event built when its task runs and carrying that
+        // task's arrival token.
+        const deliver = (kind: "willAppear" | "didReceiveSettings", settings: Record<string, unknown>) =>
+          order.enqueue(context.id, kind, ({ isSuperseded }) => {
+            const ev = { action: context, payload: { settings }, isSuperseded } as never;
+
+            return kind === "willAppear" ? action.onWillAppear(ev) : action.onDidReceiveSettings(ev);
+          });
+
+        // A Focus Pick Car key with no profile list stored appears, and is held
+        // at its stamp write, before its profile-list write.
+        const appeared = deliver("willAppear", focusSelectSettings);
+
+        expect(setSettings.mock.calls.map(([written]) => written)).toEqual([
+          { ...focusSelectSettings, addedWithVersion: "3.10.0" },
+        ]);
+
+        // Meanwhile the user moves the key to Focus Your Car: the host stores
+        // the PI's object and sends it, and it queues behind the held appear.
+        const changed = { ...focusSelectSettings, target: "focus-your-car" };
+        hostSettings = changed;
+        const received = deliver("didReceiveSettings", changed);
+        const sentBeforeChange = setSettings.mock.calls.length;
+
+        releaseStamp();
+        await appeared;
+        await received;
+
+        expect(orderLogger.debug).toHaveBeenCalledWith(
+          expect.stringMatching(/^didReceiveSettings for ctx-1 waited \d+ ms behind willAppear$/),
+        );
+        expect(orderLogger.warn).not.toHaveBeenCalled();
+
+        // Only the stamp, sent before the change, ever carried Focus Pick Car;
+        // nothing after the change wrote the old Mode back, and the host ends
+        // with the user's object.
+        const writtenAfterChange = setSettings.mock.calls.slice(sentBeforeChange).map(([written]) => written);
+
+        expect(writtenAfterChange.filter((written) => written.target === "focus-select-car")).toEqual([]);
+        expect(hostSettings).toEqual(changed);
+        expect(action["getContextSettings"]("ctx-1")).toEqual(changed);
       });
 
       it("judges the Mode from the newest record, not the event it is handed (#1761)", async () => {
