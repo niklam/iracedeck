@@ -154,15 +154,20 @@ export class ContextSettings {
    *
    * 1. No record — the context never appeared or has disappeared: nothing is
    *    written.
-   * 2. `next = updater(record)`; `undefined` means the record already holds
+   * 2. `ev.isSuperseded?.()` — a newer settings event of the context has
+   *    already arrived: nothing is written now, and the updater is parked
+   *    without being run, since the record it would read is no longer the
+   *    newest. It is re-run by the next {@link receive}, or dropped by the
+   *    next {@link appear} / {@link disappear}. That next event is normally
+   *    the newer one, queued behind this handler; for a handler the event
+   *    order abandoned, the newer one may already have run, and the updater
+   *    waits for the one after it (see the class doc). Parking comes before
+   *    the no-change check: a record that already holds the change says
+   *    nothing about the newer settings, which may lack it (a Property
+   *    Inspector writing its whole form from an older view), so judging
+   *    `undefined` there would drop the update for good.
+   * 3. `next = updater(record)`; `undefined` means the record already holds
    *    the change: nothing is written.
-   * 3. `ev.isSuperseded?.()` — a newer settings event of the context has
-   *    already arrived: nothing is written now; the updater is parked and
-   *    re-run by the next {@link receive}, or dropped by the next
-   *    {@link appear} / {@link disappear}. That next event is normally the
-   *    newer one, queued behind this handler; for a handler the event order
-   *    abandoned, the newer one may already have run, and the updater waits
-   *    for the one after it (see the class doc).
    * 4. Otherwise the record becomes `next` synchronously, before the write
    *    is awaited, so a write that starts meanwhile merges onto it; then
    *    `ev.action.setSettings(next)` is awaited. A failed write is warned and
@@ -178,10 +183,6 @@ export class ContextSettings {
       return false;
     }
 
-    const next = updater(current);
-
-    if (next === undefined) return false;
-
     if (ev.isSuperseded?.() === true) {
       const waiting = this.parked.get(contextId);
 
@@ -194,6 +195,10 @@ export class ContextSettings {
 
       return false;
     }
+
+    const next = updater(current);
+
+    if (next === undefined) return false;
 
     this.records.set(contextId, next);
 

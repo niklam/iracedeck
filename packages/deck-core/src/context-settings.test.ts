@@ -227,6 +227,37 @@ describe("ContextSettings", () => {
       expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining("ctx parked"));
     });
 
+    it("is parked even when the older record already holds the change, and re-applied onto newer settings that lack it", async () => {
+      const settings = new ContextSettings();
+      const { action, setSettings } = fakeAction("ctx");
+      const updater = vi.fn(addMarker);
+
+      // The record already holds the marker, but newer settings have arrived:
+      // judging the stale record would read "no change" and drop the update.
+      settings.appear(event(action, { marker: 1 }));
+      await settings.update(
+        event(action, {}, () => true),
+        updater,
+      );
+
+      expect(settings.parkedCount).toBe(1);
+      expect(updater).not.toHaveBeenCalled();
+
+      // Its re-run on B, which holds the marker but is itself superseded by C,
+      // parks again rather than ending there.
+      await settings.receive(event(action, { marker: 1, mode: "b" }, () => true));
+
+      expect(setSettings).not.toHaveBeenCalled();
+      expect(settings.parkedCount).toBe(1);
+
+      // C lacks the marker (a PI writing from an older view): the update is
+      // re-applied onto it.
+      await settings.receive(event(action, { mode: "c" }, () => false));
+
+      expect(setSettings).toHaveBeenCalledExactlyOnceWith({ mode: "c", marker: 1 });
+      expect(settings.parkedCount).toBe(0);
+    });
+
     it("is written when its isSuperseded says false", async () => {
       const settings = new ContextSettings();
       const { action, setSettings } = fakeAction("ctx");
@@ -320,7 +351,8 @@ describe("ContextSettings", () => {
       settings.appear(event(action, {}));
       await settings.receive(event(action, { mode: "b" }));
 
-      expect(updater).toHaveBeenCalledOnce();
+      // Never run: parked without running, then dropped.
+      expect(updater).not.toHaveBeenCalled();
       expect(setSettings).not.toHaveBeenCalled();
     });
 
@@ -346,13 +378,9 @@ describe("ContextSettings", () => {
       const logger = createLogger();
       const settings = new ContextSettings(logger);
       const { action, setSettings } = fakeAction("ctx");
-      let calls = 0;
-      const throwsOnRerun: ContextSettingsUpdater = (s) => {
-        calls += 1;
-
-        if (calls > 1) throw new Error("bad updater");
-
-        return { ...s, a: 1 };
+      // A superseded write is parked without being run, so its first run is the re-run.
+      const throwsOnRerun: ContextSettingsUpdater = () => {
+        throw new Error("bad updater");
       };
 
       settings.appear(event(action, {}));

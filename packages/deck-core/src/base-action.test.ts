@@ -1642,7 +1642,8 @@ describe("BaseAction settings writes against the newest settings (#1761)", () =>
     appear.open();
     await host.settle();
 
-    expect(updater).toHaveBeenCalledOnce();
+    // Parked without being run: the record it would read was no longer the newest.
+    expect(updater).not.toHaveBeenCalled();
     expect(host.pluginWrites).toEqual([]);
     expect(action.settingsOf("ctx")).toBeUndefined();
 
@@ -1653,7 +1654,7 @@ describe("BaseAction settings writes against the newest settings (#1761)", () =>
     host.piWrite("ctx", { mode: "focus", car: 3 });
     await host.settle();
 
-    expect(updater).toHaveBeenCalledOnce();
+    expect(updater).not.toHaveBeenCalled();
     expect(host.pluginWrites).toEqual([]);
     expect(host.stored.get("ctx")).toEqual({ mode: "focus", car: 3 });
   });
