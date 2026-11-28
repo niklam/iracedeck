@@ -217,6 +217,7 @@ export {
   isPitLimiterEngaged,
   isPostRace,
   isPreGreen,
+  isReplayExitUnsettled,
   nextReplayState,
   REPLAY_EXIT_GRACE_MS,
   REPLAY_LIVE_EDGE_MAX_FRAMES,

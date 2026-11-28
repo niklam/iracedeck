@@ -65,11 +65,28 @@ const BOUNDARY_LISTENER_ID_PREFIX = "controller:context-boundary:";
  * to end such state; whether iRacing keeps it across the other three is not
  * measured, so a listener that holds sim-side state it cannot read back
  * clears it at all four, as the cheaper mistake.
+ *
+ * A seek is not one of its own, but it can read as two. A seek the plugin
+ * makes is held (the replay engine's seek hold), so it never reads as leaving
+ * the replay, and the -1 `SessionNum` a seek reads is skipped. A seek made
+ * with iRacing's own replay controls is held only by the exit grace
+ * (`REPLAY_EXIT_GRACE_MS`, 1 s): one whose blip outlasts it reads as
+ * `replay-left` and then `replay-entered`, and a listener clears at both, on
+ * the same rule.
  */
 export type SimContextBoundary = "connection-lost" | "session-changed" | "replay-entered" | "replay-left";
 
-/** Called once per {@link SimContextBoundary} the controller passes. */
-export type SimContextBoundaryListener = (boundary: SimContextBoundary) => void;
+/**
+ * Called once per {@link SimContextBoundary} the controller passes, with the
+ * moment it was passed (`Date.now()` clock): state a listener recorded at or
+ * before `passedAtMs` is behind the boundary, state recorded after it is not.
+ * That is the time the controller saw it, except for `replay-left`, which the
+ * debounced state reports only once the exit grace has run out: there it is
+ * the last moment the replay was on screen (the last replay sighting, or the
+ * end of a seek hold of the plugin's own, or the plugin's own exit to live),
+ * so something sent in that last second, already live, is kept.
+ */
+export type SimContextBoundaryListener = (boundary: SimContextBoundary, passedAtMs: number) => void;
 
 /** Whatever reports {@link SimContextBoundary}s: `SDKController`, or a stand-in in a test. */
 export interface SimContextBoundarySource {
@@ -331,14 +348,26 @@ export class SDKController implements SimContextBoundarySource {
     this.lastSessionNum = null;
     this.lastInReplay = false;
 
-    return this.notifyBoundary("connection-lost");
+    return this.notifyBoundary("connection-lost", Date.now());
   }
 
   /**
    * Try to connect to iRacing. Runs only inside the error boundary, as
    * `controller:reconnect`, since `sdk.connect()` can throw.
+   *
+   * The update loop skips `update()` while the SDK reads disconnected, so a
+   * dropped connection is noticed here, by the reconnect poll. A connection
+   * the controller still holds while the SDK no longer reports it was lost,
+   * whether or not the connect below finds iRacing back: iRacing can drop
+   * and return between two polls, and a connect that succeeds at once must
+   * still not carry the old connection's state (its `SessionTick` dedupe, its
+   * replay state and session, the cached read, the director focus a
+   * context-boundary listener keeps) into the new one. So the loss is reset,
+   * told to the listeners and the subscribers first, and only then is the
+   * connect attempted.
    */
   private tryConnect(): HeldError {
+    const lostHeld = this.isConnected && !this.sdk.isConnected() ? this.loseConnection() : undefined;
     const wasConnected = this.isConnected;
     const connected = this.sdk.connect();
 
@@ -350,11 +379,10 @@ export class SDKController implements SimContextBoundarySource {
         this.isConnected = true;
         this.logger.info("[SDKController] Connected to iRacing");
       } else {
-        this.logger.info("[SDKController] Disconnected from iRacing");
-        // The update loop skips `update()` while the SDK reads disconnected,
-        // so this is where a dropped connection is noticed: nothing of the
-        // last connection (its replay state above all) may reach a read made
+        // The controller read connected and so did the SDK, yet the connect
+        // failed: nothing of the last connection may reach a read made
         // meanwhile.
+        this.logger.info("[SDKController] Disconnected from iRacing");
         held = this.resetConnection();
       }
 
@@ -368,10 +396,25 @@ export class SDKController implements SimContextBoundarySource {
       // never stops the subscribers from hearing of the change.
       const notified = this.notifySubscribers(telemetry);
 
-      return held ?? notified;
+      return lostHeld ?? held ?? notified;
     }
 
-    return undefined;
+    return lostHeld;
+  }
+
+  /**
+   * The connection the reconnect poll found dropped: reset (which tells the
+   * context-boundary listeners) and tell the subscribers, as every other
+   * loss does. Returns the first error held under `"rethrow"`.
+   */
+  private loseConnection(): HeldError {
+    this.logger.info("[SDKController] Disconnected from iRacing");
+
+    const resetHeld = this.resetConnection();
+    // Fan out before combining, as in `update()`.
+    const notified = this.notifySubscribers(null);
+
+    return resetHeld ?? notified;
   }
 
   /**
@@ -379,14 +422,19 @@ export class SDKController implements SimContextBoundarySource {
    * the context-boundary listeners of each boundary the read crossed (#1656):
    * `SessionNum` moving from one session to another, and the debounced replay
    * state entering or leaving a replay. The replay boundaries follow the
-   * debounced state, not the raw flag, so the blip after a seek is not one,
-   * and the grace running out on a paused replay is seen on the next poll,
-   * which steps whether or not the tick advanced. `getSessionInfo` is cached
+   * debounced state, not the raw flag: the blip after a seek the plugin makes
+   * is held and is no boundary, while a blip of a seek made with iRacing's
+   * own controls that outlasts the exit grace reads as a leave and then an
+   * enter (the {@link SimContextBoundary} type). The grace running out on a
+   * paused replay is seen on the next poll, which steps whether or not the
+   * tick advanced. A leave is told with the last moment the replay was on
+   * screen, read before the step that drops it. `getSessionInfo` is cached
    * on the SDK by its update counter, so the per-poll read costs a header
    * check. Returns the first listener error held under `"rethrow"`.
    */
   private stepFreshRead(telemetry: TelemetryData): HeldError {
     const nowMs = Date.now();
+    const lastShownAt = this.replayState.lastShownAt();
 
     this.replayState.step(telemetry, this.sdk.getSessionInfo(), nowMs);
 
@@ -398,7 +446,7 @@ export class SDKController implements SimContextBoundarySource {
 
       this.lastSessionNum = sessionNum;
 
-      if (changed) held = this.notifyBoundary("session-changed");
+      if (changed) held = this.notifyBoundary("session-changed", nowMs);
     }
 
     const { inReplay } = this.replayState.read(nowMs);
@@ -406,7 +454,9 @@ export class SDKController implements SimContextBoundarySource {
     if (inReplay !== this.lastInReplay) {
       this.lastInReplay = inReplay;
 
-      const replayHeld = this.notifyBoundary(inReplay ? "replay-entered" : "replay-left");
+      const replayHeld = inReplay
+        ? this.notifyBoundary("replay-entered", nowMs)
+        : this.notifyBoundary("replay-left", Math.min(lastShownAt ?? nowMs, nowMs));
 
       held ??= replayHeld;
     }
@@ -415,14 +465,15 @@ export class SDKController implements SimContextBoundarySource {
   }
 
   /**
-   * Tell every context-boundary listener of `boundary`, in registration
-   * order, each inside the error boundary under its own id, so a throw
-   * neither leaves the controller nor stops another listener (#1558).
+   * Tell every context-boundary listener of `boundary`, passed at
+   * `passedAtMs`, in registration order, each inside the error boundary under
+   * its own id, so a throw neither leaves the controller nor stops another
+   * listener (#1558).
    */
-  private notifyBoundary(boundary: SimContextBoundary): HeldError {
+  private notifyBoundary(boundary: SimContextBoundary, passedAtMs: number): HeldError {
     this.logger.debug(`[SDKController] Context boundary: ${boundary}`);
 
-    return this.boundary.callEach(this.boundaryListeners, (listener) => listener(boundary));
+    return this.boundary.callEach(this.boundaryListeners, (listener) => listener(boundary, passedAtMs));
   }
 
   /**

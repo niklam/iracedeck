@@ -41,8 +41,20 @@
  * sim exit above all) certainly ends the director focus. A session change and
  * a replay entered or left may not; nobody has measured whether iRacing keeps
  * a director focus across them, so they clear it too, on the class's rule for
- * a doubt: a record wrongly cleared costs the director its turn at Auto
- * Group's next send, one wrongly kept takes the car from the user.
+ * a doubt. That includes a seek made with iRacing's own replay controls whose
+ * blip outlasts the exit grace: it reads as leaving the replay and entering it
+ * again, and clears the record (a seek the plugin makes is held, and does
+ * not). A boundary ends only a focus recorded at or before the moment it was
+ * passed: the replay is reported left a second after the last replay tick
+ * (the exit grace), and a Focus key pressed live in that second is kept.
+ *
+ * The rule for a doubt, with both costs stated: a record wrongly kept takes
+ * the car from the user (Auto Group's next send hands it back to the
+ * director). A record wrongly cleared makes Auto Group's next send a
+ * `switchNum` to the car on camera, which on the sim stopped the director
+ * outright: from then on the car stays put until the user presses a Focus key
+ * again. The class takes the second as the cheaper mistake, but it is not
+ * just one turn lost.
  *
  * It lives here, not in an action, because this class is the one choke point
  * every switch passes: a record kept beside it would have to be told by each
@@ -98,6 +110,12 @@ const END_FOCUS_AT_BOUNDARY: unique symbol = Symbol("CameraCommand.endFocusAtBou
 export class CameraCommand extends BroadcastCommand {
   /** The director focus the last switch targeted; null since a switch to a car or a position (file header). */
   private focusMode: DirectorFocusMode | null = null;
+  /**
+   * When (`Date.now()`) the focus in {@link focusMode} was last sent, renewed
+   * by every send of a focus, the same one included; null with none. A
+   * context boundary ends only a focus sent at or before it was passed.
+   */
+  private focusSentAt: number | null = null;
 
   constructor(native: INativeSDK, logger?: ILogger) {
     super(native, logger);
@@ -164,17 +182,35 @@ export class CameraCommand extends BroadcastCommand {
 
     const sent = this.sendBroadcast(msg, target, group, camera);
 
-    if (sent && focus !== null) this.setFocusMode(focus, `switch to target ${target}`);
+    if (sent && focus !== null) {
+      this.focusSentAt = Date.now();
+      this.setFocusMode(focus, `switch to target ${target}`);
+    }
 
     return sent;
   }
 
-  /** Ends the record at a context boundary, logged with that boundary's own reason (the file header). Sends nothing. */
-  [END_FOCUS_AT_BOUNDARY](boundary: SimContextBoundary): void {
+  /**
+   * Ends the record at a context boundary passed at `passedAtMs`, logged with
+   * that boundary's own reason (the file header), unless the focus was sent
+   * after that moment: then it was sent past the boundary and stands. Sends
+   * nothing.
+   */
+  [END_FOCUS_AT_BOUNDARY](boundary: SimContextBoundary, passedAtMs: number): void {
+    if (this.focusMode !== null && this.focusSentAt !== null && this.focusSentAt > passedAtMs) {
+      this.logger.debug(
+        `Director focus: ${describeFocus(this.focusMode)} kept at ${boundary}, sent ${this.focusSentAt - passedAtMs} ms after it was passed`,
+      );
+
+      return;
+    }
+
     this.setFocusMode(null, CONTEXT_BOUNDARY_REASONS[boundary]);
   }
 
   private setFocusMode(mode: DirectorFocusMode | null, why: string): void {
+    if (mode === null) this.focusSentAt = null;
+
     if (mode === this.focusMode) return;
 
     this.logger.debug(`Director focus: ${describeFocus(this.focusMode)} -> ${describeFocus(mode)} (${why})`);
@@ -304,7 +340,7 @@ export class CameraCommand extends BroadcastCommand {
  * Returns the function that removes the listener.
  */
 export function endFocusAtContextBoundaries(camera: CameraCommand, source: SimContextBoundarySource): () => void {
-  return source.onContextBoundary((boundary) => camera[END_FOCUS_AT_BOUNDARY](boundary));
+  return source.onContextBoundary((boundary, passedAtMs) => camera[END_FOCUS_AT_BOUNDARY](boundary, passedAtMs));
 }
 
 function describeFocus(mode: DirectorFocusMode | null): string {

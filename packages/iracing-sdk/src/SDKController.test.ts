@@ -418,12 +418,12 @@ describe("SDKController", () => {
       vi.mocked(mockSdk.isConnected).mockReturnValue(false);
       vi.mocked(mockSdk.connect).mockReturnValue(false);
 
-      // The reconnect interval (2000ms) will call tryConnect
-      // connect() returns false, so isConnected changes from true to false
-      // This triggers notification to subscribers
+      // The reconnect interval (2000ms) will call tryConnect, which finds the
+      // connection dropped and tells the subscribers with no telemetry, as
+      // every other loss does.
       vi.advanceTimersByTime(2000);
 
-      expect(callback).toHaveBeenCalledWith(expect.anything(), false);
+      expect(callback).toHaveBeenCalledWith(null, false);
     });
   });
 
@@ -1455,6 +1455,34 @@ describe("SDKController context boundaries (#1656)", () => {
       expect(boundaries()).toEqual(["connection-lost"]);
     });
 
+    it("is told when the reconnect poll finds the connection dropped though iRacing is back by its connect, before the new connection is used", () => {
+      // iRacing dropped and returned between two reconnect polls: the SDK reads
+      // the old connection gone, and the connect at once succeeds.
+      vi.mocked(mockSdk.isConnected).mockReturnValue(false);
+      vi.mocked(mockSdk.connect).mockReturnValue(true);
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(tick(2, { SessionNum: 3 }));
+      vi.advanceTimersByTime(2000);
+
+      expect(seen).toEqual(["connection-lost", "sub:null", "sub:tick"]);
+      expect(controller.getConnectionStatus()).toBe(true);
+    });
+
+    it("starts that new connection with nothing of the old one: no session change, and no tick deduped against the old one", () => {
+      vi.mocked(mockSdk.isConnected).mockReturnValue(false);
+      vi.mocked(mockSdk.connect).mockReturnValue(true);
+      vi.mocked(mockSdk.getTelemetry).mockReturnValue(tick(2, { SessionNum: 3 }));
+      vi.advanceTimersByTime(2000);
+      vi.mocked(mockSdk.isConnected).mockReturnValue(true);
+      seen.length = 0;
+
+      // The same SessionTick as the old connection's last: a carried-over
+      // dedupe would swallow it, and the old session (0) would read as changed.
+      poll(tick(2, { SessionNum: 3 }));
+      poll(tick(3, { SessionNum: 3 }));
+
+      expect(seen).toEqual(["sub:tick", "sub:tick"]);
+    });
+
     it("forgets the session, so the first session after a reconnect is no session change", () => {
       vi.mocked(mockSdk.isConnected).mockReturnValueOnce(true).mockReturnValue(false);
       poll(null);
@@ -1533,8 +1561,8 @@ describe("SDKController context boundaries (#1656)", () => {
   });
 
   describe("a replay entered or left", () => {
-    const replay = (sessionTick: number, frame: number): TelemetryData =>
-      tick(sessionTick, { IsReplayPlaying: true, ReplayFrameNum: frame, ReplayFrameNumEnd: 100 });
+    const replay = (sessionTick: number, frame: number, fields: Partial<TelemetryData> = {}): TelemetryData =>
+      tick(sessionTick, { IsReplayPlaying: true, ReplayFrameNum: frame, ReplayFrameNumEnd: 100, ...fields });
 
     beforeEach(() => {
       vi.mocked(mockSdk.getTelemetry).mockReturnValue(tick(1));
@@ -1576,6 +1604,62 @@ describe("SDKController context boundaries (#1656)", () => {
       poll(tick(5));
 
       expect(boundaries()).toEqual(["replay-left"]);
+    });
+
+    describe("the moment each is told with", () => {
+      let moments: Array<[string, number]>;
+
+      beforeEach(() => {
+        moments = [];
+        controller.onContextBoundary((boundary, passedAtMs) => moments.push([boundary, passedAtMs]));
+      });
+
+      it("a leave as the grace runs out is told with the last replay tick, a second earlier", () => {
+        poll(replay(3, 500));
+        const lastReplayTick = Date.now();
+        poll(tick(4), 120);
+
+        expect(moments).toEqual([
+          ["replay-entered", lastReplayTick],
+          ["replay-left", lastReplayTick],
+        ]);
+      });
+
+      it("a leave after a seek hold of the plugin's own is told with the hold's end", () => {
+        poll(replay(3, 500));
+        controller.noteReplaySeekHold({ remainingMs: 2000, maxPastSightingMs: 10_000 });
+        const holdEnd = Date.now() + 2000;
+        poll(tick(4), 400);
+
+        expect(moments.filter(([boundary]) => boundary === "replay-left")).toEqual([["replay-left", holdEnd]]);
+      });
+
+      it("the plugin's own goToEnd is told with the time it was sent", () => {
+        poll(replay(3, 500));
+        poll(replay(4, 500));
+        controller.noteReplayLeftForLive();
+        const sentAt = Date.now();
+        poll(replay(5, 500));
+        poll(tick(6));
+
+        expect(moments.filter(([boundary]) => boundary === "replay-left")).toEqual([["replay-left", sentAt]]);
+      });
+
+      it("an enter, a session change and a connection loss are told with the time they were seen", () => {
+        poll(replay(3, 500));
+        const enteredAt = Date.now();
+        poll(replay(4, 500, { SessionNum: 0 }));
+        poll(replay(5, 500, { SessionNum: 1 }));
+        const changedAt = Date.now();
+        vi.advanceTimersByTime(50);
+        controller.setReconnectEnabled(false);
+
+        expect(moments).toEqual([
+          ["replay-entered", enteredAt],
+          ["session-changed", changedAt],
+          ["connection-lost", Date.now()],
+        ]);
+      });
     });
 
     it("a replay open at a disconnect is no leave of its own: the connection loss covers it", () => {

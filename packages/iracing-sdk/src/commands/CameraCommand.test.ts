@@ -1,5 +1,5 @@
 import type { ILogger } from "@iracedeck/logger";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { INativeSDK } from "../interfaces.js";
 import type { SimContextBoundary, SimContextBoundaryListener, SimContextBoundarySource } from "../SDKController.js";
@@ -436,7 +436,7 @@ describe("CameraCommand", () => {
       /** A boundary source that hands its one listener to the test, and a camera wired to it with a logger that records the debug lines. */
       function wired(): {
         camera: CameraCommand;
-        cross: (boundary: SimContextBoundary) => void;
+        cross: (boundary: SimContextBoundary, passedAtMs?: number) => void;
         debug: string[];
         remove: () => void;
         listeners: () => number;
@@ -464,7 +464,8 @@ describe("CameraCommand", () => {
 
         return {
           camera,
-          cross: (boundary) => registered.forEach((listener) => listener(boundary)),
+          cross: (boundary, passedAtMs = Date.now()) =>
+            registered.forEach((listener) => listener(boundary, passedAtMs)),
           debug,
           remove,
           listeners: () => registered.size,
@@ -507,6 +508,68 @@ describe("CameraCommand", () => {
         camera.focusOnIncident(14, 0);
 
         expect(camera.focusModeInEffect()).toBe(FocusAtIncident);
+      });
+
+      describe("only a focus sent at or before the moment the boundary was passed", () => {
+        beforeEach(() => {
+          vi.useFakeTimers();
+          vi.setSystemTime(10_000);
+        });
+
+        afterEach(() => {
+          vi.useRealTimers();
+        });
+
+        it("ends one sent before that moment, and one sent at it", () => {
+          const { camera, cross } = wired();
+          camera.focusOnMostExciting(14, 0);
+          vi.setSystemTime(11_000);
+          cross("replay-left", 10_500);
+          expect(camera.focusModeInEffect()).toBeNull();
+
+          camera.focusOnLeader(14, 0);
+          cross("replay-left", 11_000);
+          expect(camera.focusModeInEffect()).toBeNull();
+        });
+
+        it("keeps one sent after it, as a Focus key pressed live inside the exit grace, and logs why", () => {
+          const { camera, cross, debug } = wired();
+          // The replay was last on screen at 10 000; the Focus key goes out live at 10 300; the leave is told at 11 000.
+          vi.setSystemTime(10_300);
+          camera.focusOnLeader(14, 0);
+          debug.length = 0;
+          vi.setSystemTime(11_000);
+
+          cross("replay-left", 10_000);
+
+          expect(camera.focusModeInEffect()).toBe(FocusAtLeader);
+          expect(debug).toEqual([expect.stringContaining("FocusAtLeader kept at replay-left, sent 300 ms after")]);
+        });
+
+        it("dates the focus by its latest send: the same focus sent again after the boundary stands", () => {
+          const { camera, cross } = wired();
+          camera.focusOnLeader(14, 0);
+          vi.setSystemTime(10_300);
+          camera.focusOnLeader(14, 0);
+
+          cross("replay-left", 10_000);
+
+          expect(camera.focusModeInEffect()).toBe(FocusAtLeader);
+        });
+
+        it("a failed focus send does not move the time of the focus already in effect", () => {
+          const { camera, cross } = wired();
+          camera.focusOnLeader(14, 0);
+          vi.mocked(mockNative.broadcastMsg).mockImplementation(() => {
+            throw new Error("send failed");
+          });
+          vi.setSystemTime(10_300);
+          expect(() => camera.focusOnLeader(14, 0)).toThrow("send failed");
+
+          cross("replay-left", 10_000);
+
+          expect(camera.focusModeInEffect()).toBeNull();
+        });
       });
 
       it("returns the function that removes its listener", () => {
