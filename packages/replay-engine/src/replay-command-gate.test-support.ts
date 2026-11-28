@@ -66,6 +66,11 @@ export interface FakeReplay {
   leave(): void;
 }
 
+/** The sim update the fake clock is in: telemetry's `SessionTick`, which advances once a sim update. */
+function simTick(): number {
+  return Math.floor(Date.now() / SIM_UPDATE_MS);
+}
+
 function seekMs(distance: number, minMs: number): number {
   return Math.max(minMs, Math.ceil(Math.abs(distance) / SEARCH_FRAMES_PER_UPDATE) * SIM_UPDATE_MS);
 }
@@ -262,6 +267,7 @@ export function fakeReplay(options: FakeReplayOptions = {}): FakeReplay {
           ReplayPlaySpeed: 0,
           ReplayPlaySlowMotion: false,
           SessionNum: -1,
+          SessionTick: simTick(),
         } as TelemetryData;
       }
 
@@ -276,6 +282,7 @@ export function fakeReplay(options: FakeReplayOptions = {}): FakeReplay {
         ReplayPlaySpeed: replaySpeedToSdk(speed.speed, speed.slowMotion),
         ReplayPlaySlowMotion: speed.slowMotion,
         SessionNum: 0,
+        SessionTick: simTick(),
       } as TelemetryData;
     },
     frame(): number {

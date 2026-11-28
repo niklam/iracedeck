@@ -49,15 +49,17 @@ import {
   closeReplayGateWait,
   openReplayGateWait,
   readReplayPosition,
+  replayPositionSends,
   replaySearchOnItsWay,
   type ReplaySearchOnItsWay,
   replaySlotHeldBefore,
   waitForReplaySearchLanding,
 } from "./replay-command-gate.js";
-import { engineLogger } from "./replay-engine-env.js";
+import { engineLogger, engineReads } from "./replay-engine-env.js";
+import { pendingReplayTarget } from "./replay-position-state.js";
 import { readReplay } from "./replay-reading.js";
 import { pendingReplaySearch, SEARCH_QUEUE_MAX } from "./replay-search-queue.js";
-import { REPLAY_JUMP_MAX_WAIT_MS, REPLAY_JUMP_POLL_MS } from "./replay-timing.js";
+import { readReplayJumpTimeoutMs, REPLAY_JUMP_MAX_WAIT_MS, REPLAY_JUMP_POLL_MS } from "./replay-timing.js";
 
 /** The two ways a walk goes: forward (Next, a clockwise turn) or back (Previous, counter-clockwise). */
 export type ReplayWalkDirection = "next" | "previous";
@@ -150,6 +152,44 @@ async function waitForSlotAhead(gateWait: number): Promise<string> {
     });
 
     return ended.kind === "done" ? "the command pressed before it went" : "the command pressed before it still waits";
+  } catch (err) {
+    return `failed: ${String(err)}`;
+  }
+}
+
+/**
+ * Which tick a reading is (#1660): its `SessionTick`, which advances every
+ * sim update, and where a reading carries none, the replay flag and frame
+ * the gate settles its own readings on. A different mark is a newer tick.
+ */
+function tickMark(telemetry: TelemetryData | null): string {
+  if (telemetry === null) return "no telemetry";
+
+  const tick = telemetry.SessionTick;
+
+  if (typeof tick === "number" && Number.isFinite(tick)) return `tick ${tick}`;
+
+  return `replay ${telemetry.IsReplayPlaying === true} frame ${String(telemetry.ReplayFrameNum)}`;
+}
+
+/**
+ * Waits, on the engine clock, until the sim has delivered a newer tick than
+ * the one read when a head's act sent a position command (#1660). iRacing
+ * loses a position jump sent within a sim update of another position
+ * command (measured 2026-10-12: two absolute jumps inside one update end on
+ * the earlier), and a queue that resolves two heads back to back sends their
+ * jumps milliseconds apart. A new tick says the sim has taken the first.
+ * Read back, not timed: the bound only gives up, at the record jump's own
+ * wait.
+ */
+async function waitForNewTick(sentMark: string): Promise<string> {
+  try {
+    const ended = await pollUntil(() => (tickMark(engineReads().readTelemetry()) === sentMark ? undefined : true), {
+      intervalMs: REPLAY_JUMP_POLL_MS,
+      timeoutMs: readReplayJumpTimeoutMs(),
+    });
+
+    return ended.kind === "done" ? "a new tick since the last head's jump" : "no new tick since the last head's jump";
   } catch (err) {
     return `failed: ${String(err)}`;
   }
@@ -393,6 +433,8 @@ function dropHead(head: WaitingStart, err: unknown): void {
 async function drainWaitingStarts(): Promise<void> {
   const generation = drainGeneration;
   let waits = 0;
+  /** The tick the last head's act sent a position command on, until the sim has delivered a newer one. */
+  let sentOnTick: string | null = null;
 
   draining = true;
 
@@ -401,6 +443,21 @@ async function drainWaitingStarts(): Promise<void> {
       const head = waitingStarts[0];
 
       if (head === undefined) return;
+
+      // The head before this one sent a position command: the sim takes it on its next update, and one sent within
+      // the same update is lost. The next head reads and acts once a newer tick shows the first was taken.
+      if (sentOnTick !== null) {
+        const sentMark = sentOnTick;
+
+        sentOnTick = null;
+
+        const outcome = await waitForNewTick(sentMark);
+
+        if (generation !== drainGeneration) return;
+
+        log().debug(`Replay step start: ${outcome}`);
+        continue;
+      }
 
       let start: ReplayWalkStart;
 
@@ -469,10 +526,18 @@ async function drainWaitingStarts(): Promise<void> {
       waitingStarts.shift();
       const reason = settled.frame === null && settled.reason === "not in a replay" ? "replay-left" : "sent-on-landing";
 
+      const targetBefore = pendingReplayTarget()?.id ?? null;
+      const sendsBefore = replayPositionSends();
+
       try {
         head.resolve(closeReplayGateWait(head.gateWait, reason, () => head.act(settled)));
       } catch (err) {
         head.reject(err);
+      }
+
+      // Its act sent a position command, or recorded a jump's target whose seek may already be out.
+      if (replayPositionSends() !== sendsBefore || (pendingReplayTarget()?.id ?? null) !== targetBefore) {
+        sentOnTick = tickMark(engineReads().readTelemetry());
       }
     }
   } finally {

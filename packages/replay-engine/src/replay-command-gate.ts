@@ -394,6 +394,14 @@ function setFate(id: number, fate: ReplayTargetFate): void {
 }
 /** Whether the latest reading showed a seek nobody recorded (the witness). */
 let witness = false;
+/**
+ * How many position commands went out (#1660): an absolute jump, a go to
+ * start or a go to end the SDK took. Read before and after a step's start
+ * acts, so the queue of waiting starts knows the act sent one.
+ */
+let positionSends = 0;
+/** The position commands {@link positionSends} counts, by their `sendRaw` names. */
+const POSITION_COMMANDS: ReadonlySet<string> = new Set(["setPlayPosition", "goToStart", "goToEnd"]);
 /** The last reading that was the replay's, for a takeover with no frame on screen. */
 let lastReplay: ReplayReading | null = null;
 /** When the gate last went from idle to busy (ms), for the record. */
@@ -822,7 +830,14 @@ function sendRaw(name: string, send: (replay: ReplayCommandSurface) => boolean):
     log().debug(`Replay command ${name} threw: ${String(err)}`);
   }
 
+  if (ok && POSITION_COMMANDS.has(name)) positionSends++;
+
   return ok;
+}
+
+/** How many position commands (an absolute jump, a go to start or end) the gate has sent (#1660). */
+export function replayPositionSends(): number {
+  return positionSends;
 }
 
 function describe(command: SlotCommand): string {
@@ -3043,6 +3058,7 @@ export function _resetReplayCommandGate(): void {
   startWaits.clear();
   startWaitSeq = 0;
   pressOrder = 0;
+  positionSends = 0;
   actingStartOrder = null;
   takeover = null;
   slot = null;

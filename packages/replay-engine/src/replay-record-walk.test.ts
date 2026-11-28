@@ -1194,6 +1194,59 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
     });
   });
 
+  it("sends the second queued head's jump only once the sim has delivered a new tick after the first's", async () => {
+    setUp();
+    search("nextSession");
+
+    // When each position jump went out, on the fake clock.
+    const sentAt: number[] = [];
+    const setPlayPosition = vi.mocked(sim.replay.setPlayPosition);
+    const send = setPlayPosition.getMockImplementation();
+
+    setPlayPosition.mockImplementation((mode, frame) => {
+      sentAt.push(Date.now());
+
+      return send?.(mode, frame) ?? false;
+    });
+
+    const order: string[] = [];
+    const jumps: Promise<unknown>[] = [];
+    const press = (name: string) =>
+      awaitReplayWalkStart(
+        readState,
+        () => sim.telemetry(),
+        (start) => {
+          order.push(`${name} ${start.frame === null ? start.reason : `${start.from} ${start.frame}`}`);
+
+          if (start.frame === null) return;
+
+          const frame = start.frame + 50_000;
+          const jump = beginReplayJump(`test-${name}`, sim.telemetry(), undefined, Date.now(), { frame });
+
+          jumps.push(runReplayJump(jump, { frame, readTelemetry: () => sim.telemetry() }).finally(() => jump.end()));
+        },
+      );
+    const first = press("a");
+    const second = press("b");
+
+    await vi.advanceTimersByTimeAsync(3_000);
+    await Promise.all([first, second]);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await Promise.all(jumps);
+
+    const simUpdate = (t: number): number => Math.floor(t / (1000 / 60));
+
+    expect(order).toEqual(["a cursor 200000", "b target 250000"]);
+    expect(sentAt).toHaveLength(2);
+    // The second jump went out in a later sim update than the first: iRacing took the first before it.
+    expect(simUpdate(sentAt[1] ?? 0)).toBeGreaterThan(simUpdate(sentAt[0] ?? 0));
+    expect(sim.calls.filter((call) => call.startsWith("setPlayPosition"))).toEqual([
+      "setPlayPosition 0 250000",
+      "setPlayPosition 0 300000",
+    ]);
+    expect(sim.frame()).toBe(300_000);
+  });
+
   it("resolves every press waiting on one search to its landing", async () => {
     setUp();
     search("nextSession");

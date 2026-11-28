@@ -381,12 +381,20 @@ function expectNothingSent(): void {
   expect(host.jumpToLive).not.toHaveBeenCalled();
 }
 
+/**
+ * `telemetry` as the sim delivers it to the engine: a new `SessionTick` every sim update (60 Hz) on the fake clock,
+ * which a queue of waiting starts reads back before its next head acts after a jump (#1660).
+ */
+function withSimTick(telemetry: TelemetryData | null): TelemetryData | null {
+  return telemetry === null ? null : { ...telemetry, SessionTick: Math.floor(Date.now() / (1000 / 60)) };
+}
+
 describe("ReplayControlDialSurface", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     // The gate reads the same replay the surface does (#1430).
-    resetEngine({ readTelemetry: () => env.telemetry, inReplay: () => env.inReplay });
+    resetEngine({ readTelemetry: () => withSimTick(env.telemetry), inReplay: () => env.inReplay });
     env.inReplay = true;
     env.state = null;
     env.telemetry = replayAt(speed(1));
