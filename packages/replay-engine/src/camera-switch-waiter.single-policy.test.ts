@@ -46,6 +46,10 @@ const STATE_METHODS: Readonly<Record<string, string>> = {
     "Flags on the camera (UI hidden and so on), not a target: Camera Controls' Set Camera State sends it at once, never through the waiter (CLAUDE.md, One camera policy).",
   hideUI: "Sets the camera's UI-hidden flag through setState (Toggle UI Elements): flags, not a switch.",
   showUI: "Clears the camera's UI-hidden flag through setState (Toggle UI Elements): flags, not a switch.",
+  focusModeInEffect:
+    "Reads the director focus the SDK recorded from the plugin's last switch (#1656; Auto Group reads it at its send): sends nothing.",
+  forgetFocusMode:
+    "Clears that record when a Next / Previous Car key is tapped (#1656, shared/car-cycle-focus.ts): sends nothing; the tap beside it is the switch.",
 };
 
 /** The calls that send a key binding: a camera key sent through one is a camera switch. */
