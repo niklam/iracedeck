@@ -174,19 +174,23 @@ const TICKS_AFTER_POSITION_SEND = 3;
  * sim update, and where a reading carries none, the replay flag and frame
  * the gate settles its own readings on.
  */
-interface TickMark {
+export interface TickMark {
   /** The `SessionTick`, or null for a reading without one. */
   readonly tick: number | null;
   /** The flag and frame, for a reading without a `SessionTick`. */
   readonly key: string;
 }
 
-function tickMark(telemetry: TelemetryData | null): TickMark {
+/** The mark of a read with no telemetry: no tick at all. */
+const NO_TELEMETRY = "no telemetry";
+
+/** @internal Exported for testing. */
+export function tickMark(telemetry: TelemetryData | null): TickMark {
   const tick = telemetry?.SessionTick;
 
   if (typeof tick === "number" && Number.isFinite(tick)) return { tick, key: `tick ${tick}` };
 
-  if (telemetry === null) return { tick: null, key: "no telemetry" };
+  if (telemetry === null) return { tick: null, key: NO_TELEMETRY };
 
   return {
     tick: null,
@@ -203,25 +207,35 @@ function tickMark(telemetry: TelemetryData | null): TickMark {
  * to back sends their jumps milliseconds apart. With a `SessionTick` the wait
  * ends once it reads that many past the send's, however many updates one
  * poll spans; without one, once the flag and frame have changed that many
- * times. Read back, not timed: the bound only gives up, at the record jump's
- * own wait.
+ * times, counted over real samples only: a read with no telemetry is no
+ * tick and changes nothing. Read back, not timed: the bound only gives up,
+ * at the record jump's own wait.
+ *
+ * @internal Exported for testing.
  */
-async function waitForNewTicks(sent: TickMark): Promise<string> {
-  let last = sent;
+export async function waitForNewTicks(sent: TickMark): Promise<string> {
+  // The flag and frame pair the changes are counted from; none until a real sample when the send's read had none.
+  let last: string | null = sent.key === NO_TELEMETRY ? null : sent.key;
   let changes = 0;
 
   try {
     const ended = await pollUntil(
       () => {
-        const now = tickMark(engineReads().readTelemetry());
+        const telemetry = engineReads().readTelemetry();
+
+        if (telemetry === null) return undefined;
+
+        const now = tickMark(telemetry);
 
         if (sent.tick !== null && now.tick !== null) {
           return now.tick - sent.tick >= TICKS_AFTER_POSITION_SEND ? true : undefined;
         }
 
-        if (now.key !== last.key) {
+        if (last === null) {
+          last = now.key;
+        } else if (now.key !== last) {
           changes++;
-          last = now;
+          last = now.key;
         }
 
         return changes >= TICKS_AFTER_POSITION_SEND ? true : undefined;

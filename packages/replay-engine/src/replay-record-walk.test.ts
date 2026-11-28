@@ -29,6 +29,8 @@ import {
   resolveReplayWalkAnchor,
   resolveReplayWalkStart,
   type SettledReplayWalkStart,
+  tickMark,
+  waitForNewTicks,
   walkRecordedEntries,
   walkRecordedIndex,
 } from "./replay-record-walk.js";
@@ -322,6 +324,47 @@ describe("the anchor and the cursor", () => {
         reason: "no cursor",
       });
     });
+  });
+});
+
+describe("the wait for new ticks after a position send, without a SessionTick (#1660)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000_000);
+  });
+
+  afterEach(() => {
+    resetEngine();
+    vi.useRealTimers();
+  });
+
+  const at = (frame: number) => ({ IsReplayPlaying: true, ReplayFrameNum: frame }) as TelemetryData;
+
+  it("counts only real changes of the flag and frame: a read with no telemetry is no tick", async () => {
+    // Reads with no telemetry between the same frame would read as changes if they counted.
+    const samples: (TelemetryData | null)[] = [null, at(100), null, at(100), at(101), null, at(102), at(103)];
+    let reads = 0;
+    let readsAtEnd = 0;
+
+    resetEngine({
+      readTelemetry: () => {
+        reads++;
+
+        return samples.length > 0 ? (samples.shift() as TelemetryData | null) : at(103);
+      },
+    });
+
+    const done = waitForNewTicks(tickMark(at(100))).then((outcome) => {
+      readsAtEnd = reads;
+
+      return outcome;
+    });
+
+    await vi.advanceTimersByTimeAsync(500);
+
+    await expect(done).resolves.toBe("3 new ticks since the last head's jump");
+    // Three real changes, 101, 102 and 103, the eighth read.
+    expect(readsAtEnd).toBe(8);
   });
 });
 
