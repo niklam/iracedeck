@@ -1330,7 +1330,7 @@ describe("CameraControls", () => {
         // plugin write and by each PI change. The first write, the appear's
         // addedWithVersion stamp, is held in flight: the await BaseAction's
         // appear makes before the action's own profile-list write.
-        let hostSettings: Record<string, unknown> = { ...focusSelectSettings };
+        let hostSettings: Record<string, unknown> | undefined;
         let writes = 0;
         let releaseStamp = (): void => {};
         const stampHeld = new Promise<void>((resolve) => {
