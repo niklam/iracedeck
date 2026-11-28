@@ -307,6 +307,69 @@ describe("SwitchProfile", () => {
       expect(a.setSettings).toHaveBeenCalledWith({ ...newer, _deviceProfiles: xlEntries });
     });
 
+    it("reports no marker and draws no icon from a superseded event; the newer event does both (#1761)", async () => {
+      _resetSelectIntents();
+      setSelectIntent("dev-1", { action: "focus-camera" });
+
+      try {
+        const action = new SwitchProfile();
+        const a = keyAction();
+
+        // The appear's marker is the Replay profile; the newer settings, already
+        // arrived and queued behind it, carry the Car Selector marker.
+        await action.onWillAppear({
+          action: a,
+          payload: { settings: { profile: "iRaceDeck Replay XL", hostProfile: "iRaceDeck Replay" } },
+          isSuperseded: () => true,
+        } as never);
+
+        expect(a.setSettings).not.toHaveBeenCalled();
+        expect(notifyProfileVisible).not.toHaveBeenCalled();
+        // A Replay marker would have cleared the intent; the superseded event leaves it.
+        expect(getSelectIntent("dev-1")).toEqual({ action: "focus-camera" });
+        expect(a.setTitle).not.toHaveBeenCalled();
+        expect(action["setKeyImage"]).not.toHaveBeenCalled();
+        expect(action["setRegenerateCallback"]).not.toHaveBeenCalled();
+
+        const newer = { profile: "iRaceDeck Car Selector XL", hostProfile: "iRaceDeck Car Selector" };
+
+        await action.onDidReceiveSettings({
+          action: a,
+          payload: { settings: newer },
+          isSuperseded: () => false,
+        } as never);
+
+        expect(a.setSettings).toHaveBeenCalledTimes(1);
+        expect(a.setSettings).toHaveBeenCalledWith({ ...newer, _deviceProfiles: xlEntries });
+        expect(notifyProfileVisible).toHaveBeenCalledTimes(1);
+        expect(notifyProfileVisible).toHaveBeenCalledWith("dev-1", "iRaceDeck Car Selector XL");
+        expect(getSelectIntent("dev-1")).toEqual({ action: "focus-camera" });
+        expect(a.setTitle).toHaveBeenCalledTimes(1);
+        expect(a.setTitle).toHaveBeenCalledWith("");
+        expect(action["setKeyImage"]).toHaveBeenCalledTimes(1);
+        expect(action["setKeyImage"]).toHaveBeenCalledWith(expect.anything(), "assembled:<svg>CAR SELECTOR</svg>");
+      } finally {
+        _resetSelectIntents();
+      }
+    });
+
+    it("reports no marker from an appear its own disappear has superseded (#1761)", async () => {
+      const action = new SwitchProfile();
+      const a = keyAction();
+      const appear = {
+        action: a,
+        payload: { settings: { hostProfile: "iRaceDeck Replay" } },
+        isSuperseded: () => true,
+      };
+
+      await action.onWillAppear(appear as never);
+      await action.onWillDisappear(appear as never);
+
+      expect(a.setSettings).not.toHaveBeenCalled();
+      expect(notifyProfileVisible).not.toHaveBeenCalled();
+      expect(action["setKeyImage"]).not.toHaveBeenCalled();
+    });
+
     it("keeps this appearance's addedWithVersion stamp under the list (#1761)", async () => {
       ContextSettingsActionBase.stampVersion = "3.10.0";
 

@@ -244,6 +244,14 @@ export class SwitchProfile extends ConnectionStateAwareAction<SwitchProfileSetti
    * is already stored. A failed write is warned there and never thrown, so the
    * marker and the icon below still follow. They read the event's own
    * settings: the write only adds `_deviceProfiles`, which neither reads.
+   *
+   * A superseded event stops after the write call, which parks the write
+   * itself. When a newer settings event for this key has already arrived, it
+   * runs next and its own sync reports the marker and draws the icon from the
+   * newer settings; doing either here would report a marker, or draw an icon,
+   * the user has already changed. When the key's disappear has arrived, its
+   * profile is already gone, and reporting it now could record it as the
+   * current profile after the one that replaced it has reported.
    */
   private async sync(
     ev: IDeckWillAppearEvent<SwitchProfileSettings> | IDeckDidReceiveSettingsEvent<SwitchProfileSettings>,
@@ -252,6 +260,8 @@ export class SwitchProfile extends ConnectionStateAwareAction<SwitchProfileSetti
       ev,
       deviceProfilesUpdate(ev.action.deviceType, () => true),
     );
+
+    if (ev.isSuperseded?.() === true) return;
 
     const settings = this.parseSettings(ev.payload.settings);
 
