@@ -4,7 +4,9 @@
 >
 > Point-in-time design record. The code and `.claude/rules/` are the truth; this is not documentation.
 
-#1599 dims every key that needs iRacing while it is not running. This change draws the same look on every dial screen whose dial needs it: the Stream Deck + strip slot and the Mirabox knob screen. It goes in the dial funnel #1670 adds, decided by the same setting and the same debounced presence signal, with the same exemptions. The issue carries the request. This spec records how the look fits a dial screen, which dials are exempt, and how a dial is redrawn when its look changes. It depends on #1599 and #1670 both being on `master`.
+#1599 dims every key that needs iRacing while it is not running. This change draws the same look on every dial screen whose dial needs it: the Stream Deck + strip slot and the Mirabox knob screen. It goes in the dial funnel #1670 adds, decided by the same setting and the same debounced presence signal, with the same exemptions. The issue carries the request. This spec records how the look fits a dial screen, which dials are exempt, and how a dial is redrawn when its look changes. It depends on #1599, #1670 and #1813 being on `master`.
+
+**Amended 2026-11-28 for #1813.** #1813 (deprecated actions and modes, `2026-11-28-issue-1813-deprecation-badge-and-banner.md`) lands first and builds the dial record, the redraw, the per-canvas badge scale and the super-call-order rule this spec designed, under names that serve both looks. This spec now extends them: the record is `{ action, image, decorations }` and this issue adds `disconnected` to `decorations`; the redraw is `refreshDialDecorations`; the scale table is `CORNER_BADGE_SCALE`; and the look is drawn by a builder passed to icon-composer's one-pass `applyOverlays`. The super-call-order rule in §2 ships with #1813.
 
 ## Behaviour
 
@@ -50,13 +52,13 @@ protected showsDisconnected(contextId: string, surface: "key" | "dial"): boolean
 ### 2. The dial funnel decorates, remembers and redraws
 
 - **`setDialImage(action, image)`**, when the context has a canvas:
-  - it reads `look = showsDisconnected(id, "dial")`; a throw counts as `false` and sends the frame undecorated, as on keys;
-  - it records `{ action, image, look }` for the context, with the undecorated image;
-  - it sends `look ? applyDisconnectedLook(image, { badgeScale }) : image`, with the badge scale for the canvas (§3).
+  - it reads `disconnected = showsDisconnected(id, "dial")`; a throw counts as `false` for this decoration alone, so it never strips another one (#1813's deprecation badge);
+  - it records `{ action, image, decorations }` for the context (#1813's record, with `disconnected` added to `decorations`), with the undecorated image;
+  - it sends the image through `applyOverlays` with the disconnected builder when `disconnected` holds, with the badge scale for the canvas (§3).
   The record is made before the send's await, so the record always holds the latest frame the surface asked for.
 - **Only a live context is recorded.** A live context is one `BaseAction` holds settings for: it has appeared and not disappeared. `onWillDisappear` drops the record. A frame for a context that is not live is still sent, as today, but it is not recorded, so a late frame cannot leave an entry behind (the #1329 class).
-- **This depends on the super-call order.** A dial's first frame is recorded, and decided against that dial's own settings, only if the owning action awaits `super.onWillAppear(ev)` before it calls its surface's `willAppear`. The same holds for `super.onDidReceiveSettings(ev)` before the surface's `didReceiveSettings`, or the frame is decided against the previous settings. All 18 Encoder actions do this today, but nothing enforces it. So `actions/dial-surface-base-coverage.test.ts` gains a rule: in each Encoder action's `onWillAppear` and `onDidReceiveSettings`, the `super.<member>(…)` call comes before the first `this.dialSurface…` call (whatever the surface field is named, found by its type's `DialSurface` suffix). The rule reads the source text with the guard's existing `scanSource` and fails on a missing super call or one placed after the surface call. Its positive control is a planted action source with the order swapped, which the rule must report. Audio Controls' pre-super migration and seed writes are not surface calls and stay allowed.
-- **`refreshDialLooks(only?: contextId)`** goes through the records, or only the named one. For each whose `showsDisconnected(id, "dial")` now differs from its recorded `look`, it re-sends the recorded image decorated for the new state and updates `look`. Three places call it:
+- **This depends on the super-call order.** A dial's first frame is recorded, and decided against that dial's own settings, only if the owning action awaits `super.onWillAppear(ev)` before it calls its surface's `willAppear`. The same holds for `super.onDidReceiveSettings(ev)` before the surface's `didReceiveSettings`, or the frame is decided against the previous settings. All 18 Encoder actions do this today. #1813 adds the rule that enforces it to `actions/dial-surface-base-coverage.test.ts`: in each Encoder action's `onWillAppear` and `onDidReceiveSettings`, the `super.<member>(…)` call comes before the first `this.dialSurface…` call (whatever the surface field is named, found by its type's `DialSurface` suffix). The rule reads the source text with the guard's existing `scanSource` and fails on a missing super call or one placed after the surface call. Its positive control is a planted action source with the order swapped, which the rule must report. Audio Controls' pre-super migration and seed writes are not surface calls and stay allowed.
+- **`refreshDialDecorations(only?: contextId)`** goes through the records, or only the named one. For each whose `showsDisconnected(id, "dial")` now differs from its recorded `decorations.disconnected`, it re-sends the recorded image decorated for the new state and updates the record. Three places call it:
   - `BaseAction`'s global-settings listener, after `refreshAllImages`: the setting was toggled;
   - `ConnectionStateAwareAction`'s presence handler: the sim came or went;
   - `BaseAction.onDidReceiveSettings`, for that one context, right after it stores the new settings. A settings change can flip `needsSim` (Audio Controls' dial from Master to Radar), and the surface may draw no new frame for it. A surface that does redraw goes through `setDialImage`, which decides afresh; the re-check costs nothing when the look did not flip.
@@ -68,8 +70,8 @@ protected showsDisconnected(contextId: string, surface: "key" | "dial"): boolean
 
 ### 3. The look at dial sizes
 
-- **`applyDisconnectedLook(svg, options?: { badgeScale?: number })`** in `icon-composer`. Without options it is byte-identical to #1599's, so the key output does not change. With a `badgeScale`, it draws the same badge at that scale, anchored at the same top-left inset times the scale. The dim rectangle, its opacity and the shape set (`rect`, `circle`, `polygon`, `path`, `opacity`; readable with `pngRasterization` off) are unchanged, so `svg-platform-compatibility.md` needs nothing new.
-- **The scale per canvas** is `DISCONNECTED_BADGE_SCALE: Readonly<Record<DialCanvasId, number>>` in `deck-core/src/dial-canvas.ts`, beside the profiles and #1670's `DIAL_NAME_CARD`. It is exhaustive, so a new dial profile fails to compile until it has a badge size. The funnel looks it up by `profile.id`.
+- **The disconnected builder for `applyOverlays`** in `icon-composer` (#1813), taking `{ badgeScale?: number }`. Without a scale its output is byte-identical to #1599's, so the key output does not change. With a `badgeScale`, it draws the same badge at that scale, anchored at the same top-left inset times the scale. The dim rectangle, its opacity and the shape set (`rect`, `circle`, `polygon`, `path`, `opacity`; readable with `pngRasterization` off) are unchanged, so `svg-platform-compatibility.md` needs nothing new.
+- **The scale per canvas** is `CORNER_BADGE_SCALE: Readonly<Record<DialCanvasId, number>>` in `deck-core/src/dial-canvas.ts`, beside the profiles and #1670's `DIAL_NAME_CARD`. It is exhaustive, so a new dial profile fails to compile until it has a badge size. The funnel looks it up by `profile.id`.
 - **Placement constraints**, fixed here, on both canvases, for `renderDialBox` and for the four self-drawn surfaces (Fuel Service, Audio Controls, Camera Controls, Black Box Selector). The badge leaves clear:
   - the label and the value;
   - the side marks (on the label line, 0.3 of the width either side of the centre, `sideMarkGeometry`);
@@ -82,7 +84,7 @@ protected showsDisconnected(contextId: string, surface: "key" | "dial"): boolean
 
 ### 4. The debounce, reused
 
-Nothing is added. The look reads #1599's `isSimAbsent()` and `onSimPresenceChange()`, with `absentDelayMs` = `IRACING_EXIT_SDK_CONFIRM_MS` (5 s), passed by `deck-iracing`'s `initializeSDK`. `ConnectionStateAwareAction` already counts a dial context as a live context, so its presence listener is held while any key or dial of the action is on the deck. Its handler keeps #1599's filtered key refresh and gains `refreshDialLooks()`.
+Nothing is added. The look reads #1599's `isSimAbsent()` and `onSimPresenceChange()`, with `absentDelayMs` = `IRACING_EXIT_SDK_CONFIRM_MS` (5 s), passed by `deck-iracing`'s `initializeSDK`. `ConnectionStateAwareAction` already counts a dial context as a live context, so its presence listener is held while any key or dial of the action is on the deck. Its handler keeps #1599's filtered key refresh and gains `refreshDialDecorations()`.
 
 ### 5. Setting and text
 
@@ -109,7 +111,7 @@ The badge is shown at each canvas's starting scale and one step either side. The
 These three are product decisions, and this spec does not make them. Niklas settles them before implementation starts, or on the review page before any of the look is committed. The drafted answer stands in each case until he does.
 
 1. **The name card.** Should the Stream Deck + name card, shown only in the Stream Deck app, get the look? Drafted: no. A yes adds a record and a redraw for the card to §2.
-2. **The badge size per canvas.** Which final `DISCONNECTED_BADGE_SCALE` values, within the §3 constraints? Drafted: strip 0.694, knob 0.55.
+2. **The badge size per canvas.** Which final `CORNER_BADGE_SCALE` values, within the §3 constraints? Drafted: strip 0.694, knob 0.55.
 3. **The setting wording.** Should "Dim keys that need iRacing" and the "Disconnected Keys" card title be renamed to cover dials? Drafted: keep both, and change only the help text and the website paragraph.
 
 ## Alternatives rejected
@@ -134,8 +136,8 @@ These three are product decisions, and this spec does not make them. Niklas sett
 
 - `packages/icon-composer`: the `badgeScale` option in `disconnected-look.ts`, its tests and `CLAUDE.md`.
 - `packages/deck-core`:
-  - `dial-canvas.ts`: `DISCONNECTED_BADGE_SCALE`;
-  - `base-action.ts`: the record, the decoration, `refreshDialLooks`, and `showsDisconnected`'s surface parameter;
+  - `dial-canvas.ts`: `CORNER_BADGE_SCALE`;
+  - `base-action.ts`: the record, the decoration, `refreshDialDecorations`, and `showsDisconnected`'s surface parameter;
   - `connection-state-aware-action.ts`: `needsSim`'s surface parameter and the presence handler;
   - their tests and `CLAUDE.md`.
 - `packages/iracing-actions`:
@@ -161,7 +163,7 @@ These three are product decisions, and this spec does not make them. Niklas sett
   - with no options, the output is byte-identical to #1599's for the existing key fixtures;
   - with `badgeScale`, at 200×100 and 176×112, the plate's box is the inset and size times the scale;
   - the output holds no `filter`, `mask`, `clipPath` or `<style>`.
-- **Geometry** (`iracing-actions`, `shared/dial-disconnected-look-geometry.test.ts`): at each canvas's `DISCONNECTED_BADGE_SCALE`, the plate's box does not intersect the box of `renderDialBox`'s label, value, side marks (`sideMarkGeometry`), centred ⚠ or caption mark. As a positive control, at the key rule on the knob the same check reports the side-mark overlap.
+- **Geometry** (`iracing-actions`, `shared/dial-disconnected-look-geometry.test.ts`): at each canvas's `CORNER_BADGE_SCALE`, the plate's box does not intersect the box of `renderDialBox`'s label, value, side marks (`sideMarkGeometry`), centred ⚠ or caption mark. As a positive control, at the key rule on the knob the same check reports the side-mark overlap.
 - **`BaseAction`'s dial funnel:**
   - it decorates exactly when `showsDisconnected(id, "dial")` is true;
   - the record holds the undecorated frame;
