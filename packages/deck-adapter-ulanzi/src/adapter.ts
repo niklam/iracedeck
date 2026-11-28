@@ -96,15 +96,20 @@ class UlanziActionContext implements IDeckActionContext {
   async setDialCanvas(_dataUri: string): Promise<void> {}
 }
 
-/** Create a deck-core event from a Ulanzi event with full action context. */
+/**
+ * Create a deck-core event from a Ulanzi event with full action context.
+ * `isSuperseded` is the `ContextEventOrder` arrival's of the task building it (#1761).
+ */
 function wrapEvent<T>(
   client: UlanziClient,
   data: UlanziEvent & { context: string },
   controllerType: ControllerType,
+  isSuperseded: () => boolean,
 ): IDeckEvent<T> {
   return {
     action: new UlanziActionContext(client, data.context, controllerType),
     payload: { settings: (data.payload?.settings ?? {}) as T },
+    isSuperseded,
   };
 }
 
@@ -112,6 +117,7 @@ function wrapEvent<T>(
 function wrapDisappearEvent<T>(
   data: UlanziEvent & { context: string },
   controllerType: ControllerType,
+  isSuperseded: () => boolean,
 ): IDeckWillDisappearEvent<T> {
   return {
     action: {
@@ -150,6 +156,7 @@ function wrapDisappearEvent<T>(
       },
     },
     payload: { settings: (data.payload?.settings ?? {}) as T },
+    isSuperseded,
   };
 }
 
@@ -158,6 +165,7 @@ function wrapDialRotateEvent<T>(
   client: UlanziClient,
   data: UlanziEvent & { context: string },
   controllerType: ControllerType,
+  isSuperseded: () => boolean,
 ): IDeckDialRotateEvent<T> {
   return {
     action: new UlanziActionContext(client, data.context, controllerType),
@@ -167,6 +175,7 @@ function wrapDialRotateEvent<T>(
       // Default false when the frame omits it (rotate-while-pressed support).
       pressed: data.payload?.pressed ?? false,
     },
+    isSuperseded,
   };
 }
 
@@ -503,10 +512,10 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
      * task, so a disappear queued behind it never deletes an entry this has
      * not set yet.
      */
-    const appear = (data: Frame, controller: ControllerType): Promise<void> | void => {
+    const appear = (data: Frame, controller: ControllerType, isSuperseded: () => boolean): Promise<void> | void => {
       this.contextControllers.set(data.context, controller);
 
-      return handler.onWillAppear?.(wrapEvent<T>(this.client, data, controller));
+      return handler.onWillAppear?.(wrapEvent<T>(this.client, data, controller, isSuperseded));
     };
 
     /**
@@ -526,8 +535,12 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
      * context still ends up an Encoder and the dial event behind the step is
      * still delivered. Failing the step instead would leave the context a
      * Keypad whose every dial event re-runs the teardown.
+     *
+     * Both events carry the step's own arrival token (#1761): a step
+     * supersedes nothing, but a settings change that arrives after it
+     * supersedes the re-appear's writes, which then wait for it.
      */
-    const promoteToEncoder = async (data: Frame): Promise<void> => {
+    const promoteToEncoder = async (data: Frame, isSuperseded: () => boolean): Promise<void> => {
       const { context } = data;
       const previous = getControllerType(context);
       const settings = settingsNow(data);
@@ -541,13 +554,15 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
       // keep cleaning up (unsubscribe by id) after their base disappear, and
       // that must not land after the dial appear has subscribed.
       try {
-        await handler.onWillDisappear?.(wrapDisappearEvent<T>(withSettingsCopy("willDisappear"), previous));
+        await handler.onWillDisappear?.(
+          wrapDisappearEvent<T>(withSettingsCopy("willDisappear"), previous, isSuperseded),
+        );
       } catch (error) {
         this.controllerLog.error(`Context ${context}: willDisappear as ${previous} failed while promoting: ${error}`);
       }
 
       try {
-        await appear(withSettingsCopy("willAppear"), "Encoder");
+        await appear(withSettingsCopy("willAppear"), "Encoder", isSuperseded);
       } catch (error) {
         this.controllerLog.error(`Context ${context}: willAppear as Encoder failed while promoting: ${error}`);
       }
@@ -568,7 +583,9 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
 
         if (!this.knownEncoderContexts.has(context)) {
           this.knownEncoderContexts.add(context);
-          void this.order.enqueue(context, "step:promoteToEncoder", () => promoteToEncoder(data));
+          void this.order.enqueue(context, "step:promoteToEncoder", ({ isSuperseded }) =>
+            promoteToEncoder(data, isSuperseded),
+          );
         }
       }
     };
@@ -601,8 +618,8 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
       if (this.order.isLive(context)) {
         this.controllerLog.debug(`Context ${context}: add arrived while live, delivered as a settings change`);
 
-        return this.order.enqueue(context, "didReceiveSettings", () =>
-          handler.onDidReceiveSettings?.(wrapEvent<T>(this.client, frame, getControllerType(context))),
+        return this.order.enqueue(context, "didReceiveSettings", ({ isSuperseded }) =>
+          handler.onDidReceiveSettings?.(wrapEvent<T>(this.client, frame, getControllerType(context), isSuperseded)),
         );
       }
 
@@ -612,7 +629,7 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
 
       const controller = explicit ?? (this.knownEncoderContexts.has(context) ? "Encoder" : "Keypad");
 
-      return this.order.enqueue(context, "willAppear", () => appear(frame, controller));
+      return this.order.enqueue(context, "willAppear", ({ isSuperseded }) => appear(frame, controller, isSuperseded));
     });
 
     // willDisappear — the controller entry is read and dropped inside the task,
@@ -623,12 +640,12 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
 
       const frame = data as Frame;
 
-      return this.order.enqueue(frame.context, "willDisappear", () => {
+      return this.order.enqueue(frame.context, "willDisappear", ({ isSuperseded }) => {
         const controller = getControllerType(frame.context);
 
         this.contextControllers.delete(frame.context);
 
-        return handler.onWillDisappear?.(wrapDisappearEvent<T>(frame, controller));
+        return handler.onWillDisappear?.(wrapDisappearEvent<T>(frame, controller, isSuperseded));
       });
     });
 
@@ -638,8 +655,10 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
 
       const frame = data as Frame;
 
-      return this.order.enqueue(frame.context, "didReceiveSettings", () =>
-        handler.onDidReceiveSettings?.(wrapEvent<T>(this.client, frame, getControllerType(frame.context))),
+      return this.order.enqueue(frame.context, "didReceiveSettings", ({ isSuperseded }) =>
+        handler.onDidReceiveSettings?.(
+          wrapEvent<T>(this.client, frame, getControllerType(frame.context), isSuperseded),
+        ),
       );
     });
 
@@ -651,9 +670,14 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
 
       if (this.order.isLive(frame.context)) for (const cb of this.keyDownCallbacks) cb();
 
-      return this.order.enqueue(frame.context, "keyDown", () =>
+      return this.order.enqueue(frame.context, "keyDown", ({ isSuperseded }) =>
         handler.onKeyDown?.(
-          wrapEvent<T>(this.client, withSettings(frame, settingsNow(frame)), getControllerType(frame.context)),
+          wrapEvent<T>(
+            this.client,
+            withSettings(frame, settingsNow(frame)),
+            getControllerType(frame.context),
+            isSuperseded,
+          ),
         ),
       );
     });
@@ -664,9 +688,14 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
 
       const frame = data as Frame;
 
-      return this.order.enqueue(frame.context, "keyUp", () =>
+      return this.order.enqueue(frame.context, "keyUp", ({ isSuperseded }) =>
         handler.onKeyUp?.(
-          wrapEvent<T>(this.client, withSettings(frame, settingsNow(frame)), getControllerType(frame.context)),
+          wrapEvent<T>(
+            this.client,
+            withSettings(frame, settingsNow(frame)),
+            getControllerType(frame.context),
+            isSuperseded,
+          ),
         ),
       );
     });
@@ -679,12 +708,13 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
 
       dialArrived(frame, this.dialRotateCallbacks);
 
-      return this.order.enqueue(frame.context, "dialRotate", () =>
+      return this.order.enqueue(frame.context, "dialRotate", ({ isSuperseded }) =>
         handler.onDialRotate?.(
           wrapDialRotateEvent<T>(
             this.client,
             withSettings(frame, settingsNow(frame)),
             getControllerType(frame.context),
+            isSuperseded,
           ),
         ),
       );
@@ -698,9 +728,14 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
 
       dialArrived(frame, this.dialDownCallbacks);
 
-      return this.order.enqueue(frame.context, "dialDown", () =>
+      return this.order.enqueue(frame.context, "dialDown", ({ isSuperseded }) =>
         handler.onDialDown?.(
-          wrapEvent<T>(this.client, withSettings(frame, settingsNow(frame)), getControllerType(frame.context)),
+          wrapEvent<T>(
+            this.client,
+            withSettings(frame, settingsNow(frame)),
+            getControllerType(frame.context),
+            isSuperseded,
+          ),
         ),
       );
     });
@@ -713,9 +748,14 @@ export class UlanziPlatformAdapter implements IDeckPlatformAdapter {
 
       dialArrived(frame, []);
 
-      return this.order.enqueue(frame.context, "dialUp", () =>
+      return this.order.enqueue(frame.context, "dialUp", ({ isSuperseded }) =>
         handler.onDialUp?.(
-          wrapEvent<T>(this.client, withSettings(frame, settingsNow(frame)), getControllerType(frame.context)),
+          wrapEvent<T>(
+            this.client,
+            withSettings(frame, settingsNow(frame)),
+            getControllerType(frame.context),
+            isSuperseded,
+          ),
         ),
       );
     });
