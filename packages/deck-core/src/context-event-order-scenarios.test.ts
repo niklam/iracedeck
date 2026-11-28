@@ -4,6 +4,7 @@ import {
   InTaskBroadcastReferenceAdapter,
   InTaskLivenessReferenceAdapter,
   LateAppearDropReferenceAdapter,
+  NoArrivalTokenReferenceAdapter,
   OrderedReferenceAdapter,
   SerialReferenceAdapter,
   UnorderedReferenceAdapter,
@@ -31,6 +32,7 @@ const FAILING_REFERENCES = {
   inTaskBroadcast: () => new InTaskBroadcastReferenceAdapter(),
   inTaskLiveness: () => new InTaskLivenessReferenceAdapter(),
   lateAppearDrop: () => new LateAppearDropReferenceAdapter(),
+  noArrivalToken: () => new NoArrivalTokenReferenceAdapter(),
 } as const;
 
 type FailingReference = keyof typeof FAILING_REFERENCES;
@@ -48,14 +50,23 @@ const EXPECTED: Record<string, ExpectedOutcomes> = {
     inTaskBroadcast: pass,
     inTaskLiveness: pass,
     lateAppearDrop: pass,
+    noArrivalToken: pass,
   },
-  "no overtaking": { unordered: fail, serial: pass, inTaskBroadcast: pass, inTaskLiveness: pass, lateAppearDrop: pass },
+  "no overtaking": {
+    unordered: fail,
+    serial: pass,
+    inTaskBroadcast: pass,
+    inTaskLiveness: pass,
+    lateAppearDrop: pass,
+    noArrivalToken: pass,
+  },
   "input after a disappear is dropped": {
     unordered: fail,
     serial: pass,
     inTaskBroadcast: pass,
     inTaskLiveness: pass,
     lateAppearDrop: pass,
+    noArrivalToken: pass,
   },
   "input before any appear is dropped": {
     unordered: fail,
@@ -63,6 +74,7 @@ const EXPECTED: Record<string, ExpectedOutcomes> = {
     inTaskBroadcast: pass,
     inTaskLiveness: pass,
     lateAppearDrop: pass,
+    noArrivalToken: pass,
   },
   "two inputs run concurrently": {
     unordered: pass,
@@ -70,6 +82,7 @@ const EXPECTED: Record<string, ExpectedOutcomes> = {
     inTaskBroadcast: fail,
     inTaskLiveness: fail,
     lateAppearDrop: pass,
+    noArrivalToken: pass,
   },
   "broadcasts fire only for a live context": {
     unordered: fail,
@@ -77,6 +90,7 @@ const EXPECTED: Record<string, ExpectedOutcomes> = {
     inTaskBroadcast: pass,
     inTaskLiveness: pass,
     lateAppearDrop: pass,
+    noArrivalToken: pass,
   },
   // The unordered reference fires at arrival but also runs the input ahead of the appear, which the scenario sees.
   "a broadcast fires at the input's arrival": {
@@ -85,6 +99,7 @@ const EXPECTED: Record<string, ExpectedOutcomes> = {
     inTaskBroadcast: fail,
     inTaskLiveness: pass,
     lateAppearDrop: pass,
+    noArrivalToken: pass,
   },
   "a disappear's arrival stops the broadcasts": {
     unordered: fail,
@@ -92,6 +107,7 @@ const EXPECTED: Record<string, ExpectedOutcomes> = {
     inTaskBroadcast: pass,
     inTaskLiveness: fail,
     lateAppearDrop: pass,
+    noArrivalToken: pass,
   },
   "every supported input kind waits": {
     unordered: fail,
@@ -99,6 +115,7 @@ const EXPECTED: Record<string, ExpectedOutcomes> = {
     inTaskBroadcast: pass,
     inTaskLiveness: pass,
     lateAppearDrop: pass,
+    noArrivalToken: pass,
   },
   "a settings change is exclusive": {
     unordered: fail,
@@ -106,6 +123,7 @@ const EXPECTED: Record<string, ExpectedOutcomes> = {
     inTaskBroadcast: pass,
     inTaskLiveness: pass,
     lateAppearDrop: pass,
+    noArrivalToken: pass,
   },
   "a re-appear after a disappear": {
     unordered: fail,
@@ -113,6 +131,7 @@ const EXPECTED: Record<string, ExpectedOutcomes> = {
     inTaskBroadcast: pass,
     inTaskLiveness: pass,
     lateAppearDrop: pass,
+    noArrivalToken: pass,
   },
   // The chain references deliver the second appear as an appear; the ordered one without the rule drops the settings.
   "a willAppear for a context that is already live": {
@@ -121,6 +140,17 @@ const EXPECTED: Record<string, ExpectedOutcomes> = {
     inTaskBroadcast: fail,
     inTaskLiveness: fail,
     lateAppearDrop: fail,
+    noArrivalToken: pass,
+  },
+  // Only the references built on ContextEventOrder have a token to pass on; the one that drops it fails, and
+  // so does the one that drops a late appear, whose settings change the scenario checks the token of.
+  "an event's isSuperseded is false while it runs alone": {
+    unordered: fail,
+    serial: fail,
+    inTaskBroadcast: fail,
+    inTaskLiveness: fail,
+    lateAppearDrop: fail,
+    noArrivalToken: fail,
   },
 };
 
@@ -148,7 +178,7 @@ describe("the ordering contract suite against the reference adapters", () => {
       Object.keys(EXPECTED).length,
     );
     expect(new Set(CONTEXT_EVENT_ORDER_SCENARIOS.map((s) => s.name)).size).toBe(CONTEXT_EVENT_ORDER_SCENARIOS.length);
-    expect(CONTEXT_EVENT_ORDER_SCENARIOS).toHaveLength(12);
+    expect(CONTEXT_EVENT_ORDER_SCENARIOS).toHaveLength(13);
   });
 
   it("every scenario fails on at least one reference, so none can pass vacuously", () => {
@@ -194,6 +224,22 @@ describe("the ordering contract suite against the reference adapters", () => {
     const deaf: ContextEventOrderHarness = { ...real, emit: () => undefined };
 
     await expect(dropped?.run(deaf)).rejects.toThrow(/delivery check before a drop check/);
+  });
+
+  it("the arrival-token scenario names the missing isSuperseded when an adapter leaves it off", async () => {
+    const token = CONTEXT_EVENT_ORDER_SCENARIOS.find((s) => s.name.startsWith("an event's isSuperseded"));
+
+    await expect(token?.run(new NoArrivalTokenReferenceAdapter().harness())).rejects.toThrow(
+      /every event carries its arrival's isSuperseded \(#1761\): the willAppear while it runs alone carries no isSuperseded/,
+    );
+  });
+
+  it("the arrival-token scenario fails a harness whose emit reaches nothing on delivery, not on the token", async () => {
+    const token = CONTEXT_EVENT_ORDER_SCENARIOS.find((s) => s.name.startsWith("an event's isSuperseded"));
+    const real = new OrderedReferenceAdapter().harness();
+    const deaf: ContextEventOrderHarness = { ...real, emit: () => undefined };
+
+    await expect(token?.run(deaf)).rejects.toThrow(/never reached the handler/);
   });
 
   it("the late-appear scenario names the missing settings call when the appear is dropped", async () => {
