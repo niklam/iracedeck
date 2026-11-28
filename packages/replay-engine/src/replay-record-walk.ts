@@ -159,38 +159,76 @@ async function waitForSlotAhead(gateWait: number): Promise<string> {
 }
 
 /**
+ * How many sim updates the next head waits for after a head's position
+ * command (#1660): measured 2026-10-12, a jump 20 ms after another landed 5
+ * times in 10 and one 35 ms or more after it 20 times in 20, about two
+ * updates at 60 Hz.
+ */
+const TICKS_AFTER_POSITION_SEND = 2;
+
+/**
  * Which tick a reading is (#1660): its `SessionTick`, which advances every
  * sim update, and where a reading carries none, the replay flag and frame
- * the gate settles its own readings on. A different mark is a newer tick.
+ * the gate settles its own readings on.
  */
-function tickMark(telemetry: TelemetryData | null): string {
-  if (telemetry === null) return "no telemetry";
+interface TickMark {
+  /** The `SessionTick`, or null for a reading without one. */
+  readonly tick: number | null;
+  /** The flag and frame, for a reading without a `SessionTick`. */
+  readonly key: string;
+}
 
-  const tick = telemetry.SessionTick;
+function tickMark(telemetry: TelemetryData | null): TickMark {
+  const tick = telemetry?.SessionTick;
 
-  if (typeof tick === "number" && Number.isFinite(tick)) return `tick ${tick}`;
+  if (typeof tick === "number" && Number.isFinite(tick)) return { tick, key: `tick ${tick}` };
 
-  return `replay ${telemetry.IsReplayPlaying === true} frame ${String(telemetry.ReplayFrameNum)}`;
+  if (telemetry === null) return { tick: null, key: "no telemetry" };
+
+  return {
+    tick: null,
+    key: `replay ${telemetry.IsReplayPlaying === true} frame ${String(telemetry.ReplayFrameNum)}`,
+  };
 }
 
 /**
- * Waits, on the engine clock, until the sim has delivered a newer tick than
- * the one read when a head's act sent a position command (#1660). iRacing
- * loses a position jump sent within a sim update of another position
- * command (measured 2026-10-12: two absolute jumps inside one update end on
- * the earlier), and a queue that resolves two heads back to back sends their
- * jumps milliseconds apart. A new tick says the sim has taken the first.
- * Read back, not timed: the bound only gives up, at the record jump's own
- * wait.
+ * Waits, on the engine clock, until the sim has delivered
+ * {@link TICKS_AFTER_POSITION_SEND} newer ticks than the one read when a
+ * head's act sent a position command (#1660). iRacing loses a position jump
+ * sent too soon after another position command (two absolute jumps inside
+ * one update end on the earlier), and a queue that resolves two heads back
+ * to back sends their jumps milliseconds apart. With a `SessionTick` the wait
+ * ends once it reads that many past the send's, however many updates one
+ * poll spans; without one, once the flag and frame have changed that many
+ * times. Read back, not timed: the bound only gives up, at the record jump's
+ * own wait.
  */
-async function waitForNewTick(sentMark: string): Promise<string> {
-  try {
-    const ended = await pollUntil(() => (tickMark(engineReads().readTelemetry()) === sentMark ? undefined : true), {
-      intervalMs: REPLAY_JUMP_POLL_MS,
-      timeoutMs: readReplayJumpTimeoutMs(),
-    });
+async function waitForNewTicks(sent: TickMark): Promise<string> {
+  let last = sent;
+  let changes = 0;
 
-    return ended.kind === "done" ? "a new tick since the last head's jump" : "no new tick since the last head's jump";
+  try {
+    const ended = await pollUntil(
+      () => {
+        const now = tickMark(engineReads().readTelemetry());
+
+        if (sent.tick !== null && now.tick !== null) {
+          return now.tick - sent.tick >= TICKS_AFTER_POSITION_SEND ? true : undefined;
+        }
+
+        if (now.key !== last.key) {
+          changes++;
+          last = now;
+        }
+
+        return changes >= TICKS_AFTER_POSITION_SEND ? true : undefined;
+      },
+      { intervalMs: REPLAY_JUMP_POLL_MS, timeoutMs: readReplayJumpTimeoutMs() },
+    );
+
+    return ended.kind === "done"
+      ? `${TICKS_AFTER_POSITION_SEND} new ticks since the last head's jump`
+      : `no ${TICKS_AFTER_POSITION_SEND} new ticks since the last head's jump`;
   } catch (err) {
     return `failed: ${String(err)}`;
   }
@@ -439,7 +477,7 @@ async function drainWaitingStarts(): Promise<void> {
   const generation = drainGeneration;
   let waits = 0;
   /** The tick the last head's act sent a position command on, until the sim has delivered a newer one. */
-  let sentOnTick: string | null = null;
+  let sentOnTick: TickMark | null = null;
 
   draining = true;
 
@@ -450,13 +488,13 @@ async function drainWaitingStarts(): Promise<void> {
       if (head === undefined) return;
 
       // The head before this one sent a position command: the sim takes it on its next update, and one sent within
-      // the same update is lost. The next head reads and acts once a newer tick shows the first was taken.
+      // the same update is lost. The next head reads and acts once two newer ticks show the first was taken.
       if (sentOnTick !== null) {
         const sentMark = sentOnTick;
 
         sentOnTick = null;
 
-        const outcome = await waitForNewTick(sentMark);
+        const outcome = await waitForNewTicks(sentMark);
 
         if (generation !== drainGeneration) return;
 

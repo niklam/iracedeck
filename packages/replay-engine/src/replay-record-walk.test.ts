@@ -1260,7 +1260,7 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
     });
   });
 
-  it("sends the second queued head's jump only once the sim has delivered a new tick after the first's", async () => {
+  it("sends the second queued head's jump only once the sim has delivered two new ticks after the first's", async () => {
     setUp();
     search("nextSession");
 
@@ -1304,8 +1304,8 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
 
     expect(order).toEqual(["a cursor 200000", "b target 250000"]);
     expect(sentAt).toHaveLength(2);
-    // The second jump went out in a later sim update than the first: iRacing took the first before it.
-    expect(simUpdate(sentAt[1] ?? 0)).toBeGreaterThan(simUpdate(sentAt[0] ?? 0));
+    // The second jump went out at least two sim updates after the first, which iRacing then reliably takes.
+    expect(simUpdate(sentAt[1] ?? 0) - simUpdate(sentAt[0] ?? 0)).toBeGreaterThanOrEqual(2);
     expect(sim.calls.filter((call) => call.startsWith("setPlayPosition"))).toEqual([
       "setPlayPosition 0 250000",
       "setPlayPosition 0 300000",
