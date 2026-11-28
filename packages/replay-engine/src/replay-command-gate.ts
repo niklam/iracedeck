@@ -315,9 +315,10 @@ interface Slot {
    * which can become a jump) stays held until the sim has delivered
    * {@link TICKS_AFTER_POSITION_SEND} newer ticks, or the record jump's wait
    * has run out, so two position commands never go out inside the same sim
-   * updates.
+   * updates. `tick` is null while no reading since the send has carried a
+   * `SessionTick`: the first one that does becomes the base.
    */
-  spacedFrom?: { readonly tick: number | null; readonly since: number };
+  spacedFrom?: { tick: number | null; readonly since: number };
 }
 
 /** A replay jump holding the cursor (`replay-jump-playback.ts`, the walk). */
@@ -1564,10 +1565,13 @@ function sessionTick(telemetry: TelemetryData | null): number | null {
 /**
  * Whether a slot command spaced from a start's position command
  * ({@link Slot.spacedFrom}) may go: read back from the sim's `SessionTick`,
- * {@link TICKS_AFTER_POSITION_SEND} past the send's. Without a tick to
- * count from it cannot tell, and goes; once the record jump's wait has run
- * out it goes too, a sim that delivers no tick not being one the spacing
- * protects. The bound only gives up.
+ * {@link TICKS_AFTER_POSITION_SEND} past the send's. A stamp with no tick
+ * (the read after the send had none) is never met by a reading: the first
+ * reading since that carries a `SessionTick` becomes its base, and the
+ * count runs from there. A reading with no tick says nothing and keeps it
+ * held, so it never goes out in the change that sent the start's seek. Once
+ * the record jump's wait has run out it goes, a sim that delivers no tick
+ * not being one the spacing protects. The bound only gives up.
  */
 function spacingMet(current: Slot, telemetry: TelemetryData | null, now: number): boolean {
   const from = current.spacedFrom;
@@ -1575,11 +1579,12 @@ function spacingMet(current: Slot, telemetry: TelemetryData | null, now: number)
   if (from === undefined) return true;
 
   const tick = sessionTick(telemetry);
-  const met =
-    from.tick === null ||
-    tick === null ||
-    tick - from.tick >= TICKS_AFTER_POSITION_SEND ||
-    now - from.since >= readReplayJumpTimeoutMs();
+  let met = now - from.since >= readReplayJumpTimeoutMs();
+
+  if (!met && tick !== null) {
+    if (from.tick === null) from.tick = tick;
+    else met = tick - from.tick >= TICKS_AFTER_POSITION_SEND;
+  }
 
   if (met) current.spacedFrom = undefined;
 

@@ -1316,6 +1316,115 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
       await Promise.allSettled(jumps);
     });
 
+    describe("when the reads after the step's seek carry no SessionTick", () => {
+      /** Reads with no SessionTick from the step's seek on, until `ticksResume` turns them back on. */
+      let tickless: boolean;
+      let sentAt: Record<"setPlayPosition" | "goToStart", number[]>;
+
+      function setUpTickless(): void {
+        setUp(withIncidents);
+        tickless = false;
+        sentAt = { setPlayPosition: [], goToStart: [] };
+
+        // Every read of the sim, the gate's and the jumps' alike, drops the tick while `tickless` holds.
+        const read = sim.telemetry.bind(sim);
+
+        Object.assign(sim, {
+          telemetry: (): TelemetryData => {
+            const telemetry = read();
+
+            if (!tickless) return telemetry;
+
+            const { SessionTick: _dropped, ...rest } = telemetry;
+
+            return rest as TelemetryData;
+          },
+        });
+
+        for (const name of ["setPlayPosition", "goToStart"] as const) {
+          const mock = vi.mocked(sim.replay[name]);
+          const send = mock.getMockImplementation() as ((...args: unknown[]) => boolean) | undefined;
+
+          mock.mockImplementation(((...args: unknown[]) => {
+            sentAt[name].push(Date.now());
+
+            // From the step's seek on, the reads carry no tick.
+            if (name === "setPlayPosition") tickless = true;
+
+            return send?.(...args) ?? false;
+          }) as never);
+        }
+      }
+
+      /** A marker step queued behind a session search, and a Jump to Beginning held behind both. */
+      async function stepThenHeldGoToStart(jumps: Promise<unknown>[]): Promise<void> {
+        search("nextSession");
+
+        const order: string[] = [];
+        const a = jumpPress("a", order, jumps);
+
+        expect(pressReplayCommand({ kind: "go-to", end: "start" }, { by: "test-start", origin: "key-start" })).toEqual({
+          kind: "held",
+        });
+
+        for (let ms = 0; ms < 3_000 && sentAt.setPlayPosition.length === 0; ms++) await vi.advanceTimersByTimeAsync(1);
+
+        await a;
+
+        expect(order).toEqual(["a cursor 200000"]);
+      }
+
+      const simUpdate = (t: number): number => Math.floor(t / (1000 / 60));
+
+      it("holds it past the seek's change, and lets it go three ticks after the ticks resume", async () => {
+        setUpTickless();
+
+        const jumps: Promise<unknown>[] = [];
+
+        await stepThenHeldGoToStart(jumps);
+
+        // Not in the change that sent the seek, nor while no reading carries a tick.
+        expect(sentAt.goToStart).toEqual([]);
+
+        await vi.advanceTimersByTimeAsync(200);
+
+        expect(sentAt.goToStart).toEqual([]);
+
+        const resumedAt = Date.now();
+
+        tickless = false;
+        await vi.advanceTimersByTimeAsync(500);
+
+        expect(sentAt.goToStart).toHaveLength(1);
+        expect(simUpdate(sentAt.goToStart[0] ?? 0) - simUpdate(resumedAt)).toBeGreaterThanOrEqual(3);
+
+        await vi.advanceTimersByTimeAsync(5_000);
+        await Promise.allSettled(jumps);
+      });
+
+      it("lets it go once the record jump's wait has run out when the ticks never resume", async () => {
+        setUpTickless();
+
+        const jumps: Promise<unknown>[] = [];
+
+        await stepThenHeldGoToStart(jumps);
+
+        const seekAt = sentAt.setPlayPosition[0] ?? 0;
+
+        await vi.advanceTimersByTimeAsync(2_500);
+
+        expect(sentAt.goToStart).toEqual([]);
+
+        await vi.advanceTimersByTimeAsync(1_000);
+
+        expect(sentAt.goToStart).toHaveLength(1);
+        expect((sentAt.goToStart[0] ?? 0) - seekAt).toBeGreaterThanOrEqual(3_000);
+
+        await vi.advanceTimersByTimeAsync(5_000);
+        await Promise.allSettled(jumps);
+      });
+    });
+
     it("when the start that went first sends nothing, the slot's command goes out before the next start reads", async () => {
       setUp(withIncidents);
       search("nextSession");
