@@ -2054,6 +2054,24 @@ describe("cycle-track-order taps iRacing's Next / Previous Car binding (#1277)",
     },
   );
 
+  it.each(["next", "previous"] as const)(
+    "a %s binding cleared while the switch waited taps nothing and ends no director focus (#1656)",
+    async (direction) => {
+      const action = newAction();
+      // Set at the press, gone by the time the waiter sends.
+      spy(action).isBindingMissing.mockReturnValueOnce(false).mockReturnValue(true);
+
+      await press(action, direction);
+
+      expect(spy(action).isBindingMissing).toHaveBeenCalledTimes(2);
+      expect(spy(action).tapBinding).not.toHaveBeenCalled();
+      expect(mockCamera.noteCarKeyTapped).not.toHaveBeenCalled();
+      expect(spy(action).logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("binding not configured — nothing sent"),
+      );
+    },
+  );
+
   it("a dial turn's tap ends the director focus too (#1656)", async () => {
     const action = newAction();
 

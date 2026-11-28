@@ -1766,7 +1766,9 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
    * Taps one of the binding-driven cycle modes' iRacing key bindings through
    * {@link requestSwitch}, or warns when it is unset. The binding is checked
    * at the press: an unset one has nothing to send, so it never replaces a
-   * switch waiting behind a jump.
+   * switch waiting behind a jump. It is checked again as the waiter sends,
+   * since it can be cleared while the switch waits: then nothing is tapped,
+   * and nothing is noted, as Replay Control's `tapCarCycleBinding` does.
    */
   private tapCycleBinding(
     settingKey: string,
@@ -1785,6 +1787,13 @@ export class CameraControls extends SimIRacingAction<CameraControlsSettings> {
     }
 
     this.requestSwitch(ask, switchWhat, async () => {
+      if (this.isBindingMissing(settingKey)) {
+        this.logger.warn(`${what} binding not configured — nothing sent`);
+        this.logger.debug(`direction: ${direction}, binding: ${settingKey}, cleared while the switch waited`);
+
+        return;
+      }
+
       // A Next / Previous Car tap picks the car past the SDK's camera
       // commands, so it ends the director focus they keep (#1656).
       noteCameraKeyTap(settingKey);

@@ -10,8 +10,8 @@
  * it, so the place that taps one says so here, right before the tap and inside
  * the switch's waiter callback, so a tap the waiter drops says nothing. An
  * unset binding sends nothing and so notes nothing: each caller checks it
- * before it asks for the switch, and Replay Control's two again as they tap,
- * since it can be cleared while the switch waits behind a jump.
+ * before it asks for the switch and again as it taps, since it can be
+ * cleared while the switch waits behind a jump.
  *
  * Every tap of the two bindings passes one of the three callers: Camera
  * Controls' `tapCycleBinding` (Cycle by Track Order, keypad and dial), Replay
