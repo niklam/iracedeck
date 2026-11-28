@@ -221,7 +221,7 @@ const { mockGetGlobalSettings, mockCamera, autoGroupSdk } = vi.hoisted(() => ({
     focusOnMostExciting: vi.fn(() => true),
     // The director focus the SDK keeps (#1656): none, unless a test sets one.
     focusModeInEffect: vi.fn((): number | null => null),
-    forgetFocusMode: vi.fn(),
+    noteCarKeyTapped: vi.fn(),
   },
 }));
 
@@ -1411,7 +1411,7 @@ describe("cycle-sub-camera taps the iRacing sub-camera binding (#852)", () => {
     expect(mockCamera.switchNum).not.toHaveBeenCalled();
     expect(mockCamera.switchPos).not.toHaveBeenCalled();
     // A sub-camera keeps the car, so iRacing's director focus stays (#1656).
-    expect(mockCamera.forgetFocusMode).not.toHaveBeenCalled();
+    expect(mockCamera.noteCarKeyTapped).not.toHaveBeenCalled();
   });
 
   it("taps the Previous Sub-Camera binding on a previous detent", async () => {
@@ -2047,8 +2047,8 @@ describe("cycle-track-order taps iRacing's Next / Previous Car binding (#1277)",
 
       await press(action, direction);
 
-      expect(mockCamera.forgetFocusMode).toHaveBeenCalledTimes(1);
-      expect(mockCamera.forgetFocusMode.mock.invocationCallOrder[0]).toBeLessThan(
+      expect(mockCamera.noteCarKeyTapped).toHaveBeenCalledTimes(1);
+      expect(mockCamera.noteCarKeyTapped.mock.invocationCallOrder[0]).toBeLessThan(
         spy(action).tapBinding.mock.invocationCallOrder[0],
       );
     },
@@ -2059,7 +2059,7 @@ describe("cycle-track-order taps iRacing's Next / Previous Car binding (#1277)",
 
     await turn(action, 1);
 
-    expect(mockCamera.forgetFocusMode).toHaveBeenCalledTimes(1);
+    expect(mockCamera.noteCarKeyTapped).toHaveBeenCalledTimes(1);
   });
 
   it("taps Previous Car on a CAR BEHIND press and sends no camera broadcast", async () => {
@@ -3332,7 +3332,7 @@ describe("camera switches wait for a replay jump to land (#1428 / #1435)", () =>
   /** Every camera command and binding tap sent, as `name(args)`, and whether the sim was moving the replay then. */
   let sent: { call: string; moving: boolean }[];
   /** The camera's director-focus record (#1656): reads and bookkeeping, never a send. */
-  const DIRECTOR_FOCUS_RECORD: ReadonlySet<string> = new Set(["focusModeInEffect", "forgetFocusMode"]);
+  const DIRECTOR_FOCUS_RECORD: ReadonlySet<string> = new Set(["focusModeInEffect", "noteCarKeyTapped"]);
 
   /** The stand-in camera's commands that send, by name: every method but the director-focus record. */
   function sendingCommands(): Array<[string, Mock<(...args: unknown[]) => boolean>]> {

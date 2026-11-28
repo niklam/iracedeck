@@ -357,7 +357,7 @@ describe("CameraCommand", () => {
       ["cycleCamera (targets the camera's car)", () => cameraCommand.cycleCamera(8, 15, 1)],
       ["cycleDrivingCamera (targets the camera's car)", () => cameraCommand.cycleDrivingCamera(8, 15, 1)],
       ["cycleCar", () => cameraCommand.cycleCar(8, 1)],
-      ["a Next / Previous Car key tap", () => cameraCommand.forgetFocusMode()],
+      ["a Next / Previous Car key tap", () => cameraCommand.noteCarKeyTapped()],
     ])("is cleared by %s", (_name, pick) => {
       cameraCommand.focusOnMostExciting(14, 0);
       expect(cameraCommand.focusModeInEffect()).toBe(FocusAtExiting);
@@ -404,10 +404,32 @@ describe("CameraCommand", () => {
       expect(cameraCommand.focusModeInEffect()).toBe(FocusAtLeader);
     });
 
-    it("forgetFocusMode sends nothing", () => {
-      cameraCommand.forgetFocusMode();
+    it("noteCarKeyTapped sends nothing", () => {
+      cameraCommand.noteCarKeyTapped();
 
       expect(mockNative.broadcastMsg).not.toHaveBeenCalled();
+    });
+
+    it("noteCarKeyTapped logs the tap as its own reason", () => {
+      const debug = vi.fn();
+      const logger: ILogger = {
+        trace: vi.fn(),
+        debug,
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        withLevel: () => logger,
+        createScope: () => logger,
+      };
+      const camera = new CameraCommand(mockNative, logger);
+      camera.focusOnLeader(14, 0);
+      debug.mockClear();
+
+      camera.noteCarKeyTapped();
+
+      expect(debug).toHaveBeenCalledExactlyOnceWith(
+        "Director focus: FocusAtLeader -> none (a Next / Previous Car key was tapped)",
+      );
     });
 
     describe("ends at every context boundary the controller reports", () => {

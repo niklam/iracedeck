@@ -14,7 +14,9 @@
  * Controls' `tapCycleBinding` (Cycle by Track Order, keypad and dial), Replay
  * Control's Next / Previous Car keys and its dial io's `tapBinding` (the Track
  * Order turn). They pass the key they are about to tap, whatever it is, so a
- * Sub Camera tap, which keeps the car, ends nothing.
+ * Sub Camera tap, which keeps the car, ends nothing. A new tap cannot skip it:
+ * `replay-engine`'s `camera-switch-waiter.single-policy.test.ts` fails on any
+ * camera key tap without this call, with the same key, earlier in its body.
  *
  * Kept apart from `car-cycle-bindings.ts`, which stays dependency-free.
  */
@@ -25,11 +27,11 @@ import { CAR_CYCLE_BINDING_KEY_LIST } from "./car-cycle-bindings.js";
 /**
  * Call right before tapping the key binding `settingKey`: when it is iRacing's
  * Next Car or Previous Car, the camera's car is the user's pick from then on,
- * and the director focus is forgotten (`CameraCommand.forgetFocusMode`). Any
- * other key changes nothing. Sends nothing.
+ * and the SDK hears of the tap (`CameraCommand.noteCarKeyTapped`), which ends
+ * the director focus. Any other key changes nothing. Sends nothing.
  */
 export function noteCameraKeyTap(settingKey: string): void {
   if (!CAR_CYCLE_BINDING_KEY_LIST.includes(settingKey)) return;
 
-  getCommands().camera.forgetFocusMode();
+  getCommands().camera.noteCarKeyTapped();
 }

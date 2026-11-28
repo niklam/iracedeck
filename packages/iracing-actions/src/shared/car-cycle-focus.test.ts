@@ -4,15 +4,15 @@ import { SUB_CAMERA_BINDING_KEYS } from "../actions/camera-controls/sub-camera-b
 import { CAR_CYCLE_BINDING_KEYS } from "./car-cycle-bindings.js";
 import { noteCameraKeyTap } from "./car-cycle-focus.js";
 
-const { forgetFocusMode } = vi.hoisted(() => ({ forgetFocusMode: vi.fn() }));
+const { noteCarKeyTapped } = vi.hoisted(() => ({ noteCarKeyTapped: vi.fn() }));
 
 vi.mock("@iracedeck/deck-iracing", () => ({
-  getCommands: () => ({ camera: { forgetFocusMode } }),
+  getCommands: () => ({ camera: { noteCarKeyTapped } }),
 }));
 
 describe("noteCameraKeyTap (#1656)", () => {
   beforeEach(() => {
-    forgetFocusMode.mockClear();
+    noteCarKeyTapped.mockClear();
   });
 
   it.each([
@@ -21,7 +21,7 @@ describe("noteCameraKeyTap (#1656)", () => {
   ])("forgets the director focus for a %s tap", (_name, key) => {
     noteCameraKeyTap(key);
 
-    expect(forgetFocusMode).toHaveBeenCalledTimes(1);
+    expect(noteCarKeyTapped).toHaveBeenCalledTimes(1);
   });
 
   it.each([
@@ -32,6 +32,6 @@ describe("noteCameraKeyTap (#1656)", () => {
   ])("leaves it for %s", (_name, key) => {
     noteCameraKeyTap(key);
 
-    expect(forgetFocusMode).not.toHaveBeenCalled();
+    expect(noteCarKeyTapped).not.toHaveBeenCalled();
   });
 });

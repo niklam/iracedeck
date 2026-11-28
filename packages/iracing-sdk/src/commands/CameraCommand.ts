@@ -29,7 +29,7 @@
  * Group) can send the mode's own target and keep the director. Two things
  * change the car without passing here, and they bound it: iRacing's Next /
  * Previous Car key bindings, which the plugin taps as keystrokes and so
- * reports with {@link CameraCommand.forgetFocusMode}; and iRacing's own camera
+ * reports with {@link CameraCommand.noteCarKeyTapped}; and iRacing's own camera
  * screen, which the plugin never sees, so a director focus turned on there is
  * not known here, and one ended there still reads as in effect. It is
  * run-scoped: a new instance (a plugin start) has none.
@@ -131,20 +131,22 @@ export class CameraCommand extends BroadcastCommand {
    * The director focus in effect: the focus mode the plugin's last camera
    * switch targeted, or null when there was none since the plugin started,
    * or a switch to a car or a position (or a Next / Previous Car key tap,
-   * {@link forgetFocusMode}) came after it. A focus turned on or ended on
-   * iRacing's own camera screen is not seen (the file header).
+   * {@link noteCarKeyTapped}, or a context boundary) came after it. A focus
+   * turned on or ended on iRacing's own camera screen is not seen (the file
+   * header).
    */
   focusModeInEffect(): DirectorFocusMode | null {
     return this.focusMode;
   }
 
   /**
-   * Records that the camera's car was picked by a route that does not pass
-   * this class (iRacing's Next / Previous Car key bindings, tapped as
-   * keystrokes), so no director focus is in effect any more. Sends nothing.
+   * The event: iRacing's Next Car or Previous Car key binding was just
+   * tapped, a route to the camera's car that does not pass this class, so the
+   * car is the user's pick and no director focus is in effect any more. Sends
+   * nothing.
    */
-  forgetFocusMode(): void {
-    this.setFocusMode(null, "a car key binding was tapped");
+  noteCarKeyTapped(): void {
+    this.setFocusMode(null, "a Next / Previous Car key was tapped");
   }
 
   /**

@@ -51,7 +51,7 @@ const STATE_METHODS: Readonly<Record<string, string>> = {
   showUI: "Clears the camera's UI-hidden flag through setState (Toggle UI Elements): flags, not a switch.",
   focusModeInEffect:
     "Reads the director focus the SDK recorded from the plugin's last switch (#1656; Auto Group reads it at its send): sends nothing.",
-  forgetFocusMode:
+  noteCarKeyTapped:
     "Clears that record when a Next / Previous Car key is tapped (#1656, shared/car-cycle-focus.ts): sends nothing; the tap beside it is the switch.",
 };
 

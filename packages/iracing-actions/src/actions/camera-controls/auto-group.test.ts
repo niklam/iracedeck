@@ -103,7 +103,7 @@ vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
       switchNum,
       switchPos,
       focusModeInEffect: () => director.focus,
-      forgetFocusMode: () => {
+      noteCarKeyTapped: () => {
         director.focus = null;
       },
     },

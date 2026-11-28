@@ -171,7 +171,7 @@ vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => {
 // here it is a recorder, so these tests see what the action routes to it and
 // can call the host the action hands it.
 /** The stand-in camera's director-focus record call (#1656), one for every `getCommands()`. */
-const cameraFocus = vi.hoisted(() => ({ forgetFocusMode: vi.fn() }));
+const cameraFocus = vi.hoisted(() => ({ noteCarKeyTapped: vi.fn() }));
 
 const dialSurface = vi.hoisted(() => ({
   host: null as ReplayControlDialHost | null,
@@ -271,7 +271,7 @@ vi.mock("@iracedeck/deck-iracing", async (importOriginal) => ({
     },
     camera: {
       switchNum: vi.fn(() => true),
-      forgetFocusMode: cameraFocus.forgetFocusMode,
+      noteCarKeyTapped: cameraFocus.noteCarKeyTapped,
     },
   })),
 }));
@@ -1008,7 +1008,7 @@ describe("ReplayControl", () => {
       const { getCommands } = await import("@iracedeck/deck-iracing");
       vi.mocked(getCommands).mockReturnValue({
         replay: mockReplay,
-        camera: { switchNum: vi.fn(), forgetFocusMode: cameraFocus.forgetFocusMode },
+        camera: { switchNum: vi.fn(), noteCarKeyTapped: cameraFocus.noteCarKeyTapped },
       } as any);
       action = new ReplayControl();
     });
@@ -1438,8 +1438,8 @@ describe("ReplayControl", () => {
         await action.onWillAppear(fakeEvent("ctx-1", { mode }) as any);
         await action.onKeyDown(fakeEvent("ctx-1", { mode }) as any);
 
-        expect(cameraFocus.forgetFocusMode).toHaveBeenCalledTimes(1);
-        expect(cameraFocus.forgetFocusMode.mock.invocationCallOrder[0]).toBeLessThan(
+        expect(cameraFocus.noteCarKeyTapped).toHaveBeenCalledTimes(1);
+        expect(cameraFocus.noteCarKeyTapped.mock.invocationCallOrder[0]).toBeLessThan(
           vi.mocked(action["tapBinding"]).mock.invocationCallOrder[0],
         );
       },
@@ -1451,11 +1451,11 @@ describe("ReplayControl", () => {
       expect(host).not.toBeNull();
 
       await host?.tapBinding("replayControlPrevCar");
-      expect(cameraFocus.forgetFocusMode).toHaveBeenCalledTimes(1);
+      expect(cameraFocus.noteCarKeyTapped).toHaveBeenCalledTimes(1);
       expect(action["tapBinding"]).toHaveBeenLastCalledWith("replayControlPrevCar");
 
       await host?.tapBinding("cameraControlsSubCameraNext");
-      expect(cameraFocus.forgetFocusMode).toHaveBeenCalledTimes(1);
+      expect(cameraFocus.noteCarKeyTapped).toHaveBeenCalledTimes(1);
     });
 
     it("next-car does NOT consult telemetry for car selection", async () => {
@@ -1642,7 +1642,7 @@ describe("ReplayControl", () => {
 
       vi.mocked(getCommands).mockReturnValue({
         replay: mockReplay,
-        camera: { switchNum: vi.fn(), forgetFocusMode: cameraFocus.forgetFocusMode },
+        camera: { switchNum: vi.fn(), noteCarKeyTapped: cameraFocus.noteCarKeyTapped },
       } as never);
       action = new ReplayControl();
     });
@@ -2024,7 +2024,7 @@ describe("ReplayControl", () => {
 
         vi.mocked(getCommands).mockReturnValue({
           replay: keyReplay,
-          camera: { switchNum: vi.fn(), forgetFocusMode: cameraFocus.forgetFocusMode },
+          camera: { switchNum: vi.fn(), noteCarKeyTapped: cameraFocus.noteCarKeyTapped },
         } as never);
         t0 = Date.now();
       });
@@ -2473,7 +2473,7 @@ describe("ReplayControl", () => {
       const { getCommands } = await import("@iracedeck/deck-iracing");
       vi.mocked(getCommands).mockReturnValue({
         replay: mockReplay,
-        camera: { switchNum: vi.fn(), forgetFocusMode: cameraFocus.forgetFocusMode },
+        camera: { switchNum: vi.fn(), noteCarKeyTapped: cameraFocus.noteCarKeyTapped },
       } as any);
       action = new ReplayControl();
       await action.onWillAppear(fakeEvent("action-1", { mode: "fast-forward" }) as any);
@@ -2658,7 +2658,7 @@ describe("ReplayControl", () => {
       const { getCommands } = await import("@iracedeck/deck-iracing");
       vi.mocked(getCommands).mockReturnValue({
         replay: mockReplay,
-        camera: { switchNum: vi.fn(), forgetFocusMode: cameraFocus.forgetFocusMode },
+        camera: { switchNum: vi.fn(), noteCarKeyTapped: cameraFocus.noteCarKeyTapped },
       } as any);
       action = new ReplayControl();
       vi.spyOn(action["sdkController"], "noteReplayLeftForLive");
@@ -2709,7 +2709,7 @@ describe("ReplayControl", () => {
     let sim: FakeReplay;
     const camera = {
       switchNum: vi.fn<(carNum: number, group: number, cam: number) => boolean>(() => true),
-      forgetFocusMode: cameraFocus.forgetFocusMode,
+      noteCarKeyTapped: cameraFocus.noteCarKeyTapped,
     };
 
     function fakeEvent(actionId: string, settings: Record<string, unknown>) {
@@ -3112,7 +3112,7 @@ describe("ReplayControl", () => {
     let camCarIdx: number;
     const camera = {
       switchNum: vi.fn<(carNum: number, group: number, cam: number) => boolean>(() => true),
-      forgetFocusMode: cameraFocus.forgetFocusMode,
+      noteCarKeyTapped: cameraFocus.noteCarKeyTapped,
     };
     const store = {
       laps: { listLapStarts: vi.fn((): LapStartListing => ({ hit: true, starts: lapEntries(LAP_STARTS) })) },
@@ -4201,7 +4201,10 @@ describe("ReplayControl", () => {
 
       vi.mocked(getCommands).mockImplementation(
         () =>
-          ({ replay: sim.replay, camera: { switchNum: vi.fn(), forgetFocusMode: cameraFocus.forgetFocusMode } }) as any,
+          ({
+            replay: sim.replay,
+            camera: { switchNum: vi.fn(), noteCarKeyTapped: cameraFocus.noteCarKeyTapped },
+          }) as any,
       );
       action = new ReplayControl();
       // A fresh read is the sim's; no test here delivers a telemetry tick.
