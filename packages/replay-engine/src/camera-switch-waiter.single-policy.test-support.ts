@@ -58,11 +58,17 @@
  *   `super` hook) is outside.
  *
  * **The tap note (#1656).** Given a `tapNote`, it also holds every camera
- * key tap to calling that note with the same key, as written, earlier in the
- * same function body: iRacing's Next / Previous Car bindings pick the car past
- * the SDK's camera commands, so the director focus those record must hear of
- * each tap. Which call is the tap, and how a dial io's plumbing is judged, is
- * in {@link CameraScan.keyTaps}.
+ * key tap to calling that note with the same key, as written, before it on
+ * every path through the same function body: iRacing's Next / Previous Car
+ * bindings pick the car past the SDK's camera commands, so the director focus
+ * those record must hear of each tap. The note is the function the caller
+ * names, exported by the file it names, called bare under its own name or a
+ * named import's alias, never a member or another function of the name. "Every
+ * path" is read conservatively: the note is a statement of its own in a
+ * statement list and the tap is in a later statement of the same list, so an
+ * early return before the note passes and a note under a condition fails.
+ * Which call is the tap, and how a dial io's plumbing is judged, is in
+ * {@link CameraScan.keyTaps}.
  *
  * **What it cannot see**, by design: a key that flows through an anonymous
  * callback's parameter or an object's property, and a camera surface reached
@@ -72,6 +78,7 @@
  * other blind spot errs towards reporting a send, so the test goes red rather
  * than green.
  */
+import { posix } from "node:path";
 import ts from "typescript";
 
 import {
@@ -119,10 +126,12 @@ export interface CameraScanOptions {
   readonly cameraKeys: ReadonlySet<string>;
   /**
    * The call every camera key tap must make first, with the same key
-   * (`noteCameraKeyTap`, #1656), or none to check nothing. See
+   * (`noteCameraKeyTap`, #1656): its name and the scanned file that exports
+   * it as a function (`shared/car-cycle-focus.ts`), or none to check nothing.
+   * A call counts as the note only when it resolves to that export. See
    * {@link CameraScan.keyTaps} for the rule.
    */
-  readonly tapNote?: string;
+  readonly tapNote?: { readonly name: string; readonly file: string };
 }
 
 /**
@@ -136,7 +145,7 @@ export interface CameraKeyTap {
   readonly detail: string;
   /** The nearest named function around the tap, or `(top level)`. */
   readonly context: string;
-  /** Whether the note, with the same key, comes earlier in the same function body. */
+  /** Whether the note, with the same key, runs before the tap on every path through the same function body. */
   readonly noted: boolean;
   /** For a tap not noted, why. */
   readonly why?: string;
@@ -165,7 +174,7 @@ export interface CameraScan {
    * every such plumbing tap in the send's action folder (each action wires its
    * dial io within its folder), and a send through an object with none there
    * is reported, never passed. Each tap must call the note with the same key,
-   * as written, earlier in the same function body.
+   * as written, before it on every path through the same function body.
    */
   readonly keyTaps: readonly CameraKeyTap[];
 }
@@ -1089,7 +1098,7 @@ export function scanCameraSends(sources: ReadonlyMap<string, string>, options: C
   const keyTaps: CameraKeyTap[] = [];
 
   if (options.tapNote !== undefined) {
-    const tapNote = options.tapNote;
+    const { name: tapNote, file: noteFile } = options.tapNote;
     const textOf = (node: ts.Node): string => node.getText(node.getSourceFile());
     const detailOf = (call: ts.CallExpression): string => textOf(call).split("\n")[0].slice(0, 80);
     const fileNameOf = (node: ts.Node): string => fileOf.get(node.getSourceFile()) ?? node.getSourceFile().fileName;
@@ -1113,23 +1122,109 @@ export function scanCameraSends(sources: ReadonlyMap<string, string>, options: C
         (callee.expression.kind === ts.SyntaxKind.ThisKeyword || callee.expression.kind === ts.SyntaxKind.SuperKeyword)
       );
     };
-    const notes = calls.filter((call) => calleeName(call) === tapNote && call.arguments.length > 0);
+    /** The note's own definition: the function of its name `noteFile` exports. A scan told of none is broken, so it throws. */
+    const noteKeys = (exportedKeysByName.get(tapNote) ?? []).filter((defKey) => defKey.startsWith(`${noteFile}#`));
+
+    if (noteKeys.length === 0) throw new Error(`camera scan: ${noteFile} exports no function ${tapNote}`);
+
+    /** The scanned file a relative import from `fromFile` names (`.js` read as `.ts`), or undefined for a package. */
+    const importedFile = (fromFile: string, specifier: string): string | undefined => {
+      if (!specifier.startsWith(".")) return undefined;
+
+      const joined = posix.normalize(posix.join(posix.dirname(fromFile), specifier));
+
+      return /\.[cm]?[jt]s$/.test(joined) ? joined.replace(/\.[cm]?js$/, ".ts") : `${joined}.ts`;
+    };
+    /**
+     * Whether `call` is the note: a bare call whose callee resolves, by symbol,
+     * to the exported note, under its own name or an alias of a named import
+     * of it from its own file, or called in that file itself. A member of the
+     * same name (`audit.noteCameraKeyTap(key)`), a local function of the name,
+     * or an import of the name from another module is not the note.
+     */
+    const isNoteCall = (call: ts.CallExpression): boolean => {
+      const callee = unwrap(call.expression);
+
+      if (!ts.isIdentifier(callee) || call.arguments.length === 0) return false;
+
+      const symbol = checker.getSymbolAtLocation(callee);
+
+      if (symbol === undefined) return false;
+
+      const own = bindingKeyOf.get(symbol);
+
+      if (own !== undefined) return noteKeys.includes(own);
+
+      const from = importedFromOf.get(symbol);
+
+      if (importedNameOf.get(symbol) !== tapNote || from === undefined) return false;
+
+      return importedFile(fileNameOf(call), from) === noteFile;
+    };
+    /** Every call written with the note's name, whether or not it is the note. */
+    const namedNotes = calls.filter((call) => calleeName(call) === tapNote && call.arguments.length > 0);
+    const notes = namedNotes.filter(isNoteCall);
     const keyText = (call: ts.CallExpression): string => textOf(unwrap(call.arguments[0]));
-    /** The tap judged: noted when a note with the same key, as written, comes earlier in the same function body. */
+    /** Statement lists whose statements run in order on entry: a block, a `case` clause, a module block, the file. */
+    const isStatementList = (
+      node: ts.Node,
+    ): node is ts.Block | ts.CaseClause | ts.DefaultClause | ts.ModuleBlock | ts.SourceFile =>
+      ts.isBlock(node) ||
+      ts.isCaseClause(node) ||
+      ts.isDefaultClause(node) ||
+      ts.isModuleBlock(node) ||
+      ts.isSourceFile(node);
+    /**
+     * Whether the note runs on every path to the tap, conservatively: the note
+     * is a statement of its own (the call, under parentheses, `void` or
+     * `await` only) directly in a statement list, and the tap sits in a later
+     * statement of that same list. A note under a condition, a loop, a `try`
+     * or a short-circuit is not on every path, and fails.
+     */
+    const dominates = (note: ts.CallExpression, tap: ts.CallExpression): boolean => {
+      let node: ts.Node = outermost(note);
+
+      while (ts.isVoidExpression(node.parent) || ts.isAwaitExpression(node.parent)) node = outermost(node.parent);
+
+      const statement = node.parent;
+
+      if (!ts.isExpressionStatement(statement) || !isStatementList(statement.parent)) return false;
+
+      const list = statement.parent.statements as ts.NodeArray<ts.Statement>;
+      const noteIndex = list.indexOf(statement);
+
+      for (let current: ts.Node = tap; current.parent !== undefined; current = current.parent) {
+        if (current.parent === statement.parent) return list.indexOf(current as ts.Statement) > noteIndex;
+      }
+
+      return false;
+    };
+    /**
+     * The tap judged: noted when the note, with the same key as written, runs
+     * before it on every path through the same function body ({@link dominates}).
+     */
     const judgeTap = (call: ts.CallExpression): CameraKeyTap => {
       const body = functionOf(call);
       const key = keyText(call);
-      const sameBody = notes.filter((note) => body !== undefined && functionOf(note) === body);
-      const noted = sameBody.some((note) => note.getStart() < call.getStart() && keyText(note) === key);
+      const inBody = (note: ts.CallExpression): boolean => body !== undefined && functionOf(note) === body;
+      const sameBody = notes.filter(inBody);
+      const sameKey = sameBody.filter((note) => keyText(note) === key);
+      const noted = sameKey.some((note) => dominates(note, call));
       let why: string | undefined;
 
       if (!noted) {
+        const impostor = namedNotes.find((note) => inBody(note) && !notes.includes(note));
+
         why =
           sameBody.length === 0
-            ? `no ${tapNote}(…) in the same function body`
-            : sameBody.some((note) => keyText(note) === key)
-              ? `${tapNote}(${key}) comes after the tap`
-              : `${tapNote}(…) there names another key than ${key}`;
+            ? impostor !== undefined
+              ? `${detailOf(impostor)} is not the ${tapNote} exported by ${noteFile} (a member, a local function or another module's import)`
+              : `no ${tapNote}(…) in the same function body`
+            : sameKey.length === 0
+              ? `${tapNote}(…) there names another key than ${key}`
+              : sameKey.some((note) => note.getStart() < call.getStart())
+                ? `${tapNote}(${key}) does not run on every path to the tap (under a condition, a loop, a try or a short-circuit)`
+                : `${tapNote}(${key}) comes after the tap`;
       }
 
       return {

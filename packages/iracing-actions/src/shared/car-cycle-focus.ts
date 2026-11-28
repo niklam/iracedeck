@@ -8,15 +8,20 @@
  * Camera Controls' Auto Group). iRacing's Next Car / Previous Car key bindings
  * (`car-cycle-bindings.ts`) pick a car too, but as keystrokes they never pass
  * it, so the place that taps one says so here, right before the tap and inside
- * the switch's waiter callback, so a tap the waiter drops says nothing.
+ * the switch's waiter callback, so a tap the waiter drops says nothing. An
+ * unset binding sends nothing and so notes nothing: each caller checks it
+ * before it asks for the switch, and Replay Control's two again as they tap,
+ * since it can be cleared while the switch waits behind a jump.
  *
  * Every tap of the two bindings passes one of the three callers: Camera
  * Controls' `tapCycleBinding` (Cycle by Track Order, keypad and dial), Replay
- * Control's Next / Previous Car keys and its dial io's `tapBinding` (the Track
- * Order turn). They pass the key they are about to tap, whatever it is, so a
- * Sub Camera tap, which keeps the car, ends nothing. A new tap cannot skip it:
- * `replay-engine`'s `camera-switch-waiter.single-policy.test.ts` fails on any
- * camera key tap without this call, with the same key, earlier in its body.
+ * Control's `tapCarCycleBinding` (its Next / Previous Car keys) and its dial
+ * io's `tapBinding` (the Track Order turn). They pass the key they are about
+ * to tap, whatever it is, so a Sub Camera tap, which keeps the car, ends
+ * nothing. A new tap cannot skip it: `replay-engine`'s
+ * `camera-switch-waiter.single-policy.test.ts` fails on any camera key tap
+ * that this function, with the same key, does not precede on every path
+ * through its body.
  *
  * Kept apart from `car-cycle-bindings.ts`, which stays dependency-free.
  */

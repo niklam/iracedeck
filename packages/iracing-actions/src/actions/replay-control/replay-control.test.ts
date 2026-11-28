@@ -1445,6 +1445,47 @@ describe("ReplayControl", () => {
       },
     );
 
+    it.each([
+      ["next-car", "replayControlNextCar", "Next car"],
+      ["prev-car", "replayControlPrevCar", "Previous car"],
+    ])(
+      "%s with its binding unset warns and sends nothing, so it ends no director focus (#1656)",
+      async (mode, key, label) => {
+        vi.mocked(action["isBindingMissing"]).mockImplementation((keys) => keys === key);
+        await action.onWillAppear(fakeEvent("ctx-1", { mode }) as any);
+        await action.onKeyDown(fakeEvent("ctx-1", { mode }) as any);
+
+        expect(action["tapBinding"]).not.toHaveBeenCalled();
+        expect(cameraFocus.noteCarKeyTapped).not.toHaveBeenCalled();
+        expect(action["logger"].warn).toHaveBeenCalledWith(`${label} binding not configured — nothing sent`);
+      },
+    );
+
+    it("a car binding cleared while the key's switch waited sends nothing and notes nothing (#1656)", async () => {
+      await action.onWillAppear(fakeEvent("ctx-1", { mode: "next-car" }) as any);
+      // Set at the press, gone by the time the waiter sends.
+      vi.mocked(action["isBindingMissing"]).mockReturnValueOnce(false).mockReturnValue(true);
+      await action.onKeyDown(fakeEvent("ctx-1", { mode: "next-car" }) as any);
+
+      expect(action["logger"].debug).toHaveBeenCalledWith(
+        "binding: replayControlNextCar, cleared while the switch waited",
+      );
+      expect(action["tapBinding"]).not.toHaveBeenCalled();
+      expect(cameraFocus.noteCarKeyTapped).not.toHaveBeenCalled();
+    });
+
+    it("the dial's Track Order tap of an unset binding resolves false, notes nothing and taps nothing (#1656)", async () => {
+      const host = dialSurface.host;
+
+      expect(host).not.toBeNull();
+
+      vi.mocked(action["isBindingMissing"]).mockReturnValue(true);
+
+      await expect(host?.tapBinding("replayControlNextCar")).resolves.toBe(false);
+      expect(cameraFocus.noteCarKeyTapped).not.toHaveBeenCalled();
+      expect(action["tapBinding"]).not.toHaveBeenCalled();
+    });
+
     it("the dial's Track Order tap ends the director focus; any other key it taps does not (#1656)", async () => {
       const host = dialSurface.host;
 
