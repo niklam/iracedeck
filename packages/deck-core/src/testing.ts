@@ -16,6 +16,9 @@
  * - The REAL `ContextSettings` (#1761), the per-context write-through settings
  *   record `BaseAction` keeps, for an action-test double of `BaseAction` that
  *   writes settings through the real implementation of `updateSettings`.
+ * - The REAL `ContextEventOrder` (#1761), for an action test that mocks the
+ *   barrel and runs its events through the order an adapter runs them through,
+ *   with each event's `isSuperseded` taken from its task's arrival token.
  *
  * Nothing here imports `vitest`, so deck-core's published code takes no test
  * dependency; the main barrel (`index.ts`) carries what production imports and
@@ -32,6 +35,7 @@ export {
   type ContextEventOrderPayload,
   type ContextEventOrderScenario,
 } from "./context-event-order-scenarios.js";
+export { ContextEventOrder } from "./context-event-order.js";
 export { ContextSettings, type ContextSettingsUpdater } from "./context-settings.js";
 export { classifyDialRelease, createHoldPreview, NOOP_HOLD_PREVIEW } from "./dial-gesture.js";
 export { IconUpdateThrottle } from "./icon-update-throttle.js";
