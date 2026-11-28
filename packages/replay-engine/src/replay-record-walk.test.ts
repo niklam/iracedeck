@@ -1416,6 +1416,54 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
     expect(sim.frame()).toBe(300_000);
   });
 
+  it("when the tick stops advancing, each queued head acts once the bound runs out, and none waits forever", async () => {
+    setUp();
+    // The sim's tick never moves on: the same SessionTick on every read.
+    resetEngine({
+      replay: () => sim.replay,
+      readTelemetry: () => ({ ...sim.telemetry(), SessionTick: 7 }),
+      inReplay: () => onScreen && state.getReplayState().inReplay,
+      connected: () => true,
+      seekHold: (hold) => state.noteReplaySeekHold(hold),
+      leftForLive,
+      now: () => Date.now(),
+    });
+    search("nextSession");
+
+    const order: string[] = [];
+    const jumps: Promise<unknown>[] = [];
+    const press = (name: string) =>
+      awaitReplayWalkStart(
+        readState,
+        () => sim.telemetry(),
+        (start) => {
+          order.push(`${name} ${start.frame === null ? start.reason : `${start.from} ${start.frame}`}`);
+
+          if (start.frame === null) return;
+
+          const frame = start.frame + 50_000;
+          const jump = beginReplayJump(`test-${name}`, sim.telemetry(), undefined, Date.now(), { frame });
+
+          jumps.push(runReplayJump(jump, { frame, readTelemetry: () => sim.telemetry() }).finally(() => jump.end()));
+        },
+      );
+    const presses = [press("a"), press("b"), press("c")];
+
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    expect(order).toEqual(["a cursor 200000"]);
+
+    // Each later head waits out the bound once, then acts; none repeats the wait.
+    await vi.advanceTimersByTimeAsync(10_000);
+    await Promise.all(presses);
+
+    // By then each jump before it has landed: each head steps from where the one before landed.
+    expect(order).toEqual(["a cursor 200000", "b cursor 250000", "c cursor 300000"]);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    await Promise.all(jumps);
+  });
+
   it("resolves every press waiting on one search to its landing", async () => {
     setUp();
     search("nextSession");

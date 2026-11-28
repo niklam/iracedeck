@@ -245,7 +245,7 @@ export async function waitForNewTicks(sent: TickMark): Promise<string> {
 
     return ended.kind === "done"
       ? `${TICKS_AFTER_POSITION_SEND} new ticks since the last head's jump`
-      : `no ${TICKS_AFTER_POSITION_SEND} new ticks since the last head's jump`;
+      : `no ${TICKS_AFTER_POSITION_SEND} new ticks since the last head's jump within the bound; the spacing counts as met`;
   } catch (err) {
     return `failed: ${String(err)}`;
   }
@@ -584,6 +584,10 @@ async function drainWaitingStarts(): Promise<void> {
         const outcome = await waitForNewTicks(sentMark);
 
         if (generation !== drainGeneration) return;
+
+        // Waited for, by the ticks or by the bound: the spacing is met, and this send is never waited for again. A sim
+        // that delivered no new tick for the whole bound is not taking commands at a pace the spacing protects.
+        if (lastPositionSend === sentMark) lastPositionSend = null;
 
         log().debug(`Replay step start: ${outcome}`);
         continue;
