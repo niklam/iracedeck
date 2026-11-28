@@ -41,6 +41,11 @@
  *   it runs after the teardown it follows.
  * - A task that **throws** settles like any other: the events behind it run,
  *   and the promise returned to the caller rejects with the handler's error.
+ * - Every arrival is numbered, and each task is handed an
+ *   {@link ContextEventArrival} whose `isSuperseded()` turns true once a later
+ *   `willAppear`, `willDisappear` or `didReceiveSettings` of its context has
+ *   arrived and was not dropped (#1761), so a handler can tell that the
+ *   settings its event carries are no longer the newest before it writes them.
  * - A wait is bounded by {@link CONTEXT_EVENT_WAIT_LIMIT_MS} per task ahead: a
  *   task that has been **running** that long is abandoned — warned once, never
  *   waited for again, and whoever waits on it is released. The limit is
@@ -86,14 +91,36 @@ export type ContextStepKind = `step:${string}`;
 export type ContextEventKind = ContextHandlerEventKind | ContextStepKind;
 
 /**
+ * What the order hands a task about its own arrival (#1761).
+ *
+ * `isSuperseded()` is `true` once a `willAppear`, `willDisappear` or
+ * `didReceiveSettings` of the same context arrived **after** this event and was
+ * not dropped at arrival: the settings this event carries, and anything the
+ * handler derived from them, are then no longer the newest the host holds,
+ * even though the newer event is still queued behind this task. Input and an
+ * adapter `step:*` never supersede anything, though an input's own token turns
+ * true on a later settings arrival like any other. A token from before a
+ * disappear and a re-appear of its context reads `true`, and it stays correct
+ * after the context's record is pruned.
+ *
+ * A property rather than a method so an adapter can hand it on detached, as
+ * the event's `isSuperseded` (`IDeckEvent.isSuperseded`).
+ */
+export interface ContextEventArrival {
+  readonly isSuperseded: () => boolean;
+}
+
+/**
  * What an adapter hands the order for one event: it builds the deck-core event
  * and calls the handler **when it runs**, not when it arrives, so a controller
  * or settings read inside it sees the state after the events ahead of it. One
  * host event that is several handler calls (Mirabox's atomic knob press) is one
  * task that makes them in sequence. May return nothing for a handler the
- * action does not implement.
+ * action does not implement. It receives its {@link ContextEventArrival}, whose
+ * `isSuperseded` the adapter puts on every event it builds; a task that needs
+ * none may take no parameter.
  */
-export type ContextEventTask = () => Promise<void> | void;
+export type ContextEventTask = (arrival: ContextEventArrival) => Promise<void> | void;
 
 const EXCLUSIVE_KINDS: ReadonlySet<string> = new Set<ContextHandlerEventKind>([
   "willAppear",
@@ -104,6 +131,15 @@ const EXCLUSIVE_KINDS: ReadonlySet<string> = new Set<ContextHandlerEventKind>([
 /** Whether `kind` waits for every earlier event of its context and holds every later one. */
 export function isExclusiveContextEventKind(kind: ContextEventKind): boolean {
   return EXCLUSIVE_KINDS.has(kind) || kind.startsWith("step:");
+}
+
+/**
+ * Whether the arrival of `kind` supersedes every earlier event of its context
+ * (#1761): the three lifecycle events, each of which carries or ends the
+ * context's settings. Input and an adapter step carry nothing newer.
+ */
+function supersedesEarlierEvents(kind: ContextEventKind): boolean {
+  return EXCLUSIVE_KINDS.has(kind);
 }
 
 /** One enqueued task, from its arrival until it settles or is abandoned. */
@@ -169,8 +205,11 @@ function handled<T>(promise: Promise<T>): Promise<T> {
  * any await of its own:
  *
  * ```ts
- * // A plain handler event. The task builds the event when it runs.
- * await this.order.enqueue(context, "keyDown", () => handler.onKeyDown?.(wrapEvent(data)));
+ * // A plain handler event. The task builds the event when it runs, and puts
+ * // its arrival's `isSuperseded` on it (#1761).
+ * await this.order.enqueue(context, "keyDown", ({ isSuperseded }) =>
+ *   handler.onKeyDown?.({ ...wrapEvent(data), isSuperseded }),
+ * );
  *
  * // A broadcast fires at arrival, for a live context only (decision 3) — gated
  * // on this order's liveness, never on the host's own store.
@@ -220,8 +259,8 @@ function handled<T>(promise: Promise<T>): Promise<T> {
  * and is pruned when neither holds. A task is pending until it settles or is
  * abandoned, whichever comes first, so a record whose last task hangs is pruned
  * when a waiter abandons that task, or when it settles if nothing ever waited.
- * `everAppeared` grows with distinct context ids, which a host reuses across
- * page switches.
+ * `everAppeared` and the last superseding arrival per context grow with
+ * distinct context ids, which a host reuses across page switches.
  */
 export class ContextEventOrder {
   private readonly records = new Map<string, ContextRecord>();
@@ -234,6 +273,19 @@ export class ContextEventOrder {
   private readonly everAppeared = new Set<string>();
   /** Contexts whose never-appeared drop has been warned once; cleared when one appears after all. */
   private readonly warnedNeverAppeared = new Set<string>();
+  /** The number the last arrival was given; every arrival, dropped or not, takes the next. */
+  private arrivals = 0;
+  /**
+   * Per context, the number of the last `willAppear`, `willDisappear` or
+   * `didReceiveSettings` that arrived and was not dropped: what an
+   * {@link ContextEventArrival} compares its own number with. Kept apart from
+   * the record, which is pruned once the context has disappeared and drained,
+   * so a token read after that — an abandoned task still running — still
+   * answers, and a re-appear that starts a fresh record still supersedes a
+   * token from before it. Grows with distinct context ids, like
+   * {@link everAppeared}.
+   */
+  private readonly lastSupersedingArrival = new Map<string, number>();
 
   constructor(private readonly logger: ILogger) {}
 
@@ -257,9 +309,18 @@ export class ContextEventOrder {
    * await, so arrival order is the order here.
    */
   enqueue(context: string, kind: ContextEventKind, task: ContextEventTask): Promise<void> | undefined {
+    this.arrivals += 1;
+
+    const number = this.arrivals;
     const record = this.arrive(context, kind);
 
     if (record === undefined) return undefined;
+
+    if (supersedesEarlierEvents(kind)) this.lastSupersedingArrival.set(context, number);
+
+    const arrival: ContextEventArrival = {
+      isSuperseded: () => (this.lastSupersedingArrival.get(context) ?? number) > number,
+    };
 
     const exclusive = isExclusiveContextEventKind(kind);
     const ahead = record.pending.filter((entry) => exclusive || entry.exclusive);
@@ -299,7 +360,7 @@ export class ContextEventOrder {
       let value: Promise<void> | void;
 
       try {
-        value = task();
+        value = task(arrival);
       } catch (error) {
         // A synchronous throw is settled now, like a void return: nothing
         // waits behind it for a microtask.
