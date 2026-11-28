@@ -1378,6 +1378,7 @@ describe("BaseAction settings writes against the newest settings (#1761)", () =>
 
     private readonly order = new ContextEventOrder(silentLogger);
     private readonly pending: Promise<unknown>[] = [];
+    private readonly handlerErrors: unknown[] = [];
 
     constructor(private readonly handler: IDeckActionHandler<Settings>) {}
 
@@ -1397,12 +1398,24 @@ describe("BaseAction settings writes against the newest settings (#1761)", () =>
       this.deliver(context, "willDisappear");
     }
 
-    /** Let every delivered event, and whatever it starts, run to the end. */
+    /**
+     * Let every delivered event, and whatever it starts, run to the end: drain
+     * the handlers in rounds until a round delivers no further event (an echo,
+     * a re-run), then rethrow the first handler rejection, so a test cannot
+     * pass over a handler that threw after the write it asserts.
+     */
     async settle(): Promise<void> {
-      for (let round = 0; round < 20; round += 1) {
+      let delivered = -1;
+
+      for (let round = 0; round < 50 && delivered !== this.pending.length; round += 1) {
+        delivered = this.pending.length;
         await Promise.all(this.pending);
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
+
+      if (delivered !== this.pending.length) throw new Error("FakeSettingsHost: events kept arriving after 50 rounds");
+
+      if (this.handlerErrors.length > 0) throw this.handlerErrors[0];
     }
 
     private deliver(context: string, kind: LifecycleKind): void {
@@ -1420,7 +1433,14 @@ describe("BaseAction settings writes against the newest settings (#1761)", () =>
         return this.handler.onDidReceiveSettings?.(ev);
       });
 
-      if (result) this.pending.push(result.catch(() => undefined));
+      // Caught here so a rejection is never unhandled; settle() rethrows it.
+      if (result) {
+        this.pending.push(
+          result.catch((error: unknown) => {
+            this.handlerErrors.push(error);
+          }),
+        );
+      }
     }
 
     private actionFor(context: string): IDeckActionContext {
