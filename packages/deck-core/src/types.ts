@@ -96,7 +96,8 @@ export interface IDeckEvent<T> {
    * Whether a newer `willAppear`, `willDisappear` or `didReceiveSettings` of
    * this context has arrived since this event did (#1761): its settings are
    * then no longer the newest the host holds, though the newer event is still
-   * queued behind this one. The adapter passes its `ContextEventOrder`
+   * queued behind this one, or, for a handler the event order abandoned after
+   * 10 s, may already have run. The adapter passes its `ContextEventOrder`
    * arrival's `isSuperseded` into every event it builds, and the ordering
    * contract suite holds it to that. Input never supersedes, but an input
    * event's own answer turns true on a later settings change.

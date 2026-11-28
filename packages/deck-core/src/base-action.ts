@@ -281,7 +281,11 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
    *   `update` is parked and re-run on the newer settings when their
    *   `onDidReceiveSettings` runs, right after this class records them, so a
    *   subclass that calls `super.onDidReceiveSettings(ev)` first sees the
-   *   re-run done; a disappear or a re-appear drops it.
+   *   re-run done; a disappear or a re-appear drops it. A handler the event
+   *   order abandoned (still running 10 s after it started) can park after
+   *   the newer event has already run; its `update` then re-runs on the
+   *   context's next settings event, or is dropped at its next disappear or
+   *   appear, which is harmless because `update` is pure.
    * - Otherwise the record becomes the new object at once, before the write
    *   is awaited, so a second write in the same handler merges onto the
    *   first; a failed write is logged at warn and the record kept.

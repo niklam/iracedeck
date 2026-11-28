@@ -16,13 +16,23 @@
  * - **The arrival token.** Every event carries `isSuperseded` from the
  *   adapter's `ContextEventOrder`. When a newer settings event has already
  *   arrived for the context, a write is not sent; its updater is parked and
- *   re-run on the newer settings when that event's `didReceiveSettings` runs.
+ *   re-run on the newer settings when that event's `didReceiveSettings` runs,
+ *   or, for an abandoned handler, at the context's next settings event (below).
  *
  * Whether a host echoes the plugin's own write back as a `didReceiveSettings`
  * differs between hosts, and nothing here depends on it: an echo is a newer
  * settings arrival, so a later write in the same handler is parked and re-run
  * on the echo, where its updater returns `undefined` once its change is
  * present, and the exchange stops there.
+ *
+ * A handler the event order abandoned (#1597: one still running 10 s after it
+ * started, so the events behind it ran without it) can park its write after
+ * the newer event has already run, whether a settings change or a disappear
+ * followed by a re-appear. The updater then waits for the context's next
+ * settings event and re-runs there, or is dropped at its next appear or
+ * disappear. That is harmless: the updater is pure, and runs on whatever
+ * settings are newest by then. A write that finds the context disappeared
+ * has no record and is not parked at all.
  *
  * Updaters must be pure: they may run again on newer settings. One that throws
  * on a re-run is logged and skipped, so the others still run.
@@ -93,7 +103,9 @@ export class ContextSettings {
   /**
    * The context appeared: its record starts as the settings the host
    * delivered, and any write still parked for it is dropped, since it was
-   * computed for an earlier appearance.
+   * computed for an earlier appearance. A write an abandoned handler of that
+   * earlier appearance parks after this call is not: it waits for the
+   * context's next settings event, appear or disappear (see the class doc).
    */
   appear(ev: IDeckEvent<unknown>): void {
     this.records.set(ev.action.id, settingsOf(ev));
@@ -146,8 +158,11 @@ export class ContextSettings {
    *    the change: nothing is written.
    * 3. `ev.isSuperseded?.()` — a newer settings event of the context has
    *    already arrived: nothing is written now; the updater is parked and
-   *    re-run by {@link receive} on the newer settings, or dropped by
-   *    {@link appear} / {@link disappear}.
+   *    re-run by the next {@link receive}, or dropped by the next
+   *    {@link appear} / {@link disappear}. That next event is normally the
+   *    newer one, queued behind this handler; for a handler the event order
+   *    abandoned, the newer one may already have run, and the updater waits
+   *    for the one after it (see the class doc).
    * 4. Otherwise the record becomes `next` synchronously, before the write
    *    is awaited, so a write that starts meanwhile merges onto it; then
    *    `ev.action.setSettings(next)` is awaited. A failed write is warned and
@@ -173,7 +188,9 @@ export class ContextSettings {
       if (waiting === undefined) this.parked.set(contextId, [updater]);
       else waiting.push(updater);
 
-      this.logger().debug(`Settings write for ${contextId} parked: newer settings have arrived and run next`);
+      this.logger().debug(
+        `Settings write for ${contextId} parked: newer settings have arrived; re-run on the context's next settings event`,
+      );
 
       return false;
     }
