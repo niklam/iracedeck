@@ -23,7 +23,7 @@
   },
   "devDependencies": {
     "@tsconfig/node22": "22.0.7",
-    "@types/node": "26.6.6",
+    "@types/node": "26.6.11",
     "rimraf": "6.1.4",
     "typescript": "6.0.3"
   }
