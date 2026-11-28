@@ -8,7 +8,7 @@
 export { BroadcastCommand } from "./BroadcastCommand.js";
 
 // Command classes
-export { CameraCommand } from "./CameraCommand.js";
+export { CameraCommand, DIRECTOR_FOCUS_MODES, type DirectorFocusMode, isDirectorFocusMode } from "./CameraCommand.js";
 export { ReplayCommand } from "./ReplayCommand.js";
 export { PitCommand } from "./PitCommand.js";
 export { ChatCommand } from "./ChatCommand.js";

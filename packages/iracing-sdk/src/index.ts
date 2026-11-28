@@ -71,6 +71,9 @@ export {
 
   // Command classes
   CameraCommand,
+  DIRECTOR_FOCUS_MODES,
+  type DirectorFocusMode,
+  isDirectorFocusMode,
   ReplayCommand,
   PitCommand,
   ChatCommand,
