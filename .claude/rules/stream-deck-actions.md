@@ -57,6 +57,7 @@ Requirements
 - Actions never draw their own "sim not running" look or gate presses on the connection: `ConnectionStateAwareAction` draws the disconnected look over every key image the action sends, per key, while the setting is on and the sim is absent (#1599). An action only says which of its modes work without the sim, by overriding `needsSim(settings)` (below).
 - Actions should implement `onDidReceiveSettings()` to handle settings updates from the Property Inspector.
 - A lifecycle handler (`onWillAppear`, `onWillDisappear`, `onDidReceiveSettings`) never awaits another event of its own context — a settings echo, an input: the adapter queues that event behind the handler, so the await stalls the context until the 10 s limit (#1597; the contract is under *Per-context event order* in `packages/deck-core/CLAUDE.md`).
+- An action writes its own settings through `BaseAction.updateSettings(ev, (current) => next | undefined)`, never `ev.action.setSettings({ ...ev.payload.settings, … })`: the payload is the event's snapshot, and a PI change queued behind the handler is newer, so writing the snapshot reverts it (#1761). The updater is pure and returns the whole object, or `undefined` when `current` already holds the change; the write never throws. Whether a host echoes the plugin's own write back as `didReceiveSettings` differs between hosts, so nothing may depend on it. Writers not yet moved are listed in #1794; the contract is under *Base Classes* in `packages/deck-core/CLAUDE.md`.
 
 ### CommonSettings
 
