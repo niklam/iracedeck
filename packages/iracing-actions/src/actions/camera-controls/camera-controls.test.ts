@@ -22,6 +22,7 @@ import z from "zod";
 import { borderColorForState, statusBarNA, statusBarOff, statusBarOn } from "../../icons/status-bar.js";
 import { CAR_CYCLE_BINDING_KEYS } from "../../shared/car-cycle-bindings.js";
 import { _resetSelectIntents, getSelectIntent } from "../../shared/car-select-intent.js";
+import { ContextSettingsActionBase } from "../../shared/context-settings-action.test-support.js";
 import { describePressShapeRouting } from "../../shared/press-shape.test-support.js";
 import { engineOverDeck } from "../../shared/replay-engine-deck.test-support.js";
 import keyBindings from "../data/key-bindings.json" with { type: "json" };
@@ -1201,6 +1202,30 @@ describe("CameraControls", () => {
     });
 
     describe("pushDeviceProfiles", () => {
+      const carSelectorEntries = [{ name: "iRaceDeck Car Selector XL", label: "iRaceDeck Car Selector" }];
+
+      /** One key context's events, all writing to the same `setSettings`. */
+      function keyContext() {
+        const setSettings = vi.fn<(settings: Record<string, unknown>) => Promise<void>>(async () => {});
+        const action = {
+          id: "ctx-1",
+          deviceId: "dev-1",
+          deviceType: 2,
+          isKey: () => true,
+          isDial: () => false,
+          setSettings,
+          setTitle: vi.fn(async () => {}),
+        };
+        const event = (settings: Record<string, unknown>, superseded = false) =>
+          ({ action, payload: { settings }, isSuperseded: () => superseded }) as never;
+
+        return { setSettings, event };
+      }
+
+      afterEach(() => {
+        ContextSettingsActionBase.stampVersion = undefined;
+      });
+
       it("pushes the device-filtered profile entries on appear when none are stored", async () => {
         const action = track(new CameraControls());
         const ev = makeWillAppearEvent(focusSelectSettings);
@@ -1209,23 +1234,29 @@ describe("CameraControls", () => {
 
         const setSettings = (ev as { action: { setSettings: ReturnType<typeof vi.fn> } }).action.setSettings;
 
-        expect(setSettings).toHaveBeenCalledWith(
-          expect.objectContaining({
-            _deviceProfiles: [{ name: "iRaceDeck Car Selector XL", label: "iRaceDeck Car Selector" }],
-          }),
-        );
+        expect(setSettings).toHaveBeenCalledTimes(1);
+        expect(setSettings).toHaveBeenCalledWith({ ...focusSelectSettings, _deviceProfiles: carSelectorEntries });
       });
 
-      it("does not push device profiles when they already match (echo-loop guard)", async () => {
+      it("does not push device profiles when they already match (an unchanged list writes nothing)", async () => {
         const action = track(new CameraControls());
-        const ev = makeWillAppearEvent({
-          ...focusSelectSettings,
-          _deviceProfiles: [{ name: "iRaceDeck Car Selector XL", label: "iRaceDeck Car Selector" }],
-        });
+        const ev = makeWillAppearEvent({ ...focusSelectSettings, _deviceProfiles: carSelectorEntries });
 
         await action.onWillAppear(ev);
 
         const setSettings = (ev as { action: { setSettings: ReturnType<typeof vi.fn> } }).action.setSettings;
+
+        expect(setSettings).not.toHaveBeenCalled();
+      });
+
+      it("writes nothing when settings arrive with the list already stored", async () => {
+        const action = track(new CameraControls());
+        const { setSettings, event } = keyContext();
+
+        await action.onWillAppear(event({ ...focusSelectSettings, _deviceProfiles: carSelectorEntries }));
+        await action.onDidReceiveSettings(
+          event({ ...focusSelectSettings, cameraGroup: 3, _deviceProfiles: carSelectorEntries }),
+        );
 
         expect(setSettings).not.toHaveBeenCalled();
       });
@@ -1239,6 +1270,90 @@ describe("CameraControls", () => {
         const setSettings = (ev as { action: { setSettings: ReturnType<typeof vi.fn> } }).action.setSettings;
 
         expect(setSettings).not.toHaveBeenCalled();
+      });
+
+      it("writes the newest settings plus the list, not the event's payload (#1761)", async () => {
+        // The base stamps addedWithVersion into the record first; the list
+        // write must carry it rather than drop it.
+        ContextSettingsActionBase.stampVersion = "3.10.0";
+        const action = track(new CameraControls());
+        const { setSettings, event } = keyContext();
+
+        await action.onWillAppear(event(focusSelectSettings));
+
+        expect(setSettings.mock.calls.map(([written]) => written)).toEqual([
+          { ...focusSelectSettings, addedWithVersion: "3.10.0" },
+          { ...focusSelectSettings, addedWithVersion: "3.10.0", _deviceProfiles: carSelectorEntries },
+        ]);
+      });
+
+      it("never writes the list when newer settings in another Mode have arrived (#1761)", async () => {
+        const action = track(new CameraControls());
+        const { setSettings, event } = keyContext();
+
+        // The PI moved the key to Focus Your Car while this appear ran: the
+        // list is not written from the old settings, and the newer settings
+        // no longer show the dropdown, so it is not written at all.
+        await action.onWillAppear(event(focusSelectSettings, true));
+        await action.onDidReceiveSettings(event({ ...focusSelectSettings, target: "focus-your-car" }));
+
+        expect(setSettings).not.toHaveBeenCalled();
+      });
+
+      it("writes the list onto the newer settings when they are still in Focus Pick Car (#1761)", async () => {
+        const action = track(new CameraControls());
+        const { setSettings, event } = keyContext();
+        const newer = { ...focusSelectSettings, focusSelectorProfile: "iRaceDeck Replay" };
+
+        await action.onWillAppear(event(focusSelectSettings, true));
+
+        expect(setSettings).not.toHaveBeenCalled();
+
+        await action.onDidReceiveSettings(event(newer));
+
+        expect(setSettings).toHaveBeenCalledTimes(1);
+        expect(setSettings).toHaveBeenCalledWith({ ...newer, _deviceProfiles: carSelectorEntries });
+      });
+
+      it("judges the Mode from the newest record, not the event it is handed (#1761)", async () => {
+        const action = track(new CameraControls());
+        const { setSettings, event } = keyContext();
+
+        await action.onWillAppear(event({ ...focusSelectSettings, target: "focus-your-car" }));
+        await action["pushDeviceProfiles"](event(focusSelectSettings));
+
+        expect(setSettings).not.toHaveBeenCalled();
+      });
+
+      it("keeps the stamp in the migrated focus-on-exiting settings, and lists no profiles for them (#1761)", async () => {
+        // The migration lands on Most Exciting, which shows no profile
+        // dropdown, so the list write never meets a migrated key; the stamp
+        // written before the migration is what must survive it.
+        ContextSettingsActionBase.stampVersion = "3.10.0";
+        const action = track(new CameraControls());
+        const { setSettings, event } = keyContext();
+
+        await action.onWillAppear(event({ ...focusSelectSettings, target: "focus-on-exiting" }));
+
+        expect(setSettings.mock.calls.map(([written]) => written)).toEqual([
+          { ...focusSelectSettings, target: "focus-on-exiting", addedWithVersion: "3.10.0" },
+          { ...focusSelectSettings, target: "focus-on-most-exciting", addedWithVersion: "3.10.0" },
+        ]);
+        expect(action["getContextSettings"]("ctx-1")).toEqual({
+          ...focusSelectSettings,
+          target: "focus-on-most-exciting",
+          addedWithVersion: "3.10.0",
+        });
+      });
+
+      it("does not re-migrate settings that are already migrated", async () => {
+        const action = track(new CameraControls());
+        const { setSettings, event } = keyContext();
+
+        await action.onWillAppear(event({ ...focusSelectSettings, target: "focus-on-exiting" }));
+        await action.onDidReceiveSettings(event({ ...focusSelectSettings, target: "focus-on-most-exciting" }));
+
+        expect(setSettings).toHaveBeenCalledTimes(1);
       });
     });
   });
