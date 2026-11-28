@@ -29,8 +29,9 @@ Two related defects sit on the same path:
    ```
 
    - If the context has no record (it never appeared, or it disappeared), the helper writes nothing and returns `false`.
-   - `next = update(record)`. `undefined` means the record already holds the change, so nothing is written. Updaters are pure, because they may be re-run on newer settings.
-   - If a newer settings event has already **arrived** for the context (`ev.isSuperseded?.()`), the helper does not write. It parks the updater instead. `onDidReceiveSettings` re-runs the parked updaters through the helper right after recording the new payload. `willAppear` and `willDisappear` drop them.
+   - If a newer settings event has already **arrived** for the context (`ev.isSuperseded?.()`), the helper does not write and does not run the updater. It parks the updater instead. `onDidReceiveSettings` re-runs the parked updaters through the helper right after recording the new payload. `willAppear` and `willDisappear` drop them.
+   - Otherwise `next = update(record)`. `undefined` means the record already holds the change, so nothing is written. Updaters are pure, because they may be re-run on newer settings.
+   - The superseded check comes first: an updater run against the older record could answer `undefined` ("nothing to write") while the newer settings lack its change, and the write would be lost (found by the CodeRabbit CLI on #1761).
    - Otherwise it sets the record to `next` synchronously, then awaits `ev.action.setSettings(next)`. On failure it logs a warning, keeps the record, does not throw, and returns `false`.
    - An updater, rather than a partial patch, lets a migration delete a key.
 
@@ -90,4 +91,4 @@ These are not closed by any plugin-side guard and are stated in the PR:
   - the write is the newest object plus `_deviceProfiles`;
   - Race Admin's legacy migration survives the profile-list write;
   - Switch Profile still reports its marker when the write rejects.
-- Manual, by Niklas, on Stream Deck and on Mirabox or Ulanzi: the issue's repro (Focus Pick Car, then change Mode at once) keeps the new Mode in both the key and the PI. Whether the key itself ever snapped back before the fix tells which echo reading is true.
+- Manual, by Niklas, on Stream Deck: the issue's repro (Focus Pick Car, then change Mode at once) keeps the new Mode in both the key and the PI. Whether the key itself ever snapped back before the fix tells which echo reading is true. On Mirabox (and Ulanzi), whose PIs hide the profile-picking modes so the profile-list write never runs there: quick Mode changes and page switches keep the stamp and the Mode, which exercises the arrival token and the stamp write on that host.
