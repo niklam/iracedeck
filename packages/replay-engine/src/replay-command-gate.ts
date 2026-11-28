@@ -315,10 +315,11 @@ interface Slot {
    * which can become a jump) stays held until the sim has delivered
    * {@link TICKS_AFTER_POSITION_SEND} newer ticks, or the record jump's wait
    * has run out, so two position commands never go out inside the same sim
-   * updates. `tick` is null while no reading since the send has carried a
-   * `SessionTick`: the first one that does becomes the base.
+   * updates. The ticks count from the gate's last position send
+   * ({@link replayLastPositionSend}); `since` is when the hold began, for its
+   * bound.
    */
-  spacedFrom?: { tick: number | null; readonly since: number };
+  spacedFrom?: { readonly since: number };
 }
 
 /** A replay jump holding the cursor (`replay-jump-playback.ts`, the walk). */
@@ -414,6 +415,17 @@ let witness = false;
 let positionSends = 0;
 /** The position commands {@link positionSends} counts, by their `sendRaw` names. */
 const POSITION_COMMANDS: ReadonlySet<string> = new Set(["setPlayPosition", "goToStart", "goToEnd"]);
+/**
+ * The last position command that went out, wherever it was sent (#1660): a
+ * step's act, a jump sequence's seek after its pause, the gate's owed seek, a
+ * slot release, a press. `count` is {@link positionSends} after it; `tick` is
+ * the `SessionTick` of the reading of the change it went out in, or, when that
+ * reading carried none, of the next reading that does; null until then. The
+ * one baseline the spacing between position commands counts from.
+ */
+let lastPositionSend: { readonly count: number; tick: number | null } | null = null;
+/** The reading the change under way settled on, for the tick of a position command sent in it; null outside a change. */
+let changeReading: TelemetryData | null = null;
 /** The last reading that was the replay's, for a takeover with no frame on screen. */
 let lastReplay: ReplayReading | null = null;
 /** When the gate last went from idle to busy (ms), for the record. */
@@ -608,6 +620,7 @@ function batch<T>(now: number, change: () => T): T {
     batchDepth--;
 
     if (batchDepth === 0) {
+      changeReading = null;
       publish();
       noteSentSpeeds();
       tellSeekHold();
@@ -852,7 +865,10 @@ function sendRaw(name: string, send: (replay: ReplayCommandSurface) => boolean):
     log().debug(`Replay command ${name} threw: ${String(err)}`);
   }
 
-  if (ok && POSITION_COMMANDS.has(name)) positionSends++;
+  if (ok && POSITION_COMMANDS.has(name)) {
+    positionSends++;
+    lastPositionSend = { count: positionSends, tick: batchDepth > 0 ? sessionTick(changeReading) : null };
+  }
 
   return ok;
 }
@@ -860,6 +876,23 @@ function sendRaw(name: string, send: (replay: ReplayCommandSurface) => boolean):
 /** How many position commands (an absolute jump, a go to start or end) the gate has sent (#1660). */
 export function replayPositionSends(): number {
   return positionSends;
+}
+
+/** A position command that went out, as the spacing reads it (#1660). */
+export interface ReplayPositionSend {
+  /** {@link replayPositionSends} after it went out. */
+  readonly count: number;
+  /** The `SessionTick` it went out on, or null while no reading since has carried one. */
+  readonly tick: number | null;
+}
+
+/**
+ * The last position command the gate sent, wherever from (#1660): what the
+ * spacing between two position commands counts its ticks from, the step
+ * starts' queue (`replay-record-walk.ts`) and the slot's held release alike.
+ */
+export function replayLastPositionSend(): ReplayPositionSend | null {
+  return lastPositionSend === null ? null : { count: lastPositionSend.count, tick: lastPositionSend.tick };
 }
 
 function describe(command: SlotCommand): string {
@@ -1160,6 +1193,12 @@ function quiet(jumpsOnly: boolean): boolean {
 
 function settle(telemetry: TelemetryData | null, now: number): void {
   const reading = readReplay(telemetry);
+
+  // The change's reading: a position command sent in it went out on its tick. A send whose own change carried no tick
+  // takes the first later reading that does.
+  changeReading = telemetry;
+
+  if (lastPositionSend !== null && lastPositionSend.tick === null) lastPositionSend.tick = sessionTick(telemetry);
 
   if (reading !== null) lastReplay = reading;
 
@@ -1565,26 +1604,23 @@ function sessionTick(telemetry: TelemetryData | null): number | null {
 /**
  * Whether a slot command spaced from a start's position command
  * ({@link Slot.spacedFrom}) may go: read back from the sim's `SessionTick`,
- * {@link TICKS_AFTER_POSITION_SEND} past the send's. A stamp with no tick
- * (the read after the send had none) is never met by a reading: the first
- * reading since that carries a `SessionTick` becomes its base, and the
- * count runs from there. A reading with no tick says nothing and keeps it
- * held, so it never goes out in the change that sent the start's seek. Once
- * the record jump's wait has run out it goes, a sim that delivers no tick
- * not being one the spacing protects. The bound only gives up.
+ * {@link TICKS_AFTER_POSITION_SEND} past the tick of the gate's last
+ * position send ({@link replayLastPositionSend}). While that send's tick is
+ * not known yet (no reading since it carried one), or the reading has none,
+ * it stays held, so it never goes out in the change that sent the start's
+ * seek. Once the record jump's wait has run out it goes, a sim that delivers
+ * no tick not being one the spacing protects. The bound only gives up.
  */
 function spacingMet(current: Slot, telemetry: TelemetryData | null, now: number): boolean {
   const from = current.spacedFrom;
 
   if (from === undefined) return true;
 
+  const sentTick = lastPositionSend?.tick ?? null;
   const tick = sessionTick(telemetry);
-  let met = now - from.since >= readReplayJumpTimeoutMs();
-
-  if (!met && tick !== null) {
-    if (from.tick === null) from.tick = tick;
-    else met = tick - from.tick >= TICKS_AFTER_POSITION_SEND;
-  }
+  const met =
+    now - from.since >= readReplayJumpTimeoutMs() ||
+    (sentTick !== null && tick !== null && tick - sentTick >= TICKS_AFTER_POSITION_SEND);
 
   if (met) current.spacedFrom = undefined;
 
@@ -2961,7 +2997,7 @@ export function closeReplayGateWait<T>(id: number, reason: ReplayGateEndReason, 
 
         // The start sent a position command: a held one of the slot's waits for the sim to take it first.
         if (positionSends !== sendsBefore && slot !== null && sendsPosition(slot.command)) {
-          slot.spacedFrom = { tick: sessionTick(telemetry), since: now };
+          slot.spacedFrom = { since: now };
         }
 
         settle(telemetry, now);
@@ -3131,6 +3167,8 @@ export function _resetReplayCommandGate(): void {
   startWaitSeq = 0;
   pressOrder = 0;
   positionSends = 0;
+  lastPositionSend = null;
+  changeReading = null;
   actingStartOrder = null;
   takeover = null;
   slot = null;

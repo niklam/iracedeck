@@ -50,7 +50,7 @@ import {
   isReplaySlotHeld,
   openReplayGateWait,
   readReplayPosition,
-  replayPositionSends,
+  replayLastPositionSend,
   replaySearchOnItsWay,
   type ReplaySearchOnItsWay,
   replaySlotHeldBefore,
@@ -163,150 +163,84 @@ async function waitForSlotAhead(gateWait: number): Promise<string> {
   }
 }
 
-/**
- * Which tick a reading is (#1660): its `SessionTick`, which advances every
- * sim update, and where a reading carries none, the replay flag and frame
- * the gate settles its own readings on.
- */
-export interface TickMark {
-  /** The `SessionTick`, or null for a reading without one. */
-  readonly tick: number | null;
-  /** The flag and frame, for a reading without a `SessionTick`. */
-  readonly key: string;
-}
-
-/** The mark of a read with no telemetry: no tick at all. */
-const NO_TELEMETRY = "no telemetry";
-
-/** @internal Exported for testing. */
-export function tickMark(telemetry: TelemetryData | null): TickMark {
+/** A reading's `SessionTick`, or null without one (no telemetry, or not a finite number). */
+function sessionTick(telemetry: TelemetryData | null): number | null {
   const tick = telemetry?.SessionTick;
 
-  if (typeof tick === "number" && Number.isFinite(tick)) return { tick, key: `tick ${tick}` };
-
-  if (telemetry === null) return { tick: null, key: NO_TELEMETRY };
-
-  return {
-    tick: null,
-    key: `replay ${telemetry.IsReplayPlaying === true} frame ${String(telemetry.ReplayFrameNum)}`,
-  };
+  return typeof tick === "number" && Number.isFinite(tick) ? tick : null;
 }
 
 /**
- * Waits, on the engine clock, until the sim has delivered
- * {@link TICKS_AFTER_POSITION_SEND} newer ticks than the one read when a
- * head's act sent a position command (#1660). iRacing loses a position jump
- * sent too soon after another position command (two absolute jumps inside
- * one update end on the earlier), and a queue that resolves two heads back
- * to back sends their jumps milliseconds apart. With a `SessionTick` the wait
- * ends once it reads that many past the send's, however many updates one
- * poll spans; without one, once the flag and frame have changed that many
- * times, counted over real samples only: a read with no telemetry is no
- * tick and changes nothing. A send that carried a `SessionTick` is counted
- * from it alone: a reading without one is ignored, never a change. Read back, not timed: the bound only gives up,
- * at the record jump's own wait.
+ * The count of the last position send whose spacing a bounded wait ran out
+ * on, or null (#1660): that send's spacing counts as met, and is never
+ * waited for again.
+ */
+let spacingWaivedFor: number | null = null;
+
+/**
+ * Whether the next position command a step sends would come too soon after
+ * the gate's last one (#1660, {@link replayLastPositionSend}): fewer than
+ * {@link TICKS_AFTER_POSITION_SEND} ticks past that send's `SessionTick`,
+ * wherever it was sent, a step's act, a jump sequence's seek after its
+ * pause, a slot release or a press. While the send's tick is not known yet
+ * the gate takes it from its next reading that carries one, so a fresh
+ * reading with a tick says yes; a fresh reading with none cannot show the
+ * ticks have passed, so with the send's tick known it says yes too. Only in
+ * a sim that delivers no tick at all, neither the send's reading nor any
+ * since, does it say no: there is nothing to count. A send a bounded wait
+ * ran out on says no.
  *
  * @internal Exported for testing.
  */
-export async function waitForNewTicks(sent: TickMark): Promise<string> {
-  // The flag and frame pair the changes are counted from; none until a real sample when the send's read had none.
-  let last: string | null = sent.key === NO_TELEMETRY ? null : sent.key;
-  let changes = 0;
+export function spacingPending(): boolean {
+  const send = replayLastPositionSend();
 
+  if (send === null || send.count === spacingWaivedFor) return false;
+
+  const tick = sessionTick(engineReads().readTelemetry());
+
+  if (send.tick === null) return tick !== null;
+
+  return tick === null || tick - send.tick < TICKS_AFTER_POSITION_SEND;
+}
+
+/** Whether the target `id` a head recorded still stands with its seek not sent: it goes out after the pause reads back. */
+function seekOwed(id: number | null): boolean {
+  if (id === null) return false;
+
+  const target = pendingReplayTarget();
+
+  return target !== null && target.id === id && !target.sent;
+}
+
+/**
+ * Waits, on the engine clock, until the next head may send a position
+ * command (#1660): the seek of the target the head before recorded has gone
+ * out (on a moving replay a jump records its target and pauses, and seeks
+ * only once the pause reads back), and then {@link spacingPending} is clear:
+ * iRacing loses a position command sent too soon after another, and a queue
+ * that resolves two heads back to back would send them milliseconds apart.
+ * Read back, not timed. The bound, the record jump's own wait, is final:
+ * once it runs out the spacing counts as met, and that send is never waited
+ * for again.
+ */
+async function waitForSpacing(owedTarget: number | null): Promise<string> {
   try {
-    const ended = await pollUntil(
-      () => {
-        const telemetry = engineReads().readTelemetry();
+    const ended = await pollUntil(() => (seekOwed(owedTarget) || spacingPending() ? undefined : true), {
+      intervalMs: REPLAY_JUMP_POLL_MS,
+      timeoutMs: readReplayJumpTimeoutMs(),
+    });
 
-        if (telemetry === null) return undefined;
+    if (ended.kind === "done") return `${TICKS_AFTER_POSITION_SEND} new ticks since the last position send`;
 
-        const now = tickMark(telemetry);
+    spacingWaivedFor = replayLastPositionSend()?.count ?? null;
 
-        // Counted from a tick, only a reading with a tick says anything: one without is no change against it.
-        if (sent.tick !== null) {
-          return now.tick !== null && now.tick - sent.tick >= TICKS_AFTER_POSITION_SEND ? true : undefined;
-        }
-
-        if (last === null) {
-          last = now.key;
-        } else if (now.key !== last) {
-          changes++;
-          last = now.key;
-        }
-
-        return changes >= TICKS_AFTER_POSITION_SEND ? true : undefined;
-      },
-      { intervalMs: REPLAY_JUMP_POLL_MS, timeoutMs: readReplayJumpTimeoutMs() },
-    );
-
-    return ended.kind === "done"
-      ? `${TICKS_AFTER_POSITION_SEND} new ticks since the last head's jump`
-      : `no ${TICKS_AFTER_POSITION_SEND} new ticks since the last head's jump within the bound; the spacing counts as met`;
+    return `no ${TICKS_AFTER_POSITION_SEND} new ticks since the last position send within the bound; the spacing counts as met`;
   } catch (err) {
+    spacingWaivedFor = replayLastPositionSend()?.count ?? null;
+
     return `failed: ${String(err)}`;
   }
-}
-
-/**
- * The tick the last position command a step's act sent went out on, a
- * queued head's or an immediate press's alike, or null (#1660). Kept only
- * when the reading carries a `SessionTick`, the one mark a single read can
- * count ticks from: what lets a press made a tick after a head's jump wait
- * its turn rather than jump within the same sim updates.
- */
-let lastPositionSend: TickMark | null = null;
-
-/** The gate's count of position sends and the pending target, before a step's act. */
-interface PositionMark {
-  readonly sends: number;
-  readonly targetId: number | null;
-}
-
-function positionMark(): PositionMark {
-  return { sends: replayPositionSends(), targetId: pendingReplayTarget()?.id ?? null };
-}
-
-/**
- * The tick an act sent a position command on, when it sent one since
- * `before` or recorded a jump's target whose seek may already be out, else
- * null: what the next queued head waits on. A command that actually went out
- * is also noted for the next press ({@link lastPositionSend}) when the
- * reading carries a `SessionTick`.
- */
-function notePositionSend(before: PositionMark): TickMark | null {
-  const after = positionMark();
-
-  if (after.sends === before.sends && after.targetId === before.targetId) return null;
-
-  const mark = tickMark(engineReads().readTelemetry());
-
-  // Only a command that went out keeps a later press waiting: a target recorded behind a pause has no seek out yet,
-  // and the next press's jump retargets it at once by the gate's table.
-  if (after.sends !== before.sends && mark.tick !== null) lastPositionSend = mark;
-
-  return mark;
-}
-
-/**
- * Whether a position command went out fewer than
- * {@link TICKS_AFTER_POSITION_SEND} ticks ago, by a fresh `SessionTick`.
- * With no send noted it says no. A fresh reading with no tick (no
- * telemetry, or no finite `SessionTick`) cannot show the ticks have passed,
- * so it says yes and keeps the mark: the press joins the queue, whose wait
- * for new ticks is bounded. Only a reading enough ticks past clears it.
- */
-function positionSendTooRecent(): boolean {
-  const sent = lastPositionSend;
-
-  if (sent === null || sent.tick === null) return false;
-
-  const now = tickMark(engineReads().readTelemetry());
-
-  if (now.tick === null || now.tick - sent.tick < TICKS_AFTER_POSITION_SEND) return true;
-
-  lastPositionSend = null;
-
-  return false;
 }
 
 /** The search of the gate's a start waits for: on its way, and not one a start has already waited out. */
@@ -479,19 +413,11 @@ export function awaitReplayWalkStart<T>(
   // A command held in the slot was pressed before this press: it goes first (the drain's `replaySlotHeldBefore`).
   // A position command that went out within the last ticks: the press waits its turn, so its own jump does not
   // go out inside the same sim updates (the drain's wait for new ticks).
-  if (waitingStarts.length === 0 && !isReplaySlotHeld() && !positionSendTooRecent()) {
+  if (waitingStarts.length === 0 && !isReplaySlotHeld() && !spacingPending()) {
     try {
       const start = resolveReplayWalkStart(readState(), readTelemetry());
 
-      if (isSettled(start)) {
-        const before = positionMark();
-
-        try {
-          return Promise.resolve(act(start));
-        } finally {
-          notePositionSend(before);
-        }
-      }
+      if (isSettled(start)) return Promise.resolve(act(start));
     } catch (err) {
       return Promise.reject(err);
     }
@@ -561,8 +487,8 @@ function dropHead(head: WaitingStart, err: unknown): void {
 async function drainWaitingStarts(): Promise<void> {
   const generation = drainGeneration;
   let waits = 0;
-  /** The tick the last head's act sent a position command on, until the sim has delivered a newer one. */
-  let sentOnTick: TickMark | null = null;
+  /** The target the last head's act recorded, while its seek may still be owed (sent once its pause reads back). */
+  let owedTarget: number | null = null;
 
   draining = true;
 
@@ -572,25 +498,22 @@ async function drainWaitingStarts(): Promise<void> {
 
       if (head === undefined) return;
 
-      // The head before this one, or a press just before this one joined, sent a position command: the sim takes it
-      // on its next update, and one sent within the same update is lost. The next head reads and acts once
-      // TICKS_AFTER_POSITION_SEND newer ticks show the first was taken.
-      const sentMark = sentOnTick ?? (positionSendTooRecent() ? lastPositionSend : null);
+      // The head before this one recorded a jump whose seek is still owed, or a position command went out fewer
+      // than TICKS_AFTER_POSITION_SEND ticks ago, wherever from: the sim takes a position command on its next
+      // update, and one sent too soon after it is lost. The next head reads and acts once the seek has gone out and
+      // the ticks have passed, or the bound has run out (`waitForSpacing`), and never waits for the same send twice.
+      if (seekOwed(owedTarget) || spacingPending()) {
+        const outcome = await waitForSpacing(owedTarget);
 
-      if (sentMark !== null) {
-        sentOnTick = null;
-
-        const outcome = await waitForNewTicks(sentMark);
+        owedTarget = null;
 
         if (generation !== drainGeneration) return;
-
-        // Waited for, by the ticks or by the bound: the spacing is met, and this send is never waited for again. A sim
-        // that delivered no new tick for the whole bound is not taking commands at a pace the spacing protects.
-        if (lastPositionSend === sentMark) lastPositionSend = null;
 
         log().debug(`Replay step start: ${outcome}`);
         continue;
       }
+
+      owedTarget = null;
 
       let start: ReplayWalkStart;
 
@@ -659,7 +582,7 @@ async function drainWaitingStarts(): Promise<void> {
       waitingStarts.shift();
       const reason = settled.frame === null && settled.reason === "not in a replay" ? "replay-left" : "sent-on-landing";
 
-      const before = positionMark();
+      const targetBefore = pendingReplayTarget()?.id ?? null;
 
       try {
         head.resolve(closeReplayGateWait(head.gateWait, reason, () => head.act(settled)));
@@ -667,8 +590,11 @@ async function drainWaitingStarts(): Promise<void> {
         head.reject(err);
       }
 
-      // Its act sent a position command, or recorded a jump's target whose seek may already be out.
-      sentOnTick = notePositionSend(before);
+      // Its act recorded a jump's target: on a moving replay the seek goes out once the pause reads back, outside
+      // the act, and the next head waits for it before the ticks are counted.
+      const targetAfter = pendingReplayTarget()?.id ?? null;
+
+      owedTarget = targetAfter !== targetBefore ? targetAfter : null;
     }
   } finally {
     if (generation === drainGeneration) draining = false;
@@ -696,7 +622,7 @@ export function _resetReplayRecordWalk(): void {
   waitingStarts = [];
   draining = false;
   waitedOutSearchId = null;
-  lastPositionSend = null;
+  spacingWaivedFor = null;
 
   for (const start of dropped) start.reject(new ReplayWalkStartDropped());
 }
