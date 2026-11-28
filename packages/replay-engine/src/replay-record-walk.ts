@@ -60,7 +60,12 @@ import { engineLogger, engineReads } from "./replay-engine-env.js";
 import { pendingReplayTarget } from "./replay-position-state.js";
 import { readReplay } from "./replay-reading.js";
 import { pendingReplaySearch, SEARCH_QUEUE_MAX } from "./replay-search-queue.js";
-import { readReplayJumpTimeoutMs, REPLAY_JUMP_MAX_WAIT_MS, REPLAY_JUMP_POLL_MS } from "./replay-timing.js";
+import {
+  readReplayJumpTimeoutMs,
+  REPLAY_JUMP_MAX_WAIT_MS,
+  REPLAY_JUMP_POLL_MS,
+  TICKS_AFTER_POSITION_SEND,
+} from "./replay-timing.js";
 
 /** The two ways a walk goes: forward (Next, a clockwise turn) or back (Previous, counter-clockwise). */
 export type ReplayWalkDirection = "next" | "previous";
@@ -157,17 +162,6 @@ async function waitForSlotAhead(gateWait: number): Promise<string> {
     return `failed: ${String(err)}`;
   }
 }
-
-/**
- * How many tick indices past the send's tick the next position command
- * waits for (#1660). Measured 2026-10-12: a jump 20 ms after another landed
- * 5 times in 10, and one 35 ms or more after it 20 times in 20. A send can
- * fall late in its sim update, so two new ticks can come only about 17 to
- * 20 ms after it; three new ticks always leave at least two whole sim
- * updates between the sends, about 33 ms or more at 60 Hz, the 20-of-20
- * zone. A count read back from the sim, not a time.
- */
-const TICKS_AFTER_POSITION_SEND = 3;
 
 /**
  * Which tick a reading is (#1660): its `SessionTick`, which advances every

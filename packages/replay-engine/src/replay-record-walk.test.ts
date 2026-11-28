@@ -1274,6 +1274,48 @@ describe("a start while a search of the gate's is on its way (#1660)", () => {
       expect(sim.thrown).toBe(0);
     });
 
+    it("a go to start held behind a queued marker step goes out three ticks after the step's seek, not in the same change", async () => {
+      setUp(withIncidents);
+      search("nextSession");
+
+      // When each position command went out, on the fake clock.
+      const sentAt: Record<string, number[]> = { setPlayPosition: [], goToStart: [] };
+
+      for (const name of ["setPlayPosition", "goToStart"] as const) {
+        const mock = vi.mocked(sim.replay[name]);
+        const send = mock.getMockImplementation() as ((...args: unknown[]) => boolean) | undefined;
+
+        mock.mockImplementation(((...args: unknown[]) => {
+          sentAt[name]?.push(Date.now());
+
+          return send?.(...args) ?? false;
+        }) as never);
+      }
+
+      const order: string[] = [];
+      const jumps: Promise<unknown>[] = [];
+      const a = jumpPress("a", order, jumps);
+
+      // Jump to Beginning, held behind the search on its way, then held back at the landing for the earlier step.
+      expect(pressReplayCommand({ kind: "go-to", end: "start" }, { by: "test-start", origin: "key-start" })).toEqual({
+        kind: "held",
+      });
+
+      await vi.advanceTimersByTimeAsync(3_000);
+      await a;
+
+      const simUpdate = (t: number): number => Math.floor(t / (1000 / 60));
+      const seekAt = sentAt.setPlayPosition?.[0] ?? 0;
+      const goAt = sentAt.goToStart?.[0] ?? 0;
+
+      expect(order).toEqual(["a cursor 200000"]);
+      expect(sentAt.goToStart).toHaveLength(1);
+      expect(simUpdate(goAt) - simUpdate(seekAt)).toBeGreaterThanOrEqual(3);
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      await Promise.allSettled(jumps);
+    });
+
     it("when the start that went first sends nothing, the slot's command goes out before the next start reads", async () => {
       setUp(withIncidents);
       search("nextSession");

@@ -121,6 +121,7 @@ import {
   REPLAY_JUMP_POLL_MS,
   STABILIZATION_POLL_INTERVAL_MS,
   STABILIZATION_TIMEOUT_MULTIPLIER,
+  TICKS_AFTER_POSITION_SEND,
 } from "./replay-timing.js";
 
 export type { ReplayCommandSurface } from "./replay-engine-env.js";
@@ -307,6 +308,16 @@ interface Slot {
    * even if a start's jump has since forgotten the record.
    */
   searchLanded?: boolean;
+  /**
+   * Set when a step's start sent a position command in the change that would
+   * release this command (#1660): the tick it went out on, and when. A
+   * command that sends a position command of its own (a go to, or a step,
+   * which can become a jump) stays held until the sim has delivered
+   * {@link TICKS_AFTER_POSITION_SEND} newer ticks, or the record jump's wait
+   * has run out, so two position commands never go out inside the same sim
+   * updates.
+   */
+  spacedFrom?: { readonly tick: number | null; readonly since: number };
 }
 
 /** A replay jump holding the cursor (`replay-jump-playback.ts`, the walk). */
@@ -1538,11 +1549,51 @@ function takeOver(
   return { kind: "taking-over", ok };
 }
 
+/** Whether a slot command sends a position command of its own: a go to, or a step, which can become a jump. */
+function sendsPosition(command: SlotCommand): boolean {
+  return command.kind === "go-to" || command.kind === "step";
+}
+
+/** A reading's `SessionTick`, or null without one. */
+function sessionTick(telemetry: TelemetryData | null): number | null {
+  const tick = telemetry?.SessionTick;
+
+  return typeof tick === "number" && Number.isFinite(tick) ? tick : null;
+}
+
+/**
+ * Whether a slot command spaced from a start's position command
+ * ({@link Slot.spacedFrom}) may go: read back from the sim's `SessionTick`,
+ * {@link TICKS_AFTER_POSITION_SEND} past the send's. Without a tick to
+ * count from it cannot tell, and goes; once the record jump's wait has run
+ * out it goes too, a sim that delivers no tick not being one the spacing
+ * protects. The bound only gives up.
+ */
+function spacingMet(current: Slot, telemetry: TelemetryData | null, now: number): boolean {
+  const from = current.spacedFrom;
+
+  if (from === undefined) return true;
+
+  const tick = sessionTick(telemetry);
+  const met =
+    from.tick === null ||
+    tick === null ||
+    tick - from.tick >= TICKS_AFTER_POSITION_SEND ||
+    now - from.since >= readReplayJumpTimeoutMs();
+
+  if (met) current.spacedFrom = undefined;
+
+  return met;
+}
+
 /** Acts on the slot after a reading has settled the state. */
 function serviceSlot(telemetry: TelemetryData | null, now: number): void {
   const current = slot;
 
   if (current === null) return;
+
+  // A start's position command went out in the change that would release a position command of this one's (#1660).
+  if (!spacingMet(current, telemetry, now)) return;
 
   if (current.behind === "search") {
     serviceBehindSearch(current, telemetry, now);
@@ -2884,6 +2935,7 @@ export function closeReplayGateWait<T>(id: number, reason: ReplayGateEndReason, 
       if (parked !== null) slot = null;
 
       const outerActing = actingStartOrder;
+      const sendsBefore = positionSends;
 
       // A press `then` makes is this start's own step: it keeps the start's place in press order.
       actingStartOrder = wait?.order ?? outerActing;
@@ -2901,6 +2953,11 @@ export function closeReplayGateWait<T>(id: number, reason: ReplayGateEndReason, 
         }
 
         const telemetry = engineReads().readTelemetry();
+
+        // The start sent a position command: a held one of the slot's waits for the sim to take it first.
+        if (positionSends !== sendsBefore && slot !== null && sendsPosition(slot.command)) {
+          slot.spacedFrom = { tick: sessionTick(telemetry), since: now };
+        }
 
         settle(telemetry, now);
         serviceSlot(telemetry, now);
