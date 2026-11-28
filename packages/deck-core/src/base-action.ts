@@ -10,6 +10,7 @@ import { applyDisconnectedLook, svgToDataUri } from "@iracedeck/icon-composer";
 import { type ILogger, silentLogger } from "@iracedeck/logger";
 import { getGlobalSettings, onGlobalSettingsChange } from "@iracedeck/settings";
 
+import { ContextSettings, type ContextSettingsUpdater } from "./context-settings.js";
 import { IconUpdateThrottle } from "./icon-update-throttle.js";
 import { getPluginVersion, isPluginConfigInitialized } from "./plugin-config.js";
 import { getSimConnection, type OverlayFlag, type SimConnection } from "./sim-connection.js";
@@ -56,10 +57,13 @@ interface ContextEntry {
  *   draws the disconnected look over the image when
  *   {@link BaseAction.showsDisconnected} is true for that context (#1599). The
  *   stored original is always the undecorated image.
- * - Keeps each live context's latest raw settings
- *   ({@link BaseAction.getContextSettings}), so a per-key decision such as
- *   "does this key's mode need the sim" reads that key's own settings rather
- *   than one value shared by every key of the action.
+ * - Keeps each live context's newest raw settings
+ *   ({@link BaseAction.getContextSettings}): what the host last delivered or
+ *   what the plugin last wrote. A per-key decision such as "does this key's
+ *   mode need the sim" reads that key's own settings rather than one value
+ *   shared by every key of the action, and every write goes through
+ *   {@link BaseAction.updateSettings}, which merges onto them and never
+ *   writes over a newer change (#1761).
  *
  * @template T - The settings type for this action
  */
@@ -76,10 +80,12 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
   private contexts = new Map<string, ContextEntry>();
 
   /**
-   * Each live context's latest raw settings, from `onWillAppear` and
-   * `onDidReceiveSettings`; dropped on `onWillDisappear` (#1599).
+   * Each live context's newest raw settings, write-through (#1599, #1761):
+   * set by `onWillAppear` and `onDidReceiveSettings` and by every
+   * {@link updateSettings} write, dropped on `onWillDisappear`, with the
+   * writes parked behind a newer settings event.
    */
-  private contextSettings = new Map<string, unknown>();
+  private readonly contextSettings = new ContextSettings(() => this.logger);
 
   /** Contexts with flag overlay enabled (settings.flagsOverlay === true) */
   protected flagOverlayContexts = new Set<string>();
@@ -250,13 +256,47 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
   }
 
   /**
-   * The context's latest raw settings, as the host last sent them in
-   * `onWillAppear` or `onDidReceiveSettings`; `undefined` for a context
-   * that has not appeared or has disappeared. Unparsed: a reader parses them
-   * with its own schema.
+   * The newest settings the plugin holds for the context: what the host last
+   * delivered in `onWillAppear` or `onDidReceiveSettings`, or what the plugin
+   * last wrote through {@link updateSettings}, whichever came last;
+   * `undefined` for a context that has not appeared or has disappeared.
+   * Unparsed: a reader parses them with its own schema.
    */
-  protected getContextSettings(contextId: string): unknown {
+  protected getContextSettings(contextId: string): Readonly<Record<string, unknown>> | undefined {
     return this.contextSettings.get(contextId);
+  }
+
+  /**
+   * Write this context's settings as `update` computes them from the newest
+   * settings the plugin holds ({@link getContextSettings}), never from the
+   * event's own snapshot, and never over a newer change (#1761). Resolves to
+   * `true` only when it wrote now; it never rejects for the write.
+   *
+   * - A context with no record (never appeared, or disappeared) gets no write.
+   * - `update` returns the whole new object, or `undefined` when the settings
+   *   already hold the change, which writes nothing. It must be pure: it may
+   *   run again later, on newer settings.
+   * - When a newer `willAppear`, `willDisappear` or `didReceiveSettings` of the
+   *   context has already arrived (`ev.isSuperseded`), nothing is written now:
+   *   `update` is parked and re-run on the newer settings when their
+   *   `onDidReceiveSettings` runs, right after this class records them, so a
+   *   subclass that calls `super.onDidReceiveSettings(ev)` first sees the
+   *   re-run done; a disappear or a re-appear drops it.
+   * - Otherwise the record becomes the new object at once, before the write
+   *   is awaited, so a second write in the same handler merges onto the
+   *   first; a failed write is logged at warn and the record kept.
+   *
+   * Whether the host echoes this write back as a `didReceiveSettings` differs
+   * between hosts, and nothing here depends on it: an echo re-runs any write
+   * it superseded, whose `update` then finds its change present and returns
+   * `undefined`.
+   *
+   * @param ev - The event being handled: its context, its action to write
+   *   through, and its arrival's `isSuperseded`
+   * @param update - Computes the new settings from the newest ones
+   */
+  protected updateSettings(ev: IDeckEvent<T>, update: ContextSettingsUpdater): Promise<boolean> {
+    return this.contextSettings.update(ev, update);
   }
 
   /**
@@ -362,20 +402,16 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
   async onWillAppear(ev: IDeckWillAppearEvent<T>): Promise<void> {
     const settings = ev.payload.settings as Record<string, unknown>;
 
-    this.contextSettings.set(ev.action.id, settings);
+    this.contextSettings.appear(ev);
 
-    // Persist addedWithVersion on first appearance (missing = pre-existing instance).
-    // Note: setSettings triggers onDidReceiveSettings — benign since it only re-reads
-    // the same settings that were just written.
-    if (!settings.addedWithVersion && isPluginConfigInitialized()) {
-      try {
-        const version = getPluginVersion();
-        this.logger.debug(`Persisting addedWithVersion=${version} for context ${ev.action.id}`);
-        await ev.action.setSettings({ ...settings, addedWithVersion: version });
-      } catch (err) {
-        this.logger.warn(`Failed to persist addedWithVersion for context ${ev.action.id}: ${err}`);
-      }
-    }
+    // Persist addedWithVersion on first appearance (missing = pre-existing
+    // instance), through the record (#1761): a later write in a subclass's
+    // appear merges onto the stamp rather than dropping it, and a stamp whose
+    // settings a newer PI change has already superseded is re-applied onto
+    // that change instead of reverting it. Whether the host echoes the write
+    // differs between hosts; an echo finds the stamp present and writes nothing.
+    // The record takes the stamp synchronously here; the write is awaited last.
+    const stamp = isPluginConfigInitialized() ? this.stampAddedWithVersion(ev) : undefined;
 
     if (settings.flagsOverlay === true || settings.flagsOverlay === "true") {
       this.flagOverlayContexts.add(ev.action.id);
@@ -384,6 +420,17 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
     }
 
     this.syncTitleTemplateTracking(ev.action.id, settings);
+    await stamp;
+  }
+
+  /** The first-appearance `addedWithVersion` stamp, written through {@link updateSettings}. */
+  private async stampAddedWithVersion(ev: IDeckWillAppearEvent<T>): Promise<void> {
+    const version = getPluginVersion();
+    const written = await this.updateSettings(ev, (current) =>
+      current.addedWithVersion ? undefined : { ...current, addedWithVersion: version },
+    );
+
+    if (written) this.logger.debug(`Persisted addedWithVersion=${version} for context ${ev.action.id}`);
   }
 
   /**
@@ -397,7 +444,10 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
   async onDidReceiveSettings(ev: IDeckDidReceiveSettingsEvent<T>): Promise<void> {
     const settings = ev.payload.settings as Record<string, unknown>;
 
-    this.contextSettings.set(ev.action.id, settings);
+    // Records the new settings, then re-runs any write parked behind them
+    // (#1761). Both start synchronously here: each re-run sets the record
+    // before its write is awaited, and the writes are awaited last.
+    const parkedWrites = this.contextSettings.receive(ev);
 
     if (settings.flagsOverlay === true || settings.flagsOverlay === "true") {
       this.flagOverlayContexts.add(ev.action.id);
@@ -414,6 +464,7 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
     }
 
     this.syncTitleTemplateTracking(ev.action.id, settings);
+    await parkedWrites;
   }
 
   /**
@@ -428,7 +479,7 @@ export abstract class BaseAction<T = Record<string, unknown>> implements IDeckAc
     this.cleanupFlagSubscriptionIfUnneeded();
     this.untrackTitleTemplateContext(ev.action.id);
     this.contexts.delete(ev.action.id);
-    this.contextSettings.delete(ev.action.id);
+    this.contextSettings.disappear(ev.action.id);
     this.logger.debug(`onWillDisappear: removed context ${ev.action.id}, remaining=${this.contexts.size}`);
   }
 

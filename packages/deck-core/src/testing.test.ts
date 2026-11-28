@@ -17,6 +17,7 @@ import * as testing from "./testing.js";
 
 /** The real implementations the entry re-exports for tests that mock the barrel (#1375). */
 const REAL_IMPLEMENTATIONS = [
+  "ContextSettings",
   "IconUpdateThrottle",
   "NOOP_HOLD_PREVIEW",
   "classifyDialRelease",

@@ -34,7 +34,15 @@ export interface IDeckActionContext {
   setImage(dataUri: string): Promise<void>;
   /** Set the button/key title text */
   setTitle(title: string): Promise<void>;
-  /** Persist action-level settings (triggers didReceiveSettings on both plugin and PI) */
+  /**
+   * Persist the context's settings: the host stores the object whole, in
+   * place of what it held, and passes it to the Property Inspector. Resolves
+   * when the write is sent, not when the host has stored it. Whether the host
+   * also sends the plugin a `didReceiveSettings` for its own write differs
+   * between hosts, and nothing in deck-core depends on it (#1761). An action
+   * writes through `BaseAction.updateSettings`, which merges onto the newest
+   * settings the plugin holds and does not write over a newer change.
+   */
   setSettings(settings: Record<string, unknown>): Promise<void>;
   /** Whether this context is a key (button) rather than a dial/encoder */
   isKey(): boolean;
@@ -84,6 +92,21 @@ export interface IDeckActionContext {
 export interface IDeckEvent<T> {
   action: IDeckActionContext;
   payload: { settings: T; coordinates?: { row: number; column: number } };
+  /**
+   * Whether a newer `willAppear`, `willDisappear` or `didReceiveSettings` of
+   * this context has arrived since this event did (#1761): its settings are
+   * then no longer the newest the host holds, though the newer event is still
+   * queued behind this one. The adapter passes its `ContextEventOrder`
+   * arrival's `isSuperseded` into every event it builds, and the ordering
+   * contract suite holds it to that. Input never supersedes, but an input
+   * event's own answer turns true on a later settings change.
+   * `BaseAction.updateSettings` reads it to park a write instead of sending
+   * one built from older settings.
+   *
+   * Optional only so a hand-built event in a test need not carry it; an
+   * event without it is never treated as superseded.
+   */
+  readonly isSuperseded?: () => boolean;
 }
 
 /** Fired when the action becomes visible on the device */
