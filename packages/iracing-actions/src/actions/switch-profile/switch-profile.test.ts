@@ -28,7 +28,10 @@ vi.mock("../data/profiles.json", () => ({
   ],
 }));
 
-vi.mock("@iracedeck/deck-core", () => {
+vi.mock("@iracedeck/deck-core", async () => {
+  // The base's settings half is the REAL per-context record (#1761).
+  const { ContextSettingsActionBase } = await import("../../shared/context-settings-action.test-support.js");
+
   // Minimal reimplementation of the #753 profile-name helpers (the real ones
   // are covered by deck-core's own device-profiles tests).
   const SUFFIXES_LONGEST_FIRST = ["Corsair Galleon", "Plus XL", "Mini", "Plus", "Neo", "XL", "SD"];
@@ -88,12 +91,10 @@ vi.mock("@iracedeck/deck-core", () => {
       parse: (d: Record<string, unknown>) => ({ ...d }),
       safeParse: (d: Record<string, unknown>) => ({ success: true, data: { ...d } }),
     },
-    ConnectionStateAwareAction: class {
+    ConnectionStateAwareAction: class extends ContextSettingsActionBase {
       logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
       setKeyImage = vi.fn();
       setRegenerateCallback = vi.fn();
-      async onWillAppear(): Promise<void> {}
-      async onDidReceiveSettings(): Promise<void> {}
     },
     PROFILE_NAMES: {
       default: "iRaceDeck Default",

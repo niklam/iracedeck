@@ -169,13 +169,18 @@ vi.mock("../../../icons/camera-controls-auto-group.svg", () => ({
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144" data-template="auto-group">{{borderDefs}}<rect width="144" height="144" fill="{{backgroundColor}}"/>{{borderContent}}{{iconContent}}</svg>',
 }));
 
-// focus-select-car (#790): the shared device-filtered bundled-profile reader
-// (unit-tested in shared/profile-entries.test.ts), mocked to a device that
-// ships the car-selector profile; the echo-loop guard keeps its real logic.
+// focus-select-car (#790): the bundled profiles the shared reader
+// (unit-tested in shared/profile-entries.test.ts) reads, mocked to a device
+// (type 2) that ships only the car-selector profile. The data is mocked rather
+// than the reader's exports, so the real profile-list updater the action
+// writes through (#1761) lists the same entries; press-time resolution keeps
+// its device-blind double.
+vi.mock("../data/profiles.json", () => ({
+  default: [{ name: "iRaceDeck Car Selector XL", deviceType: 2, displayName: "iRaceDeck Car Selector" }],
+}));
 vi.mock("../../shared/profile-entries.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../shared/profile-entries.js")>()),
   availableProfilesForDevice: vi.fn(() => ["iRaceDeck Car Selector XL"]),
-  deviceProfileEntries: vi.fn(() => [{ name: "iRaceDeck Car Selector XL", label: "iRaceDeck Car Selector" }]),
 }));
 
 vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => {
@@ -236,6 +241,18 @@ vi.mock("@iracedeck/deck-iracing", async (importOriginal) => {
 });
 
 vi.mock("@iracedeck/deck-core", async () => ({
+  // The base's settings half is the REAL per-context record (#1761).
+  ConnectionStateAwareAction: class MockConnectionStateAwareAction
+    extends (await import("../../shared/context-settings-action.test-support.js")).ContextSettingsActionBase
+  {
+    logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn(), getSessionInfo: vi.fn() };
+    tapBinding = vi.fn().mockResolvedValue(undefined);
+    isBindingMissing = vi.fn(() => false);
+    setKeyImage = vi.fn();
+    setRegenerateCallback = vi.fn();
+    updateKeyImage = vi.fn();
+  },
   // The dial surface arms the REAL hold-preview helper (#1120) on every dial
   // context; a dial press below would otherwise throw at `ensureContext`.
   createHoldPreview: (await import("@iracedeck/deck-core/testing")).createHoldPreview,
@@ -254,18 +271,6 @@ vi.mock("@iracedeck/deck-core", async () => ({
   },
   // The real value: a hand-assembled grid fades its content by it (#1653).
   DIMMED_OPACITY: 0.35,
-  ConnectionStateAwareAction: class MockConnectionStateAwareAction {
-    logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-    sdkController = { subscribe: vi.fn(), unsubscribe: vi.fn(), getCurrentTelemetry: vi.fn(), getSessionInfo: vi.fn() };
-    tapBinding = vi.fn().mockResolvedValue(undefined);
-    isBindingMissing = vi.fn(() => false);
-    setKeyImage = vi.fn();
-    setRegenerateCallback = vi.fn();
-    updateKeyImage = vi.fn();
-    async onWillAppear(_ev: unknown): Promise<void> {}
-    async onWillDisappear(_ev: unknown): Promise<void> {}
-    async onDidReceiveSettings(_ev: unknown): Promise<void> {}
-  },
   // focus-select-car (#790)
   CAR_SELECTOR_PROFILE: "iRaceDeck Car Selector",
   requestProfileSwitch: vi.fn(),

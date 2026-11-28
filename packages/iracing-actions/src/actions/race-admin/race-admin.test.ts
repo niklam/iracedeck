@@ -41,15 +41,21 @@ vi.mock("@iracedeck/iracing-sdk", async (importOriginal) => ({
   resolveTemplate: vi.fn((template: string) => template),
 }));
 
-// The bundled-profile reader is mocked (unit-tested in
-// shared/profile-entries.test.ts); the echo-loop guard keeps its real logic.
+// The bundled profiles the shared reader (unit-tested in
+// shared/profile-entries.test.ts) reads are mocked to a device (type 2)
+// shipping the two Race Admin profiles. The data is mocked rather than the
+// reader's exports, so the real profile-list updater the action writes
+// through (#1761) lists the same entries; press-time resolution keeps its
+// device-blind double.
+vi.mock("../data/profiles.json", () => ({
+  default: [
+    { name: "iRaceDeck Race Admin Cars XL", deviceType: 2, displayName: "iRaceDeck Race Admin Cars" },
+    { name: "iRaceDeck Race Admin Per Car XL", deviceType: 2, displayName: "iRaceDeck Race Admin Per Car" },
+  ],
+}));
 vi.mock("../../shared/profile-entries.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../shared/profile-entries.js")>()),
   availableProfilesForDevice: vi.fn(() => ["iRaceDeck Race Admin Cars XL", "iRaceDeck Race Admin Per Car XL"]),
-  deviceProfileEntries: vi.fn(() => [
-    { name: "iRaceDeck Race Admin Cars XL", label: "iRaceDeck Race Admin Cars" },
-    { name: "iRaceDeck Race Admin Per Car XL", label: "iRaceDeck Race Admin Per Car" },
-  ]),
 }));
 
 // The session-touching selector helpers are mocked (unit-tested in
@@ -193,7 +199,7 @@ const { mockGetGlobalSettings } = vi.hoisted(() => ({
   mockGetGlobalSettings: vi.fn((): Record<string, unknown> => ({ chatOpenToPasteDelayMs: 10 })),
 }));
 
-vi.mock("@iracedeck/deck-core", () => ({
+vi.mock("@iracedeck/deck-core", async () => ({
   IconUpdateThrottle: class {
     schedule(_id: string, render: () => unknown): void {
       try {
@@ -233,7 +239,10 @@ vi.mock("@iracedeck/deck-core", () => ({
 
     return availableNames.includes(suffixed) ? suffixed : undefined;
   },
-  ConnectionStateAwareAction: class MockConnectionStateAwareAction {
+  // The base's settings half is the REAL per-context record (#1761).
+  ConnectionStateAwareAction: class MockConnectionStateAwareAction
+    extends (await import("../../shared/context-settings-action.test-support.js")).ContextSettingsActionBase
+  {
     logger = { trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     sdkController = {
       subscribe: vi.fn(),
@@ -244,9 +253,6 @@ vi.mock("@iracedeck/deck-core", () => ({
     setKeyImage = vi.fn();
     updateKeyImage = vi.fn();
     setRegenerateCallback = vi.fn();
-    async onWillAppear(_ev: unknown): Promise<void> {}
-    async onWillDisappear(_ev: unknown): Promise<void> {}
-    async onDidReceiveSettings(_ev: unknown): Promise<void> {}
   },
   getClipboard: vi.fn(() => ({ setClipboardText: mockSetClipboardText })),
   requestProfileSwitch: vi.fn(async () => {}),

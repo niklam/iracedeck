@@ -34,7 +34,7 @@ import { getGlobalColors } from "@iracedeck/settings";
 import z from "zod";
 
 import { clearSelectIntent } from "../../shared/car-select-intent.js";
-import { availableProfilesForDevice, deviceProfileEntries, profileEntriesEqual } from "../../shared/profile-entries.js";
+import { availableProfilesForDevice, deviceProfilesUpdate } from "../../shared/profile-entries.js";
 
 /**
  * Sentinel `profile` value for the "Back to previous" mode: instead of a named
@@ -235,20 +235,23 @@ export class SwitchProfile extends ConnectionStateAwareAction<SwitchProfileSetti
   }
 
   /**
-   * Push the device-filtered profile list to the PI (once — guarded against the
-   * setSettings→onDidReceiveSettings loop), report the host-profile marker to
-   * the profile history (#762), and refresh the icon.
+   * Push the device-filtered profile list to the PI, report the host-profile
+   * marker to the profile history (#762), and refresh the icon.
+   *
+   * The list is written through `updateSettings` (#1761): merged onto the
+   * context's newest settings, never the event's, so a PI change that arrived
+   * after this event is never reverted, and nothing is written when the list
+   * is already stored. A failed write is warned there and never thrown, so the
+   * marker and the icon below still follow. They read the event's own
+   * settings: the write only adds `_deviceProfiles`, which neither reads.
    */
   private async sync(
     ev: IDeckWillAppearEvent<SwitchProfileSettings> | IDeckDidReceiveSettingsEvent<SwitchProfileSettings>,
   ): Promise<void> {
-    const entries = deviceProfileEntries(ev.action.deviceType);
-    const raw = (ev.payload.settings ?? {}) as Record<string, unknown>;
-    const current = Array.isArray(raw._deviceProfiles) ? (raw._deviceProfiles as unknown[]) : [];
-
-    if (!profileEntriesEqual(current, entries)) {
-      await ev.action.setSettings({ ...raw, _deviceProfiles: entries });
-    }
+    await this.updateSettings(
+      ev,
+      deviceProfilesUpdate(ev.action.deviceType, () => true),
+    );
 
     const settings = this.parseSettings(ev.payload.settings);
 
